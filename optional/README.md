@@ -1,8 +1,7 @@
 # Optional candidates — not installed
 
-These source changes are separate from the installed native driver snapshot. Neither has live-game acceptance or a demonstrated FPS gain.
+- `borderless/`: independently reviewed original watchdog-generation helper and extracted-source tests. Real Wine/API/game acceptance remains pending. LGPL-2.1-or-later contribution scope is explicit.
+- `sync-probes/`: independently reviewed DXMT diagnostic producer and matching controller/analyzer source. Additional wait/flush/commit attribution is instrumentation, not an FPS optimization. The installed be876 source is separately preserved in `renderer/diagnostic`.
+- `xinput/`: retained earlier Wine LGPL-2.1-or-later patch and candidate source. It separates desired vibration state from HID transmission and clears stale controller slot state. Hardware reconnect and actual provider selection still need verification. It is outside the aggregate runner and has no live-game acceptance claim.
 
-- `dxmt/`: one-line cleanup of owned bitcode on a Metal-library creation error path, MIT-licensed DXMT source; license retained. Source archive SHA-256 `efb7fd03d2652a2574b1427ea3f65afc9da872327111138ff20163952d5f5e0e`, upstream commit unknown. Success and shader-cache paths are intentionally unchanged. The contained methods and mock fixture permit inspection of the ownership claim. This is not the full translator or a shader-performance optimization.
-- `xinput/`: Wine LGPL-2.1-or-later patch and candidate source, with retained copyright header. Separates desired vibration state from HID transmission and clears stale controller slot state. Hardware/controller reconnect and actual provider selection still need verification.
-
-These optional fixtures are not part of `tests/run.py` and were not rerun during export. Prior local verification is summarized in the parent audit briefing; do not treat compilation or mocks as installed acceptance.
+No executable binaries, game data or raw game telemetry are included.

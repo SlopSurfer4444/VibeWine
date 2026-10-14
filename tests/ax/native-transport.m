@@ -285,10 +285,12 @@ int main(void)
     CHECK(macdrv_ax_poll(&validate) == 0 && validate.result == MACDRV_AX_STALE);
     snapshot = snapshot_for(request);
     CHECK(macdrv_ax_publish(&snapshot) == 0);
-    CHECK([element accessibilityPerformPress]); /* Same current membership survives revision refresh. */
+    CHECK(![element accessibilityPerformPress]); /* Provider/native revisions differ. */
+    cache->next_revision = cache->revision; /* Model a fully published refresh. */
+    CHECK([element accessibilityPerformPress]); /* Same current membership survives publication. */
     CHECK(ax_actions[ax_action_count - 1].revision == cache->revision &&
           ax_actions[ax_action_count - 1].token == element->ax_token);
-    cache->revision = element->ax_revision;
+    cache->revision = cache->next_revision = element->ax_revision;
     cache->received_ms = ax_now() - MACDRV_AX_CACHE_MS;
     CHECK(![element isAccessibilityElement] && ![element accessibilityPerformPress]);
     CHECK(![element accessibilityIsAttributeSettable:NSAccessibilityValueAttribute]);
@@ -305,7 +307,7 @@ int main(void)
     cache->pending_serial = 42;
     element->ax_node.role = MACDRV_AX_ROLE_EDIT;
     element->ax_node.flags = MACDRV_AX_ENABLED | MACDRV_AX_SETTABLE;
-    CHECK([element accessibilityIsAttributeSettable:NSAccessibilityValueAttribute]);
+    CHECK(![element accessibilityIsAttributeSettable:NSAccessibilityValueAttribute]); /* Refresh in flight. */
     ax_deadline = ax_now(); /* Exact deadline is expired, not inclusive. */
     CHECK(macdrv_ax_poll(&validate) == 0 && validate.result == MACDRV_AX_STALE);
     CHECK(ax_quarantined && !ax_action_count && !cache->pending_serial);

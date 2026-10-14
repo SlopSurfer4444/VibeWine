@@ -10,8 +10,10 @@ FUNCTIONS = (
     "static BOOL display_mode_is_supported(",
     "static void display_mode_to_devmode_fields(",
     "static BOOL display_mode_matches_descriptor(",
+    "static BOOL update_retina_status(",
     "void check_retina_status(",
-    "static void display_get_current_mode(",
+    "static DEVMODEW *display_get_modes(",
+    "static BOOL display_get_current_mode(",
     "UINT macdrv_UpdateDisplayDevices(",
 )
 
@@ -46,7 +48,7 @@ def main():
     generated_path = args.output / "retina_fixture.c"
     binary = args.output / "retina_fixture"
     generated_path.write_text(generated)
-    command = ["clang", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
+    command = ["clang", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-Wno-sign-compare",
                "-fsanitize=address,undefined", "-g", "-O1", str(generated_path), "-framework", "CoreFoundation", "-o", str(binary)]
     build = subprocess.run(command, capture_output=True, text=True)
     (args.output / "build.log").write_text(build.stdout + build.stderr)

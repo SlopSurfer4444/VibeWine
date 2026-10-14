@@ -1,0 +1,151 @@
+--- a/src/d3d11/cs2_trace.hpp
++++ b/src/d3d11/cs2_trace.hpp
+@@ -39,6 +39,43 @@
+  e->start=start;e->end=end;e->object=object;e->type=type;e->thread=GetCurrentThreadId();e->flags=flags;e->reserved=generation;e->padding[0]=detail0;e->padding[1]=detail1;
+  std::atomic_ref<uint64_t>(e->committed).store(index+1,std::memory_order_release);
+ }
++// Diagnostic attribution only: queue scoped, generation scoped, thread local.
++enum class CommitReason : uint32_t { Unknown=0, Present=1, StagingMap=2,
++  GetDataNotReady=3, ExplicitFlush=4, GPUIdle=5, FenceSignal=6,
++  FenceWait=7, PassPromotion=8 };
++struct ReasonState { uint32_t generation=0; CommitReason reason=CommitReason::Unknown; uint64_t queue=0; bool active=false; };
++inline thread_local ReasonState reason_state;
++struct ReasonScope {
++  ReasonState previous; bool changed=false;
++  ReasonScope(CommitReason reason, uint64_t queue, bool fallback=false) {
++    auto gen=generation();
++    previous=reason_state;
++    if (previous.active && previous.queue==queue) {
++      gen=previous.generation;
++      if (fallback) return;
++    }
++    reason_state={gen,reason,queue,true}; changed=true;
++  }
++  ~ReasonScope() { if(changed) reason_state=previous; }
++  ReasonScope(const ReasonScope&)=delete;
++  ReasonScope& operator=(const ReasonScope&)=delete;
++};
++inline void commitReason(uint32_t gen,uint64_t queue,uint64_t sequence,uint64_t frame) {
++  if(!gen)return;
++  if(reason_state.active && reason_state.queue==queue && reason_state.generation!=gen)return;
++  auto reason=(reason_state.generation==gen && reason_state.queue==queue)?reason_state.reason:CommitReason::Unknown;
++  auto t=now(); record(gen,33,t,t,queue,(uint32_t)reason,sequence,frame);
++}
++inline uint32_t operationGeneration(uint64_t queue) {
++  return reason_state.active && reason_state.queue==queue ? reason_state.generation : generation();
++}
++// Uncensored diagnostic calls; no clock read or payload when unarmed.
++struct SyncScope {
++  uint32_t gen=generation(); uint32_t type; uint64_t object=0;
++  uint32_t flags=0; uint64_t queue=0,frame=0; uint64_t start=gen?now():0;
++  ~SyncScope() { if(gen) record(gen,type,start,now(),object,flags,queue,frame); }
++};
++
+ struct Scope {
+  uint32_t gen=generation();uint32_t type;uint64_t object=0;uint32_t flags=0;uint64_t start=gen?now():0;
+  ~Scope(){if(gen){auto end=now();if(end-start>=100000)record(gen,type,start,end,object,flags);}}
+--- a/src/d3d11/d3d11_context_impl.cpp
++++ b/src/d3d11/d3d11_context_impl.cpp
+@@ -4279,7 +4279,12 @@
+ 
+     cmdbuf_state = CommandBufferState::Idle;
+     if (promote_flush && !defer_commit) {
+-      Commit();
++      if constexpr (requires { ctx_state.cmd_queue; }) {
++        cs2trace::ReasonScope reason(cs2trace::CommitReason::PassPromotion,(uint64_t)&ctx_state.cmd_queue,true);
++        Commit();
++      } else {
++        Commit();
++      }
+       return true;
+     }
+ 
+--- a/src/d3d11/d3d11_swapchain.cpp
++++ b/src/d3d11/d3d11_swapchain.cpp
+@@ -819,7 +819,8 @@
+         this->UpdateStatistics(ctx.queue().statistics, ctx.currentFrameId());
+       });
+     }
+-    { cs2trace::Scope trace{.type=10,.object=(uint64_t)this}; device_context_->Commit(); }
++    { cs2trace::ReasonScope reason(cs2trace::CommitReason::Present,(uint64_t)&cmd_queue);
++      cs2trace::Scope trace{.type=10,.object=(uint64_t)this}; device_context_->Commit(); }
+ 
+     lock.unlock(); // since PresentBoundary() will and should only stall current thread
+ 
+--- a/src/d3d11/d3d11_context_imm.cpp
++++ b/src/d3d11/d3d11_context_imm.cpp
+@@ -232,6 +232,7 @@
+       return S_OK;
+     }
+     if (auto staging = GetStagingResource(pResource, Subresource)) {
++      cs2trace::ReasonScope reason(cs2trace::CommitReason::StagingMap,(uint64_t)&cmd_queue);
+       if (MapType > 3 || MapType == 0)
+           return E_INVALIDARG;
+ 
+@@ -270,7 +271,8 @@
+         TRACE("staging map block");
+         auto& statistics = cmd_queue.CurrentFrameStatistics();
+         auto t0 = clock::now();
+-        cmd_queue.WaitCPUFence(coherent_seq_id + uint64_t(result));
++        { cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration((uint64_t)&cmd_queue),.type=30,.object=coherent_seq_id+uint64_t(result),.flags=(uint32_t)MapType,.queue=(uint64_t)&cmd_queue,.frame=cmd_queue.CurrentFrameSeq()-1};
++          cmd_queue.WaitCPUFence(coherent_seq_id + uint64_t(result)); }
+         auto t1 = clock::now();
+         statistics.sync_count++;
+         statistics.sync_interval += (t1 - t0);
+@@ -471,6 +473,8 @@
+     }
+     if (hr == S_FALSE && (GetDataFlags & D3D11_ASYNC_GETDATA_DONOTFLUSH) == 0) {
+       cmd_queue.CurrentFrameStatistics().event_stall++;
++      cs2trace::ReasonScope reason(cs2trace::CommitReason::GetDataNotReady,(uint64_t)&cmd_queue);
++      cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration((uint64_t)&cmd_queue),.type=31,.object=(uint64_t)pAsync,.flags=(uint32_t)desc.Query,.queue=(uint64_t)&cmd_queue,.frame=cmd_queue.CurrentFrameSeq()-1};
+       Flush();
+     }
+     return hr;
+@@ -486,6 +490,7 @@
+   STDMETHODCALLTYPE
+   Flush1(D3D11_CONTEXT_TYPE Type, HANDLE hEvent) override {
+     std::lock_guard<d3d11_device_mutex> lock(mutex);
++    cs2trace::ReasonScope reason(cs2trace::CommitReason::ExplicitFlush,(uint64_t)&cmd_queue,true);
+ 
+     if (ctx_state.has_dirty_op_since_last_event || promote_flush) {
+       InvalidateCurrentPass(true);
+@@ -578,10 +583,12 @@
+ 
+   virtual void
+   WaitUntilGPUIdle() override {
++    cs2trace::ReasonScope reason(cs2trace::CommitReason::GPUIdle,(uint64_t)&cmd_queue);
+     uint64_t seq = cmd_queue.CurrentSeqId();
+     if(!InvalidateCurrentPass())
+       Commit();
+-    cmd_queue.WaitCPUFence(seq);
++    { cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration((uint64_t)&cmd_queue),.type=32,.object=seq,.queue=(uint64_t)&cmd_queue,.frame=cmd_queue.CurrentFrameSeq()-1};
++      cmd_queue.WaitCPUFence(seq); }
+   };
+ 
+   void
+@@ -593,6 +600,7 @@
+   };
+ 
+   HRESULT STDMETHODCALLTYPE Signal(ID3D11Fence *pFence, UINT64 Value) override {
++    cs2trace::ReasonScope reason(cs2trace::CommitReason::FenceSignal,(uint64_t)&cmd_queue);
+     auto fence = static_cast<MTLD3D11Fence *>(pFence);
+ 
+     InvalidateCurrentPass();
+@@ -605,6 +613,7 @@
+   }
+ 
+   HRESULT STDMETHODCALLTYPE Wait(ID3D11Fence *pFence, UINT64 Value) override {
++    cs2trace::ReasonScope reason(cs2trace::CommitReason::FenceWait,(uint64_t)&cmd_queue);
+     auto fence = static_cast<MTLD3D11Fence *>(pFence);
+ 
+     Flush();
+--- a/src/dxmt/dxmt_command_queue.cpp
++++ b/src/dxmt/dxmt_command_queue.cpp
+@@ -85,6 +85,7 @@
+   if (chunk.trace_generation) {
+     auto t = cs2trace::now();
+     cs2trace::record(chunk.trace_generation,20,t,t,(uint64_t)this,0,chunk_id,chunk.frame_);
++    cs2trace::commitReason(chunk.trace_generation,(uint64_t)this,chunk_id,chunk.frame_);
+   }
+   ready_for_encode.fetch_add(1, std::memory_order_release);
+   ready_for_encode.notify_one();

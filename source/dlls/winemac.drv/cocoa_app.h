@@ -73,6 +73,7 @@ enum {
     NSMutableDictionary* originalDisplayModes;
     NSMutableDictionary* latentDisplayModes;
     BOOL displaysCapturedForFullscreen;
+    BOOL displaysCaptured; /* Successful capture still requiring release, even without a mode. */
     BOOL displaysTemporarilyUncapturedForDialog;
     BOOL temporarilyIgnoreResignEventsForDialog;
 

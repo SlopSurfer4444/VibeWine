@@ -10,12 +10,13 @@ static NSMutableDictionary *physicalModes;
 static NSDictionary *desktopModes;
 static int releaseError, captureError, setError, releaseCalls, captureCalls, setCalls, restoreCalls, copyCalls;
 static BOOL invalidDisplay;
+static int failCopyCall;
 static NSMutableDictionary **pendingDestination;
 static NSString *requestDuringSet;
 static CGDisplayModeRef CGDisplayModeRetain(CGDisplayModeRef mode) { return [mode retain]; }
 static void CGDisplayModeRelease(CGDisplayModeRef mode) { [mode release]; }
 static CGDisplayModeRef CGDisplayCopyDisplayMode(CGDirectDisplayID displayID)
-{ copyCalls++; return invalidDisplay ? nil : [physicalModes[@(displayID)] retain]; }
+{ copyCalls++; return (invalidDisplay || copyCalls == failCopyCall) ? nil : [physicalModes[@(displayID)] retain]; }
 static void CGRestorePermanentDisplayConfiguration(void)
 { restoreCalls++; [physicalModes setDictionary:desktopModes]; }
 static CGError CGReleaseAllDisplays(void) { releaseCalls++; return releaseError; }
@@ -32,7 +33,7 @@ static CGError CGDisplaySetDisplayMode(CGDirectDisplayID displayID, CGDisplayMod
 static FakeApp *NSApp;
 @interface Controller : NSObject {
 @public NSMutableDictionary *originalDisplayModes, *latentDisplayModes;
-@public BOOL displaysCapturedForFullscreen, beenActive, forceNextMouseMoveAbsolute;
+@public BOOL displaysCaptured, displaysCapturedForFullscreen, beenActive, forceNextMouseMoveAbsolute;
 }
 - (BOOL)setMode:(CGDisplayModeRef)mode forDisplay:(CGDirectDisplayID)displayID;
 - (BOOL)releaseDisplayCaptureSavingModes:(BOOL)saveModes;
@@ -72,10 +73,20 @@ static Controller *reset(void)
  physicalModes = [@{@1:@"desktop", @2:@"desktop2"} mutableCopy];
  desktopModes = @{@1:@"desktop", @2:@"desktop2"};
  releaseError = captureError = setError = releaseCalls = captureCalls = setCalls = restoreCalls = copyCalls = 0;
- invalidDisplay = NO; pendingDestination=nil; requestDuringSet=nil; NSApp = [FakeApp new]; NSApp.active = YES; return [[[Controller alloc] init] autorelease];
+ failCopyCall = 0; invalidDisplay = NO; pendingDestination=nil; requestDuringSet=nil; NSApp = [FakeApp new]; NSApp.active = YES; return [[[Controller alloc] init] autorelease];
 }
 int main(void) { @autoreleasepool {
  Controller *c; BOOL result;
+ c=reset(); failCopyCall=2; releaseError=7;
+ result=[c setMode:@"game" forDisplay:1];
+ check(!result && captureCalls==1 && releaseCalls==1,"query failure after successful capture attempts release");
+ check(!c->originalDisplayModes.count && [c areDisplaysCaptured],"failed release retains ownership without original mode");
+ releaseError=0; check([c releaseDisplayCaptureSavingModes:NO],"cleanup retries orphan capture");
+ check(releaseCalls==2 && ![c areDisplaysCaptured],"successful release clears orphan capture");
+ c=reset(); captureError=7; result=[c setMode:@"game" forDisplay:1];
+ check(!result && ![c areDisplaysCaptured] && !releaseCalls,"failed capture creates no release obligation");
+ c=reset(); failCopyCall=2; result=[c setMode:@"game" forDisplay:1];
+ check(!result && releaseCalls==1 && ![c areDisplaysCaptured],"successful rollback clears capture after missing mode");
  c=reset(); c->originalDisplayModes[@1]=@"desktop"; c->latentDisplayModes[@1]=@"game"; physicalModes[@1]=@"game"; releaseError=7;
  result=[c setMode:@"desktop" forDisplay:1];
  check(!result,"failed final release reports failure"); check(c->originalDisplayModes.count==1,"failed final release keeps capture ownership");

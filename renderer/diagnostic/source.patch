@@ -1,0 +1,114 @@
+--- a/src/d3d11/cs2_trace.hpp
++++ b/src/d3d11/cs2_trace.hpp
+@@ -30,13 +30,13 @@
+ }
+ inline uint32_t generation() {auto h=buffer();return h?std::atomic_ref<uint32_t>(h->capture).load(std::memory_order_relaxed):0;}
+ inline bool configured() {static bool value=!env::getEnvVar("DXMT_CS2_TRACE_DIR").empty();return value;}
+-inline void record(uint32_t generation,uint32_t type,uint64_t start,uint64_t end,uint64_t object=0,uint32_t flags=0) {
++inline void record(uint32_t generation,uint32_t type,uint64_t start,uint64_t end,uint64_t object=0,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
+  if(!generation)return;
+  auto h=buffer();if(!h||std::atomic_ref<uint32_t>(h->capture).load(std::memory_order_relaxed)!=generation)return;
+  uint64_t index=std::atomic_ref<uint64_t>(h->next).fetch_add(1,std::memory_order_relaxed);
+  if(index>=Capacity){std::atomic_ref<uint64_t>(h->dropped).fetch_add(1,std::memory_order_relaxed);return;}
+  auto e=(Event*)((char*)h+4096)+index;
+- e->start=start;e->end=end;e->object=object;e->type=type;e->thread=GetCurrentThreadId();e->flags=flags;e->reserved=generation;
++ e->start=start;e->end=end;e->object=object;e->type=type;e->thread=GetCurrentThreadId();e->flags=flags;e->reserved=generation;e->padding[0]=detail0;e->padding[1]=detail1;
+  std::atomic_ref<uint64_t>(e->committed).store(index+1,std::memory_order_release);
+ }
+ struct Scope {
+--- a/src/d3d11/d3d11_swapchain.cpp
++++ b/src/d3d11/d3d11_swapchain.cpp
+@@ -780,6 +780,10 @@
+                  preferred_max_frame_rate ? 1.0 / preferred_max_frame_rate : 0);
+ 
+     auto &cmd_queue = device_->GetDXMTDevice().queue();
++    if (auto gen = cs2trace::generation()) {
++      auto t = cs2trace::now();
++      cs2trace::record(gen,25,t,t,(uint64_t)this,0,(uint64_t)&cmd_queue,cmd_queue.CurrentFrameSeq()-1);
++    }
+     auto chunk = cmd_queue.CurrentChunk();
+     chunk->signal_frame_latency_fence_ = cmd_queue.CurrentFrameSeq();
+     if (target_) {
+--- a/src/winemetal/Metal.hpp
++++ b/src/winemetal/Metal.hpp
+@@ -612,6 +612,11 @@
+   LogContainer
+   logs() {
+     return LogContainer{MTLCommandBuffer_logs(handle)};
++  }
++
++  uint64_t
++  gpuStartTime() {
++    return MTLCommandBuffer_property(handle, WMTCommandBufferPropertyGPUStartTime);
+   }
+ 
+   uint64_t
+--- a/src/dxmt/dxmt_command_queue.hpp
++++ b/src/dxmt/dxmt_command_queue.hpp
+@@ -103,6 +103,7 @@
+     statistics.encode_flush_interval += (t2 - t1);
+   };
+ 
++  uint32_t trace_generation = 0;
+   uint64_t chunk_id;
+   uint64_t chunk_event_id;
+   uint64_t frame_;
+--- a/src/dxmt/dxmt_command_queue.cpp
++++ b/src/dxmt/dxmt_command_queue.cpp
+@@ -77,10 +77,15 @@
+   chunk.chunk_id = chunk_id;
+   chunk.chunk_event_id = GetNextEventSeqId();
+   chunk.frame_ = frame_count;
++  chunk.trace_generation = cs2trace::generation();
+   chunk.resource_initializer_event_id = initializer.flushToWait();
+   auto& statistics = CurrentFrameStatistics();
+   statistics.command_buffer_count++;
+ #if ASYNC_ENCODING
++  if (chunk.trace_generation) {
++    auto t = cs2trace::now();
++    cs2trace::record(chunk.trace_generation,20,t,t,(uint64_t)this,0,chunk_id,chunk.frame_);
++  }
+   ready_for_encode.fetch_add(1, std::memory_order_release);
+   ready_for_encode.notify_one();
+ 
+@@ -101,6 +106,10 @@
+ void
+ CommandQueue::CommitChunkInternal(CommandChunk &chunk, uint64_t seq) {
+ 
++  if (chunk.trace_generation) {
++    auto t = cs2trace::now();
++    cs2trace::record(chunk.trace_generation,21,t,t,(uint64_t)this,0,seq,chunk.frame_);
++  }
+   auto pool = WMT::MakeAutoreleasePool();
+ 
+   switch (capture_state.getNextAction(chunk.frame_)) {
+@@ -142,6 +151,10 @@
+     chunk.encode(chunk.attached_cmdbuf, this->argument_encoding_ctx); }
+   { cs2trace::Scope trace{.type=15,.object=seq}; cmdbuf.commit(); }
+ 
++  if (chunk.trace_generation) {
++    auto t = cs2trace::now();
++    cs2trace::record(chunk.trace_generation,22,t,t,(uint64_t)this,0,seq,chunk.frame_);
++  }
+   ready_for_commit.fetch_add(1, std::memory_order_release);
+   ready_for_commit.notify_one();
+ }
+@@ -180,6 +193,18 @@
+       cs2trace::Scope trace{.type=13,.object=internal_seq};
+       chunk.attached_cmdbuf.waitUntilCompleted();
+     }
++    if (chunk.trace_generation && chunk.trace_generation == cs2trace::generation()) {
++      auto t = cs2trace::now();
++      auto status = chunk.attached_cmdbuf.status();
++      cs2trace::record(chunk.trace_generation,23,t,t,(uint64_t)this,status,internal_seq,chunk.frame_);
++      // Completed command-buffer properties only; no new wait or counter buffer.
++      if (status == WMTCommandBufferStatusCompleted) {
++        auto gpu_start = chunk.attached_cmdbuf.gpuStartTime();
++        auto gpu_end = chunk.attached_cmdbuf.gpuEndTime();
++        if (gpu_start && gpu_end >= gpu_start)
++          cs2trace::record(chunk.trace_generation,24,gpu_start,gpu_end,(uint64_t)this,status,internal_seq,chunk.frame_);
++      }
++    }
+     if (chunk.attached_cmdbuf.status() == WMTCommandBufferStatusError) {
+       ERR("Device error at frame ", chunk.frame_, ": ", chunk.attached_cmdbuf.error().description().getUTF8String());
+     }

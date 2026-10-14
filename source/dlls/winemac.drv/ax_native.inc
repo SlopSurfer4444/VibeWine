@@ -223,8 +223,9 @@ static BOOL ax_member_locked(struct ax_window_cache *cache, WineAXElement *eleme
 static BOOL ax_element_copy(WineAXElement *element, struct macdrv_ax_node *node)
 {
     BOOL live;
-    uint64_t now = ax_now();
+    uint64_t now;
     pthread_mutex_lock(&ax_mutex);
+    now = ax_now();
     ax_expire_locked(now);
     live = macdrv_ax_bridge_enabled() &&
            ax_member_locked(ax_find_locked(element->ax_hwnd, element->ax_generation), element, now);
@@ -253,16 +254,27 @@ static BOOL ax_request_target_locked(const struct macdrv_ax_request *request, ui
     return NO;
 }
 
-/* Metadata and selector checks share atomic liveness/role/permission checks.
- * Queue acceptance repeats these independently before handing work to PE. */
+/* Snapshot issuance replaces the PE binding table before AppKit publishes its
+ * replacement tree. Reject actions throughout that interval, including a lost
+ * or expired publication; the old visible revision no longer identifies the
+ * provider table. Poll drains admitted actions before issuing any snapshot.
+ * Equality is restored only by publication of the issued revision. */
+static BOOL ax_action_revision_ready_locked(struct ax_window_cache *cache)
+{
+    return cache && cache->revision && cache->revision == cache->next_revision;
+}
+
+/* Metadata and queue admission share the same revision and permission guard. */
 static BOOL ax_action_allowed(WineAXElement *element, uint32_t operation)
 {
     BOOL allowed;
-    uint64_t now = ax_now();
+    uint64_t now;
     pthread_mutex_lock(&ax_mutex);
+    now = ax_now();
     ax_expire_locked(now);
-    allowed = !ax_quarantined &&
-              ax_member_locked(ax_find_locked(element->ax_hwnd, element->ax_generation), element, now) &&
+    struct ax_window_cache *cache = ax_find_locked(element->ax_hwnd, element->ax_generation);
+    allowed = !ax_quarantined && ax_action_revision_ready_locked(cache) &&
+              ax_member_locked(cache, element, now) &&
               ax_node_allow(&element->ax_node, operation);
     pthread_mutex_unlock(&ax_mutex);
     return allowed;
@@ -293,11 +305,11 @@ static BOOL ax_queue_action(WineAXElement *element, uint32_t operation, NSString
     request.operation = operation;
     request.hwnd = element->ax_hwnd;
     request.generation = element->ax_generation;
-    now = ax_now();
     pthread_mutex_lock(&ax_mutex);
+    now = ax_now();
     ax_expire_locked(now);
     cache = ax_find_locked(request.hwnd, request.generation);
-    if (!ax_quarantined && ax_member_locked(cache, element, now) &&
+    if (!ax_quarantined && ax_action_revision_ready_locked(cache) && ax_member_locked(cache, element, now) &&
         ax_node_allow(&element->ax_node, operation) && ax_action_count < AX_ACTION_QUEUE)
     {
         /* A retained object resolves the current provider node atomically. */
@@ -317,8 +329,9 @@ static NSArray *ax_children_for_view(WineContentView *view)
     NSArray *children = nil;
     WineWindow *window = (WineWindow *)[view window];
     if (!macdrv_ax_bridge_enabled() || [window contentView] != view) return nil;
-    uint64_t now = ax_now();
+    uint64_t now;
     pthread_mutex_lock(&ax_mutex);
+    now = ax_now();
     ax_expire_locked(now);
     for (i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
         if (ax_windows[i].window == window)
@@ -392,8 +405,9 @@ static NSArray *ax_children_for_view(WineContentView *view)
 {
     id parent = nil;
     WineWindow *window = nil;
-    uint64_t now = ax_now();
+    uint64_t now;
     pthread_mutex_lock(&ax_mutex);
+    now = ax_now();
     ax_expire_locked(now);
     struct ax_window_cache *cache = ax_find_locked(ax_hwnd, ax_generation);
     if (ax_member_locked(cache, self, now))
@@ -409,8 +423,9 @@ static NSArray *ax_children_for_view(WineContentView *view)
 - (NSArray *)accessibilityChildren
 {
     NSMutableArray *children = [NSMutableArray array];
-    uint64_t now = ax_now();
+    uint64_t now;
     pthread_mutex_lock(&ax_mutex);
+    now = ax_now();
     ax_expire_locked(now);
     struct ax_window_cache *cache = ax_find_locked(ax_hwnd, ax_generation);
     if (ax_member_locked(cache, self, now))
@@ -455,12 +470,13 @@ int32_t macdrv_ax_poll(void *args)
     struct macdrv_ax_request *request = args, input;
     struct ax_window_cache *cache;
     unsigned int i;
-    uint64_t now = ax_now();
+    uint64_t now;
     if (!request) return -1;
     input = *request;
     if (input.version != MACDRV_AX_VERSION || input.size != sizeof(input)) return -1;
     if (input.operation != MACDRV_AX_NONE && input.operation != MACDRV_AX_VALIDATE) return -1;
     pthread_mutex_lock(&ax_mutex);
+    now = ax_now();
     ax_expire_locked(now);
     if (input.operation == MACDRV_AX_VALIDATE)
     {
@@ -531,7 +547,7 @@ int32_t macdrv_ax_publish(void *args)
     struct macdrv_ax_snapshot *copy;
     struct macdrv_ax_request identity = {0};
     struct ax_window_cache *cache;
-    uint64_t deadline, now = ax_now();
+    uint64_t deadline, now;
     BOOL accepted;
     if (!macdrv_ax_bridge_enabled() || !args) return -1;
     copy = malloc(sizeof(*copy));
@@ -546,6 +562,7 @@ int32_t macdrv_ax_publish(void *args)
     identity.revision = copy->revision;
     identity.serial = copy->serial;
     pthread_mutex_lock(&ax_mutex);
+    now = ax_now();
     ax_expire_locked(now);
     identity.node_id = ax_outstanding.node_id;
     identity.token = ax_outstanding.token;
@@ -618,8 +635,8 @@ int32_t macdrv_ax_publish(void *args)
                     if (!copy->nodes[i].parent) [roots addObject:element];
                 }
             NSArray *new_elements = [elements copy], *new_roots = [roots copy];
-            apply_now = ax_now();
             pthread_mutex_lock(&ax_mutex);
+            apply_now = ax_now();
             ax_expire_locked(apply_now);
             apply_cache = ax_find_locked(copy->hwnd, copy->generation);
             if (!ax_quarantined && apply_cache && apply_cache->pending_serial == copy->serial &&
@@ -643,6 +660,11 @@ int32_t macdrv_ax_publish(void *args)
                 /* Queue delay is not fresh provider data. Native getters expire from
                  * synchronous receipt, even when AppKit applies a valid copy later. */
                 apply_cache->received_ms = now;
+                /* Give the published revision an admission interval. If a read
+                 * or AppKit handoff took a full polling period, immediately
+                 * issuing its successor could keep mutations closed forever.
+                 * This does not extend data freshness or the provider lease. */
+                apply_cache->next_snapshot_ms = apply_now + MACDRV_AX_SNAPSHOT_MS;
                 apply_cache->pending_serial = 0;
                 window = [apply_cache->window retain];
             }

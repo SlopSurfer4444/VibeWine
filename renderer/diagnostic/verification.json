@@ -1,0 +1,11 @@
+{
+  "state": "DIAGNOSTIC_OFFLINE_BUILT_NOT_INSTALLED",
+  "sha256": "be8769bd7cbc63d129e36bad367a041a4cbdf76a5b74af04c3ba4b946efdbf8a",
+  "baseFullscreenSha256": "c8fae20f0ee656769bcc34f3a30f69688f2f2edaf7364e4983b9cc99d4149ea5",
+  "sourceFiles": 69,
+  "importsExportsNamesOrdinalsMatch": true,
+  "nativeBridgeModified": false,
+  "embeddedHelperSha256": "875e4990dcd818c6f4b5dfb697823afd0d2b851601f0b1e89ec0e5dd54bbf195",
+  "supersedesUnreviewedSha256": "2e9f09a08ef17bb1a6802bdd3e61aa94af43b9a70c2d6a90b2c5541f97a26772",
+  "gpuTimingRequiresCompletedStatus": true
+}

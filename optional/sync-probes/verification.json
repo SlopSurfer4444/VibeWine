@@ -1,0 +1,23 @@
+{
+  "baseSha256": "be8769bd7cbc63d129e36bad367a041a4cbdf76a5b74af04c3ba4b946efdbf8a",
+  "candidateSha256": "27100bd36f25fcc79f4b3dba6d900a4d58841047d5f72cdad98cd52cfd76d791",
+  "importsExportsEqual": true,
+  "helperUnchanged": true,
+  "sourceBindingSha256": "18ab70dfed8ebfb7dc7082fb62353563f0e173e20582da84792dc2dbcc9d766e",
+  "patchSha256": "202611186f22b99222a1991c918625918aa18955ba2a59c22c2ebbbeeeedf5bf",
+  "installed": false,
+  "liveVerified": false,
+  "producerReview": "review.md",
+  "producerReviewAccepted": true,
+  "generationSyntheticChecks": 12,
+  "generationTestsSanitizers": [
+    "address",
+    "undefined"
+  ],
+  "translationUnits": 69,
+  "performanceBehaviorChanged": false,
+  "diagnosticUnarmedOverhead": "generation checks and small TLS bookkeeping; no new timestamps/events",
+  "gameplayVerified": false,
+  "consumerReceipt": "consumer/ready.json",
+  "consumerReady": true
+}

@@ -870,6 +870,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
         [originalDisplayModes removeAllObjects];
         displaysCapturedForFullscreen = FALSE;
+        displaysCaptured = FALSE;
         return TRUE;
     }
 
@@ -893,13 +894,18 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
             if (anyFullscreen)
             {
-                if ([self areDisplaysCaptured] || CGCaptureAllDisplays() == CGDisplayNoErr)
+                if ([self areDisplaysCaptured] || (displaysCaptured = (CGCaptureAllDisplays() == CGDisplayNoErr)))
                     displaysCapturedForFullscreen = TRUE;
             }
             else if (displaysCapturedForFullscreen)
             {
-                if ([originalDisplayModes count] || CGReleaseAllDisplays() == CGDisplayNoErr)
+                if ([originalDisplayModes count])
                     displaysCapturedForFullscreen = FALSE;
+                else if (CGReleaseAllDisplays() == CGDisplayNoErr)
+                {
+                    displaysCaptured = FALSE;
+                    displaysCapturedForFullscreen = FALSE;
+                }
             }
         }
     }
@@ -1000,6 +1006,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 if (displaysCapturedForFullscreen || CGReleaseAllDisplays() == CGDisplayNoErr)
                 {
                     [originalDisplayModes removeAllObjects];
+                    if (!displaysCapturedForFullscreen) displaysCaptured = FALSE;
                     ret = TRUE;
                 }
             }
@@ -1057,8 +1064,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
             BOOL active = [NSApp isActive];
 
-            if ([originalDisplayModes count] || displaysCapturedForFullscreen ||
-                !active || CGCaptureAllDisplays() == CGDisplayNoErr)
+            if ([self areDisplaysCaptured] || !active ||
+                (displaysCaptured = (CGCaptureAllDisplays() == CGDisplayNoErr)))
             {
                 if (active)
                 {
@@ -1087,8 +1094,13 @@ static NSString* WineLocalizedString(unsigned int stringID)
                     else if (![originalDisplayModes count])
                     {
                         CGRestorePermanentDisplayConfiguration();
-                        if (!displaysCapturedForFullscreen && CGReleaseAllDisplays() != CGDisplayNoErr && originalMode)
-                            [originalDisplayModes setObject:(id)originalMode forKey:displayIDKey];
+                        if (!displaysCapturedForFullscreen)
+                        {
+                            if (CGReleaseAllDisplays() == CGDisplayNoErr)
+                                displaysCaptured = FALSE;
+                            else if (originalMode)
+                                [originalDisplayModes setObject:(id)originalMode forKey:displayIDKey];
+                        }
                     }
 
                     if (currentMode)
@@ -1112,7 +1124,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
     - (BOOL) areDisplaysCaptured
     {
-        return ([originalDisplayModes count] > 0 || displaysCapturedForFullscreen);
+        return (displaysCaptured || [originalDisplayModes count] > 0 || displaysCapturedForFullscreen);
     }
 
     - (void) updateCursor:(BOOL)force
@@ -1291,7 +1303,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSRunningApplication* app;
             NSRunningApplication* otherValidApp = nil;
 
-            if ([originalDisplayModes count] || displaysCapturedForFullscreen)
+            if ([self areDisplaysCaptured])
             {
                 [self releaseDisplayCaptureSavingModes:TRUE];
             }
@@ -2149,7 +2161,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
              */
             if ([NSApp isActive])
             {
-                if ([originalDisplayModes count] || displaysCapturedForFullscreen)
+                if ([self areDisplaysCaptured])
                 {
                     [self releaseDisplayCaptureSavingModes:TRUE];
                     displaysTemporarilyUncapturedForDialog = TRUE;

@@ -970,12 +970,16 @@ int macdrv_get_monitors(CGDirectDisplayID adapter_id, struct macdrv_monitor** ne
                 /* Allocate more space if needed */
                 if (monitor_count >= capacity)
                 {
-                    capacity *= 2;
-                    realloc_monitors = realloc(monitors, sizeof(*monitors) * capacity);
+                    realloc_monitors = realloc(monitors, sizeof(*monitors) * capacity * 2);
                     if (!realloc_monitors)
                         goto done;
                     monitors = realloc_monitors;
+                    capacity *= 2;
                 }
+
+                /* realloc does not initialize new entries. In particular, an
+                 * unavailable EDID must leave a NULL pointer for cleanup. */
+                memset(&monitors[monitor_count], 0, sizeof(monitors[monitor_count]));
 
                 if (j == 0)
                     primary_index = monitor_count;
@@ -1002,8 +1006,9 @@ int macdrv_get_monitors(CGDirectDisplayID adapter_id, struct macdrv_monitor** ne
                         monitors[monitor_count].edid_len = length;
                         memcpy(monitors[monitor_count].edid, edid_ptr, length);
                     }
-                    CFRelease(edid_data);
                 }
+                if (edid_data)
+                    CFRelease(edid_data);
 
                 monitors[monitor_count].hdr_enabled = false;
 #if defined(MAC_OS_X_VERSION_10_15) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_15
@@ -1030,7 +1035,7 @@ int macdrv_get_monitors(CGDirectDisplayID adapter_id, struct macdrv_monitor** ne
     ret = 0;
 done:
     if (ret)
-        macdrv_free_monitors(monitors, capacity);
+        macdrv_free_monitors(monitors, monitor_count);
     return ret;
 }
 }

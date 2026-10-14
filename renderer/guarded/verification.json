@@ -1,0 +1,12 @@
+{
+  "state": "OFFLINE_BUILT_NOT_INSTALLED",
+  "sourceDelta": [
+    "src/d3d11/d3d11_swapchain.cpp"
+  ],
+  "candidateSha256": "c8fae20f0ee656769bcc34f3a30f69688f2f2edaf7364e4983b9cc99d4149ea5",
+  "priorShaderCandidateSha256": "5e3653bad808ed8fc54d77a7da70c928c74e531962fefff8ae4f60d0fb47d40d",
+  "sourceFiles": 69,
+  "importsExportNamesOrdinalsMatch": true,
+  "embeddedHelperIdentical": true,
+  "helperSha256": "875e4990dcd818c6f4b5dfb697823afd0d2b851601f0b1e89ec0e5dd54bbf195"
+}

@@ -15,3 +15,16 @@ All paths below are repository-relative under `source/dlls/`.
 The `baseline` directory is the selected archived base, not the previously installed custom runtime. AX tests include explicitly named earlier native-bridge reference snapshots for regression analysis; these are not current production code.
 
 `tests/provider/harness.c` is a supplied mock-adapter template with substitution markers. It is audit material, not a standalone runnable test. The aggregate runner exercises the exported display, Retina, and native AX sources. It does not run the provider template or build a Wine runtime.
+
+## Wave5 additions
+
+- `source/dlls/winemac.drv/cocoa_main.m`: startup callback/waiter lifetime and timeout cancellation.
+- `cocoa_display.m`: monitor allocation initialization and failure cleanup.
+- `cocoa_window.m`: display-link callback coalescing and AppKit lifecycle.
+- `ax_native.inc`: provider/native revision agreement, admission interval and post-lock deadlines.
+- `fixtures/`: exact-source adversarial checks described by the aggregate runner.
+- `renderer/guarded/source/src/d3d11/d3d11_swapchain.cpp`: nested fullscreen/mode-change lock guard.
+- `renderer/diagnostic/source/src/d3d11/cs2_trace.hpp`: opt-in trace producer; inspect call sites and GPU completed-status handling together.
+- `renderer/probes/trace_core.hpp`: controller mapping/session/record protocol; tests exercise synthetic cross-process publication.
+
+The `renderer/*/verification.json` files describe historical build-time status. Installed identities are captured separately in root PROVENANCE.json. New pending discovery/borderless/probe work is not silently folded into these source identities.

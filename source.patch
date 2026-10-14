@@ -309,7 +309,7 @@
 +@end
 --- /dev/null
 +++ b/dlls/winemac.drv/ax_native.inc
-@@ -0,0 +1,662 @@
+@@ -0,0 +1,684 @@
 +/* Cached native half of the MSAA bridge. Included after WineWindow's private interface.
 + * Provider tokens preserve retained objects across snapshots; mutable cache reads
 + * and action identity capture share ax_mutex. No accessibility entry point calls
@@ -535,8 +535,9 @@
 +static BOOL ax_element_copy(WineAXElement *element, struct macdrv_ax_node *node)
 +{
 +    BOOL live;
-+    uint64_t now = ax_now();
++    uint64_t now;
 +    pthread_mutex_lock(&ax_mutex);
++    now = ax_now();
 +    ax_expire_locked(now);
 +    live = macdrv_ax_bridge_enabled() &&
 +           ax_member_locked(ax_find_locked(element->ax_hwnd, element->ax_generation), element, now);
@@ -565,16 +566,27 @@
 +    return NO;
 +}
 +
-+/* Metadata and selector checks share atomic liveness/role/permission checks.
-+ * Queue acceptance repeats these independently before handing work to PE. */
++/* Snapshot issuance replaces the PE binding table before AppKit publishes its
++ * replacement tree. Reject actions throughout that interval, including a lost
++ * or expired publication; the old visible revision no longer identifies the
++ * provider table. Poll drains admitted actions before issuing any snapshot.
++ * Equality is restored only by publication of the issued revision. */
++static BOOL ax_action_revision_ready_locked(struct ax_window_cache *cache)
++{
++    return cache && cache->revision && cache->revision == cache->next_revision;
++}
++
++/* Metadata and queue admission share the same revision and permission guard. */
 +static BOOL ax_action_allowed(WineAXElement *element, uint32_t operation)
 +{
 +    BOOL allowed;
-+    uint64_t now = ax_now();
++    uint64_t now;
 +    pthread_mutex_lock(&ax_mutex);
++    now = ax_now();
 +    ax_expire_locked(now);
-+    allowed = !ax_quarantined &&
-+              ax_member_locked(ax_find_locked(element->ax_hwnd, element->ax_generation), element, now) &&
++    struct ax_window_cache *cache = ax_find_locked(element->ax_hwnd, element->ax_generation);
++    allowed = !ax_quarantined && ax_action_revision_ready_locked(cache) &&
++              ax_member_locked(cache, element, now) &&
 +              ax_node_allow(&element->ax_node, operation);
 +    pthread_mutex_unlock(&ax_mutex);
 +    return allowed;
@@ -605,11 +617,11 @@
 +    request.operation = operation;
 +    request.hwnd = element->ax_hwnd;
 +    request.generation = element->ax_generation;
-+    now = ax_now();
 +    pthread_mutex_lock(&ax_mutex);
++    now = ax_now();
 +    ax_expire_locked(now);
 +    cache = ax_find_locked(request.hwnd, request.generation);
-+    if (!ax_quarantined && ax_member_locked(cache, element, now) &&
++    if (!ax_quarantined && ax_action_revision_ready_locked(cache) && ax_member_locked(cache, element, now) &&
 +        ax_node_allow(&element->ax_node, operation) && ax_action_count < AX_ACTION_QUEUE)
 +    {
 +        /* A retained object resolves the current provider node atomically. */
@@ -629,8 +641,9 @@
 +    NSArray *children = nil;
 +    WineWindow *window = (WineWindow *)[view window];
 +    if (!macdrv_ax_bridge_enabled() || [window contentView] != view) return nil;
-+    uint64_t now = ax_now();
++    uint64_t now;
 +    pthread_mutex_lock(&ax_mutex);
++    now = ax_now();
 +    ax_expire_locked(now);
 +    for (i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
 +        if (ax_windows[i].window == window)
@@ -704,8 +717,9 @@
 +{
 +    id parent = nil;
 +    WineWindow *window = nil;
-+    uint64_t now = ax_now();
++    uint64_t now;
 +    pthread_mutex_lock(&ax_mutex);
++    now = ax_now();
 +    ax_expire_locked(now);
 +    struct ax_window_cache *cache = ax_find_locked(ax_hwnd, ax_generation);
 +    if (ax_member_locked(cache, self, now))
@@ -721,8 +735,9 @@
 +- (NSArray *)accessibilityChildren
 +{
 +    NSMutableArray *children = [NSMutableArray array];
-+    uint64_t now = ax_now();
++    uint64_t now;
 +    pthread_mutex_lock(&ax_mutex);
++    now = ax_now();
 +    ax_expire_locked(now);
 +    struct ax_window_cache *cache = ax_find_locked(ax_hwnd, ax_generation);
 +    if (ax_member_locked(cache, self, now))
@@ -767,12 +782,13 @@
 +    struct macdrv_ax_request *request = args, input;
 +    struct ax_window_cache *cache;
 +    unsigned int i;
-+    uint64_t now = ax_now();
++    uint64_t now;
 +    if (!request) return -1;
 +    input = *request;
 +    if (input.version != MACDRV_AX_VERSION || input.size != sizeof(input)) return -1;
 +    if (input.operation != MACDRV_AX_NONE && input.operation != MACDRV_AX_VALIDATE) return -1;
 +    pthread_mutex_lock(&ax_mutex);
++    now = ax_now();
 +    ax_expire_locked(now);
 +    if (input.operation == MACDRV_AX_VALIDATE)
 +    {
@@ -843,7 +859,7 @@
 +    struct macdrv_ax_snapshot *copy;
 +    struct macdrv_ax_request identity = {0};
 +    struct ax_window_cache *cache;
-+    uint64_t deadline, now = ax_now();
++    uint64_t deadline, now;
 +    BOOL accepted;
 +    if (!macdrv_ax_bridge_enabled() || !args) return -1;
 +    copy = malloc(sizeof(*copy));
@@ -858,6 +874,7 @@
 +    identity.revision = copy->revision;
 +    identity.serial = copy->serial;
 +    pthread_mutex_lock(&ax_mutex);
++    now = ax_now();
 +    ax_expire_locked(now);
 +    identity.node_id = ax_outstanding.node_id;
 +    identity.token = ax_outstanding.token;
@@ -930,8 +947,8 @@
 +                    if (!copy->nodes[i].parent) [roots addObject:element];
 +                }
 +            NSArray *new_elements = [elements copy], *new_roots = [roots copy];
-+            apply_now = ax_now();
 +            pthread_mutex_lock(&ax_mutex);
++            apply_now = ax_now();
 +            ax_expire_locked(apply_now);
 +            apply_cache = ax_find_locked(copy->hwnd, copy->generation);
 +            if (!ax_quarantined && apply_cache && apply_cache->pending_serial == copy->serial &&
@@ -955,6 +972,11 @@
 +                /* Queue delay is not fresh provider data. Native getters expire from
 +                 * synchronous receipt, even when AppKit applies a valid copy later. */
 +                apply_cache->received_ms = now;
++                /* Give the published revision an admission interval. If a read
++                 * or AppKit handoff took a full polling period, immediately
++                 * issuing its successor could keep mutations closed forever.
++                 * This does not extend data freshness or the provider lease. */
++                apply_cache->next_snapshot_ms = apply_now + MACDRV_AX_SNAPSHOT_MS;
 +                apply_cache->pending_serial = 0;
 +                window = [apply_cache->window retain];
 +            }
@@ -1751,6 +1773,16 @@
 +    return 1;
 +}
 +#endif
+--- a/dlls/winemac.drv/cocoa_app.h
++++ b/dlls/winemac.drv/cocoa_app.h
+@@ -73,6 +73,7 @@
+     NSMutableDictionary* originalDisplayModes;
+     NSMutableDictionary* latentDisplayModes;
+     BOOL displaysCapturedForFullscreen;
++    BOOL displaysCaptured; /* Successful capture still requiring release, even without a mode. */
+     BOOL displaysTemporarilyUncapturedForDialog;
+     BOOL temporarilyIgnoreResignEventsForDialog;
+ 
 --- a/dlls/winemac.drv/cocoa_app.m
 +++ b/dlls/winemac.drv/cocoa_app.m
 @@ -26,6 +26,8 @@
@@ -1815,7 +1847,7 @@
  
              if (!enable_app_nap)
              {
-@@ -814,6 +830,49 @@
+@@ -814,6 +830,50 @@
          [self adjustWindowLevels:[NSApp isActive]];
      }
  
@@ -1859,13 +1891,14 @@
 +
 +        [originalDisplayModes removeAllObjects];
 +        displaysCapturedForFullscreen = FALSE;
++        displaysCaptured = FALSE;
 +        return TRUE;
 +    }
 +
      - (void) updateFullscreenWindows
      {
          if (capture_displays_for_fullscreen && [NSApp isActive])
-@@ -823,7 +882,9 @@
+@@ -823,7 +883,9 @@
              for (windowNumber in [NSWindow windowNumbersWithOptions:0])
              {
                  WineWindow* window = (WineWindow*)[NSApp windowWithWindowNumber:[windowNumber integerValue]];
@@ -1876,7 +1909,28 @@
                  {
                      anyFullscreen = TRUE;
                      break;
-@@ -936,10 +997,11 @@
+@@ -832,13 +894,18 @@
+ 
+             if (anyFullscreen)
+             {
+-                if ([self areDisplaysCaptured] || CGCaptureAllDisplays() == CGDisplayNoErr)
++                if ([self areDisplaysCaptured] || (displaysCaptured = (CGCaptureAllDisplays() == CGDisplayNoErr)))
+                     displaysCapturedForFullscreen = TRUE;
+             }
+             else if (displaysCapturedForFullscreen)
+             {
+-                if ([originalDisplayModes count] || CGReleaseAllDisplays() == CGDisplayNoErr)
++                if ([originalDisplayModes count])
+                     displaysCapturedForFullscreen = FALSE;
++                else if (CGReleaseAllDisplays() == CGDisplayNoErr)
++                {
++                    displaysCaptured = FALSE;
++                    displaysCapturedForFullscreen = FALSE;
++                }
+             }
+         }
+     }
+@@ -936,10 +1003,12 @@
              if ([originalDisplayModes count] == 1) // If this is the last changed display, do a blanket reset
              {
                  CGRestorePermanentDisplayConfiguration();
@@ -1887,12 +1941,13 @@
 +                if (displaysCapturedForFullscreen || CGReleaseAllDisplays() == CGDisplayNoErr)
 +                {
 +                    [originalDisplayModes removeAllObjects];
++                    if (!displaysCapturedForFullscreen) displaysCaptured = FALSE;
 +                    ret = TRUE;
 +                }
              }
              else // ... otherwise, try to restore just the one display
              {
-@@ -954,13 +1016,23 @@
+@@ -954,13 +1023,23 @@
                      }
                  }
              }
@@ -1917,7 +1972,7 @@
              if (!currentMode)
                  currentMode = CGDisplayCopyDisplayMode(displayID);
              if (!currentMode) // Invalid display ID
-@@ -969,6 +1041,8 @@
+@@ -969,6 +1048,8 @@
              if ([self mode:mode matchesMode:currentMode]) // Already there!
              {
                  CGDisplayModeRelease(currentMode);
@@ -1926,14 +1981,28 @@
                  return TRUE;
              }
  
-@@ -1013,12 +1087,14 @@
-                     else if (![originalDisplayModes count])
+@@ -983,8 +1064,8 @@
+ 
+             BOOL active = [NSApp isActive];
+ 
+-            if ([originalDisplayModes count] || displaysCapturedForFullscreen ||
+-                !active || CGCaptureAllDisplays() == CGDisplayNoErr)
++            if ([self areDisplaysCaptured] || !active ||
++                (displaysCaptured = (CGCaptureAllDisplays() == CGDisplayNoErr)))
+             {
+                 if (active)
+                 {
+@@ -1014,11 +1095,18 @@
                      {
                          CGRestorePermanentDisplayConfiguration();
--                        if (!displaysCapturedForFullscreen)
+                         if (!displaysCapturedForFullscreen)
 -                            CGReleaseAllDisplays();
-+                        if (!displaysCapturedForFullscreen && CGReleaseAllDisplays() != CGDisplayNoErr && originalMode)
-+                            [originalDisplayModes setObject:(id)originalMode forKey:displayIDKey];
++                        {
++                            if (CGReleaseAllDisplays() == CGDisplayNoErr)
++                                displaysCaptured = FALSE;
++                            else if (originalMode)
++                                [originalDisplayModes setObject:(id)originalMode forKey:displayIDKey];
++                        }
                      }
  
                      if (currentMode)
@@ -1943,10 +2012,21 @@
                  }
                  else
                  {
-@@ -1217,18 +1293,7 @@
+@@ -1036,7 +1124,7 @@
  
-             if ([originalDisplayModes count] || displaysCapturedForFullscreen)
-             {
+     - (BOOL) areDisplaysCaptured
+     {
+-        return ([originalDisplayModes count] > 0 || displaysCapturedForFullscreen);
++        return (displaysCaptured || [originalDisplayModes count] > 0 || displaysCapturedForFullscreen);
+     }
+ 
+     - (void) updateCursor:(BOOL)force
+@@ -1215,20 +1303,9 @@
+             NSRunningApplication* app;
+             NSRunningApplication* otherValidApp = nil;
+ 
+-            if ([originalDisplayModes count] || displaysCapturedForFullscreen)
+-            {
 -                NSNumber* displayID;
 -                for (displayID in originalDisplayModes)
 -                {
@@ -1959,11 +2039,13 @@
 -                CGReleaseAllDisplays();
 -                [originalDisplayModes removeAllObjects];
 -                displaysCapturedForFullscreen = FALSE;
++            if ([self areDisplaysCaptured])
++            {
 +                [self releaseDisplayCaptureSavingModes:TRUE];
              }
  
              for (app in [[NSWorkspace sharedWorkspace] runningApplications])
-@@ -2001,7 +2066,7 @@
+@@ -2001,7 +2078,7 @@
                  lastTargetWindow = nil;
              if (window == self.mouseCaptureWindow)
                  self.mouseCaptureWindow = nil;
@@ -1972,7 +2054,7 @@
              {
                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0), dispatch_get_main_queue(), ^{
                      [self updateFullscreenWindows];
-@@ -2040,6 +2105,11 @@
+@@ -2040,6 +2117,11 @@
          [wsnc addObserver:self
                   selector:@selector(activeSpaceDidChange)
                       name:NSWorkspaceActiveSpaceDidChangeNotification
@@ -1984,9 +2066,12 @@
                     object:nil];
  
          [nc addObserver:self
-@@ -2081,18 +2151,7 @@
+@@ -2079,20 +2161,9 @@
+              */
+             if ([NSApp isActive])
              {
-                 if ([originalDisplayModes count] || displaysCapturedForFullscreen)
+-                if ([originalDisplayModes count] || displaysCapturedForFullscreen)
++                if ([self areDisplaysCaptured])
                  {
 -                    NSNumber* displayID;
 -                    for (displayID in originalDisplayModes)
@@ -2004,7 +2089,7 @@
                      displaysTemporarilyUncapturedForDialog = TRUE;
                  }
                  temporarilyIgnoreResignEventsForDialog = TRUE;
-@@ -2211,42 +2270,52 @@
+@@ -2211,42 +2282,52 @@
      /* CW Hack 22310, 24199 */
      - (void) handleExternalQuitRequest:(NSNotification *)notification
      {
@@ -2085,7 +2170,7 @@
  
          terminatingDueToExternalRequest = YES;
          [NSApp terminate:NSApp];
-@@ -2255,7 +2324,7 @@
+@@ -2255,7 +2336,7 @@
      /* CW Hack 22310, 24199 */
      - (void) postExternalQuitRequest
      {
@@ -2094,7 +2179,7 @@
          static dispatch_once_t onceToken;
          NSDictionary *userInfo;
          NSProcessInfo *process;
-@@ -2287,6 +2356,9 @@
+@@ -2287,6 +2368,9 @@
          if (!wineConfigDir) wineConfigDir = @"";
          winePrefix = process.environment[@"WINEPREFIX"];
          if (!winePrefix) winePrefix = @"";
@@ -2104,7 +2189,7 @@
  
          userInfo = @{
              WineExternalQuitNotificationAUMIDKey: self.explicitAppUserModelID ? self.explicitAppUserModelID : @"",
-@@ -2391,26 +2463,67 @@
+@@ -2391,26 +2475,67 @@
          }
      }
  
@@ -2190,7 +2275,7 @@
      }
  
      - (void) setRetinaMode:(BOOL)mode
-@@ -2439,7 +2552,12 @@
+@@ -2439,7 +2564,12 @@
          for (displayID in modesToRealize)
          {
              CGDisplayModeRef mode = (CGDisplayModeRef)modesToRealize[displayID];
@@ -2204,7 +2289,7 @@
          }
  
          [self updateFullscreenWindows];
-@@ -2488,6 +2606,13 @@
+@@ -2488,6 +2618,13 @@
  
          if (!temporarilyIgnoreResignEventsForDialog)
          {
@@ -2218,7 +2303,7 @@
              event = macdrv_create_event(APP_DEACTIVATED, nil);
  
              [eventQueuesLock lock];
-@@ -2498,6 +2623,7 @@
+@@ -2498,6 +2635,7 @@
              macdrv_release_event(event);
          }
  
@@ -2226,7 +2311,7 @@
          [self releaseMouseCapture];
      }
  
-@@ -2508,10 +2634,19 @@
+@@ -2508,10 +2646,19 @@
  
      - (BOOL) applicationShouldHandleReopen:(NSApplication*)theApplication hasVisibleWindows:(BOOL)flag
      {
@@ -2250,7 +2335,7 @@
      }
  
      - (NSApplicationTerminateReply) applicationShouldTerminate:(NSApplication *)sender
-@@ -2560,6 +2695,12 @@
+@@ -2560,6 +2707,12 @@
      /* CW Hack 22310, 24199 */
      - (void)handleApplicationShouldTerminateReply:(BOOL)reply
      {
@@ -2263,7 +2348,7 @@
          if (reply && !terminatingDueToExternalRequest)
          {
              // Normal Cocoa-initiated quit, so potentially tell other related
-@@ -2571,6 +2712,12 @@
+@@ -2571,6 +2724,12 @@
              terminatingDueToExternalRequest = NO;
  
          [NSApp replyToApplicationShouldTerminate:reply];
@@ -2276,6 +2361,221 @@
      }
  
      - (void)applicationWillBecomeActive:(NSNotification *)notification
+--- a/dlls/winemac.drv/cocoa_display.m
++++ b/dlls/winemac.drv/cocoa_display.m
+@@ -970,12 +970,16 @@
+                 /* Allocate more space if needed */
+                 if (monitor_count >= capacity)
+                 {
+-                    capacity *= 2;
+-                    realloc_monitors = realloc(monitors, sizeof(*monitors) * capacity);
++                    realloc_monitors = realloc(monitors, sizeof(*monitors) * capacity * 2);
+                     if (!realloc_monitors)
+                         goto done;
+                     monitors = realloc_monitors;
++                    capacity *= 2;
+                 }
++
++                /* realloc does not initialize new entries. In particular, an
++                 * unavailable EDID must leave a NULL pointer for cleanup. */
++                memset(&monitors[monitor_count], 0, sizeof(monitors[monitor_count]));
+ 
+                 if (j == 0)
+                     primary_index = monitor_count;
+@@ -1002,8 +1006,9 @@
+                         monitors[monitor_count].edid_len = length;
+                         memcpy(monitors[monitor_count].edid, edid_ptr, length);
+                     }
++                }
++                if (edid_data)
+                     CFRelease(edid_data);
+-                }
+ 
+                 monitors[monitor_count].hdr_enabled = false;
+ #if defined(MAC_OS_X_VERSION_10_15) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_15
+@@ -1030,7 +1035,7 @@
+     ret = 0;
+ done:
+     if (ret)
+-        macdrv_free_monitors(monitors, capacity);
++        macdrv_free_monitors(monitors, monitor_count);
+     return ret;
+ }
+ }
+--- a/dlls/winemac.drv/cocoa_main.m
++++ b/dlls/winemac.drv/cocoa_main.m
+@@ -19,6 +19,7 @@
+  */
+ 
+ #import <AppKit/AppKit.h>
++#include <stdlib.h>
+ #include <mach/mach.h>
+ #include <mach/mach_time.h>
+ 
+@@ -38,11 +39,34 @@
+ 
+ 
+ struct cocoa_app_startup_info {
++    unsigned int        refs;
+     NSConditionLock*    lock;
+     unsigned long long  tickcount;
+     uint64_t            uptime_ns;
+     BOOL                success;
++    BOOL                cancelled;
+ };
++
++
++/* The waiter, run loop source, and active callback each own a reference.
++   In particular, timeout must not leave the source pointing into the waiter's
++   stack, and completion must not release state still used by the callback. */
++static const void* retain_startup_info(const void* info)
++{
++    struct cocoa_app_startup_info* startup_info = (void*)info;
++    __sync_add_and_fetch(&startup_info->refs, 1);
++    return info;
++}
++
++static void release_startup_info(const void* info)
++{
++    struct cocoa_app_startup_info* startup_info = (void*)info;
++    if (!__sync_sub_and_fetch(&startup_info->refs, 1))
++    {
++        [startup_info->lock release];
++        free(startup_info);
++    }
++}
+ 
+ 
+ /***********************************************************************
+@@ -57,14 +81,23 @@
+  * it has successfully started the application by changing the condition
+  * of a shared NSConditionLock, passed in via the info parameter.
+  *
+- * This function never returns.  It's the new permanent home of the
+- * main thread.
++ * If it starts a new application successfully, this function becomes
++ * the permanent home of the main thread. Otherwise it returns.
+  */
+ static void run_cocoa_app(void* info)
+ {
+-    struct cocoa_app_startup_info* startup_info = info;
++    struct cocoa_app_startup_info* startup_info = (void*)retain_startup_info(info);
+     NSConditionLock* lock = startup_info->lock;
+-    BOOL created_app = FALSE;
++    BOOL created_app = FALSE, success = FALSE;
++
++    [lock lock];
++    if (startup_info->cancelled)
++    {
++        [lock unlock];
++        release_startup_info(startup_info);
++        return;
++    }
++    [lock unlock];
+ 
+     @autoreleasepool
+     {
+@@ -84,18 +117,19 @@
+             WineApplicationController* controller = [WineApplicationController sharedController];
+             [NSApp setWineController:controller];
+             [controller computeEventTimeAdjustmentFromTicks:startup_info->tickcount uptime:startup_info->uptime_ns];
+-            startup_info->success = TRUE;
+-        }
+-
+-        /* Retain the lock while we're using it, so macdrv_start_cocoa_app()
+-           doesn't deallocate it in the middle of us unlocking it. */
+-        [lock retain];
++            success = TRUE;
++        }
++
+         [lock lock];
++        startup_info->success = success;
+         [lock unlockWithCondition:COCOA_APP_RUNNING];
+-        [lock release];
+-    }
+-
+-    if (created_app && startup_info->success)
++    }
++
++    /* No shared startup state may be accessed after releasing our reference.
++       An already-started callback may finish after the caller times out. */
++    release_startup_info(startup_info);
++
++    if (created_app && success)
+     {
+         @autoreleasepool
+         {
+@@ -119,7 +153,7 @@
+ {
+     int ret = -1;
+     CFRunLoopSourceRef source;
+-    struct cocoa_app_startup_info startup_info;
++    struct cocoa_app_startup_info* startup_info;
+     uint64_t uptime_mach = mach_absolute_time();
+     mach_timebase_info_data_t mach_timebase;
+     NSDate* timeLimit;
+@@ -131,35 +165,47 @@
+                              toTarget:[NSThread class]
+                            withObject:nil];
+ 
+-    startup_info.lock = [[NSConditionLock alloc] initWithCondition:COCOA_APP_NOT_RUNNING];
+-    startup_info.tickcount = tickcount;
+-    startup_info.success = FALSE;
++    if (!(startup_info = calloc(1, sizeof(*startup_info)))) return -1;
++    startup_info->refs = 1;
++    startup_info->lock = [[NSConditionLock alloc] initWithCondition:COCOA_APP_NOT_RUNNING];
++    startup_info->tickcount = tickcount;
++    startup_info->success = FALSE;
+ 
+     mach_timebase_info(&mach_timebase);
+-    startup_info.uptime_ns = uptime_mach * mach_timebase.numer / mach_timebase.denom;
++    startup_info->uptime_ns = uptime_mach * mach_timebase.numer / mach_timebase.denom;
+ 
+     timeLimit = [NSDate dateWithTimeIntervalSinceNow:5];
+ 
+-    source_context.info = &startup_info;
++    source_context.info = startup_info;
++    source_context.retain = retain_startup_info;
++    source_context.release = release_startup_info;
+     source_context.perform = run_cocoa_app;
+     source = CFRunLoopSourceCreate(NULL, 0, &source_context);
+ 
+-    if (source && startup_info.lock && timeLimit)
++    if (source && startup_info->lock && timeLimit)
+     {
+         CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
+         CFRunLoopSourceSignal(source);
+         CFRunLoopWakeUp(CFRunLoopGetMain());
+ 
+-        if ([startup_info.lock lockWhenCondition:COCOA_APP_RUNNING beforeDate:timeLimit])
+-        {
+-            [startup_info.lock unlock];
+-            ret = !startup_info.success;
+-        }
+-    }
+-
++        if ([startup_info->lock lockWhenCondition:COCOA_APP_RUNNING beforeDate:timeLimit])
++        {
++            ret = !startup_info->success;
++            [startup_info->lock unlock];
++        }
++    }
++
++    /* Prevent a source whose waiter timed out from starting Cocoa later.
++       If its callback already began, its own reference permits it to finish. */
++    [startup_info->lock lock];
++    startup_info->cancelled = TRUE;
++    [startup_info->lock unlock];
+     if (source)
++    {
++        CFRunLoopSourceInvalidate(source);
+         CFRelease(source);
+-    [startup_info.lock release];
++    }
++    release_startup_info(startup_info);
+     return ret;
+ }
+ }
 --- a/dlls/winemac.drv/cocoa_window.h
 +++ b/dlls/winemac.drv/cocoa_window.h
 @@ -91,6 +91,7 @@
@@ -2288,16 +2588,76 @@
  @property (readonly, nonatomic) NSRect wine_fractionalFrame;
 --- a/dlls/winemac.drv/cocoa_window.m
 +++ b/dlls/winemac.drv/cocoa_window.m
-@@ -270,7 +270,7 @@
-             BOOL anyDisplayed = FALSE;
-             for (WineWindow* window in windows)
+@@ -186,6 +186,7 @@
+     NSTimeInterval _nominalRefreshPeriod;
+ 
+     NSTimeInterval _lastDisplayTime;
++    BOOL _displayPending; /* Protected by @synchronized(self), including delivery. */
+ }
+ 
+     - (id) initWithDisplayID:(CGDirectDisplayID)displayID;
+@@ -262,28 +263,46 @@
+ 
+     - (void) fire
+     {
+-        NSSet* windows;
+         @synchronized(self) {
+-            windows = [_windows copy];
++            if (_displayPending)
++                return;
++            _displayPending = TRUE;
+         }
+         dispatch_async(dispatch_get_main_queue(), ^{
+-            BOOL anyDisplayed = FALSE;
+-            for (WineWindow* window in windows)
++            NSSet* windows;
++            /* Sample membership when delivery begins, not on the display-link
++             * thread. A stalled main queue must not retain removed windows. */
++            @synchronized(self) {
++                windows = [_windows copy];
++            }
++            @try
              {
 -                if ([window viewsNeedDisplay])
-+                if (!window.closing && [window viewsNeedDisplay])
++                BOOL anyDisplayed = FALSE;
++                for (WineWindow* window in windows)
                  {
-                     [window displayIfNeeded];
-                     anyDisplayed = YES;
-@@ -431,6 +431,8 @@
+-                    [window displayIfNeeded];
+-                    anyDisplayed = YES;
++                    if (!window.closing && [window viewsNeedDisplay])
++                    {
++                        [window displayIfNeeded];
++                        anyDisplayed = YES;
++                    }
++                }
++
++                NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
++                if (anyDisplayed)
++                    _lastDisplayTime = now;
++                else if (_lastDisplayTime + 2.0 < now)
++                    CVDisplayLinkStop(_link);
++            }
++            @finally
++            {
++                [windows release];
++                /* Keep the gate closed during callbacks and stop: a reentrant
++                 * fire or a late tick must not build another delivery backlog. */
++                @synchronized(self) {
++                    _displayPending = FALSE;
+                 }
+             }
+-
+-            NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+-            if (anyDisplayed)
+-                _lastDisplayTime = now;
+-            else if (_lastDisplayTime + 2.0 < now)
+-                CVDisplayLinkStop(_link);
+         });
+-        [windows release];
+     }
+ 
+     - (NSTimeInterval) refreshPeriod
+@@ -431,6 +450,8 @@
  @end
  
  
@@ -2306,7 +2666,7 @@
  @implementation WineBaseView
  
      - (void) setRetinaMode:(BOOL)mode
-@@ -480,6 +482,33 @@
+@@ -480,6 +501,33 @@
  @implementation WineContentView
  
  @synthesize everHadGLContext = _everHadGLContext;
@@ -2340,7 +2700,7 @@
  
      - (instancetype) initWithFrame:(NSRect)frame
      {
-@@ -1009,6 +1038,46 @@
+@@ -1009,6 +1057,46 @@
      @synthesize usePerPixelAlpha;
      @synthesize himc, commandDone;
      @synthesize contentViewMaskLayer;
@@ -2387,7 +2747,7 @@
  
      + (WineWindow*) createWindowWithFeatures:(const struct macdrv_window_features*)wf
                                   windowFrame:(NSRect)window_frame
-@@ -2267,7 +2336,7 @@
+@@ -2267,7 +2355,7 @@
      - (void) checkWineDisplayLink
      {
          NSScreen* screen = self.screen;
@@ -2396,7 +2756,7 @@
              screen = nil;
          if (!(self.occlusionState & NSWindowOcclusionStateVisible))
              screen = nil;
-@@ -3473,6 +3542,7 @@
+@@ -3473,6 +3561,7 @@
                                             windowFrame:NSRectFromCGRect(cgrect_mac_from_win(frame))
                                                    hwnd:hwnd
                                                   queue:(WineEventQueue*)queue] retain];
@@ -2404,7 +2764,7 @@
      });
  
      return (macdrv_window)window;
-@@ -3490,9 +3560,15 @@
+@@ -3490,9 +3579,15 @@
      WineWindow* window = (WineWindow*)w;
  
      OnMainThread(^{
@@ -2452,7 +2812,14 @@
  
      /* Otherwise, prefer a mode whose pixel size equals its point size over one which
         is scaled. */
-@@ -706,8 +710,17 @@
+@@ -700,20 +704,35 @@
+ }
+ 
+ 
+-void check_retina_status(void)
++static BOOL update_retina_status(void)
+ {
+     if (retina_enabled)
      {
          struct display_mode_descriptor* desc = create_original_display_mode_descriptor(kCGDirectMainDisplay);
          CGDisplayModeRef mode = CGDisplayCopyDisplayMode(kCGDirectMainDisplay);
@@ -2465,23 +2832,223 @@
 +        {
 +            if (mode) CGDisplayModeRelease(mode);
 +            free_display_mode_descriptor(desc);
-+            return;
++            return FALSE;
 +        }
 +
 +        new_value = display_mode_matches_descriptor(mode, desc);
          CGDisplayModeRelease(mode);
          free_display_mode_descriptor(desc);
  
-@@ -1088,6 +1101,9 @@
-     struct macdrv_gpu *gpus, *gpu;
-     INT gpu_count, adapter_count, monitor_count, mode_count;
-     DEVMODEW *modes;
+         if (new_value != retina_on)
+             macdrv_set_cocoa_retina_mode(new_value);
+     }
++    return TRUE;
++}
++
++void check_retina_status(void)
++{
++    update_retina_status();
+ }
+ 
+ static BOOL is_detached_mode(const DEVMODEW *mode)
+@@ -877,6 +896,12 @@
+     }
+ 
+     desc = create_original_display_mode_descriptor(display_id);
++    if (retina_enabled && !desc)
++    {
++        free(devmodes);
++        CFRelease(modes);
++        return NULL;
++    }
+     for (i = 0; i < count; i++)
+     {
+         CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
+@@ -917,13 +942,20 @@
+     return devmodes;
+ }
+ 
+-static void display_get_current_mode(struct macdrv_monitor *monitor, DEVMODEW *devmode)
++static BOOL display_get_current_mode(struct macdrv_monitor *monitor, DEVMODEW *devmode)
+ {
+     CGDisplayModeRef display_mode;
+     CGDirectDisplayID display_id;
++    struct display_mode_descriptor *desc = NULL;
+ 
+     display_id = monitor->id;
+     display_mode = CGDisplayCopyDisplayMode(display_id);
++    if (!display_mode) return FALSE;
++    if (retina_enabled && !(desc = create_original_display_mode_descriptor(display_id)))
++    {
++        CFRelease(display_mode);
++        return FALSE;
++    }
+ 
+     devmode->dmPosition.x = CGRectGetMinX(monitor->rc_monitor);
+     devmode->dmPosition.y = CGRectGetMinY(monitor->rc_monitor);
+@@ -932,7 +964,6 @@
+     display_mode_to_devmode_fields(display_id, display_mode, devmode);
+     if (retina_enabled)
+     {
+-        struct display_mode_descriptor *desc = create_original_display_mode_descriptor(display_id);
+         if (display_mode_matches_descriptor(display_mode, desc))
+         {
+             devmode->dmPelsWidth *= 2;
+@@ -942,6 +973,7 @@
+     }
+ 
+     CFRelease(display_mode);
++    return TRUE;
+ }
+ 
+ /***********************************************************************
+@@ -1083,22 +1115,60 @@
+ 
+ UINT macdrv_UpdateDisplayDevices(const struct gdi_device_manager *device_manager, void *param)
+ {
+-    struct macdrv_adapter *adapters, *adapter;
+-    struct macdrv_monitor *monitors, *monitor;
+-    struct macdrv_gpu *gpus, *gpu;
+-    INT gpu_count, adapter_count, monitor_count, mode_count;
+-    DEVMODEW *modes;
+-
+-    /* Initialize GPUs */
++    struct staged_source
++    {
++        struct macdrv_monitor *monitors;
++        INT monitor_count, mode_count;
++        DEVMODEW *modes, current_mode;
++    };
++    struct staged_gpu
++    {
++        struct macdrv_adapter *adapters;
++        INT adapter_count;
++        struct staged_source *sources;
++    } *staged = NULL;
++    struct macdrv_gpu *gpus;
++    INT gpu_count, g, a, m;
++    UINT status = STATUS_UNSUCCESSFUL;
++    UINT dpi = NtUserGetSystemDpiForProcess( NULL );
 +
 +    /* Monitor rectangles and the current mode must use the same Retina scale. */
-+    check_retina_status();
- 
-     /* Initialize GPUs */
++    if (!update_retina_status()) return STATUS_UNSUCCESSFUL;
++
      if (macdrv_get_gpus(&gpus, &gpu_count))
+     {
+         ERR("could not get GPUs\n");
+         return STATUS_UNSUCCESSFUL;
+     }
+     TRACE("GPU count: %d\n", gpu_count);
+-
+-    for (gpu = gpus; gpu < gpus + gpu_count; gpu++)
+-    {
++    if (gpu_count && !(staged = calloc(gpu_count, sizeof(*staged)))) goto done;
++
++    /* Device-manager callbacks mutate the registry immediately.  Gather every
++       source first: a later query failure must not publish a partial topology. */
++    for (g = 0; g < gpu_count; g++)
++    {
++        struct staged_gpu *entry = staged + g;
++        if (macdrv_get_adapters(gpus[g].id, &entry->adapters, &entry->adapter_count)) goto done;
++        if (entry->adapter_count && !(entry->sources = calloc(entry->adapter_count, sizeof(*entry->sources))))
++            goto done;
++        for (a = 0; a < entry->adapter_count; a++)
++        {
++            struct staged_source *source = entry->sources + a;
++            CGDirectDisplayID id = entry->adapters[a].id;
++            source->current_mode.dmSize = sizeof(source->current_mode);
++            if (macdrv_get_monitors(id, &source->monitors, &source->monitor_count)) goto done;
++            for (m = 0; m < source->monitor_count; m++)
++                if (source->monitors[m].id == id &&
++                    !display_get_current_mode(source->monitors + m, &source->current_mode))
++                    goto done;
++            if (!(source->modes = display_get_modes(id, &source->mode_count))) goto done;
++        }
++    }
++
++    for (g = 0; g < gpu_count; g++)
++    {
++        struct staged_gpu *entry = staged + g;
++        struct macdrv_gpu *gpu = gpus + g;
+         struct pci_id pci_id =
+         {
+             .vendor = gpu->vendor_id,
+@@ -1107,26 +1177,16 @@
+             .revision = gpu->revision_id,
+         };
+         device_manager->add_gpu(gpu->name, &pci_id, NULL, param);
+-
+-        /* Initialize adapters */
+-        if (macdrv_get_adapters(gpu->id, &adapters, &adapter_count)) break;
+-        TRACE("GPU: %llx %s, adapter count: %d\n", gpu->id, debugstr_a(gpu->name), adapter_count);
+-
+-        for (adapter = adapters; adapter < adapters + adapter_count; adapter++)
+-        {
+-            DEVMODEW current_mode = { .dmSize = sizeof(current_mode) };
+-            UINT dpi = NtUserGetSystemDpiForProcess( NULL );
++        for (a = 0; a < entry->adapter_count; a++)
++        {
++            struct macdrv_adapter *adapter = entry->adapters + a;
++            struct staged_source *source = entry->sources + a;
+             char buffer[32];
+-
+             snprintf( buffer, sizeof(buffer), "%04x", adapter->id );
+             device_manager->add_source( buffer, adapter->state_flags, dpi, param );
+-
+-            if (macdrv_get_monitors(adapter->id, &monitors, &monitor_count)) break;
+-            TRACE("adapter: %#x, monitor count: %d\n", adapter->id, monitor_count);
+-
+-            /* Initialize monitors */
+-            for (monitor = monitors; monitor < monitors + monitor_count; monitor++)
++            for (m = 0; m < source->monitor_count; m++)
+             {
++                struct macdrv_monitor *monitor = source->monitors + m;
+                 struct gdi_monitor gdi_monitor =
+                 {
+                     .rc_monitor = rect_from_cgrect(monitor->rc_monitor),
+@@ -1136,21 +1196,26 @@
+                     .hdr_enabled = monitor->hdr_enabled,
+                 };
+                 device_manager->add_monitor( &gdi_monitor, param );
+-
+-                /* Get the current mode */
+-                if (monitor->id == adapter->id)
+-                    display_get_current_mode(monitor, &current_mode);
+             }
+-
+-            if (!(modes = display_get_modes(adapter->id, &mode_count))) break;
+-            device_manager->add_modes( &current_mode, mode_count, modes, param );
+-            free(modes);
+-            macdrv_free_monitors(monitors, monitor_count);
+-        }
+-
+-        macdrv_free_adapters(adapters);
+-    }
+-
++            device_manager->add_modes( &source->current_mode, source->mode_count, source->modes, param );
++        }
++    }
++    status = STATUS_SUCCESS;
++
++done:
++    for (g = 0; staged && g < gpu_count; g++)
++    {
++        struct staged_gpu *entry = staged + g;
++        for (a = 0; entry->sources && a < entry->adapter_count; a++)
++        {
++            struct staged_source *source = entry->sources + a;
++            free(source->modes);
++            if (source->monitors) macdrv_free_monitors(source->monitors, source->monitor_count);
++        }
++        free(entry->sources);
++        if (entry->adapters) macdrv_free_adapters(entry->adapters);
++    }
++    free(staged);
+     macdrv_free_gpus(gpus);
+-    return STATUS_SUCCESS;
+-}
++    return status;
++}
 --- a/dlls/winemac.drv/dllmain.c
 +++ b/dlls/winemac.drv/dllmain.c
 @@ -18,6 +18,7 @@

@@ -1,0 +1,17 @@
+--- a/src/d3d11/d3d11_swapchain.cpp
++++ b/src/d3d11/d3d11_swapchain.cpp
+@@ -540,6 +540,14 @@
+   ResizeTarget(const DXGI_MODE_DESC *pDesc) final {
+     if (!pDesc)
+       return DXGI_ERROR_INVALID_CALL;
++
++    // Window and display changes may synchronously dispatch a window procedure
++    // which calls ResizeTarget again. Share the Enter/Leave transition guard so
++    // nested or concurrent target changes cannot wait on our nonrecursive mutex
++    // or mutate window_state_ while a fullscreen transition is in progress.
++    ModeSetGuard::ModeSetInProgress modeset_inprogress(modeset_guard_);
++    if (modeset_inprogress)
++      return DXGI_STATUS_MODE_CHANGE_IN_PROGRESS;
+ 
+     if (!wsi::isWindow(hWnd))
+       return DXGI_ERROR_INVALID_CALL;

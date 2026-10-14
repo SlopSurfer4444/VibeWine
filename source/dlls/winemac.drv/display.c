@@ -704,7 +704,7 @@ static CFArrayRef copy_display_modes(CGDirectDisplayID display, BOOL include_uns
 }
 
 
-void check_retina_status(void)
+static BOOL update_retina_status(void)
 {
     if (retina_enabled)
     {
@@ -717,7 +717,7 @@ void check_retina_status(void)
         {
             if (mode) CGDisplayModeRelease(mode);
             free_display_mode_descriptor(desc);
-            return;
+            return FALSE;
         }
 
         new_value = display_mode_matches_descriptor(mode, desc);
@@ -727,6 +727,12 @@ void check_retina_status(void)
         if (new_value != retina_on)
             macdrv_set_cocoa_retina_mode(new_value);
     }
+    return TRUE;
+}
+
+void check_retina_status(void)
+{
+    update_retina_status();
 }
 
 static BOOL is_detached_mode(const DEVMODEW *mode)
@@ -890,6 +896,12 @@ static DEVMODEW *display_get_modes(CGDirectDisplayID display_id, int *modes_coun
     }
 
     desc = create_original_display_mode_descriptor(display_id);
+    if (retina_enabled && !desc)
+    {
+        free(devmodes);
+        CFRelease(modes);
+        return NULL;
+    }
     for (i = 0; i < count; i++)
     {
         CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
@@ -930,13 +942,20 @@ static DEVMODEW *display_get_modes(CGDirectDisplayID display_id, int *modes_coun
     return devmodes;
 }
 
-static void display_get_current_mode(struct macdrv_monitor *monitor, DEVMODEW *devmode)
+static BOOL display_get_current_mode(struct macdrv_monitor *monitor, DEVMODEW *devmode)
 {
     CGDisplayModeRef display_mode;
     CGDirectDisplayID display_id;
+    struct display_mode_descriptor *desc = NULL;
 
     display_id = monitor->id;
     display_mode = CGDisplayCopyDisplayMode(display_id);
+    if (!display_mode) return FALSE;
+    if (retina_enabled && !(desc = create_original_display_mode_descriptor(display_id)))
+    {
+        CFRelease(display_mode);
+        return FALSE;
+    }
 
     devmode->dmPosition.x = CGRectGetMinX(monitor->rc_monitor);
     devmode->dmPosition.y = CGRectGetMinY(monitor->rc_monitor);
@@ -945,7 +964,6 @@ static void display_get_current_mode(struct macdrv_monitor *monitor, DEVMODEW *d
     display_mode_to_devmode_fields(display_id, display_mode, devmode);
     if (retina_enabled)
     {
-        struct display_mode_descriptor *desc = create_original_display_mode_descriptor(display_id);
         if (display_mode_matches_descriptor(display_mode, desc))
         {
             devmode->dmPelsWidth *= 2;
@@ -955,6 +973,7 @@ static void display_get_current_mode(struct macdrv_monitor *monitor, DEVMODEW *d
     }
 
     CFRelease(display_mode);
+    return TRUE;
 }
 
 /***********************************************************************
@@ -1096,25 +1115,60 @@ void macdrv_displays_changed(const macdrv_event *event)
 
 UINT macdrv_UpdateDisplayDevices(const struct gdi_device_manager *device_manager, void *param)
 {
-    struct macdrv_adapter *adapters, *adapter;
-    struct macdrv_monitor *monitors, *monitor;
-    struct macdrv_gpu *gpus, *gpu;
-    INT gpu_count, adapter_count, monitor_count, mode_count;
-    DEVMODEW *modes;
+    struct staged_source
+    {
+        struct macdrv_monitor *monitors;
+        INT monitor_count, mode_count;
+        DEVMODEW *modes, current_mode;
+    };
+    struct staged_gpu
+    {
+        struct macdrv_adapter *adapters;
+        INT adapter_count;
+        struct staged_source *sources;
+    } *staged = NULL;
+    struct macdrv_gpu *gpus;
+    INT gpu_count, g, a, m;
+    UINT status = STATUS_UNSUCCESSFUL;
+    UINT dpi = NtUserGetSystemDpiForProcess( NULL );
 
     /* Monitor rectangles and the current mode must use the same Retina scale. */
-    check_retina_status();
+    if (!update_retina_status()) return STATUS_UNSUCCESSFUL;
 
-    /* Initialize GPUs */
     if (macdrv_get_gpus(&gpus, &gpu_count))
     {
         ERR("could not get GPUs\n");
         return STATUS_UNSUCCESSFUL;
     }
     TRACE("GPU count: %d\n", gpu_count);
+    if (gpu_count && !(staged = calloc(gpu_count, sizeof(*staged)))) goto done;
 
-    for (gpu = gpus; gpu < gpus + gpu_count; gpu++)
+    /* Device-manager callbacks mutate the registry immediately.  Gather every
+       source first: a later query failure must not publish a partial topology. */
+    for (g = 0; g < gpu_count; g++)
     {
+        struct staged_gpu *entry = staged + g;
+        if (macdrv_get_adapters(gpus[g].id, &entry->adapters, &entry->adapter_count)) goto done;
+        if (entry->adapter_count && !(entry->sources = calloc(entry->adapter_count, sizeof(*entry->sources))))
+            goto done;
+        for (a = 0; a < entry->adapter_count; a++)
+        {
+            struct staged_source *source = entry->sources + a;
+            CGDirectDisplayID id = entry->adapters[a].id;
+            source->current_mode.dmSize = sizeof(source->current_mode);
+            if (macdrv_get_monitors(id, &source->monitors, &source->monitor_count)) goto done;
+            for (m = 0; m < source->monitor_count; m++)
+                if (source->monitors[m].id == id &&
+                    !display_get_current_mode(source->monitors + m, &source->current_mode))
+                    goto done;
+            if (!(source->modes = display_get_modes(id, &source->mode_count))) goto done;
+        }
+    }
+
+    for (g = 0; g < gpu_count; g++)
+    {
+        struct staged_gpu *entry = staged + g;
+        struct macdrv_gpu *gpu = gpus + g;
         struct pci_id pci_id =
         {
             .vendor = gpu->vendor_id,
@@ -1123,26 +1177,16 @@ UINT macdrv_UpdateDisplayDevices(const struct gdi_device_manager *device_manager
             .revision = gpu->revision_id,
         };
         device_manager->add_gpu(gpu->name, &pci_id, NULL, param);
-
-        /* Initialize adapters */
-        if (macdrv_get_adapters(gpu->id, &adapters, &adapter_count)) break;
-        TRACE("GPU: %llx %s, adapter count: %d\n", gpu->id, debugstr_a(gpu->name), adapter_count);
-
-        for (adapter = adapters; adapter < adapters + adapter_count; adapter++)
+        for (a = 0; a < entry->adapter_count; a++)
         {
-            DEVMODEW current_mode = { .dmSize = sizeof(current_mode) };
-            UINT dpi = NtUserGetSystemDpiForProcess( NULL );
+            struct macdrv_adapter *adapter = entry->adapters + a;
+            struct staged_source *source = entry->sources + a;
             char buffer[32];
-
             snprintf( buffer, sizeof(buffer), "%04x", adapter->id );
             device_manager->add_source( buffer, adapter->state_flags, dpi, param );
-
-            if (macdrv_get_monitors(adapter->id, &monitors, &monitor_count)) break;
-            TRACE("adapter: %#x, monitor count: %d\n", adapter->id, monitor_count);
-
-            /* Initialize monitors */
-            for (monitor = monitors; monitor < monitors + monitor_count; monitor++)
+            for (m = 0; m < source->monitor_count; m++)
             {
+                struct macdrv_monitor *monitor = source->monitors + m;
                 struct gdi_monitor gdi_monitor =
                 {
                     .rc_monitor = rect_from_cgrect(monitor->rc_monitor),
@@ -1152,21 +1196,26 @@ UINT macdrv_UpdateDisplayDevices(const struct gdi_device_manager *device_manager
                     .hdr_enabled = monitor->hdr_enabled,
                 };
                 device_manager->add_monitor( &gdi_monitor, param );
-
-                /* Get the current mode */
-                if (monitor->id == adapter->id)
-                    display_get_current_mode(monitor, &current_mode);
             }
-
-            if (!(modes = display_get_modes(adapter->id, &mode_count))) break;
-            device_manager->add_modes( &current_mode, mode_count, modes, param );
-            free(modes);
-            macdrv_free_monitors(monitors, monitor_count);
+            device_manager->add_modes( &source->current_mode, source->mode_count, source->modes, param );
         }
-
-        macdrv_free_adapters(adapters);
     }
+    status = STATUS_SUCCESS;
 
+done:
+    for (g = 0; staged && g < gpu_count; g++)
+    {
+        struct staged_gpu *entry = staged + g;
+        for (a = 0; entry->sources && a < entry->adapter_count; a++)
+        {
+            struct staged_source *source = entry->sources + a;
+            free(source->modes);
+            if (source->monitors) macdrv_free_monitors(source->monitors, source->monitor_count);
+        }
+        free(entry->sources);
+        if (entry->adapters) macdrv_free_adapters(entry->adapters);
+    }
+    free(staged);
     macdrv_free_gpus(gpus);
-    return STATUS_SUCCESS;
+    return status;
 }

@@ -12,5 +12,7 @@ with tempfile.TemporaryDirectory(prefix='wine-audit-fixtures-') as tmp:
  for source in sorted((root/'tests/ax').glob('*.m')):
   binary=out/source.stem
   subprocess.run(flags+[str(source),'-o',str(binary)],check=True)
-  subprocess.run([str(binary)],check=True)
+  modes = [[], ["action"], ["abandoned"], ["exhausted"]] if source.stem == "completion" else [[]]
+  for mode in modes:
+   subprocess.run([str(binary), *mode],check=True)
  print('Offline fixture suite complete. This does not establish real-game acceptance.')

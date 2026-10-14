@@ -186,6 +186,7 @@ static inline BOOL stage_manager_enabled(void)
     NSTimeInterval _nominalRefreshPeriod;
 
     NSTimeInterval _lastDisplayTime;
+    BOOL _displayPending; /* Protected by @synchronized(self), including delivery. */
 }
 
     - (id) initWithDisplayID:(CGDirectDisplayID)displayID;
@@ -262,28 +263,46 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (void) fire
     {
-        NSSet* windows;
         @synchronized(self) {
-            windows = [_windows copy];
+            if (_displayPending)
+                return;
+            _displayPending = TRUE;
         }
         dispatch_async(dispatch_get_main_queue(), ^{
-            BOOL anyDisplayed = FALSE;
-            for (WineWindow* window in windows)
+            NSSet* windows;
+            /* Sample membership when delivery begins, not on the display-link
+             * thread. A stalled main queue must not retain removed windows. */
+            @synchronized(self) {
+                windows = [_windows copy];
+            }
+            @try
             {
-                if (!window.closing && [window viewsNeedDisplay])
+                BOOL anyDisplayed = FALSE;
+                for (WineWindow* window in windows)
                 {
-                    [window displayIfNeeded];
-                    anyDisplayed = YES;
+                    if (!window.closing && [window viewsNeedDisplay])
+                    {
+                        [window displayIfNeeded];
+                        anyDisplayed = YES;
+                    }
+                }
+
+                NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+                if (anyDisplayed)
+                    _lastDisplayTime = now;
+                else if (_lastDisplayTime + 2.0 < now)
+                    CVDisplayLinkStop(_link);
+            }
+            @finally
+            {
+                [windows release];
+                /* Keep the gate closed during callbacks and stop: a reentrant
+                 * fire or a late tick must not build another delivery backlog. */
+                @synchronized(self) {
+                    _displayPending = FALSE;
                 }
             }
-
-            NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
-            if (anyDisplayed)
-                _lastDisplayTime = now;
-            else if (_lastDisplayTime + 2.0 < now)
-                CVDisplayLinkStop(_link);
         });
-        [windows release];
     }
 
     - (NSTimeInterval) refreshPeriod

@@ -1,0 +1,22 @@
+{
+  "baseCommit": "ebfd51ebaf74aa084040755e029c314f78230121",
+  "sourceSha256": "d64b57d5d387489028ff17a72bcff02479ad4290b3c292b23da182be48dd0d30",
+  "helperSha256": "3bc0432f93b1c9055c0f253f829d3a6a090768197165841d52acbcec8dcd7531",
+  "compilerVersion": "0.15.2",
+  "compilerTarSha256": "3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b",
+  "target": "x86_64-windows-gnu",
+  "flags": [
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-luser32",
+    "-ladvapi32"
+  ],
+  "offlineFixtureResultSha256": "2d709d19897ec9601abbf29a8ea4ebbf003416490bc9adf3c13e4e2ddd2f61aa",
+  "compiled": true,
+  "installed": false,
+  "wineStarted": false,
+  "liveGameChanged": false,
+  "selftestHelperSha256": "8d1170ee7c63365c74e1f18a41bc5d9a1786345ac035ecfef220c96805be659d"
+}

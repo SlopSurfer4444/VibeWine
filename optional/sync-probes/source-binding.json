@@ -1,0 +1,25 @@
+{
+  "basePE": "be8769bd7cbc63d129e36bad367a041a4cbdf76a5b74af04c3ba4b946efdbf8a",
+  "changed": {
+    "src/d3d11/cs2_trace.hpp": {
+      "before": "34d7aacc8155ee36876085e7b67ffa68fae824a40359b5ff1105cde937b08ba1",
+      "after": "04a3305192eeaeafde61d8f4d41ac90e7edfec8ac792994a890b7f10eaaa3567"
+    },
+    "src/d3d11/d3d11_context_impl.cpp": {
+      "before": "6bab0e92254b7e7b2daca7e16e6259a7c034bb8c0d3feed624b2cbaad9203f27",
+      "after": "6fc31e4209191d13f14a6ccb52b40c7108b27c31a6a1f216989d009710d8bb9f"
+    },
+    "src/d3d11/d3d11_swapchain.cpp": {
+      "before": "353b088a3d7ce3c5ebe5967fca8c45873d6a6e9a3e75920ff20b69a270a09b68",
+      "after": "fcb5d6e97d27bbdb2e1e1c883686f25a3cd65190debdfe3cd11bd7126ac2a7d1"
+    },
+    "src/d3d11/d3d11_context_imm.cpp": {
+      "before": "9ec60e166c3b9137748c108a617af249b09191d44347f695b6a7b220becead00",
+      "after": "e060607f1d6507f8013a3775636222ca25c4307f8914afba4880eb3e4e2f7162"
+    },
+    "src/dxmt/dxmt_command_queue.cpp": {
+      "before": "ad084d63d4643866824b5aaaed94588973bff382f6b494afacde824612b133f9",
+      "after": "f80b602160ad8c1ddfaa311f6b0d1b35d5780b115e0c7c0da5d1e5016de231f3"
+    }
+  }
+}

@@ -125,12 +125,12 @@ int main(int argc,char **argv)
     CHECK([old isAccessibilityElement]);
     if(action) CHECK([old accessibilityPerformPress]);
     else {
-        /* Leave a real accepted action queued, then make the snapshot due. */
+        /* Make a refresh due; action mode above covers an admitted action lease. */
         ax_action_count=0;test_ms+=MACDRV_AX_SNAPSHOT_MS;cache->eligibility_ms=test_ms;
     }
     request=poll();CHECK(request.operation==(action?MACDRV_AX_PRESS:MACDRV_AX_SNAPSHOT));
     snapshot=response(request);
-    if(!action) CHECK([old accessibilityPerformPress] && ax_action_count==1);
+    if(!action) CHECK(![old accessibilityPerformPress] && !ax_action_count);
     test_ms+=MACDRV_AX_DEADLINE_MS+8;cache->eligibility_ms=test_ms;
     struct macdrv_ax_request validate=request;validate.operation=MACDRV_AX_VALIDATE;
     CHECK(!macdrv_ax_poll(&validate)&&validate.result==MACDRV_AX_STALE);
