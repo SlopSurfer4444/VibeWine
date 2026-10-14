@@ -1,0 +1,2646 @@
+--- a/dlls/oleacc/client.c
++++ b/dlls/oleacc/client.c
+@@ -21,6 +21,7 @@
+ #include <assert.h>
+ #include "oleacc_private.h"
+ #include "commctrl.h"
++#include "resource.h"
+ 
+ #include "wine/debug.h"
+ 
+@@ -49,6 +50,9 @@
+     HRESULT (*get_kbd_shortcut)(Client*, VARIANT, BSTR*);
+     HRESULT (*get_value)(Client*, VARIANT, BSTR*);
+     HRESULT (*put_value)(Client*, VARIANT, BSTR);
++    HRESULT (*get_role)(Client*, VARIANT, VARIANT*);
++    HRESULT (*get_default_action)(Client*, VARIANT, BSTR*);
++    HRESULT (*do_default_action)(Client*, VARIANT);
+ };
+ 
+ static HRESULT win_get_name(HWND hwnd, BSTR *name)
+@@ -271,6 +275,9 @@
+         return E_INVALIDARG;
+     }
+ 
++    if(This->vtbl && This->vtbl->get_role)
++        return This->vtbl->get_role(This, varID, pvarRole);
++
+     V_VT(pvarRole) = VT_I4;
+     V_I4(pvarRole) = This->role;
+     return S_OK;
+@@ -399,6 +406,9 @@
+     TRACE("(%p)->(%s %p)\n", This, debugstr_variant(&varID), pszDefaultAction);
+ 
+     *pszDefaultAction = NULL;
++    if(This->vtbl && This->vtbl->get_default_action)
++        return This->vtbl->get_default_action(This, varID, pszDefaultAction);
++
+     if(convert_child_id(&varID) != CHILDID_SELF)
+         return E_INVALIDARG;
+     return S_FALSE;
+@@ -479,6 +489,9 @@
+ static HRESULT WINAPI Client_accDoDefaultAction(IAccessible *iface, VARIANT varID)
+ {
+     Client *This = impl_from_Client(iface);
++    if(This->vtbl && This->vtbl->do_default_action)
++        return This->vtbl->do_default_action(This, varID);
++
+     FIXME("(%p)->(%s)\n", This, debugstr_variant(&varID));
+     return E_NOTIMPL;
+ }
+@@ -868,10 +881,146 @@
+     edit_put_value,
+ };
+ 
++/* Standard BUTTON controls expose their native state through BM_* messages.
++ * Read the style on each query: BM_SETSTYLE can change a live control's role. */
++static LONG button_role(Client *client)
++{
++    switch(GetWindowLongW(client->hwnd, GWL_STYLE) & BS_TYPEMASK) {
++    case BS_CHECKBOX:
++    case BS_AUTOCHECKBOX:
++    case BS_3STATE:
++    case BS_AUTO3STATE:
++        return ROLE_SYSTEM_CHECKBUTTON;
++    case BS_RADIOBUTTON:
++    case BS_AUTORADIOBUTTON:
++        return ROLE_SYSTEM_RADIOBUTTON;
++    case BS_GROUPBOX:
++        return ROLE_SYSTEM_GROUPING;
++    default:
++        return ROLE_SYSTEM_PUSHBUTTON;
++    }
++}
++
++static HRESULT button_get_role(Client *client, VARIANT id, VARIANT *role)
++{
++    if(convert_child_id(&id) != CHILDID_SELF || !IsWindow(client->hwnd)) {
++        V_VT(role) = VT_EMPTY;
++        return E_INVALIDARG;
++    }
++    V_VT(role) = VT_I4;
++    V_I4(role) = button_role(client);
++    return S_OK;
++}
++
++static BOOL button_enabled(HWND hwnd)
++{
++    while(hwnd) {
++        if(!IsWindowEnabled(hwnd))
++            return FALSE;
++        if(!(GetWindowLongW(hwnd, GWL_STYLE) & WS_CHILD))
++            break;
++        hwnd = GetParent(hwnd);
++    }
++    return TRUE;
++}
++
++static HRESULT button_get_state(Client *client, VARIANT id, VARIANT *state)
++{
++    LONG role, style;
++    LRESULT button_state, check;
++    HRESULT hr;
++
++    if(convert_child_id(&id) != CHILDID_SELF || !IsWindow(client->hwnd)) {
++        V_VT(state) = VT_EMPTY;
++        return E_INVALIDARG;
++    }
++    hr = client_get_state(client, id, state);
++    if(FAILED(hr))
++        return hr;
++
++    role = button_role(client);
++    style = GetWindowLongW(client->hwnd, GWL_STYLE) & BS_TYPEMASK;
++    if(!button_enabled(client->hwnd)) {
++        V_I4(state) |= STATE_SYSTEM_UNAVAILABLE;
++        V_I4(state) &= ~STATE_SYSTEM_FOCUSABLE;
++    }
++    if(!IsWindowVisible(client->hwnd))
++        V_I4(state) |= STATE_SYSTEM_INVISIBLE;
++    if(role == ROLE_SYSTEM_GROUPING) {
++        V_I4(state) &= ~(STATE_SYSTEM_FOCUSABLE | STATE_SYSTEM_FOCUSED);
++        return S_OK;
++    }
++
++    button_state = SendMessageW(client->hwnd, BM_GETSTATE, 0, 0);
++    if(button_state & BST_PUSHED)
++        V_I4(state) |= STATE_SYSTEM_PRESSED;
++    if(style == BS_DEFPUSHBUTTON || style == BS_DEFSPLITBUTTON || style == BS_DEFCOMMANDLINK)
++        V_I4(state) |= STATE_SYSTEM_DEFAULT;
++    if(role == ROLE_SYSTEM_CHECKBUTTON || role == ROLE_SYSTEM_RADIOBUTTON) {
++        check = SendMessageW(client->hwnd, BM_GETCHECK, 0, 0);
++        if(check == BST_CHECKED)
++            V_I4(state) |= STATE_SYSTEM_CHECKED;
++        else if(check == BST_INDETERMINATE)
++            V_I4(state) |= STATE_SYSTEM_MIXED;
++    }
++    return S_OK;
++}
++
++static HRESULT button_get_default_action(Client *client, VARIANT id, BSTR *action)
++{
++    const WCHAR *text;
++    LONG role;
++    UINT resource;
++    int len;
++
++    if(convert_child_id(&id) != CHILDID_SELF || !IsWindow(client->hwnd))
++        return E_INVALIDARG;
++    role = button_role(client);
++    if(role == ROLE_SYSTEM_GROUPING)
++        return S_FALSE;
++
++    if(role == ROLE_SYSTEM_CHECKBUTTON)
++        resource = SendMessageW(client->hwnd, BM_GETCHECK, 0, 0) == BST_CHECKED ? IDS_ACTION_UNCHECK : IDS_ACTION_CHECK;
++    else if(role == ROLE_SYSTEM_RADIOBUTTON)
++        resource = IDS_ACTION_CHECK;
++    else
++        resource = IDS_ACTION_PRESS;
++    len = LoadStringW(oleacc_handle, resource, (WCHAR *)&text, 0);
++    if(!len)
++        return E_FAIL;
++    *action = SysAllocStringLen(text, len);
++    return *action ? S_OK : E_OUTOFMEMORY;
++}
++
++static HRESULT button_do_default_action(Client *client, VARIANT id)
++{
++    if(convert_child_id(&id) != CHILDID_SELF || !IsWindow(client->hwnd))
++        return E_INVALIDARG;
++    if(button_role(client) == ROLE_SYSTEM_GROUPING || !button_enabled(client->hwnd) ||
++            !IsWindowVisible(client->hwnd))
++        return S_FALSE;
++
++    /* Queue the native operation. The window's owning thread delivers the
++     * normal notifications and automatic check/radio transitions. */
++    return PostMessageW(client->hwnd, BM_CLICK, 0, 0) ? S_OK : E_FAIL;
++}
++
++static const win_class_vtbl button_vtbl = {
++    NULL,
++    button_get_state,
++    NULL,
++    NULL,
++    NULL,
++    NULL,
++    button_get_role,
++    button_get_default_action,
++    button_do_default_action,
++};
++
+ static const struct win_class_data classes[] = {
+     {WC_LISTBOXW,           0x10000, TRUE},
+     {L"#32768",             0x10001, TRUE}, /* menu */
+-    {WC_BUTTONW,            0x10002, TRUE},
++    {WC_BUTTONW,            0x10002, FALSE, &button_vtbl},
+     {WC_STATICW,            0x10003, TRUE},
+     {WC_EDITW,              0x10004, FALSE, &edit_vtbl},
+     {WC_COMBOBOXW,          0x10005, TRUE},
+@@ -914,6 +1063,23 @@
+         return E_OUTOFMEMORY;
+ 
+     data = find_class_data(hwnd, classes);
++    if(data && data->vtbl == &button_vtbl && (!HIWORD(hwnd) || HIWORD(hwnd) == 0xffff)) {
++        HWND full;
++        unsigned int count;
++
++        /* Legacy HWND aliases omit the generation. Retain the canonical handle
++         * so this object cannot later act on a replacement reusing its slot. */
++        for(full = GetWindow(hwnd, GW_HWNDFIRST), count = 0; full && count < 0x8000;
++                full = GetWindow(full, GW_HWNDNEXT), count++)
++            if(LOWORD(full) == LOWORD(hwnd))
++                break;
++        if(!full || count == 0x8000 || !IsWindow(full)) {
++            free(client);
++            return E_FAIL;
++        }
++        hwnd = full;
++        data = find_class_data(hwnd, classes);
++    }
+ 
+     client->IAccessible_iface.lpVtbl = &ClientVtbl;
+     client->IOleWindow_iface.lpVtbl = &ClientOleWindowVtbl;
+--- a/dlls/oleacc/main.c
++++ b/dlls/oleacc/main.c
+@@ -38,7 +38,7 @@
+ extern HRESULT WINAPI OLEACC_DllRegisterServer(void);
+ extern HRESULT WINAPI OLEACC_DllUnregisterServer(void);
+ 
+-static HINSTANCE oleacc_handle = 0;
++HINSTANCE oleacc_handle;
+ 
+ int convert_child_id(VARIANT *v)
+ {
+--- a/dlls/oleacc/oleacc.rc
++++ b/dlls/oleacc/oleacc.rc
+@@ -93,6 +93,10 @@
+     ROLE_SYSTEM_IPADDRESS    "IP address"
+     ROLE_SYSTEM_OUTLINEBUTTON "outline button"
+ 
++    IDS_ACTION_PRESS            "Press"
++    IDS_ACTION_CHECK            "Check"
++    IDS_ACTION_UNCHECK          "Uncheck"
++
+     IDS_STATE_NORMAL            "#msgctxt#object state#normal"
+     IDS_STATE_UNAVAILABLE       "#msgctxt#object state#unavailable"
+     IDS_STATE_SELECTED          "#msgctxt#object state#selected"
+--- a/dlls/oleacc/oleacc_private.h
++++ b/dlls/oleacc/oleacc_private.h
+@@ -19,6 +19,8 @@
+ #include "oleacc_classes.h"
+ #include "servprov.h"
+ 
++extern HINSTANCE oleacc_handle;
++
+ struct win_class_data {
+     const WCHAR *name;
+     DWORD idx;
+--- a/dlls/oleacc/resource.h
++++ b/dlls/oleacc/resource.h
+@@ -48,3 +48,7 @@
+ #define IDS_STATE_ALERT_HIGH        0x101d
+ #define IDS_STATE_PROTECTED         0x101e
+ #define IDS_STATE_HASPOPUP          0x101f
++
++#define IDS_ACTION_PRESS            0x2000
++#define IDS_ACTION_CHECK            0x2001
++#define IDS_ACTION_UNCHECK          0x2002
+--- /dev/null
++++ b/dlls/winemac.drv/ax_application.inc
+@@ -0,0 +1,39 @@
++/* Application root seam: expose actual AppKit-owned WineWindow objects only.
++ * No provider query, fake window, proxy or inferred Windows control enters here. */
++#include "ax_validation.h"
++
++static BOOL wine_ax_window_eligible(WineWindow *window)
++{
++    return macdrv_get_window_hwnd((macdrv_window)window) && !window.closing &&
++           ([window isVisible] || [window isMiniaturized]) &&
++           [window presentsVisibleContent];
++}
++
++static NSArray *wine_ax_merge_application_elements(NSArray *inherited, NSArray *windows)
++{
++    NSMutableArray *result = [NSMutableArray array];
++    for (id element in inherited)
++    {
++        if ([element isKindOfClass:[WineWindow class]] && !wine_ax_window_eligible(element)) continue;
++        [result addObject:element];
++    }
++    for (WineWindow *window in windows)
++        if ([window isKindOfClass:[WineWindow class]] && wine_ax_window_eligible(window) &&
++            ![result containsObject:window]) [result addObject:window];
++    return [NSArray arrayWithArray:result];
++}
++
++@implementation WineApplication (WineAccessibilityRoot)
++- (NSArray *)accessibilityWindows
++{
++    NSArray *inherited = [super accessibilityWindows];
++    if (!macdrv_ax_bridge_enabled()) return inherited;
++    return wine_ax_merge_application_elements(inherited, [self windows]);
++}
++- (NSArray *)accessibilityChildren
++{
++    NSArray *inherited = [super accessibilityChildren];
++    if (!macdrv_ax_bridge_enabled()) return inherited;
++    return wine_ax_merge_application_elements(inherited, [self windows]);
++}
++@end
+--- /dev/null
++++ b/dlls/winemac.drv/ax_native.inc
+@@ -0,0 +1,662 @@
++/* Cached native half of the MSAA bridge. Included after WineWindow's private interface.
++ * Provider tokens preserve retained objects across snapshots; mutable cache reads
++ * and action identity capture share ax_mutex. No accessibility entry point calls
++ * the PE worker or a COM provider. */
++#include "ax_validation.h"
++#include <time.h>
++#include <stdlib.h>
++#include <string.h>
++
++#define AX_ACTION_QUEUE 32
++#define AX_ELIGIBILITY_MS (2 * MACDRV_AX_SNAPSHOT_MS)
++
++/* WineWindow implements this predicate later in cocoa_window.m. */
++@interface WineWindow (WineAXOrdering)
++- (BOOL)isOrderedIn;
++@end
++
++@interface WineAXElement : NSAccessibilityElement
++{
++@public
++    struct macdrv_ax_node ax_node;
++    uint32_t ax_hwnd;
++    uint64_t ax_generation, ax_revision, ax_token;
++}
++- (id)initWithNode:(const struct macdrv_ax_node *)node request:(const struct macdrv_ax_snapshot *)snapshot;
++- (BOOL)accessibilityIsAttributeSettable:(NSAccessibilityAttributeName)attribute;
++@end
++
++struct ax_window_cache
++{
++    WineWindow *window; /* Unretained; registered/unregistered on AppKit's main thread. */
++    uint32_t hwnd;
++    uint64_t generation, revision, next_revision, received_ms, next_snapshot_ms;
++    uint64_t pending_serial, pending_deadline;
++    uint64_t eligibility_ms, reader_until_ms;
++    BOOL ordered_in;
++    NSArray *elements, *roots; /* Immutable arrays, replaced only on AppKit's main thread. */
++};
++static pthread_mutex_t ax_mutex = PTHREAD_MUTEX_INITIALIZER;
++static struct ax_window_cache ax_windows[MACDRV_AX_MAX_WINDOWS];
++static struct macdrv_ax_request ax_actions[AX_ACTION_QUEUE], ax_outstanding;
++static unsigned int ax_action_count, ax_round_robin;
++static uint64_t ax_generation_counter, ax_serial_counter, ax_deadline;
++static BOOL ax_quarantined, ax_eligibility_pending;
++/* A timed-out read may be acknowledged only after the issuing worker returns
++ * from all provider work. Action uncertainty and exhausted identities stay
++ * permanent; an acknowledgement can never clear those independent reasons. */
++static BOOL ax_snapshot_expired, ax_permanent_quarantine;
++static pthread_t ax_outstanding_thread;
++static uint64_t ax_next_eligibility_ms;
++
++static uint64_t ax_now(void)
++{
++    struct timespec ts;
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    return (uint64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
++}
++
++/* All functions suffixed locked require ax_mutex; none sends AppKit messages. */
++static struct ax_window_cache *ax_find_locked(uint32_t hwnd, uint64_t generation)
++{
++    unsigned int i;
++    for (i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
++        if (ax_windows[i].window && ax_windows[i].hwnd == hwnd && ax_windows[i].generation == generation)
++            return &ax_windows[i];
++    return NULL;
++}
++
++/* AppKit ownership stays on its main thread. One coalesced asynchronous sweep
++ * samples Wine's ordering predicate, including minimized windows and visible
++ * state saved when the application is hidden. Worker polling never waits for it.
++ * An unserviced main queue expires eligibility instead of polling stale state. */
++static void ax_refresh_eligibility_locked(uint64_t now)
++{
++    if (ax_eligibility_pending || now < ax_next_eligibility_ms) return;
++    ax_eligibility_pending = YES;
++    ax_next_eligibility_ms = now + MACDRV_AX_SNAPSHOT_MS;
++    dispatch_async(dispatch_get_main_queue(), ^{
++        @autoreleasepool
++        {
++            for (unsigned int i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
++            {
++                WineWindow *window;
++                uint32_t hwnd;
++                uint64_t generation, observed_ms;
++                BOOL ordered_in;
++                pthread_mutex_lock(&ax_mutex);
++                window = [ax_windows[i].window retain];
++                hwnd = ax_windows[i].hwnd;
++                generation = ax_windows[i].generation;
++                pthread_mutex_unlock(&ax_mutex);
++                if (!window) continue;
++                ordered_in = [window isOrderedIn];
++                observed_ms = ax_now();
++                pthread_mutex_lock(&ax_mutex);
++                struct ax_window_cache *cache = ax_find_locked(hwnd, generation);
++                if (cache && cache->window == window)
++                {
++                    cache->ordered_in = ordered_in;
++                    cache->eligibility_ms = observed_ms;
++                }
++                pthread_mutex_unlock(&ax_mutex);
++                [window release];
++            }
++            pthread_mutex_lock(&ax_mutex);
++            ax_eligibility_pending = NO;
++            pthread_mutex_unlock(&ax_mutex);
++        }
++    });
++}
++
++static BOOL ax_snapshot_eligible_locked(struct ax_window_cache *cache, uint64_t now)
++{
++    /* A reader that addresses the actual content view may request a hidden
++     * window explicitly. Its demand is bounded by the existing cache lifetime. */
++    return now < cache->reader_until_ms ||
++           (cache->ordered_in && cache->eligibility_ms &&
++            now < cache->eligibility_ms + AX_ELIGIBILITY_MS);
++}
++
++static BOOL ax_fresh_locked(struct ax_window_cache *cache, uint64_t revision, uint64_t now)
++{
++    return cache && cache->revision && cache->revision == revision && cache->received_ms &&
++           now < cache->received_ms + MACDRV_AX_CACHE_MS;
++}
++
++static void ax_expire_locked(uint64_t now)
++{
++    unsigned int i;
++    if (ax_outstanding.operation && now >= ax_deadline && !ax_snapshot_expired)
++    {
++        /* Do not issue work or apply late data while a call may still be in COM.
++         * Keep an expired snapshot identity so only its completed publication,
++         * on that same issuing worker, can acknowledge that uncertainty ended.
++         * A worker abandoned after WM_GETOBJECT never publishes and stays closed. */
++        ax_quarantined = YES;
++        ax_snapshot_expired = ax_outstanding.operation == MACDRV_AX_SNAPSHOT;
++        if (!ax_snapshot_expired)
++        {
++            ax_permanent_quarantine = YES;
++            memset(&ax_outstanding, 0, sizeof(ax_outstanding));
++        }
++        ax_action_count = 0;
++        for (i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
++        {
++            ax_windows[i].pending_serial = 0;
++            if (ax_snapshot_expired)
++            {
++                /* Recovery needs a fresh object tree. A held object from before
++                 * expiry must not become actionable again after the next read. */
++                ax_windows[i].revision = ax_windows[i].received_ms = 0;
++            }
++        }
++    }
++    for (i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
++        if (ax_windows[i].pending_serial && now >= ax_windows[i].pending_deadline)
++            ax_windows[i].pending_serial = 0;
++}
++
++static BOOL ax_identity_locked(const struct macdrv_ax_request *request, uint64_t now)
++{
++    return macdrv_ax_bridge_enabled() && !ax_quarantined &&
++           macdrv_ax_request_matches(request, &ax_outstanding, now, ax_deadline) &&
++           ax_find_locked(request->hwnd, request->generation);
++}
++
++static void ax_register_window(WineWindow *window, void *hwnd)
++{
++    unsigned int i;
++    if (!macdrv_ax_bridge_enabled() || !window || !hwnd) return;
++    /* Registration is already AppKit-main-thread owned. */
++    BOOL ordered_in = [window isOrderedIn];
++    uint64_t now = ax_now();
++    pthread_mutex_lock(&ax_mutex);
++    for (i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
++        if (!ax_windows[i].window)
++        {
++            if (ax_generation_counter == UINT64_MAX) { ax_quarantined = ax_permanent_quarantine = YES; break; }
++            memset(&ax_windows[i], 0, sizeof(ax_windows[i]));
++            ax_windows[i].window = window;
++            ax_windows[i].hwnd = (uint32_t)(uintptr_t)hwnd;
++            ax_windows[i].generation = ++ax_generation_counter;
++            ax_windows[i].ordered_in = ordered_in;
++            ax_windows[i].eligibility_ms = now;
++            break;
++        }
++    pthread_mutex_unlock(&ax_mutex);
++}
++
++static void ax_unregister_window(WineWindow *window)
++{
++    unsigned int i, j, n = 0;
++    NSArray *elements = nil, *roots = nil;
++    pthread_mutex_lock(&ax_mutex);
++    for (i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
++        if (ax_windows[i].window == window)
++        {
++            for (j = 0; j < ax_action_count; j++)
++                if (ax_actions[j].hwnd != ax_windows[i].hwnd ||
++                    ax_actions[j].generation != ax_windows[i].generation)
++                    ax_actions[n++] = ax_actions[j];
++            ax_action_count = n;
++            /* Keep an in-flight destroyed-window lease until publish or timeout;
++             * issuing another COM call while it may still be hung is unsafe. */
++            elements = ax_windows[i].elements;
++            roots = ax_windows[i].roots;
++            memset(&ax_windows[i], 0, sizeof(ax_windows[i]));
++            break;
++        }
++    pthread_mutex_unlock(&ax_mutex);
++    [elements release];
++    [roots release];
++}
++
++static BOOL ax_member_locked(struct ax_window_cache *cache, WineAXElement *element, uint64_t now)
++{
++    if (!macdrv_ax_bridge_enabled() || !ax_fresh_locked(cache, cache ? cache->revision : 0, now)) return NO;
++    for (WineAXElement *candidate in cache->elements)
++        if (candidate == element && candidate->ax_token == element->ax_token) return YES;
++    return NO;
++}
++
++static BOOL ax_element_copy(WineAXElement *element, struct macdrv_ax_node *node)
++{
++    BOOL live;
++    uint64_t now = ax_now();
++    pthread_mutex_lock(&ax_mutex);
++    ax_expire_locked(now);
++    live = macdrv_ax_bridge_enabled() &&
++           ax_member_locked(ax_find_locked(element->ax_hwnd, element->ax_generation), element, now);
++    if (live && node) *node = element->ax_node;
++    pthread_mutex_unlock(&ax_mutex);
++    return live;
++}
++
++static BOOL ax_node_allow(const struct macdrv_ax_node *node, uint32_t operation)
++{
++    uint32_t flags = node->flags;
++    if (!(flags & MACDRV_AX_ENABLED) || (flags & (MACDRV_AX_PASSWORD | MACDRV_AX_READONLY))) return NO;
++    if (operation == MACDRV_AX_PRESS) return (node->role == MACDRV_AX_ROLE_BUTTON || node->role == MACDRV_AX_ROLE_CHECKBOX ||
++                                               node->role == MACDRV_AX_ROLE_RADIO) && (flags & MACDRV_AX_PRESSABLE);
++    if (operation == MACDRV_AX_SET_VALUE) return node->role == MACDRV_AX_ROLE_EDIT && (flags & MACDRV_AX_SETTABLE);
++    return NO;
++}
++
++static BOOL ax_request_target_locked(const struct macdrv_ax_request *request, uint32_t operation, uint64_t now)
++{
++    struct ax_window_cache *cache = ax_find_locked(request->hwnd, request->generation);
++    if (!ax_fresh_locked(cache, request->revision, now) || !request->token) return NO;
++    for (WineAXElement *candidate in cache->elements)
++        if (candidate->ax_token == request->token && candidate->ax_node.id == request->node_id)
++            return ax_node_allow(&candidate->ax_node, operation);
++    return NO;
++}
++
++/* Metadata and selector checks share atomic liveness/role/permission checks.
++ * Queue acceptance repeats these independently before handing work to PE. */
++static BOOL ax_action_allowed(WineAXElement *element, uint32_t operation)
++{
++    BOOL allowed;
++    uint64_t now = ax_now();
++    pthread_mutex_lock(&ax_mutex);
++    ax_expire_locked(now);
++    allowed = !ax_quarantined &&
++              ax_member_locked(ax_find_locked(element->ax_hwnd, element->ax_generation), element, now) &&
++              ax_node_allow(&element->ax_node, operation);
++    pthread_mutex_unlock(&ax_mutex);
++    return allowed;
++}
++
++static NSString *ax_string(const uint16_t *value)
++{
++    unsigned int length = 0;
++    while (length < MACDRV_AX_TEXT && value[length]) length++;
++    return [NSString stringWithCharacters:(const unichar *)value length:length];
++}
++
++static BOOL ax_queue_action(WineAXElement *element, uint32_t operation, NSString *value)
++{
++    struct macdrv_ax_request request = {0};
++    struct ax_window_cache *cache;
++    BOOL allowed = NO;
++    uint64_t now;
++    if (!macdrv_ax_bridge_enabled()) return NO;
++    if (operation == MACDRV_AX_SET_VALUE)
++    {
++        if (![value isKindOfClass:[NSString class]] || [value length] >= MACDRV_AX_TEXT) return NO;
++        [value getCharacters:(unichar *)request.value range:NSMakeRange(0, [value length])];
++        if (!macdrv_ax_text_valid(request.value)) return NO;
++    }
++    request.version = MACDRV_AX_VERSION;
++    request.size = sizeof(request);
++    request.operation = operation;
++    request.hwnd = element->ax_hwnd;
++    request.generation = element->ax_generation;
++    now = ax_now();
++    pthread_mutex_lock(&ax_mutex);
++    ax_expire_locked(now);
++    cache = ax_find_locked(request.hwnd, request.generation);
++    if (!ax_quarantined && ax_member_locked(cache, element, now) &&
++        ax_node_allow(&element->ax_node, operation) && ax_action_count < AX_ACTION_QUEUE)
++    {
++        /* A retained object resolves the current provider node atomically. */
++        request.revision = cache->revision;
++        request.node_id = element->ax_node.id;
++        request.token = element->ax_token;
++        ax_actions[ax_action_count++] = request;
++        allowed = YES; /* Accepted into a bounded queue, not provider completion. */
++    }
++    pthread_mutex_unlock(&ax_mutex);
++    return allowed;
++}
++
++static NSArray *ax_children_for_view(WineContentView *view)
++{
++    unsigned int i;
++    NSArray *children = nil;
++    WineWindow *window = (WineWindow *)[view window];
++    if (!macdrv_ax_bridge_enabled() || [window contentView] != view) return nil;
++    uint64_t now = ax_now();
++    pthread_mutex_lock(&ax_mutex);
++    ax_expire_locked(now);
++    for (i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
++        if (ax_windows[i].window == window)
++        {
++            ax_windows[i].reader_until_ms = now + MACDRV_AX_CACHE_MS;
++            if (ax_fresh_locked(&ax_windows[i], ax_windows[i].revision, now))
++                children = [ax_windows[i].roots retain];
++            break;
++        }
++    pthread_mutex_unlock(&ax_mutex);
++    return [children autorelease];
++}
++
++@implementation WineAXElement
++- (id)initWithNode:(const struct macdrv_ax_node *)node request:(const struct macdrv_ax_snapshot *)snapshot
++{
++    if ((self = [super init]))
++    {
++        ax_node = *node;
++        ax_hwnd = snapshot->hwnd;
++        ax_generation = snapshot->generation;
++        ax_revision = snapshot->revision;
++        ax_token = node->token;
++    }
++    return self;
++}
++- (BOOL)isAccessibilityElement { return ax_element_copy(self, NULL); }
++- (NSString *)accessibilityRole
++{
++    struct macdrv_ax_node node;
++    if (!ax_element_copy(self, &node)) return NSAccessibilityUnknownRole;
++    if (node.role == MACDRV_AX_ROLE_BUTTON) return NSAccessibilityButtonRole;
++    if (node.role == MACDRV_AX_ROLE_EDIT) return NSAccessibilityTextFieldRole;
++    if (node.role == MACDRV_AX_ROLE_CHECKBOX) return NSAccessibilityCheckBoxRole;
++    if (node.role == MACDRV_AX_ROLE_RADIO) return NSAccessibilityRadioButtonRole;
++    return NSAccessibilityGroupRole;
++}
++- (NSString *)accessibilityLabel
++{
++    struct macdrv_ax_node node;
++    return ax_element_copy(self, &node) ? ax_string(node.name) : nil;
++}
++- (NSString *)accessibilityTitle { return [self accessibilityLabel]; }
++- (id)accessibilityValue
++{
++    struct macdrv_ax_node node;
++    if (!ax_element_copy(self, &node) || (node.flags & MACDRV_AX_PASSWORD)) return nil;
++    if (node.role == MACDRV_AX_ROLE_CHECKBOX || node.role == MACDRV_AX_ROLE_RADIO)
++        return [NSNumber numberWithInt:(node.flags & MACDRV_AX_MIXED) ? 2 : !!(node.flags & MACDRV_AX_CHECKED)];
++    return ax_string(node.value);
++}
++- (BOOL)isAccessibilityEnabled
++{
++    struct macdrv_ax_node node;
++    return ax_element_copy(self, &node) && (node.flags & MACDRV_AX_ENABLED);
++}
++- (BOOL)isAccessibilityFocused
++{
++    struct macdrv_ax_node node;
++    return ax_element_copy(self, &node) && (node.flags & MACDRV_AX_FOCUSED);
++}
++- (NSRect)accessibilityFrame
++{
++    struct macdrv_ax_node node;
++    if (!ax_element_copy(self, &node)) return NSZeroRect;
++    NSRect rect = NSRectFromCGRect(cgrect_mac_from_win(CGRectMake(node.x, node.y, node.width, node.height)));
++    [[WineApplicationController sharedController] flipRect:&rect];
++    return rect;
++}
++- (id)accessibilityParent
++{
++    id parent = nil;
++    WineWindow *window = nil;
++    uint64_t now = ax_now();
++    pthread_mutex_lock(&ax_mutex);
++    ax_expire_locked(now);
++    struct ax_window_cache *cache = ax_find_locked(ax_hwnd, ax_generation);
++    if (ax_member_locked(cache, self, now))
++    {
++        if (!ax_node.parent) window = [cache->window retain];
++        else for (WineAXElement *candidate in cache->elements)
++            if (candidate->ax_node.id == ax_node.parent) { parent = [candidate retain]; break; }
++    }
++    pthread_mutex_unlock(&ax_mutex);
++    if (window) { parent = [[window contentView] retain]; [window release]; }
++    return [parent autorelease];
++}
++- (NSArray *)accessibilityChildren
++{
++    NSMutableArray *children = [NSMutableArray array];
++    uint64_t now = ax_now();
++    pthread_mutex_lock(&ax_mutex);
++    ax_expire_locked(now);
++    struct ax_window_cache *cache = ax_find_locked(ax_hwnd, ax_generation);
++    if (ax_member_locked(cache, self, now))
++        for (WineAXElement *candidate in cache->elements)
++            if (candidate->ax_node.parent == ax_node.id) [children addObject:candidate];
++    pthread_mutex_unlock(&ax_mutex);
++    return [NSArray arrayWithArray:children];
++}
++- (BOOL)accessibilityPerformPress { return ax_queue_action(self, MACDRV_AX_PRESS, nil); }
++- (void)setAccessibilityValue:(id)value { ax_queue_action(self, MACDRV_AX_SET_VALUE, value); }
++- (BOOL)isAccessibilitySelectorAllowed:(SEL)selector
++{
++    if (selector == @selector(accessibilityPerformPress)) return ax_action_allowed(self, MACDRV_AX_PRESS);
++    if (selector == @selector(setAccessibilityValue:)) return ax_action_allowed(self, MACDRV_AX_SET_VALUE);
++    if (!ax_element_copy(self, NULL)) return NO;
++    return [super isAccessibilitySelectorAllowed:selector];
++}
++- (BOOL)accessibilityIsAttributeSettable:(NSAccessibilityAttributeName)attribute
++{
++    /* AppKit's modern selector-invocation guard does not govern AXValue's
++     * writable metadata on the tested runtime. The supported legacy metadata
++     * hook is explicit; provider action admission stays independently guarded. */
++    if ([attribute isEqualToString:NSAccessibilityValueAttribute])
++        return ax_action_allowed(self, MACDRV_AX_SET_VALUE);
++    if (!ax_element_copy(self, NULL)) return NO;
++    /* NSAccessibilityElement has no legacy implementation on modern AppKit.
++     * Preserve it where present, and keep our cached informational data readonly. */
++    if ([NSAccessibilityElement instancesRespondToSelector:@selector(accessibilityIsAttributeSettable:)])
++    {
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wdeprecated-declarations"
++        return [super accessibilityIsAttributeSettable:attribute];
++#pragma clang diagnostic pop
++    }
++    return NO;
++}
++@end
++
++/* Native-owned request lease. This runs on the PE worker's unix-call thread. */
++int32_t macdrv_ax_poll(void *args)
++{
++    struct macdrv_ax_request *request = args, input;
++    struct ax_window_cache *cache;
++    unsigned int i;
++    uint64_t now = ax_now();
++    if (!request) return -1;
++    input = *request;
++    if (input.version != MACDRV_AX_VERSION || input.size != sizeof(input)) return -1;
++    if (input.operation != MACDRV_AX_NONE && input.operation != MACDRV_AX_VALIDATE) return -1;
++    pthread_mutex_lock(&ax_mutex);
++    ax_expire_locked(now);
++    if (input.operation == MACDRV_AX_VALIDATE)
++    {
++        request->result = ax_identity_locked(&input, now) ? MACDRV_AX_OK : MACDRV_AX_STALE;
++        /* Action authorization is independent of the snapshot/request identity. */
++        if (request->result == MACDRV_AX_OK && ax_outstanding.operation != MACDRV_AX_SNAPSHOT)
++        {
++            if (!ax_request_target_locked(&input, ax_outstanding.operation, now)) request->result = MACDRV_AX_STALE;
++        }
++        pthread_mutex_unlock(&ax_mutex);
++        return 0;
++    }
++    memset(request, 0, sizeof(*request));
++    request->version = MACDRV_AX_VERSION;
++    request->size = sizeof(*request);
++    if (!macdrv_ax_bridge_enabled() || ax_quarantined || ax_outstanding.operation) { pthread_mutex_unlock(&ax_mutex); return 0; }
++    ax_refresh_eligibility_locked(now);
++    while (ax_action_count)
++    {
++        *request = ax_actions[0];
++        memmove(ax_actions, ax_actions + 1, --ax_action_count * sizeof(ax_actions[0]));
++        if (ax_request_target_locked(request, request->operation, now)) break;
++        request->operation = MACDRV_AX_NONE;
++    }
++    if (!request->operation)
++    {
++        memset(request, 0, sizeof(*request));
++        request->version = MACDRV_AX_VERSION;
++        request->size = sizeof(*request);
++        for (i = 0; i < MACDRV_AX_MAX_WINDOWS; i++)
++        {
++            unsigned int index = (ax_round_robin + i) % MACDRV_AX_MAX_WINDOWS;
++            cache = &ax_windows[index];
++            /* Do not supersede an admitted immutable snapshot while AppKit is
++             * constructing/applying it. Pending expiry remains the same deadline;
++             * this introduces no wait and does not relax an uncertain COM lease. */
++            if (!cache->window || cache->pending_serial || !ax_snapshot_eligible_locked(cache, now) ||
++                now < cache->next_snapshot_ms) continue;
++            if (cache->next_revision == UINT64_MAX) { ax_quarantined = ax_permanent_quarantine = YES; break; }
++            request->operation = MACDRV_AX_SNAPSHOT;
++            request->hwnd = cache->hwnd;
++            request->generation = cache->generation;
++            request->revision = ++cache->next_revision;
++            request->node_id = 0;
++            cache->next_snapshot_ms = now + MACDRV_AX_SNAPSHOT_MS;
++            ax_round_robin = (index + 1) % MACDRV_AX_MAX_WINDOWS;
++            break;
++        }
++    }
++    if (request->operation)
++    {
++        if (ax_serial_counter == UINT64_MAX) { ax_quarantined = ax_permanent_quarantine = YES; request->operation = MACDRV_AX_NONE; }
++        else
++        {
++            request->serial = ++ax_serial_counter;
++            ax_outstanding = *request;
++            ax_outstanding_thread = pthread_self();
++            ax_deadline = now + MACDRV_AX_DEADLINE_MS;
++        }
++    }
++    pthread_mutex_unlock(&ax_mutex);
++    return 0;
++}
++
++/* Synchronous copy, admission by identity/deadline, then immutable main-thread tree replacement. */
++int32_t macdrv_ax_publish(void *args)
++{
++    struct macdrv_ax_snapshot *copy;
++    struct macdrv_ax_request identity = {0};
++    struct ax_window_cache *cache;
++    uint64_t deadline, now = ax_now();
++    BOOL accepted;
++    if (!macdrv_ax_bridge_enabled() || !args) return -1;
++    copy = malloc(sizeof(*copy));
++    if (!copy) return -1;
++    memcpy(copy, args, sizeof(*copy));
++    if (copy->version != MACDRV_AX_VERSION || copy->size != sizeof(*copy) || copy->result > MACDRV_AX_TIMEOUT)
++    { free(copy); return -1; }
++    if (copy->operation == MACDRV_AX_SNAPSHOT && copy->result == MACDRV_AX_OK && !macdrv_ax_snapshot_valid(copy))
++        copy->result = MACDRV_AX_DENIED;
++    identity.hwnd = copy->hwnd;
++    identity.generation = copy->generation;
++    identity.revision = copy->revision;
++    identity.serial = copy->serial;
++    pthread_mutex_lock(&ax_mutex);
++    ax_expire_locked(now);
++    identity.node_id = ax_outstanding.node_id;
++    identity.token = ax_outstanding.token;
++    memcpy(identity.value, ax_outstanding.value, sizeof(identity.value));
++    if (ax_snapshot_expired && !ax_permanent_quarantine &&
++        copy->operation == MACDRV_AX_SNAPSHOT && ax_outstanding.operation == MACDRV_AX_SNAPSHOT &&
++        pthread_equal(ax_outstanding_thread, pthread_self()) &&
++        macdrv_ax_request_same_identity(&identity, &ax_outstanding))
++    {
++        /* This synchronous publication is the PE worker's completion boundary:
++         * ax_snapshot has unwound getters and temporary/root/previous bindings.
++         * Drop the expired read, never resurrect its nodes or its queued actions.
++         * VALIDATE is not completion, and a different worker cannot release it. */
++        memset(&ax_outstanding, 0, sizeof(ax_outstanding));
++        ax_snapshot_expired = ax_quarantined = NO;
++        pthread_mutex_unlock(&ax_mutex);
++        free(copy);
++        return -1; /* Completion acknowledged; stale snapshot itself denied. */
++    }
++    accepted = ax_identity_locked(&identity, now) && copy->operation == ax_outstanding.operation;
++    deadline = ax_deadline;
++    if (accepted)
++    {
++        cache = ax_find_locked(copy->hwnd, copy->generation);
++        memset(&ax_outstanding, 0, sizeof(ax_outstanding));
++        if (copy->operation == MACDRV_AX_SNAPSHOT)
++        {
++            cache->pending_serial = copy->serial;
++            cache->pending_deadline = deadline;
++        }
++    }
++    else if (!ax_quarantined && copy->operation == ax_outstanding.operation &&
++             macdrv_ax_request_matches(&identity, &ax_outstanding, now, ax_deadline))
++    {
++        /* A revoked/destroyed window completed its prior call. Release that
++         * lease without admitting its result or issuing concurrent COM work. */
++        memset(&ax_outstanding, 0, sizeof(ax_outstanding));
++    }
++    pthread_mutex_unlock(&ax_mutex);
++    if (!accepted || copy->operation != MACDRV_AX_SNAPSHOT) { free(copy); return accepted ? 0 : -1; }
++    /* Sanitize before handing off the immutable copy to AppKit. */
++    for (unsigned int i = 0; i < copy->count && i < MACDRV_AX_MAX_NODES; i++)
++        if (copy->nodes[i].flags & MACDRV_AX_PASSWORD)
++            memset(copy->nodes[i].value, 0, sizeof(copy->nodes[i].value));
++    dispatch_async(dispatch_get_main_queue(), ^{
++        @autoreleasepool
++        {
++            NSMutableArray *elements = [NSMutableArray array], *roots = [NSMutableArray array];
++            NSArray *old_elements = nil, *old_roots = nil, *previous_elements = nil;
++            WineWindow *window = nil;
++            struct ax_window_cache *apply_cache;
++            uint64_t apply_now;
++            unsigned int i;
++            /* Capture previous membership only. Allocation and array construction
++             * happen outside the lock; retained identity tokens never mutate. */
++            pthread_mutex_lock(&ax_mutex);
++            apply_cache = ax_find_locked(copy->hwnd, copy->generation);
++            if (apply_cache && apply_cache->revision && apply_cache->pending_serial == copy->serial)
++                previous_elements = [apply_cache->elements retain];
++            pthread_mutex_unlock(&ax_mutex);
++            if (copy->result == MACDRV_AX_OK)
++                for (i = 0; i < copy->count; i++)
++                {
++                    WineAXElement *element = nil;
++                    for (WineAXElement *previous in previous_elements)
++                        if (previous->ax_token == copy->nodes[i].token) { element = previous; break; }
++                    if (!element)
++                        element = [[[WineAXElement alloc] initWithNode:&copy->nodes[i] request:copy] autorelease];
++                    [elements addObject:element];
++                    if (!copy->nodes[i].parent) [roots addObject:element];
++                }
++            NSArray *new_elements = [elements copy], *new_roots = [roots copy];
++            apply_now = ax_now();
++            pthread_mutex_lock(&ax_mutex);
++            ax_expire_locked(apply_now);
++            apply_cache = ax_find_locked(copy->hwnd, copy->generation);
++            if (!ax_quarantined && apply_cache && apply_cache->pending_serial == copy->serial &&
++                apply_now < deadline && apply_now < apply_cache->pending_deadline)
++            {
++                /* All mutable fields update with the same lock used by getters
++                 * and action capture. Objects absent from prior membership are
++                 * never resurrected, even if a removed token later reappears. */
++                for (i = 0; i < [new_elements count]; i++)
++                {
++                    WineAXElement *element = [new_elements objectAtIndex:i];
++                    element->ax_node = copy->nodes[i];
++                    element->ax_revision = copy->revision;
++                }
++                old_elements = apply_cache->elements;
++                old_roots = apply_cache->roots;
++                apply_cache->elements = new_elements;
++                apply_cache->roots = new_roots;
++                new_elements = new_roots = nil;
++                apply_cache->revision = copy->revision;
++                /* Queue delay is not fresh provider data. Native getters expire from
++                 * synchronous receipt, even when AppKit applies a valid copy later. */
++                apply_cache->received_ms = now;
++                apply_cache->pending_serial = 0;
++                window = [apply_cache->window retain];
++            }
++            pthread_mutex_unlock(&ax_mutex);
++            [previous_elements release];
++            [old_elements release]; [old_roots release];
++            [new_elements release]; [new_roots release];
++            if (window)
++            {
++                NSAccessibilityPostNotification([window contentView], NSAccessibilityLayoutChangedNotification);
++                [window release];
++            }
++            free(copy);
++        }
++    });
++    return 0;
++}
+--- /dev/null
++++ b/dlls/winemac.drv/ax_protocol.h
+@@ -0,0 +1,66 @@
++/* Wine MSAA bridge protocol v3. No native pointers, COM objects or process-global HWND-only identities. */
++#ifndef WINE_MACDRV_AX_PROTOCOL_H
++#define WINE_MACDRV_AX_PROTOCOL_H
++#include <stdint.h>
++#define MACDRV_AX_VERSION 3
++#define MACDRV_AX_MAX_NODES 64
++#define MACDRV_AX_TEXT 256
++#define MACDRV_AX_MAX_WINDOWS 32
++#define MACDRV_AX_SNAPSHOT_MS 250
++#define MACDRV_AX_DEADLINE_MS 500
++#define MACDRV_AX_CACHE_MS 1000
++#define MACDRV_AX_NONE 0
++#define MACDRV_AX_SNAPSHOT 1
++#define MACDRV_AX_PRESS 2
++#define MACDRV_AX_SET_VALUE 3
++#define MACDRV_AX_VALIDATE 4
++#define MACDRV_AX_ROLE_GROUP 1
++#define MACDRV_AX_ROLE_BUTTON 2
++#define MACDRV_AX_ROLE_EDIT 3
++#define MACDRV_AX_ROLE_CHECKBOX 4
++#define MACDRV_AX_ROLE_RADIO 5
++#define MACDRV_AX_ENABLED 1
++#define MACDRV_AX_FOCUSED 2
++#define MACDRV_AX_READONLY 4
++#define MACDRV_AX_PASSWORD 8
++#define MACDRV_AX_PRESSABLE 16
++#define MACDRV_AX_SETTABLE 32
++#define MACDRV_AX_CHECKED 64
++#define MACDRV_AX_MIXED 128
++#define MACDRV_AX_OK 0
++#define MACDRV_AX_UNAVAILABLE 1
++#define MACDRV_AX_DENIED 2
++#define MACDRV_AX_STALE 3
++#define MACDRV_AX_TIMEOUT 4
++#pragma pack(push, 8)
++struct macdrv_ax_node {
++    uint32_t id, parent, role, flags;
++    uint64_t token; /* PE-issued nonreused provider/control identity, never a traversal index. */
++    int32_t x, y, width, height; /* Windows screen coordinates; native applies existing Wine conversion. */
++    uint16_t name[MACDRV_AX_TEXT], value[MACDRV_AX_TEXT];
++};
++/* Poll input version+size, output one request; zero operation means no work.
++ * VALIDATE input repeats request identity and returns result, without consuming work. */
++struct macdrv_ax_request {
++    uint32_t version, size, operation, hwnd;
++    uint64_t generation, revision, serial, token;
++    uint32_t node_id, result;
++    uint16_t value[MACDRV_AX_TEXT];
++};
++/* Publish is synchronous COPY into native-owned storage, never keeps caller pointer.
++ * The native owner admits only a matching outstanding serial+generation before its deadline.
++ * Actions return result only; snapshots carry count and incrementing revision. */
++struct macdrv_ax_snapshot {
++    uint32_t version, size, operation, hwnd;
++    uint64_t generation, revision, serial;
++    uint32_t result, count;
++    struct macdrv_ax_node nodes[MACDRV_AX_MAX_NODES];
++};
++#pragma pack(pop)
++/* Identical layout in PE32, PE64 and Unix; WOW64 needs no pointer conversion. */
++_Static_assert(sizeof(struct macdrv_ax_node) == 1064, "AX node wire layout");
++_Static_assert(sizeof(struct macdrv_ax_request) == 568, "AX request wire layout");
++_Static_assert(sizeof(struct macdrv_ax_snapshot) == 68144, "AX snapshot wire layout");
++_Static_assert(__builtin_offsetof(struct macdrv_ax_request, generation) == 16, "AX generation offset");
++_Static_assert(__builtin_offsetof(struct macdrv_ax_snapshot, nodes) == 48, "AX nodes offset");
++#endif
+--- /dev/null
++++ b/dlls/winemac.drv/ax_provider.inc
+@@ -0,0 +1,630 @@
++/* Real MSAA provider. Included by dllmain.c; COM never runs on the Cocoa thread.
++ * One worker only: native leases/cache expiry bound native responsiveness, not
++ * arbitrary provider COM. An action already entered in COM cannot be cancelled. */
++#include "oleacc.h"
++#include "ax_protocol.h"
++
++static const IID ax_iid_accessible = {0x618736e0,0x3c3d,0x11cf,{0x81,0x0c,0x00,0xaa,0x00,0x38,0x9b,0x71}};
++static const IID ax_iid_unknown = {0,0,0,{0xc0,0,0,0,0,0,0,0x46}};
++static HRESULT (WINAPI *ax_object_from_result)(LRESULT,REFIID,WPARAM,void **);
++static HRESULT (WINAPI *ax_standard_object)(HWND,LONG,REFIID,void **);
++static HRESULT (WINAPI *ax_create_guid)(GUID *);
++static HRESULT (WINAPI *ax_children)(IAccessible *,LONG,LONG,VARIANT *,LONG *);
++static HRESULT (WINAPI *ax_window_from_object)(IAccessible *,HWND *);
++static HRESULT (WINAPI *ax_co_initialize)(void *,DWORD);
++static void (WINAPI *ax_co_uninitialize)(void);
++static void (WINAPI *ax_free_string)(BSTR);
++static BSTR (WINAPI *ax_alloc_string)(const OLECHAR *);
++static HRESULT (WINAPI *ax_clear_variant)(VARIANT *);
++
++struct ax_binding {
++    IAccessible *object;
++    IUnknown *identity;
++    VARIANT child;
++    uint32_t role, cookie;
++    HWND standard_hwnd;
++    uint64_t token;
++};
++static WCHAR ax_cookie_property[64];
++static uint32_t ax_next_cookie;
++static uint64_t ax_next_token;
++static BOOL ax_provider_abandoned;
++struct ax_cache {
++    uint32_t hwnd, count;
++    uint64_t generation, revision;
++    ULONGLONG timestamp;
++    struct ax_binding bindings[MACDRV_AX_MAX_NODES];
++};
++static struct ax_cache ax_caches[MACDRV_AX_MAX_WINDOWS];
++
++static void ax_cache_clear(struct ax_cache *cache)
++{
++    unsigned int i;
++    for (i = 0; i < cache->count; ++i)
++    {
++        IAccessible_Release(cache->bindings[i].object);
++        IUnknown_Release(cache->bindings[i].identity);
++    }
++    memset(cache, 0, sizeof(*cache));
++}
++
++static struct ax_cache *ax_cache_get(uint32_t hwnd)
++{
++    struct ax_cache *oldest = ax_caches;
++    unsigned int i;
++    for (i = 0; i < MACDRV_AX_MAX_WINDOWS; ++i)
++    {
++        if (ax_caches[i].hwnd == hwnd) return ax_caches + i;
++        if (!ax_caches[i].hwnd) oldest = ax_caches + i;
++        else if (oldest->hwnd && ax_caches[i].timestamp < oldest->timestamp) oldest = ax_caches + i;
++    }
++    ax_cache_clear(oldest);
++    return oldest;
++}
++
++static BOOL ax_window_owned(uint32_t hwnd)
++{
++    DWORD pid = 0;
++    return NtUserGetWindowThread(UlongToHandle(hwnd), &pid) && pid == GetCurrentProcessId();
++}
++
++/* A GUID property belongs to this worker instance. The HWND property disappears
++ * on destruction, unlike a process-local HWND lookup. The 32-bit cookie is only
++ * an identity key: wire tokens are independent and never resurrect after absence. */
++static uint32_t ax_window_cookie(HWND hwnd)
++{
++    ULONG_PTR cookie;
++    if (!ax_window_owned(HandleToUlong(hwnd))) return 0;
++    cookie = (ULONG_PTR)GetPropW(hwnd, ax_cookie_property);
++    if (cookie) return cookie <= UINT32_MAX ? cookie : 0;
++    if (ax_next_cookie == UINT32_MAX) return 0;
++    cookie = ++ax_next_cookie;
++    if (!SetPropW(hwnd, ax_cookie_property, (HANDLE)cookie)) return 0;
++    return (ULONG_PTR)GetPropW(hwnd, ax_cookie_property) == cookie ? cookie : 0;
++}
++
++static BOOL ax_lease_valid(const struct macdrv_ax_request *request);
++
++static BOOL ax_window_ready(const struct macdrv_ax_request *request, HWND hwnd)
++{
++    DWORD_PTR result = 0;
++    /* A native window can be registered before its GUI thread enters the message
++     * loop. A late WM_NULL has no MSAA marshaling resource, so failed readiness
++     * checks can be retried without risking repeated abandoned WM_GETOBJECTs. */
++    if (!SendMessageTimeoutW(hwnd, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &result))
++    {
++        TRACE("MSAA phase=readiness_retry tick=%llu hwnd=%p error=%lu\n",
++              (unsigned long long)GetTickCount64(), hwnd, (unsigned long)GetLastError());
++        return FALSE;
++    }
++    return ax_lease_valid(request);
++}
++
++static BOOL ax_acquire_client(const struct macdrv_ax_request *request, HWND hwnd, IAccessible **object,
++                              HWND *standard_hwnd, uint32_t *cookie)
++{
++    DWORD_PTR result = 0;
++    HRESULT hr;
++    *object = NULL;
++    *standard_hwnd = NULL;
++    *cookie = 0;
++    if (!ax_window_owned(HandleToUlong(hwnd))) return FALSE;
++    if (!ax_window_ready(request, hwnd)) return FALSE;
++    if (!SendMessageTimeoutW(hwnd, WM_GETOBJECT, (WPARAM)0xffffffff, OBJID_CLIENT,
++                             SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &result))
++    {
++        /* A timed-out WM_GETOBJECT may later create a marshaled result which
++         * cannot be reclaimed here. Never retry uncertain work: leave the native
++         * lease outstanding for quarantine and permanently abandon this worker. */
++        ax_provider_abandoned = TRUE;
++        WARN("MSAA phase=getobject_abandoned tick=%llu hwnd=%p error=%lu\n",
++             (unsigned long long)GetTickCount64(), hwnd, (unsigned long)GetLastError());
++        return FALSE;
++    }
++    /* Timeout/error is never evidence of a standard provider. Only an explicit
++     * zero response permits the real Wine standard MSAA provider fallback. */
++    if (result) hr = ax_object_from_result(result, &ax_iid_accessible, 0, (void **)object);
++    else
++    {
++        hr = ax_standard_object(hwnd, OBJID_CLIENT, &ax_iid_accessible, (void **)object);
++        if (SUCCEEDED(hr) && *object)
++        {
++            *cookie = ax_window_cookie(hwnd);
++            if (!*cookie) { IAccessible_Release(*object); *object = NULL; return FALSE; }
++            *standard_hwnd = hwnd;
++        }
++    }
++    TRACE("MSAA phase=client_result tick=%llu custom=%u hr=%#lx object=%u\n",
++          (unsigned long long)GetTickCount64(), !!result, (unsigned long)hr, !!*object);
++    return SUCCEEDED(hr) && *object;
++}
++
++/* Native owns the outstanding serial and deadline; never substitute a PE clock
++ * for validation, including after a potentially slow provider getter. */
++static BOOL ax_lease_valid(const struct macdrv_ax_request *request)
++{
++    struct macdrv_ax_request validation = *request;
++    BOOL valid;
++    validation.operation = MACDRV_AX_VALIDATE;
++    validation.result = MACDRV_AX_STALE;
++    valid = !ax_provider_abandoned && ax_window_owned(request->hwnd) && !MACDRV_CALL(ax_poll, &validation) &&
++            validation.result == MACDRV_AX_OK;
++    if (!valid) TRACE("MSAA phase=lease_rejected tick=%llu operation=%u result=%u serial=%llu\n",
++                      (unsigned long long)GetTickCount64(), request->operation, validation.result,
++                      (unsigned long long)request->serial);
++    return valid;
++}
++
++static void ax_copy_text(uint16_t *destination, BSTR source)
++{
++    unsigned int i;
++    if (!source) return;
++    for (i = 0; i < MACDRV_AX_TEXT - 1 && source[i]; ++i) destination[i] = source[i];
++    /* Do not split a UTF-16 surrogate pair at the bounded wire-string edge. */
++    if (i && destination[i - 1] >= 0xd800 && destination[i - 1] <= 0xdbff) --i;
++    destination[i] = 0;
++}
++
++static BOOL ax_role_state(IAccessible *object, VARIANT child, uint32_t *role, LONG *state)
++{
++    VARIANT value;
++    HRESULT hr;
++    memset(&value, 0, sizeof(value));
++    hr = IAccessible_get_accRole(object, child, &value);
++    if (hr != S_OK) TRACE("MSAA phase=role_failed hr=%#lx\n", (unsigned long)hr);
++    *role = 0;
++    if (hr == S_OK && V_VT(&value) == VT_I4)
++    {
++        switch (V_I4(&value))
++        {
++        case ROLE_SYSTEM_PUSHBUTTON: *role = MACDRV_AX_ROLE_BUTTON; break;
++        case ROLE_SYSTEM_TEXT: *role = MACDRV_AX_ROLE_EDIT; break;
++        case ROLE_SYSTEM_CHECKBUTTON: *role = MACDRV_AX_ROLE_CHECKBOX; break;
++        case ROLE_SYSTEM_RADIOBUTTON: *role = MACDRV_AX_ROLE_RADIO; break;
++        case ROLE_SYSTEM_GROUPING: *role = MACDRV_AX_ROLE_GROUP; break;
++        }
++    }
++    ax_clear_variant(&value);
++    memset(&value, 0, sizeof(value));
++    hr = IAccessible_get_accState(object, child, &value);
++    if (hr != S_OK || V_VT(&value) != VT_I4)
++    {
++        TRACE("MSAA phase=state_failed hr=%#lx type=%u\n", (unsigned long)hr, V_VT(&value));
++        ax_clear_variant(&value);
++        return FALSE;
++    }
++    *state = V_I4(&value);
++    ax_clear_variant(&value);
++    return TRUE;
++}
++
++static BOOL ax_has_default_action(IAccessible *object, VARIANT child)
++{
++    BSTR text = NULL;
++    BOOL result = IAccessible_get_accDefaultAction(object, child, &text) == S_OK && text && text[0];
++    ax_free_string(text);
++    return result;
++}
++
++/* Press invokes the provider's actual default action. Check/radio state is
++ * read from MSAA; the bridge never synthesizes BM_CLICK or assigns check state. */
++static BOOL ax_press_role(uint32_t role)
++{
++    return role == MACDRV_AX_ROLE_BUTTON || role == MACDRV_AX_ROLE_CHECKBOX || role == MACDRV_AX_ROLE_RADIO;
++}
++
++static uint32_t ax_node_flags(IAccessible *object, VARIANT child, uint32_t role, LONG state)
++{
++    uint32_t flags = 0;
++    if (!(state & STATE_SYSTEM_UNAVAILABLE)) flags |= MACDRV_AX_ENABLED;
++    if (state & STATE_SYSTEM_FOCUSED) flags |= MACDRV_AX_FOCUSED;
++    if (state & STATE_SYSTEM_READONLY) flags |= MACDRV_AX_READONLY;
++    if (state & STATE_SYSTEM_PROTECTED) flags |= MACDRV_AX_PASSWORD;
++    if (role == MACDRV_AX_ROLE_CHECKBOX || role == MACDRV_AX_ROLE_RADIO)
++    {
++        /* Mixed takes precedence over checked if a custom provider sends both;
++         * wire values remain unambiguous and never describe a fabricated toggle. */
++        if (state & STATE_SYSTEM_MIXED) flags |= MACDRV_AX_MIXED;
++        else if (state & STATE_SYSTEM_CHECKED) flags |= MACDRV_AX_CHECKED;
++    }
++    if ((flags & MACDRV_AX_ENABLED) && !(flags & (MACDRV_AX_READONLY | MACDRV_AX_PASSWORD)))
++    {
++        if (ax_press_role(role) && ax_has_default_action(object, child)) flags |= MACDRV_AX_PRESSABLE;
++        if (role == MACDRV_AX_ROLE_EDIT) flags |= MACDRV_AX_SETTABLE;
++    }
++    return flags;
++}
++
++struct ax_walk {
++    const struct macdrv_ax_request *request;
++    struct macdrv_ax_snapshot *snapshot;
++    struct ax_cache *cache, *previous;
++    IAccessible *ancestors[9];
++    HWND resolved_hwnds[MACDRV_AX_MAX_NODES];
++    unsigned int resolved_count;
++    unsigned int visited;
++    BOOL expired;
++};
++
++static uint64_t ax_bind_token(struct ax_walk *walk, struct ax_binding *binding)
++{
++    unsigned int i;
++    struct ax_binding *old;
++    for (i = 0; i < walk->cache->count; ++i)
++    {
++        old = walk->cache->bindings + i;
++        if (old->role != binding->role || V_I4(&old->child) != V_I4(&binding->child)) continue;
++        if ((binding->standard_hwnd && old->standard_hwnd == binding->standard_hwnd && old->cookie == binding->cookie) ||
++            (!binding->standard_hwnd && !old->standard_hwnd && old->identity == binding->identity)) return 0;
++    }
++    for (i = 0; i < walk->previous->count; ++i)
++    {
++        old = walk->previous->bindings + i;
++        if (old->role != binding->role || V_I4(&old->child) != V_I4(&binding->child)) continue;
++        if (binding->standard_hwnd)
++        {
++            if (old->standard_hwnd == binding->standard_hwnd && old->cookie == binding->cookie) return old->token;
++        }
++        else if (!old->standard_hwnd && old->identity == binding->identity) return old->token;
++    }
++    /* Tokens are process-wide and never recycled, even when a cached window or
++     * node disappears. Exhaustion stops exposure rather than retargeting refs. */
++    if (ax_next_token == UINT64_MAX) return 0;
++    return ++ax_next_token;
++}
++
++static void ax_visit(struct ax_walk *walk, IAccessible *object, VARIANT child, uint32_t parent, unsigned int depth, HWND standard_hwnd, uint32_t cookie)
++{
++    struct macdrv_ax_node *node;
++    struct ax_binding *binding;
++    VARIANT children[MACDRV_AX_MAX_NODES];
++    LONG state, count = 0, obtained = 0, i, x = 0, y = 0, width = 0, height = 0;
++    uint32_t role;
++    BSTR text = NULL;
++    unsigned int j;
++    BOOL state_valid;
++
++    if (depth > 8 || walk->visited++ >= MACDRV_AX_MAX_NODES || walk->expired) return;
++    if (!(walk->expired = !ax_lease_valid(walk->request)))
++    {
++        /* Detect object cycles on the current path, while permitting distinct
++         * simple child IDs of the same accessible object. */
++        if (V_I4(&child) == CHILDID_SELF)
++            for (j = 0; j < depth; ++j) if (walk->ancestors[j] == object) return;
++        walk->ancestors[depth] = V_I4(&child) == CHILDID_SELF ? object : NULL;
++    }
++    else return;
++
++    state_valid = ax_role_state(object, child, &role, &state);
++    if (!state_valid && V_I4(&child) == CHILDID_SELF && depth)
++    {
++        HWND hwnd = NULL;
++        IAccessible *client = NULL;
++        HWND client_standard_hwnd;
++        uint32_t client_cookie;
++        /* Wine's standard client's enumeration produces OBJID_WINDOW wrappers,
++         * whose role/state methods are unimplemented. Query their real client
++         * provider rather than manufacturing a role from a class or caption. */
++        if (SUCCEEDED(ax_window_from_object(object, &hwnd)) && hwnd &&
++            ax_window_owned(HandleToUlong(hwnd)) && IsChild(UlongToHandle(walk->request->hwnd), hwnd))
++        {
++            for (j = 0; j < walk->resolved_count; ++j) if (walk->resolved_hwnds[j] == hwnd) break;
++            if (j == walk->resolved_count && walk->resolved_count < MACDRV_AX_MAX_NODES && ax_lease_valid(walk->request))
++            {
++                walk->resolved_hwnds[walk->resolved_count++] = hwnd;
++                if (ax_acquire_client(walk->request, hwnd, &client, &client_standard_hwnd, &client_cookie))
++                {
++                    /* Wrapper replacement does not add a tree depth. */
++                    walk->ancestors[depth] = NULL;
++                    ax_visit(walk, client, child, parent, depth, client_standard_hwnd, client_cookie);
++                    IAccessible_Release(client);
++                    return;
++                }
++                if (ax_provider_abandoned) { walk->expired = TRUE; return; }
++            }
++        }
++    }
++    if (state_valid && role &&
++        !(state & (STATE_SYSTEM_INVISIBLE | STATE_SYSTEM_OFFSCREEN)))
++    {
++        binding = walk->cache->bindings + walk->snapshot->count;
++        memset(binding, 0, sizeof(*binding));
++        if (FAILED(IAccessible_QueryInterface(object, &ax_iid_unknown, (void **)&binding->identity))) return;
++        binding->child = child;
++        binding->role = role;
++        binding->standard_hwnd = standard_hwnd;
++        binding->cookie = cookie;
++        binding->token = ax_bind_token(walk, binding);
++        if (!binding->token) { IUnknown_Release(binding->identity); return; }
++        node = walk->snapshot->nodes + walk->snapshot->count;
++        node->token = binding->token;
++        node->id = walk->snapshot->count + 1;
++        node->parent = parent;
++        node->role = role;
++        node->flags = ax_node_flags(object, child, role, state);
++        IAccessible_accLocation(object, &x, &y, &width, &height, child);
++        node->x = x;
++        node->y = y;
++        node->width = width;
++        node->height = height;
++        if (SUCCEEDED(IAccessible_get_accName(object, child, &text))) ax_copy_text(node->name, text);
++        ax_free_string(text);
++        text = NULL;
++        /* A protected object never has its value queried, even read-only. */
++        if (role == MACDRV_AX_ROLE_EDIT && !(state & STATE_SYSTEM_PROTECTED))
++        {
++            if (SUCCEEDED(IAccessible_get_accValue(object, child, &text))) ax_copy_text(node->value, text);
++            ax_free_string(text);
++        }
++        binding->object = object;
++        binding->child = child; /* Traversal admits only VT_I4 here. */
++        binding->role = role;
++        IAccessible_AddRef(object);
++        ++walk->snapshot->count;
++        walk->cache->count = walk->snapshot->count;
++        parent = node->id;
++    }
++    if (depth == 8 || V_I4(&child) != CHILDID_SELF || walk->visited >= MACDRV_AX_MAX_NODES) return;
++    if (!(walk->expired = !ax_lease_valid(walk->request)) &&
++        SUCCEEDED(IAccessible_get_accChildCount(object, &count)) && count > 0)
++    {
++        count = min(count, MACDRV_AX_MAX_NODES - walk->visited);
++        memset(children, 0, sizeof(children));
++        if (SUCCEEDED(ax_children(object, 0, count, children, &obtained)))
++        {
++            obtained = max(0, min(obtained, count));
++            for (i = 0; i < obtained && !walk->expired; ++i)
++            {
++                if (V_VT(children + i) == VT_DISPATCH && V_DISPATCH(children + i))
++                {
++                    IAccessible *next;
++                    VARIANT self;
++                    memset(&self, 0, sizeof(self));
++                    V_VT(&self) = VT_I4;
++                    V_I4(&self) = CHILDID_SELF;
++                    if (SUCCEEDED(IDispatch_QueryInterface(V_DISPATCH(children + i), &ax_iid_accessible, (void **)&next)))
++                    {
++                        ax_visit(walk, next, self, parent, depth + 1, NULL, 0);
++                        IAccessible_Release(next);
++                    }
++                }
++                else if (V_VT(children + i) == VT_I4 && V_I4(children + i) > 0)
++                    ax_visit(walk, object, children[i], parent, depth + 1, standard_hwnd, cookie);
++            }
++        }
++        for (i = 0; i < count; ++i) ax_clear_variant(children + i);
++    }
++}
++
++static void ax_snapshot(const struct macdrv_ax_request *request, struct macdrv_ax_snapshot *snapshot)
++{
++    struct ax_cache *cache = ax_cache_get(request->hwnd), previous;
++    struct ax_walk walk;
++    IAccessible *root = NULL;
++    HWND standard_hwnd;
++    uint32_t cookie;
++    VARIANT self;
++    /* Keep the previous references alive during matching, preventing canonical
++     * COM pointer address reuse from impersonating a destroyed provider. */
++    if (cache->generation != request->generation) ax_cache_clear(cache);
++    previous = *cache;
++    memset(cache, 0, sizeof(*cache));
++    if (!ax_lease_valid(request)) { snapshot->result = MACDRV_AX_STALE; goto done; }
++    if (!ax_acquire_client(request, UlongToHandle(request->hwnd), &root, &standard_hwnd, &cookie)) goto done;
++    cache->hwnd = request->hwnd;
++    cache->generation = request->generation;
++    cache->revision = request->revision;
++    cache->timestamp = GetTickCount64();
++    memset(&walk, 0, sizeof(walk));
++    memset(&self, 0, sizeof(self));
++    V_VT(&self) = VT_I4;
++    V_I4(&self) = CHILDID_SELF;
++    walk.request = request;
++    walk.snapshot = snapshot;
++    walk.cache = cache;
++    walk.previous = &previous;
++    walk.resolved_hwnds[walk.resolved_count++] = UlongToHandle(request->hwnd);
++    ax_visit(&walk, root, self, 0, 0, standard_hwnd, cookie);
++    IAccessible_Release(root);
++    if (walk.expired || !ax_lease_valid(request))
++    {
++        snapshot->count = 0;
++        snapshot->result = MACDRV_AX_STALE;
++        ax_cache_clear(cache);
++    }
++    else snapshot->result = MACDRV_AX_OK;
++ done:
++    ax_cache_clear(&previous);
++}
++
++static uint32_t ax_action(const struct macdrv_ax_request *request)
++{
++    struct ax_cache *cache = NULL;
++    struct ax_binding *binding;
++    uint32_t role;
++    LONG state;
++    unsigned int i;
++    HRESULT hr;
++    BSTR value = NULL;
++    DWORD_PTR provider_result;
++    for (i = 0; i < MACDRV_AX_MAX_WINDOWS; ++i)
++        if (ax_caches[i].hwnd == request->hwnd) { cache = ax_caches + i; break; }
++    if (!cache || !request->node_id || request->node_id > cache->count ||
++        cache->generation != request->generation || cache->revision != request->revision ||
++        GetTickCount64() - cache->timestamp > MACDRV_AX_CACHE_MS || !ax_lease_valid(request)) return MACDRV_AX_STALE;
++    binding = cache->bindings + request->node_id - 1;
++    if (!request->token || binding->token != request->token) return MACDRV_AX_STALE;
++    role = binding->role;
++    if (request->operation == MACDRV_AX_PRESS)
++    {
++        if (!ax_press_role(role))
++            return MACDRV_AX_DENIED;
++    }
++    else if (request->operation == MACDRV_AX_SET_VALUE)
++    {
++        if (role != MACDRV_AX_ROLE_EDIT || request->value[MACDRV_AX_TEXT - 1]) return MACDRV_AX_DENIED;
++        if (!(value = ax_alloc_string((const WCHAR *)request->value))) return MACDRV_AX_UNAVAILABLE;
++    }
++    else return MACDRV_AX_DENIED;
++    /* A standard wrapper is retained only while its actual HWND lifetime cookie
++     * still matches. Arbitrary custom providers never receive HWND cookies. */
++    if (binding->standard_hwnd &&
++        (!ax_window_owned(HandleToUlong(binding->standard_hwnd)) ||
++         (binding->standard_hwnd != UlongToHandle(request->hwnd) &&
++          !IsChild(UlongToHandle(request->hwnd), binding->standard_hwnd)) ||
++         (ULONG_PTR)GetPropW(binding->standard_hwnd, ax_cookie_property) != binding->cookie))
++    { ax_free_string(value); return MACDRV_AX_STALE; }
++    if (binding->standard_hwnd)
++    {
++        IAccessible *replacement = NULL;
++        if (!ax_window_ready(request, binding->standard_hwnd))
++        { ax_free_string(value); return MACDRV_AX_UNAVAILABLE; }
++        if (!SendMessageTimeoutW(binding->standard_hwnd, WM_GETOBJECT, (WPARAM)0xffffffff, OBJID_CLIENT,
++                                 SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &provider_result))
++        {
++            ax_provider_abandoned = TRUE;
++            WARN("MSAA phase=action_getobject_abandoned tick=%llu error=%lu\n",
++                 (unsigned long long)GetTickCount64(), (unsigned long)GetLastError());
++            ax_free_string(value);
++            return MACDRV_AX_STALE;
++        }
++        if (provider_result)
++        {
++            /* Consume the provider's LresultFromObject marshaling resource even
++             * though a standard-to-custom transition must deny this action. */
++            ax_object_from_result(provider_result, &ax_iid_accessible, 0, (void **)&replacement);
++            if (replacement) IAccessible_Release(replacement);
++            ax_free_string(value);
++            return MACDRV_AX_STALE;
++        }
++    }
++    if (!ax_role_state(binding->object, binding->child, &role, &state) || role != binding->role)
++    { ax_free_string(value); return MACDRV_AX_STALE; }
++    if (state & (STATE_SYSTEM_UNAVAILABLE | STATE_SYSTEM_READONLY | STATE_SYSTEM_PROTECTED |
++                 STATE_SYSTEM_INVISIBLE | STATE_SYSTEM_OFFSCREEN))
++    { ax_free_string(value); return MACDRV_AX_DENIED; }
++    /* State and role can change since the snapshot. Recheck the actual default
++     * action after those getters, before the final lease check and mutation. */
++    if (request->operation == MACDRV_AX_PRESS && !ax_has_default_action(binding->object, binding->child))
++    { ax_free_string(value); return MACDRV_AX_DENIED; }
++    /* A provider getter can destroy, replace or reparent a standard child.
++     * Recheck its lifetime after the final COM getter as well as before it. */
++    if (binding->standard_hwnd &&
++        (!ax_window_owned(HandleToUlong(binding->standard_hwnd)) ||
++         (binding->standard_hwnd != UlongToHandle(request->hwnd) &&
++          !IsChild(UlongToHandle(request->hwnd), binding->standard_hwnd)) ||
++         (ULONG_PTR)GetPropW(binding->standard_hwnd, ax_cookie_property) != binding->cookie))
++    { ax_free_string(value); return MACDRV_AX_STALE; }
++    /* Last operation before mutation: native generation/revision/lease check.
++     * This cannot cancel a mutation once an arbitrary provider COM call starts. */
++    if (!ax_lease_valid(request)) { ax_free_string(value); return MACDRV_AX_STALE; }
++    if (request->operation == MACDRV_AX_PRESS)
++        hr = IAccessible_accDoDefaultAction(binding->object, binding->child);
++    else hr = IAccessible_put_accValue(binding->object, binding->child, value);
++    ax_free_string(value);
++    return hr == S_OK ? MACDRV_AX_OK : MACDRV_AX_UNAVAILABLE;
++}
++
++static DWORD WINAPI ax_worker(void *unused)
++{
++    HMODULE oleacc, ole32, oleaut32;
++    struct macdrv_ax_request request;
++    struct macdrv_ax_snapshot *snapshot;
++    unsigned int i;
++    GUID cookie_guid;
++    BYTE *guid_bytes = (BYTE *)&cookie_guid;
++    static const WCHAR hex[] = L"0123456789abcdef";
++    HRESULT hr;
++    NTSTATUS status;
++    TRACE("MSAA phase=worker_start tick=%llu thread=%lu\n", (unsigned long long)GetTickCount64(),
++          (unsigned long)GetCurrentThreadId());
++    oleacc = LoadLibraryW(L"oleacc.dll");
++    ole32 = LoadLibraryW(L"ole32.dll");
++    oleaut32 = LoadLibraryW(L"oleaut32.dll");
++    if (!oleacc || !ole32 || !oleaut32)
++    { WARN("MSAA phase=load_failed oleacc=%u ole32=%u oleaut32=%u\n", !!oleacc, !!ole32, !!oleaut32); return 0; }
++#define AX_LOAD(module, variable, name) do { variable = (void *)GetProcAddress(module, name); \
++    if (!variable) { WARN("MSAA phase=import_failed symbol=%s\n", name); return 0; } } while (0)
++    AX_LOAD(oleacc, ax_object_from_result, "ObjectFromLresult");
++    AX_LOAD(oleacc, ax_standard_object, "CreateStdAccessibleObject");
++    AX_LOAD(oleacc, ax_children, "AccessibleChildren");
++    AX_LOAD(oleacc, ax_window_from_object, "WindowFromAccessibleObject");
++    AX_LOAD(ole32, ax_create_guid, "CoCreateGuid");
++    AX_LOAD(ole32, ax_co_initialize, "CoInitializeEx");
++    AX_LOAD(ole32, ax_co_uninitialize, "CoUninitialize");
++    AX_LOAD(oleaut32, ax_free_string, "SysFreeString");
++    AX_LOAD(oleaut32, ax_alloc_string, "SysAllocString");
++    AX_LOAD(oleaut32, ax_clear_variant, "VariantClear");
++#undef AX_LOAD
++    hr = ax_co_initialize(NULL, COINIT_MULTITHREADED);
++    TRACE("MSAA phase=com_init tick=%llu hr=%#lx\n", (unsigned long long)GetTickCount64(), (unsigned long)hr);
++    if (FAILED(hr)) return 0;
++    hr = ax_create_guid(&cookie_guid);
++    if (FAILED(hr)) { WARN("MSAA phase=guid_failed hr=%#lx\n", (unsigned long)hr); ax_co_uninitialize(); return 0; }
++    lstrcpyW(ax_cookie_property, L"Wine.macdrv.MSAA.");
++    for (i = 0; i < sizeof(cookie_guid); ++i)
++    {
++        ax_cookie_property[17 + i * 2] = hex[guid_bytes[i] >> 4];
++        ax_cookie_property[18 + i * 2] = hex[guid_bytes[i] & 15];
++    }
++    ax_cookie_property[49] = 0;
++    if (!(snapshot = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*snapshot))))
++    { ax_co_uninitialize(); return 0; }
++    for (;;)
++    {
++        memset(&request, 0, sizeof(request));
++        request.version = MACDRV_AX_VERSION;
++        request.size = sizeof(request);
++        status = MACDRV_CALL(ax_poll, &request);
++        if (status) { WARN("MSAA phase=poll_failed status=%#lx\n", (unsigned long)status); break; }
++        if (request.version != MACDRV_AX_VERSION || request.size != sizeof(request))
++        { WARN("MSAA phase=protocol_failed version=%u size=%u\n", request.version, request.size); break; }
++        if (!request.operation)
++        {
++            for (i = 0; i < MACDRV_AX_MAX_WINDOWS; ++i)
++                if (ax_caches[i].hwnd && (GetTickCount64() - ax_caches[i].timestamp > MACDRV_AX_CACHE_MS ||
++                                         !ax_window_owned(ax_caches[i].hwnd))) ax_cache_clear(ax_caches + i);
++            Sleep(50);
++            continue;
++        }
++        memset(snapshot, 0, sizeof(*snapshot));
++        snapshot->version = MACDRV_AX_VERSION;
++        snapshot->size = sizeof(*snapshot);
++        snapshot->operation = request.operation;
++        snapshot->hwnd = request.hwnd;
++        snapshot->generation = request.generation;
++        snapshot->revision = request.revision;
++        snapshot->serial = request.serial;
++        snapshot->result = MACDRV_AX_UNAVAILABLE;
++        TRACE("MSAA phase=request tick=%llu operation=%u serial=%llu generation=%llu revision=%llu\n",
++              (unsigned long long)GetTickCount64(), request.operation, (unsigned long long)request.serial,
++              (unsigned long long)request.generation, (unsigned long long)request.revision);
++        if (request.operation == MACDRV_AX_SNAPSHOT) ax_snapshot(&request, snapshot);
++        else snapshot->result = ax_action(&request);
++        /* No completion publish on uncertain send failure: native owns timeout
++         * quarantine. No replacement worker or subsequent request is started. */
++        if (ax_provider_abandoned)
++        { WARN("MSAA phase=worker_quarantined serial=%llu\n", (unsigned long long)request.serial); break; }
++        status = MACDRV_CALL(ax_publish, snapshot);
++        TRACE("MSAA phase=publish tick=%llu operation=%u serial=%llu result=%u count=%u status=%#lx\n",
++              (unsigned long long)GetTickCount64(), request.operation, (unsigned long long)request.serial,
++              snapshot->result, snapshot->count, (unsigned long)status);
++    }
++    for (i = 0; i < MACDRV_AX_MAX_WINDOWS; ++i) ax_cache_clear(ax_caches + i);
++    HeapFree(GetProcessHeap(), 0, snapshot);
++    ax_co_uninitialize();
++    TRACE("MSAA phase=worker_exit tick=%llu abandoned=%u\n", (unsigned long long)GetTickCount64(), ax_provider_abandoned);
++    return 0;
++}
++
++static void macdrv_ax_provider_start(void)
++{
++    WCHAR enabled[2];
++    HANDLE thread;
++    if (GetEnvironmentVariableW(L"WINE_MACDRV_AX_BRIDGE", enabled, ARRAY_SIZE(enabled)) != 1 || enabled[0] != '1') return;
++    thread = CreateThread(NULL, 0, ax_worker, NULL, 0, NULL);
++    /* DllMain only creates the thread. Windows starts its body after loader
++     * serialization; never wait here and never load COM inside DllMain. */
++    if (thread) CloseHandle(thread);
++    else WARN("MSAA provider worker could not start\n");
++}
+--- /dev/null
++++ b/dlls/winemac.drv/ax_validation.h
+@@ -0,0 +1,74 @@
++/* Portable predicates used by the native transport and its offline badpath tests. */
++#ifndef WINE_MACDRV_AX_VALIDATION_H
++#define WINE_MACDRV_AX_VALIDATION_H
++#include "ax_protocol.h"
++#include <string.h>
++#include <stdlib.h>
++
++/* Native opt-in matches the PE startup flag. Never changes ordinary Wine AX. */
++static inline int macdrv_ax_bridge_enabled(void)
++{
++    const char *enabled = getenv("WINE_MACDRV_AX_BRIDGE");
++    return enabled && !strcmp(enabled, "1");
++}
++
++static inline int macdrv_ax_text_valid(const uint16_t *text)
++{
++    unsigned int i;
++    for (i = 0; i < MACDRV_AX_TEXT; i++)
++    {
++        if (!text[i]) return 1;
++        if (text[i] >= 0xd800 && text[i] <= 0xdbff)
++        {
++            if (++i >= MACDRV_AX_TEXT || text[i] < 0xdc00 || text[i] > 0xdfff) return 0;
++        }
++        else if (text[i] >= 0xdc00 && text[i] <= 0xdfff) return 0;
++    }
++    return 0;
++}
++
++static inline int macdrv_ax_request_same_identity(const struct macdrv_ax_request *request,
++                                                 const struct macdrv_ax_request *lease)
++{
++    return lease->operation && request->hwnd == lease->hwnd &&
++           request->generation == lease->generation && request->revision == lease->revision &&
++           request->serial == lease->serial && request->token == lease->token && request->node_id == lease->node_id &&
++           !memcmp(request->value, lease->value, sizeof(request->value));
++}
++
++static inline int macdrv_ax_request_matches(const struct macdrv_ax_request *request,
++                                           const struct macdrv_ax_request *lease,
++                                           uint64_t now, uint64_t deadline)
++{
++    return now < deadline && macdrv_ax_request_same_identity(request, lease);
++}
++
++static inline int macdrv_ax_snapshot_valid(const struct macdrv_ax_snapshot *snapshot)
++{
++    unsigned int i, j, depth;
++    if (snapshot->count > MACDRV_AX_MAX_NODES) return 0;
++    for (i = 0; i < snapshot->count; i++)
++    {
++        const struct macdrv_ax_node *node = &snapshot->nodes[i];
++        uint32_t parent = node->parent;
++        if (!node->id || !node->token || node->width < 0 || node->height < 0 ||
++            (node->role != MACDRV_AX_ROLE_BUTTON && node->role != MACDRV_AX_ROLE_EDIT && node->role != MACDRV_AX_ROLE_GROUP &&
++             node->role != MACDRV_AX_ROLE_CHECKBOX && node->role != MACDRV_AX_ROLE_RADIO) ||
++            (node->flags & ~(MACDRV_AX_ENABLED | MACDRV_AX_FOCUSED | MACDRV_AX_READONLY | MACDRV_AX_PASSWORD |
++                             MACDRV_AX_PRESSABLE | MACDRV_AX_SETTABLE | MACDRV_AX_CHECKED | MACDRV_AX_MIXED)) ||
++            ((node->flags & (MACDRV_AX_CHECKED | MACDRV_AX_MIXED)) &&
++             node->role != MACDRV_AX_ROLE_CHECKBOX && node->role != MACDRV_AX_ROLE_RADIO) ||
++            ((node->flags & MACDRV_AX_CHECKED) && (node->flags & MACDRV_AX_MIXED)) ||
++            !macdrv_ax_text_valid(node->name) || !macdrv_ax_text_valid(node->value)) return 0;
++        for (j = 0; j < i; j++) if (snapshot->nodes[j].id == node->id || snapshot->nodes[j].token == node->token) return 0;
++        for (depth = 0; parent; depth++)
++        {
++            if (parent == node->id || depth >= snapshot->count) return 0;
++            for (j = 0; j < snapshot->count && snapshot->nodes[j].id != parent; j++);
++            if (j == snapshot->count) return 0;
++            parent = snapshot->nodes[j].parent;
++        }
++    }
++    return 1;
++}
++#endif
+--- a/dlls/winemac.drv/cocoa_app.m
++++ b/dlls/winemac.drv/cocoa_app.m
+@@ -26,6 +26,8 @@
+ 
+ #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
+ 
++#include "ax_application.inc"
++
+ 
+ static NSString* const WineAppWaitQueryResponseMode = @"WineAppWaitQueryResponseMode";
+ static NSString* const WineWillShowPermissionDialogNotification = @"WineWillShowPermissionDialogNotification";
+@@ -119,6 +121,7 @@
+ @property (retain, nonatomic) WineWindow* mouseCaptureWindow;
+ 
+     - (void) setupObservations;
++    - (BOOL) releaseDisplayCaptureSavingModes:(BOOL)saveModes;
+     - (void) applicationDidBecomeActive:(NSNotification *)notification;
+     - (void) handleApplicationShouldTerminateReply:(BOOL)reply;  /* CW Hack 22310 */
+ 
+@@ -294,7 +297,17 @@
+ 
+     - (void) transformProcessToForeground:(BOOL)activateIfTransformed
+     {
+-        if ([NSApp activationPolicy] != NSApplicationActivationPolicyRegular)
++        BOOL needsTransform = [NSApp activationPolicy] != NSApplicationActivationPolicyRegular;
++        NSMenu *existingMenu = [NSApp mainMenu];
++        NSMenuItem *placeholder = [existingMenu numberOfItems] == 1 ? [existingMenu itemAtIndex:0] : nil;
++        BOOL emptyPlaceholder = [placeholder submenu] && ![[placeholder submenu] numberOfItems] &&
++                                [placeholder action] == NSSelectorFromString(@"submenuAction:") &&
++                                [[placeholder target] isKindOfClass:[NSMenu class]];
++
++        /* A native .app can already be regular before Wine creates a window.
++           AppKit may have supplied only an empty application submenu.  Preserve
++           any existing menu that contains commands or other host structure. */
++        if (needsTransform || ![existingMenu numberOfItems] || emptyPlaceholder)
+         {
+             NSMenu* mainMenu;
+             NSMenu* submenu;
+@@ -318,17 +331,20 @@
+                 if ([blacklistedProcesses containsObject:exeName])
+                 {
+                     /* Try to honor the activation request regardless. */
+-                    if (activateIfTransformed)
++                    if (needsTransform && activateIfTransformed)
+                         [self tryToActivateIgnoringOtherApps:YES];
+ 
+                     return;
+                 }
+             }
+ 
+-            [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+-
+-            if (activateIfTransformed)
+-                [self tryToActivateIgnoringOtherApps:YES];
++            if (needsTransform)
++            {
++                [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
++
++                if (activateIfTransformed)
++                    [self tryToActivateIgnoringOtherApps:YES];
++            }
+ 
+             if (!enable_app_nap)
+             {
+@@ -814,6 +830,49 @@
+         [self adjustWindowLevels:[NSApp isActive]];
+     }
+ 
++    /* Suspend exclusive display ownership before leaving the app, or discard
++       pending modes once an accepted Quit makes reactivation impossible.  Keep
++       the ownership bookkeeping on release failure so a later cleanup retries. */
++    - (BOOL) releaseDisplayCaptureSavingModes:(BOOL)saveModes
++    {
++        if (!saveModes)
++            [latentDisplayModes removeAllObjects];
++
++        if (![self areDisplaysCaptured])
++            return TRUE;
++
++        if (saveModes)
++        {
++            for (NSNumber* displayID in originalDisplayModes)
++            {
++                /* A failed release may be retried after restoration.  Do not
++                   overwrite the saved game mode with the restored desktop mode. */
++                if (latentDisplayModes[displayID])
++                    continue;
++                CGDisplayModeRef mode = CGDisplayCopyDisplayMode([displayID unsignedIntValue]);
++                if (mode)
++                {
++                    [latentDisplayModes setObject:(id)mode forKey:displayID];
++                    CGDisplayModeRelease(mode);
++                }
++                else
++                    ERR(@"failed to save display mode for %u\n", [displayID unsignedIntValue]);
++            }
++        }
++
++        CGRestorePermanentDisplayConfiguration();
++        CGError error = CGReleaseAllDisplays();
++        if (error != CGDisplayNoErr)
++        {
++            ERR(@"failed to release displays: %d\n", error);
++            return FALSE;
++        }
++
++        [originalDisplayModes removeAllObjects];
++        displaysCapturedForFullscreen = FALSE;
++        return TRUE;
++    }
++
+     - (void) updateFullscreenWindows
+     {
+         if (capture_displays_for_fullscreen && [NSApp isActive])
+@@ -823,7 +882,9 @@
+             for (windowNumber in [NSWindow windowNumbersWithOptions:0])
+             {
+                 WineWindow* window = (WineWindow*)[NSApp windowWithWindowNumber:[windowNumber integerValue]];
+-                if ([window isKindOfClass:[WineWindow class]] && window.fullscreen)
++                if ([window isKindOfClass:[WineWindow class]] && window.fullscreen &&
++                    !window.closing && [window isVisible] && ![window isMiniaturized] &&
++                    [window isOnActiveSpace])
+                 {
+                     anyFullscreen = TRUE;
+                     break;
+@@ -936,10 +997,11 @@
+             if ([originalDisplayModes count] == 1) // If this is the last changed display, do a blanket reset
+             {
+                 CGRestorePermanentDisplayConfiguration();
+-                if (!displaysCapturedForFullscreen)
+-                    CGReleaseAllDisplays();
+-                [originalDisplayModes removeAllObjects];
+-                ret = TRUE;
++                if (displaysCapturedForFullscreen || CGReleaseAllDisplays() == CGDisplayNoErr)
++                {
++                    [originalDisplayModes removeAllObjects];
++                    ret = TRUE;
++                }
+             }
+             else // ... otherwise, try to restore just the one display
+             {
+@@ -954,13 +1016,23 @@
+                     }
+                 }
+             }
++            /* A successful restore cancels a mode saved while deactivating,
++               including when display release previously failed. */
++            if (ret)
++                [latentDisplayModes removeObjectForKey:displayIDKey];
+         }
+         else
+         {
+             CGDisplayModeRef currentMode;
+             NSArray* modes;
+ 
+-            currentMode = CGDisplayModeRetain((CGDisplayModeRef)latentDisplayModes[displayIDKey]);
++            /* A latent mode is an inactive request, not physical display state.
++               In particular a failed release may already have restored the
++               desktop, while leaving a game mode saved for reactivation. */
++            if (![NSApp isActive])
++                currentMode = CGDisplayModeRetain((CGDisplayModeRef)latentDisplayModes[displayIDKey]);
++            else
++                currentMode = NULL;
+             if (!currentMode)
+                 currentMode = CGDisplayCopyDisplayMode(displayID);
+             if (!currentMode) // Invalid display ID
+@@ -969,6 +1041,8 @@
+             if ([self mode:mode matchesMode:currentMode]) // Already there!
+             {
+                 CGDisplayModeRelease(currentMode);
++                if ([NSApp isActive])
++                    [latentDisplayModes removeObjectForKey:displayIDKey];
+                 return TRUE;
+             }
+ 
+@@ -1013,12 +1087,14 @@
+                     else if (![originalDisplayModes count])
+                     {
+                         CGRestorePermanentDisplayConfiguration();
+-                        if (!displaysCapturedForFullscreen)
+-                            CGReleaseAllDisplays();
++                        if (!displaysCapturedForFullscreen && CGReleaseAllDisplays() != CGDisplayNoErr && originalMode)
++                            [originalDisplayModes setObject:(id)originalMode forKey:displayIDKey];
+                     }
+ 
+                     if (currentMode)
+                         CGDisplayModeRelease(currentMode);
++                    if (ret)
++                        [latentDisplayModes removeObjectForKey:displayIDKey];
+                 }
+                 else
+                 {
+@@ -1217,18 +1293,7 @@
+ 
+             if ([originalDisplayModes count] || displaysCapturedForFullscreen)
+             {
+-                NSNumber* displayID;
+-                for (displayID in originalDisplayModes)
+-                {
+-                    CGDisplayModeRef mode = CGDisplayCopyDisplayMode([displayID unsignedIntValue]);
+-                    [latentDisplayModes setObject:(id)mode forKey:displayID];
+-                    CGDisplayModeRelease(mode);
+-                }
+-
+-                CGRestorePermanentDisplayConfiguration();
+-                CGReleaseAllDisplays();
+-                [originalDisplayModes removeAllObjects];
+-                displaysCapturedForFullscreen = FALSE;
++                [self releaseDisplayCaptureSavingModes:TRUE];
+             }
+ 
+             for (app in [[NSWorkspace sharedWorkspace] runningApplications])
+@@ -2001,7 +2066,7 @@
+                 lastTargetWindow = nil;
+             if (window == self.mouseCaptureWindow)
+                 self.mouseCaptureWindow = nil;
+-            if ([window isKindOfClass:[WineWindow class]] && [(WineWindow*)window isFullscreen])
++            if ([window isKindOfClass:[WineWindow class]])
+             {
+                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0), dispatch_get_main_queue(), ^{
+                     [self updateFullscreenWindows];
+@@ -2040,6 +2105,11 @@
+         [wsnc addObserver:self
+                  selector:@selector(activeSpaceDidChange)
+                      name:NSWorkspaceActiveSpaceDidChangeNotification
++                   object:nil];
++
++        [wsnc addObserver:self
++                 selector:@selector(workspaceWillSleep:)
++                     name:NSWorkspaceWillSleepNotification
+                    object:nil];
+ 
+         [nc addObserver:self
+@@ -2081,18 +2151,7 @@
+             {
+                 if ([originalDisplayModes count] || displaysCapturedForFullscreen)
+                 {
+-                    NSNumber* displayID;
+-                    for (displayID in originalDisplayModes)
+-                    {
+-                        CGDisplayModeRef mode = CGDisplayCopyDisplayMode([displayID unsignedIntValue]);
+-                        [latentDisplayModes setObject:(id)mode forKey:displayID];
+-                        CGDisplayModeRelease(mode);
+-                    }
+-
+-                    CGRestorePermanentDisplayConfiguration();
+-                    CGReleaseAllDisplays();
+-                    [originalDisplayModes removeAllObjects];
+-                    displaysCapturedForFullscreen = FALSE;
++                    [self releaseDisplayCaptureSavingModes:TRUE];
+                     displaysTemporarilyUncapturedForDialog = TRUE;
+                 }
+                 temporarilyIgnoreResignEventsForDialog = TRUE;
+@@ -2211,42 +2270,52 @@
+     /* CW Hack 22310, 24199 */
+     - (void) handleExternalQuitRequest:(NSNotification *)notification
+     {
++        NSDictionary *userInfo = notification.userInfo;
+         NSString *targetAUMID, *targetExeName, *ourExeName;
+-        pid_t sourcePID;
++        NSNumber *sourcePIDNumber;
++        long long sourcePID;
+         NSProcessInfo *ourProcess;
+         NSString *ourConfigDir, *otherConfigDir, *ourPrefix, *otherPrefix;
+-
+-        sourcePID = [notification.userInfo[WineExternalQuitNotificationSourcePIDKey] intValue];
++        const char *pidType;
++
++        /* Distributed userInfo is untrusted.  A valid label-scoped request is
++         * still not authenticated evidence of Windows helper ownership. */
++        if (![userInfo isKindOfClass:[NSDictionary class]]) return;
++        sourcePIDNumber = userInfo[WineExternalQuitNotificationSourcePIDKey];
++        if (![sourcePIDNumber isKindOfClass:[NSNumber class]]) return;
++        pidType = sourcePIDNumber.objCType;
++        if (!pidType || !pidType[0] || pidType[1] || !strchr("cCsSiIlLqQ", pidType[0])) return;
++        sourcePID = sourcePIDNumber.longLongValue;
++        if (sourcePID <= 1 || sourcePID > INT_MAX) return;
+         ourProcess = [NSProcessInfo processInfo];
+-
+-        // Ignore requests from ourself
+         if (sourcePID == ourProcess.processIdentifier) return;
+ 
+-        targetAUMID = notification.userInfo[WineExternalQuitNotificationAUMIDKey];
+-        if (targetAUMID.length && ![self.explicitAppUserModelID isEqualToString:targetAUMID])
+-            return;
+-
+-        targetExeName = notification.userInfo[WineExternalQuitNotificationExeNameKey];
+-        ourExeName = [NSRunningApplication currentApplication].executableURL.lastPathComponent;;
+-        if (targetExeName.length && ![ourExeName isEqualToString:targetExeName])
+-            return;
+-
+-        // AUMID or EXE name matches. Make sure it's from the same prefix.
++        /* Do not require sender liveness: accepted Quit posts immediately
++         * before the sender exits, and delivery is asynchronous. */
++        targetAUMID = userInfo[WineExternalQuitNotificationAUMIDKey];
++        targetExeName = userInfo[WineExternalQuitNotificationExeNameKey];
++        if ((targetAUMID && ![targetAUMID isKindOfClass:[NSString class]]) ||
++            (targetExeName && ![targetExeName isKindOfClass:[NSString class]])) return;
++        if (!targetAUMID.length && !targetExeName.length) return;
++        if (targetAUMID.length && ![self.explicitAppUserModelID isEqualToString:targetAUMID]) return;
++        ourExeName = [NSRunningApplication currentApplication].executableURL.lastPathComponent;
++        if (targetExeName.length && ![ourExeName isEqualToString:targetExeName]) return;
++
+         ourConfigDir = ourProcess.environment[@"WINECONFIGDIR"];
+-        otherConfigDir = notification.userInfo[WineExternalQuitNotificationWineConfigDirKey];
+-        if (ourConfigDir.length && otherConfigDir.length &&
+-            ![ourConfigDir isEqualToString:otherConfigDir])
+-        {
+-            return;
+-        }
+-
++        otherConfigDir = userInfo[WineExternalQuitNotificationWineConfigDirKey];
+         ourPrefix = ourProcess.environment[@"WINEPREFIX"];
+-        otherPrefix = notification.userInfo[WineExternalQuitNotificationWinePrefixKey];
+-        if (ourPrefix.length && otherPrefix.length &&
+-            ![ourPrefix isEqualToString:otherPrefix])
+-        {
+-            return;
+-        }
++        otherPrefix = userInfo[WineExternalQuitNotificationWinePrefixKey];
++        if ((ourConfigDir && ![ourConfigDir isKindOfClass:[NSString class]]) ||
++            (otherConfigDir && ![otherConfigDir isKindOfClass:[NSString class]]) ||
++            (ourPrefix && ![ourPrefix isKindOfClass:[NSString class]]) ||
++            (otherPrefix && ![otherPrefix isKindOfClass:[NSString class]])) return;
++
++        /* Empty pairs are allowed for launchers which supply only one identity.
++         * At least one identity must be explicit, and neither may disagree or
++         * be supplied on only one side.  Never infer the default prefix here. */
++        if (!ourConfigDir.length && !ourPrefix.length) return;
++        if (![(ourConfigDir ? ourConfigDir : @"") isEqualToString:(otherConfigDir ? otherConfigDir : @"")] ||
++            ![(ourPrefix ? ourPrefix : @"") isEqualToString:(otherPrefix ? otherPrefix : @"")]) return;
+ 
+         terminatingDueToExternalRequest = YES;
+         [NSApp terminate:NSApp];
+@@ -2255,7 +2324,7 @@
+     /* CW Hack 22310, 24199 */
+     - (void) postExternalQuitRequest
+     {
+-        static NSArray *whitelistedAUMIDs, *whitelistedExeNames;
++        static NSArray *whitelistedAUMIDs;
+         static dispatch_once_t onceToken;
+         NSDictionary *userInfo;
+         NSProcessInfo *process;
+@@ -2287,6 +2356,9 @@
+         if (!wineConfigDir) wineConfigDir = @"";
+         winePrefix = process.environment[@"WINEPREFIX"];
+         if (!winePrefix) winePrefix = @"";
++        /* Do not broadcast when receivers cannot establish a concrete prefix
++         * identity.  Empty targeting is already excluded by the app allowlist. */
++        if (!wineConfigDir.length && !winePrefix.length) return;
+ 
+         userInfo = @{
+             WineExternalQuitNotificationAUMIDKey: self.explicitAppUserModelID ? self.explicitAppUserModelID : @"",
+@@ -2391,26 +2463,67 @@
+         }
+     }
+ 
++    - (void) workspaceWillSleep:(NSNotification *)notification
++    {
++        if (![NSThread isMainThread])
++        {
++            dispatch_async(dispatch_get_main_queue(), ^{ [self workspaceWillSleep:notification]; });
++            return;
++        }
++
++        /* Sleep can occur while the Windows message thread is blocked.
++         * Resume from an absolute mouse position and require the Windows app
++         * to request any new confinement after waking. */
++        [self stopClippingCursor];
++        [self releaseMouseCapture];
++        forceNextMouseMoveAbsolute = TRUE;
++    }
++
++    - (WineWindow *) windowForReopen
++    {
++        NSArray *appWindows = [NSApp windows];
++        NSMutableArray *windows = [keyWindows mutableCopy];
++        WineWindow *bestOption = nil;
++
++        /* WineWindows are NSPanels, so AppKit's visible-window flag does not
++           describe them reliably.  Work only on this process's actual windows,
++           preferring its recent key-window order over creation order. */
++        for (WineWindow *window in appWindows)
++            if (![windows containsObject:window])
++                [windows addObject:window];
++
++        for (WineWindow *window in windows)
++        {
++            if (![appWindows containsObject:window] ||
++                ![window isKindOfClass:[WineWindow class]] || window.closing ||
++                window.disabled || window.noForeground || ![window canBecomeKeyWindow] ||
++                ![window presentsVisibleContent])
++                continue;
++
++            /* Do not order a never-shown service window in.  Prefer an existing
++               visible window; restore one minimized window only when needed. */
++            if ([window isVisible] && ![window isMiniaturized])
++            {
++                bestOption = window;
++                break;
++            }
++            if (!bestOption && [window isMiniaturized])
++                bestOption = window;
++        }
++
++        [bestOption retain];
++        [windows release];
++        return [bestOption autorelease];
++    }
++
+     - (void) unminimizeWindowIfNoneVisible
+     {
+-        WineWindow *bestOption = nil;
+-
+-        if ([self isAnyWineWindowVisible])
+-            return;
+-
+-        for (WineWindow *window in [NSApp windows])
+-        {
+-            if (![window isKindOfClass:[WineWindow class]] || ![window isMiniaturized])
+-                continue;
+-
+-            bestOption = window;
+-
+-            /* Prefer any window that would actually show something. */
+-            if ([window presentsVisibleContent])
+-                break;
+-        }
+-
+-        [bestOption deminiaturize:self];
++        /* Activation must use the same eligibility as reopen.  A permissive
++           fallback here could otherwise restore a rejected service window
++           before the reopen delegate gets to choose the real window. */
++        WineWindow *window = [self windowForReopen];
++        if ([window isMiniaturized])
++            [window deminiaturize:self];
+     }
+ 
+     - (void) setRetinaMode:(BOOL)mode
+@@ -2439,7 +2552,12 @@
+         for (displayID in modesToRealize)
+         {
+             CGDisplayModeRef mode = (CGDisplayModeRef)modesToRealize[displayID];
+-            [self setMode:mode forDisplay:[displayID unsignedIntValue]];
++            if (![self setMode:mode forDisplay:[displayID unsignedIntValue]] && !latentDisplayModes[displayID])
++            {
++                /* Keep a failed reactivation request for a later retry, without
++                   overwriting a newer request made during activation. */
++                [latentDisplayModes setObject:(id)mode forKey:displayID];
++            }
+         }
+ 
+         [self updateFullscreenWindows];
+@@ -2488,6 +2606,13 @@
+ 
+         if (!temporarilyIgnoreResignEventsForDialog)
+         {
++            /* Release native cursor confinement without waiting for the Windows
++             * message thread to consume APP_DEACTIVATED.  A blocked game thread
++             * must not leave the event-tap cursor detached while another app is
++             * active.  Preserve the existing temporary native-dialog exception:
++             * its Windows clipping state is intentionally not reset. */
++            [self stopClippingCursor];
++
+             event = macdrv_create_event(APP_DEACTIVATED, nil);
+ 
+             [eventQueuesLock lock];
+@@ -2498,6 +2623,7 @@
+             macdrv_release_event(event);
+         }
+ 
++        [self releaseDisplayCaptureSavingModes:TRUE];
+         [self releaseMouseCapture];
+     }
+ 
+@@ -2508,10 +2634,19 @@
+ 
+     - (BOOL) applicationShouldHandleReopen:(NSApplication*)theApplication hasVisibleWindows:(BOOL)flag
+     {
+-        // Note that "flag" is often wrong.  WineWindows are NSPanels and NSPanels
+-        // don't count as "visible windows" for this purpose.
+-        [self unminimizeWindowIfNoneVisible];
+-        return YES;
++        WineWindow *window = [self windowForReopen];
++
++        if (window)
++        {
++            /* Use the normal Window-menu path, which also informs Windows of
++               the z-order change even when this window was already key. */
++            [window makeKeyAndOrderFront:self];
++            [self tryToActivateIgnoringOtherApps:YES];
++        }
++
++        /* We handled Wine's windows, including the no-window case.  Do not let
++           AppKit's default reopen order hidden helper panels in afterward. */
++        return NO;
+     }
+ 
+     - (NSApplicationTerminateReply) applicationShouldTerminate:(NSApplication *)sender
+@@ -2560,6 +2695,12 @@
+     /* CW Hack 22310, 24199 */
+     - (void)handleApplicationShouldTerminateReply:(BOOL)reply
+     {
++        if (reply)
++        {
++            [self stopClippingCursor];
++            [self releaseDisplayCaptureSavingModes:FALSE];
++        }
++
+         if (reply && !terminatingDueToExternalRequest)
+         {
+             // Normal Cocoa-initiated quit, so potentially tell other related
+@@ -2571,6 +2712,12 @@
+             terminatingDueToExternalRequest = NO;
+ 
+         [NSApp replyToApplicationShouldTerminate:reply];
++    }
++
++    - (void)applicationWillTerminate:(NSNotification *)notification
++    {
++        [self stopClippingCursor];
++        [self releaseDisplayCaptureSavingModes:FALSE];
+     }
+ 
+     - (void)applicationWillBecomeActive:(NSNotification *)notification
+--- a/dlls/winemac.drv/cocoa_window.h
++++ b/dlls/winemac.drv/cocoa_window.h
+@@ -91,6 +91,7 @@
+ @property (readonly, nonatomic) BOOL noForeground;
+ @property (readonly, nonatomic) BOOL preventsAppActivation;
+ @property (readonly, nonatomic) BOOL floating;
++@property (readonly, nonatomic) BOOL closing;
+ @property (readonly, getter=isFullscreen, nonatomic) BOOL fullscreen;
+ @property (readonly, getter=isFakingClose, nonatomic) BOOL fakingClose;
+ @property (readonly, nonatomic) NSRect wine_fractionalFrame;
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -270,7 +270,7 @@
+             BOOL anyDisplayed = FALSE;
+             for (WineWindow* window in windows)
+             {
+-                if ([window viewsNeedDisplay])
++                if (!window.closing && [window viewsNeedDisplay])
+                 {
+                     [window displayIfNeeded];
+                     anyDisplayed = YES;
+@@ -431,6 +431,8 @@
+ @end
+ 
+ 
++#include "ax_native.inc"
++
+ @implementation WineBaseView
+ 
+     - (void) setRetinaMode:(BOOL)mode
+@@ -480,6 +482,33 @@
+ @implementation WineContentView
+ 
+ @synthesize everHadGLContext = _everHadGLContext;
++
++    - (BOOL) isAccessibilityElement
++    {
++        if ([ax_children_for_view(self) count]) return YES;
++        return [super isAccessibilityElement];
++    }
++
++    - (NSString*) accessibilityRole
++    {
++        if ([ax_children_for_view(self) count]) return NSAccessibilityGroupRole;
++        return [super accessibilityRole];
++    }
++
++    - (id) accessibilityParent
++    {
++        if ([ax_children_for_view(self) count]) return [self window];
++        return [super accessibilityParent];
++    }
++
++
++    - (NSArray*) accessibilityChildren
++    {
++        NSArray *nativeChildren = [super accessibilityChildren];
++        NSArray *providerChildren = ax_children_for_view(self);
++        if (![providerChildren count]) return nativeChildren;
++        return nativeChildren ? [nativeChildren arrayByAddingObjectsFromArray:providerChildren] : providerChildren;
++    }
+ 
+     - (instancetype) initWithFrame:(NSRect)frame
+     {
+@@ -1009,6 +1038,46 @@
+     @synthesize usePerPixelAlpha;
+     @synthesize himc, commandDone;
+     @synthesize contentViewMaskLayer;
++
++    - (BOOL) isAccessibilityElement
++    {
++        if (macdrv_ax_bridge_enabled() && hwnd) return !self.closing;
++        return [super isAccessibilityElement];
++    }
++
++    - (NSString*) accessibilityRole
++    {
++        if (macdrv_ax_bridge_enabled() && hwnd) return NSAccessibilityWindowRole;
++        return [super accessibilityRole];
++    }
++
++    - (id) accessibilityParent
++    {
++        if (macdrv_ax_bridge_enabled() && hwnd) return self.closing ? nil : NSApp;
++        return [super accessibilityParent];
++    }
++
++    - (NSArray*) accessibilityChildren
++    {
++        NSArray *children = [super accessibilityChildren];
++        if (macdrv_ax_bridge_enabled() && hwnd)
++        {
++            if (self.closing) return @[];
++            WineContentView *view = [self contentView];
++            if ([ax_children_for_view(view) count] && ![children containsObject:view])
++                return children ? [children arrayByAddingObject:view] : @[view];
++        }
++        return children;
++    }
++
++    - (NSString*) accessibilityIdentifier
++    {
++        /* Window titles may be empty, duplicated, or changed by the application.
++           Use the Windows handle to identify the native AX window for its lifetime.
++           This does not expose the application's Windows accessibility tree. */
++        if (!hwnd) return [super accessibilityIdentifier];
++        return [NSString stringWithFormat:@"wine-hwnd-%p", hwnd];
++    }
+ 
+     + (WineWindow*) createWindowWithFeatures:(const struct macdrv_window_features*)wf
+                                  windowFrame:(NSRect)window_frame
+@@ -2267,7 +2336,7 @@
+     - (void) checkWineDisplayLink
+     {
+         NSScreen* screen = self.screen;
+-        if (![self isVisible] || ![self isOnActiveSpace] || [self isMiniaturized] || [self isEmptyShaped])
++        if (closing || ![self isVisible] || ![self isOnActiveSpace] || [self isMiniaturized] || [self isEmptyShaped])
+             screen = nil;
+         if (!(self.occlusionState & NSWindowOcclusionStateVisible))
+             screen = nil;
+@@ -3473,6 +3542,7 @@
+                                            windowFrame:NSRectFromCGRect(cgrect_mac_from_win(frame))
+                                                   hwnd:hwnd
+                                                  queue:(WineEventQueue*)queue] retain];
++        ax_register_window(window, hwnd);
+     });
+ 
+     return (macdrv_window)window;
+@@ -3490,9 +3560,15 @@
+     WineWindow* window = (WineWindow*)w;
+ 
+     OnMainThread(^{
++        ax_unregister_window(window);
+         window.closing = TRUE;
+         [window doOrderOut];
+         [window close];
++        [window checkWineDisplayLink];
++        /* doOrderOut may defer during a native fullscreen transition.  The
++           destroyed window must cease owning geometric fullscreen capture now. */
++        [[WineApplicationController sharedController] updateFullscreenWindows];
++        [[WineApplicationController sharedController] adjustWindowLevels];
+     });
+     [window.queue discardEventsMatchingMask:-1 forWindow:window];
+     [window release];
+--- a/dlls/winemac.drv/display.c
++++ b/dlls/winemac.drv/display.c
+@@ -454,6 +454,10 @@
+     CFStringRef pixel_encoding = CGDisplayModeCopyPixelEncoding(display_mode);
+     CFNumberRef cf_io_flags, cf_width, cf_height, cf_refresh;
+ 
++    /* Use the same fallback as the exposed DEVMODE and mode matching. */
++    if (!refresh_rate)
++        refresh_rate = 60;
++
+     if (retina_enabled && is_original)
+     {
+         width *= 2;
+@@ -553,14 +557,14 @@
+         return FALSE;
+ 
+     /* Prefer supported modes over similar unsupported ones. */
+-    if (!new_is_supported && display_mode_is_supported(old_mode))
+-        return FALSE;
++    if (new_is_supported != display_mode_is_supported(old_mode))
++        return new_is_supported;
+ 
+     /* Prefer modes that are usable for desktop over ones that aren't. */
+     new_usable_for_desktop = CGDisplayModeIsUsableForDesktopGUI(new_mode);
+     old_usable_for_desktop = CGDisplayModeIsUsableForDesktopGUI(old_mode);
+-    if (new_usable_for_desktop && !old_usable_for_desktop)
+-        return TRUE;
++    if (new_usable_for_desktop != old_usable_for_desktop)
++        return new_usable_for_desktop;
+ 
+     /* Otherwise, prefer a mode whose pixel size equals its point size over one which
+        is scaled. */
+@@ -706,8 +710,17 @@
+     {
+         struct display_mode_descriptor* desc = create_original_display_mode_descriptor(kCGDirectMainDisplay);
+         CGDisplayModeRef mode = CGDisplayCopyDisplayMode(kCGDirectMainDisplay);
+-        BOOL new_value = display_mode_matches_descriptor(mode, desc);
+-
++        BOOL new_value;
++
++        /* A topology change can temporarily leave the current mode unavailable. */
++        if (!mode || !desc)
++        {
++            if (mode) CGDisplayModeRelease(mode);
++            free_display_mode_descriptor(desc);
++            return;
++        }
++
++        new_value = display_mode_matches_descriptor(mode, desc);
+         CGDisplayModeRelease(mode);
+         free_display_mode_descriptor(desc);
+ 
+@@ -1088,6 +1101,9 @@
+     struct macdrv_gpu *gpus, *gpu;
+     INT gpu_count, adapter_count, monitor_count, mode_count;
+     DEVMODEW *modes;
++
++    /* Monitor rectangles and the current mode must use the same Retina scale. */
++    check_retina_status();
+ 
+     /* Initialize GPUs */
+     if (macdrv_get_gpus(&gpus, &gpu_count))
+--- a/dlls/winemac.drv/dllmain.c
++++ b/dlls/winemac.drv/dllmain.c
+@@ -18,6 +18,7 @@
+  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+  */
+ 
++#define COBJMACROS
+ #include <stdarg.h>
+ #include "ntstatus.h"
+ #define WIN32_NO_STATUS
+@@ -32,6 +33,7 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(macdrv);
+ 
++#include "ax_provider.inc"
+ 
+ static HMODULE macdrv_module = 0;
+ 
+@@ -43,6 +45,7 @@
+     DWORD               flags;
+     BOOL                result;
+     BOOL                replied;
++    UINT                refs;
+ };
+ 
+ 
+@@ -114,6 +117,16 @@
+ }
+ 
+ 
++static void release_quit_info(struct quit_info *qi)
++{
++    if (!--qi->refs)
++    {
++        HeapFree(GetProcessHeap(), 0, qi->wins);
++        HeapFree(GetProcessHeap(), 0, qi);
++    }
++}
++
++
+ static void CALLBACK quit_callback(HWND hwnd, UINT msg, ULONG_PTR data, LRESULT result)
+ {
+     struct quit_info *qi = (struct quit_info*)data;
+@@ -154,6 +167,7 @@
+             {
+                 TRACE("sending WM_ENDSESSION to win %p result %d flags 0x%08lx\n", qi->wins[i],
+                       qi->result, qi->flags);
++                qi->refs++;
+                 if (!SendMessageCallbackW(qi->wins[i], WM_ENDSESSION, qi->result, qi->flags,
+                                           quit_callback, (ULONG_PTR)qi))
+                 {
+@@ -179,11 +193,10 @@
+             TRACE("%sterminating process\n", qi->result ? "" : "not ");
+             if (qi->result)
+                 TerminateProcess(GetCurrentProcess(), 0);
+-
+-            HeapFree(GetProcessHeap(), 0, qi->wins);
+-            HeapFree(GetProcessHeap(), 0, qi);
+-        }
+-    }
++        }
++    }
++
++    release_quit_info(qi);
+ }
+ 
+ 
+@@ -207,13 +220,27 @@
+     if (!qi->wins || !EnumWindows(get_process_windows, (LPARAM)qi))
+         goto fail;
+ 
++    if (!qi->count)
++    {
++        HeapFree(GetProcessHeap(), 0, qi->wins);
++        HeapFree(GetProcessHeap(), 0, qi);
++        quit_reply(TRUE);
++        TerminateProcess(GetCurrentProcess(), 0);
++        return STATUS_SUCCESS;
++    }
++
+     qi->flags = params->flags;
+     qi->result = TRUE;
+     qi->replied = FALSE;
++    /* Keep the dispatch loop alive across synchronous callbacks.  Each send
++       also owns a reference until its callback (or failure fallback) returns.
++       SendMessageCallback callbacks run on this requesting thread. */
++    qi->refs = 1;
+ 
+     for (i = 0; i < qi->count; i++)
+     {
+         TRACE("sending WM_QUERYENDSESSION to win %p\n", qi->wins[i]);
++        qi->refs++;
+         if (!SendMessageCallbackW(qi->wins[i], WM_QUERYENDSESSION, 0, qi->flags,
+                                   quit_callback, (ULONG_PTR)qi))
+         {
+@@ -229,7 +256,7 @@
+         }
+     }
+ 
+-    /* quit_callback() will clean up qi */
++    release_quit_info(qi);
+     return STATUS_SUCCESS;
+ 
+ fail:
+@@ -491,6 +518,8 @@
+ 
+     if (MACDRV_CALL(init, &params)) return FALSE;
+ 
++    macdrv_ax_provider_start();
++
+     return TRUE;
+ }
+ 
+--- a/dlls/winemac.drv/macdrv_main.c
++++ b/dlls/winemac.drv/macdrv_main.c
+@@ -642,10 +642,15 @@
+ }
+ 
+ 
++extern NTSTATUS macdrv_ax_poll(void *arg);
++extern NTSTATUS macdrv_ax_publish(void *arg);
++
+ const unixlib_entry_t __wine_unix_call_funcs[] =
+ {
+     macdrv_init,
+     macdrv_quit_result,
++    macdrv_ax_poll,
++    macdrv_ax_publish,
+ };
+ 
+ C_ASSERT( ARRAYSIZE(__wine_unix_call_funcs) == unix_funcs_count );
+@@ -678,6 +683,8 @@
+ {
+     wow64_init,
+     macdrv_quit_result,
++    macdrv_ax_poll,
++    macdrv_ax_publish,
+ };
+ 
+ C_ASSERT( ARRAYSIZE(__wine_unix_call_wow64_funcs) == unix_funcs_count );
+--- a/dlls/winemac.drv/unixlib.h
++++ b/dlls/winemac.drv/unixlib.h
+@@ -23,6 +23,8 @@
+ {
+     unix_init,
+     unix_quit_result,
++    unix_ax_poll,
++    unix_ax_publish,
+     unix_funcs_count
+ };
+ 
+--- a/dlls/winemac.drv/window.c
++++ b/dlls/winemac.drv/window.c
+@@ -1654,7 +1654,7 @@
+     /* CW HACK 16933: No Cocoa window decorations for the Quicken main window. */
+     if (is_main_quicken_window(hwnd)) return FALSE;
+ 
+-    *style_mask = ex_style = 0;
++    *style_mask = *ex_style_mask = 0;
+     if (wf.title_bar)
+     {
+         *style_mask |= WS_CAPTION;

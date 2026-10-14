@@ -1,0 +1,10 @@
+--- a/source/src/d3d11/d3d11_shader.cpp
++++ b/source/src/d3d11/d3d11_shader.cpp
+@@ -90,6 +90,7 @@
+       if (err) {
+         ERR("Failed to create MTLLibrary: ", err.description().getUTF8String());
+         shader_->dump();
++        SM50DestroyBitcode(compile_result);
+         return this;
+       }
+ 

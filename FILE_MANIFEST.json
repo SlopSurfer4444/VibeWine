@@ -1,0 +1,735 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "path": ".gitignore",
+      "size": 37,
+      "sha256": "3eee82a3cc1e5e0950332bffed22e1fdbfb71e626feff3abae9eb749f78f3614"
+    },
+    {
+      "path": "AUDIT_REQUEST.md",
+      "size": 7029,
+      "sha256": "82df87e7ef6bda56409b94c9275e446b9300d7bda63a26468fd2660b063ba8fd"
+    },
+    {
+      "path": "LICENSE",
+      "size": 26434,
+      "sha256": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c"
+    },
+    {
+      "path": "PRIVACY_REVIEW.md",
+      "size": 1525,
+      "sha256": "0ded925cb994a17ec76fdb16116449728601c91d5c4af8b51158d2de470b088f"
+    },
+    {
+      "path": "PROVENANCE.json",
+      "size": 417,
+      "sha256": "a563bc28c7c854fcb78216eab9e29bdebe3e5996f9de3fb124c3c330c4d60eac"
+    },
+    {
+      "path": "README.md",
+      "size": 3671,
+      "sha256": "02b5870ed119540d2b00fb506d4198e6d5250a39d9bd875ea63d2c84e8b6382e"
+    },
+    {
+      "path": "SOURCE_INDEX.md",
+      "size": 1845,
+      "sha256": "a54a59f9e0ccb410d9f6bc61ad5bd588ba5c8d1c02e71bd398b8a0d9fe7e5de3"
+    },
+    {
+      "path": "baseline/dlls/oleacc/Makefile.in",
+      "size": 268,
+      "sha256": "72c55868520354416e005b6408b42bccb61012a6e6146e04edff80b56cfad8ea"
+    },
+    {
+      "path": "baseline/dlls/oleacc/client.c",
+      "size": 26543,
+      "sha256": "7b6229c7179ac78ed124f4ef15c692a71e0dc77c12ffa506b0acd0213a7ac8f6"
+    },
+    {
+      "path": "baseline/dlls/oleacc/main.c",
+      "size": 19150,
+      "sha256": "c3f24a187e733cd41efb20c1ab07d723ea518c34e3673f0a960424cd7afa9a6d"
+    },
+    {
+      "path": "baseline/dlls/oleacc/oleacc.rc",
+      "size": 5867,
+      "sha256": "37c04ea42b45a053d376dfd02defc1aaed2ce86f87241ef8c439e93f2d0749d4"
+    },
+    {
+      "path": "baseline/dlls/oleacc/oleacc.spec",
+      "size": 922,
+      "sha256": "9185ab70601b327db4e2b27e13d5d35356027650baf998cc17b7de8992ae5b1c"
+    },
+    {
+      "path": "baseline/dlls/oleacc/oleacc_classes.idl",
+      "size": 1044,
+      "sha256": "cd9809ce9cd4966dc2f93b51d3e4d62e2fb64686d39d06868ca2471a891c6781"
+    },
+    {
+      "path": "baseline/dlls/oleacc/oleacc_private.h",
+      "size": 1229,
+      "sha256": "3adf130be971ba90af99ec09a6c4e4966c8576429eee46661cb001d085b62df4"
+    },
+    {
+      "path": "baseline/dlls/oleacc/propservice.c",
+      "size": 8484,
+      "sha256": "aed6ae0c6d182e83452a43c668568e814ae97afa5bfff389da53ee994090f146"
+    },
+    {
+      "path": "baseline/dlls/oleacc/resource.h",
+      "size": 2169,
+      "sha256": "3792ec53d045588d866ded1c49823beb8684aa35cfca994bdbcad6e6355a876d"
+    },
+    {
+      "path": "baseline/dlls/oleacc/tests/Makefile.in",
+      "size": 85,
+      "sha256": "0d44a340d2c680aa958d18116f955686dbe1d2548cd0000f77ce1a72b4e9a4b0"
+    },
+    {
+      "path": "baseline/dlls/oleacc/tests/main.c",
+      "size": 72068,
+      "sha256": "fa778ba781e43fa235c5a1fdc5b2997734a6e9edd54364f01d694ebfcd656466"
+    },
+    {
+      "path": "baseline/dlls/oleacc/window.c",
+      "size": 16016,
+      "sha256": "8c8f7e8e416c6d362e96a5cc7b787960f37635d2a444f4082e257a7e1309857e"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/.gitattributes",
+      "size": 28,
+      "sha256": "f82b99b04a647026fbb2fdb8501237ec9c1e3abb5647d9f690fbbe25f8139e77"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/Makefile.in",
+      "size": 793,
+      "sha256": "8ccca0e204038a5e208681069952617fcfb23cb976b92d43c05fd1cbe84a077d"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/clipboard.c",
+      "size": 48687,
+      "sha256": "00ccc294b01f809f983fd258ec34e51fd92d857f1e236b0d22a1e4e4e5120018"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_app.h",
+      "size": 5073,
+      "sha256": "2ce955c7b185df3f28edbecd0fe327d383019b59f8f74028fa7e17c44f75bf95"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_app.m",
+      "size": 115304,
+      "sha256": "b9d0434dc8ecaf0379f8300e94f2e8c70b3b320c45b4cb9f7d6877acd2e94c30"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_clipboard.m",
+      "size": 8420,
+      "sha256": "6ac9cf79857ef3f8ce5fb329033092254ed5a1097a34772c09b5c9754424ae49"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_cursorclipping.h",
+      "size": 2329,
+      "sha256": "55305632801cded83ec9c464e340a931fd109088e2eed064f32297242192d0e2"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_cursorclipping.m",
+      "size": 17823,
+      "sha256": "082d079412a955cf96c1e948a5a8c1921daba7cab21f92ecf2259a2688c4347d"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_display.m",
+      "size": 34083,
+      "sha256": "2b9957cf7349d94e804306b3cf7bbf4c208aab1a6d2044352e8d5bf0b2a48764"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_event.h",
+      "size": 2112,
+      "sha256": "a55f0e8c6aa5c80ab2713b9c74b6ca5ed526582d10e380caea2168d99f9a8bc2"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_event.m",
+      "size": 24156,
+      "sha256": "9367d74d7a4eceadba149cbf39fa9cc57239378edef6ff00b723697fa4c2c28e"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_icon_utils.h",
+      "size": 1079,
+      "sha256": "02e28cfa6044c8d556f62fbbf846c75eb70fe20f848451476e84991447c2dfa5"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_icon_utils.m",
+      "size": 7361,
+      "sha256": "04edd067b4d42437b4fa028d438b2d54865e1ee60501bba692880692457ec568"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_main.m",
+      "size": 5500,
+      "sha256": "a6feb609a5e729000f9217484b352d4d3a5696875748d1c79b26bb380099eaf5"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_opengl.h",
+      "size": 1086,
+      "sha256": "e3c7c3d0e371faa6e3ef29ff2350ffd42dea6caf1a0b65a6a085296790f5ff11"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_opengl.m",
+      "size": 10796,
+      "sha256": "8e01a5804fa5e6655b5e6a3b36e6e29235d57c88ce5cb2c81e18e6a66188c9a1"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_status_item.m",
+      "size": 9404,
+      "sha256": "ae3d0b54ba46785539d1ec7c61870fc01056475f9a0c39d44f5f69c01dab5bc0"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_window.h",
+      "size": 3269,
+      "sha256": "8c68789694202a79eed8ce6b16993dedcdfb82eb0c3b36a9d68b3cbd2ce720e1"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/cocoa_window.m",
+      "size": 144245,
+      "sha256": "b7799976aa6446051cc0e10b55fff6474943af873b61c25df7856b28b7e1eb0f"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/d3dmetal.c",
+      "size": 15263,
+      "sha256": "f4667b5c90b3c0e94befb0188de72de69cf5b5de16a6f5b1c7cecde51735fc32"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/d3dmetal_objc.h",
+      "size": 1007,
+      "sha256": "6eeb595910f4dd495786b3d206d54e6859edbcf234b267b4245849479639eb56"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/d3dmetal_objc.m",
+      "size": 2735,
+      "sha256": "6a2f914b8d1ece300170e388716bd6c26cf52d222aa9f32aac8a203e3b9f3976"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/display.c",
+      "size": 39266,
+      "sha256": "39b9bfd6c7aaaafb1cde76f555f9f08e62970e22be0c05378f3b0f01f93f7a2f"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/dllmain.c",
+      "size": 15406,
+      "sha256": "325420e5e4a154fb77b692e954c01e701167dd5127e597cfcb59d33ceed8cf2f"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/event.c",
+      "size": 17315,
+      "sha256": "cb8344a2d76db2263365d1913262dc8105ca8409b71f8f09f3eaa1e4e76f4329"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/gdi.c",
+      "size": 8876,
+      "sha256": "d96e80a17413a11fed94aee493756c6e3b8a277b29dabb463b726c91e667b92f"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/image.c",
+      "size": 9968,
+      "sha256": "ffeb126cf88eed076b961fcb5f387a276722d6a2d98bf919dae9cfd03015c8ec"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/keyboard.c",
+      "size": 74434,
+      "sha256": "5007b53ce6f2caf36dd0063aa1898624495c3442756ac8c396b126039b4f69de"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/macdrv.h",
+      "size": 15485,
+      "sha256": "b54bb9ee52afcc8684d6761471ce075c9cb2470a216a958b11027e3e76e86e0f"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/macdrv_cocoa.h",
+      "size": 21017,
+      "sha256": "63792e5b5acfc51b70c9147e5349af98ead37f3acd452f0ed1e3c49601ef845e"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/macdrv_main.c",
+      "size": 22583,
+      "sha256": "100b00c96b220c36855ad1816dff9349f12057bd3ced928a46f7a63068de4846"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/macdrv_res.h",
+      "size": 1576,
+      "sha256": "75809aefe47769005c61d274a2192a2553f3fc0442d9f1a5ce1e298908bef909"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/mouse.c",
+      "size": 31901,
+      "sha256": "29e6e3e3c3886178d1f1ac4974a2a793f121871932d81b2c21734a50e2b409a4"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/opengl.c",
+      "size": 107388,
+      "sha256": "91a56243f9e7c978bd340f438b7ed53d83b83190ff0a896ac5f36b2e8ba4fa2a"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/opengl_bcdec.h",
+      "size": 70997,
+      "sha256": "d781e6de37a4b3180ad61cd1067d37c380d57052e1abe99a35b7d5e6cfa4c608"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/surface.c",
+      "size": 8379,
+      "sha256": "f99c41502bb8d29c164283f0586bd4ec7e933148448904dadbe82e972fb7fb7a"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/systray.c",
+      "size": 11375,
+      "sha256": "a6e7144ef3d7ba40a235b72833a58c627ee9ed95c0cee711211c91b23ae16bd4"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/unixlib.h",
+      "size": 2748,
+      "sha256": "175f9d959890ba3158da541dcc5b475e100c6467632811de13a638a781461138"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/vulkan.c",
+      "size": 4969,
+      "sha256": "80e8ef619ef5d3335f120c635560750e09284ff4fc3950968be811adaf35705c"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/window.c",
+      "size": 72985,
+      "sha256": "2c65ad24569082366075b08fa7ea95705232edaa14623b5e0fcb21de00bedb2f"
+    },
+    {
+      "path": "baseline/dlls/winemac.drv/winemac.rc",
+      "size": 1830,
+      "sha256": "aa2af15506e2b452381ee64f897d25143f665b49f559633f0dd686c04291751e"
+    },
+    {
+      "path": "optional/README.md",
+      "size": 1131,
+      "sha256": "4a891894e8172c72e4193b009cd2c8f324720132d9afcc0af02d77ec11f788bc"
+    },
+    {
+      "path": "optional/dxmt/LICENSE",
+      "size": 1065,
+      "sha256": "6b928413c6308c106f3e0080bd94b6427b56d587d400fd40e6cbfbab7d9c4ae1"
+    },
+    {
+      "path": "optional/dxmt/d3d11_shader.original.cpp",
+      "size": 18018,
+      "sha256": "dd23d54c4fb1f93f7e18cb521faf58c49cc29b8ae27d23ef847051fcd9e53d58"
+    },
+    {
+      "path": "optional/dxmt/d3d11_shader.patched.cpp",
+      "size": 18062,
+      "sha256": "282a86bfae8c1df13c575ce787605e2cababe60a7ba684d881ea2844ba967e04"
+    },
+    {
+      "path": "optional/dxmt/fixture.cpp",
+      "size": 7487,
+      "sha256": "ec5b3ad4181c132f65b3c6fd49ad6d16dc1ce7bfb16ac748c09327c5e97db00c"
+    },
+    {
+      "path": "optional/dxmt/method.original.inc",
+      "size": 1704,
+      "sha256": "4ee054acaed8dc4de25899a6632dee28d8900a48913004d0a24b7e3ef4974fd3"
+    },
+    {
+      "path": "optional/dxmt/method.patched.inc",
+      "size": 1748,
+      "sha256": "a6d6c00ce12591702e23cdcb1ba19daff5ffff68276e43fbebe7aa5b891b59c1"
+    },
+    {
+      "path": "optional/dxmt/shader-bitcode-cleanup.patch",
+      "size": 302,
+      "sha256": "68bf8fa9a27d18dd8b9f2dae856f17b854fae2baaa4b49d7cf3f2040af3136af"
+    },
+    {
+      "path": "optional/xinput/main.c",
+      "size": 44803,
+      "sha256": "e47fbde7a9229449b05b96ab6c4f1fb4c5e6c6aa725d284c22f8086904fbd29b"
+    },
+    {
+      "path": "optional/xinput/xinput-enable-state.patch",
+      "size": 3523,
+      "sha256": "7bb9f1333de6393e6781a8c104244a134dabf789652c65707280fba6e8cd902f"
+    },
+    {
+      "path": "source/dlls/oleacc/Makefile.in",
+      "size": 268,
+      "sha256": "72c55868520354416e005b6408b42bccb61012a6e6146e04edff80b56cfad8ea"
+    },
+    {
+      "path": "source/dlls/oleacc/client.c",
+      "size": 32021,
+      "sha256": "4dbbd07f9bd251fceb70232e86e1950e0762c07ac5e31e3d5561bed2756d1fb7"
+    },
+    {
+      "path": "source/dlls/oleacc/main.c",
+      "size": 19139,
+      "sha256": "ca97f9f5228c7c04ccb40c32c34409570c80415e25809e8666149525fe2c9c76"
+    },
+    {
+      "path": "source/dlls/oleacc/oleacc.rc",
+      "size": 5990,
+      "sha256": "0b290bbf62e73dab688d51dd3a8150cbd3f07d86da55636f3cfd0cf87bce0c63"
+    },
+    {
+      "path": "source/dlls/oleacc/oleacc.spec",
+      "size": 922,
+      "sha256": "9185ab70601b327db4e2b27e13d5d35356027650baf998cc17b7de8992ae5b1c"
+    },
+    {
+      "path": "source/dlls/oleacc/oleacc_classes.idl",
+      "size": 1044,
+      "sha256": "cd9809ce9cd4966dc2f93b51d3e4d62e2fb64686d39d06868ca2471a891c6781"
+    },
+    {
+      "path": "source/dlls/oleacc/oleacc_private.h",
+      "size": 1262,
+      "sha256": "1b2dada9cd309d035039404190d3eee9f3945013f79c0ed4fc735565517892b6"
+    },
+    {
+      "path": "source/dlls/oleacc/propservice.c",
+      "size": 8484,
+      "sha256": "aed6ae0c6d182e83452a43c668568e814ae97afa5bfff389da53ee994090f146"
+    },
+    {
+      "path": "source/dlls/oleacc/resource.h",
+      "size": 2299,
+      "sha256": "a86daa490aa49e64eade4de7bb85b6531352991f3f903070a0565ed2a21e7aa0"
+    },
+    {
+      "path": "source/dlls/oleacc/tests/Makefile.in",
+      "size": 85,
+      "sha256": "0d44a340d2c680aa958d18116f955686dbe1d2548cd0000f77ce1a72b4e9a4b0"
+    },
+    {
+      "path": "source/dlls/oleacc/tests/main.c",
+      "size": 72068,
+      "sha256": "fa778ba781e43fa235c5a1fdc5b2997734a6e9edd54364f01d694ebfcd656466"
+    },
+    {
+      "path": "source/dlls/oleacc/window.c",
+      "size": 16016,
+      "sha256": "8c8f7e8e416c6d362e96a5cc7b787960f37635d2a444f4082e257a7e1309857e"
+    },
+    {
+      "path": "source/dlls/winemac.drv/.gitattributes",
+      "size": 28,
+      "sha256": "f82b99b04a647026fbb2fdb8501237ec9c1e3abb5647d9f690fbbe25f8139e77"
+    },
+    {
+      "path": "source/dlls/winemac.drv/Makefile.in",
+      "size": 793,
+      "sha256": "8ccca0e204038a5e208681069952617fcfb23cb976b92d43c05fd1cbe84a077d"
+    },
+    {
+      "path": "source/dlls/winemac.drv/ax_application.inc",
+      "size": 1524,
+      "sha256": "596be4a945dc83ac128ea0bafbe48809379900eb9c70079430372e153583887b"
+    },
+    {
+      "path": "source/dlls/winemac.drv/ax_native.inc",
+      "size": 28936,
+      "sha256": "388c2367c9e88938551c626e664d8e1fae2aa5c59f857e05855ebe593f98e6ae"
+    },
+    {
+      "path": "source/dlls/winemac.drv/ax_protocol.h",
+      "size": 2808,
+      "sha256": "804caecef7d9c03cd927a28a6180d9cda666c080044c1322ffed789cb6246e70"
+    },
+    {
+      "path": "source/dlls/winemac.drv/ax_provider.inc",
+      "size": 29055,
+      "sha256": "8f2fd1f5f865cb0e2271dd98b45b6fcaca1fafe20b29382e8e3a63a5c861027c"
+    },
+    {
+      "path": "source/dlls/winemac.drv/ax_validation.h",
+      "size": 3403,
+      "sha256": "0499269832ec21419ce226da691b5844c2d1a64942740a713ca32c8f4570937c"
+    },
+    {
+      "path": "source/dlls/winemac.drv/clipboard.c",
+      "size": 48687,
+      "sha256": "00ccc294b01f809f983fd258ec34e51fd92d857f1e236b0d22a1e4e4e5120018"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_app.h",
+      "size": 5073,
+      "sha256": "2ce955c7b185df3f28edbecd0fe327d383019b59f8f74028fa7e17c44f75bf95"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_app.m",
+      "size": 122874,
+      "sha256": "7b342b8ef84c9cd839e36c1755b0b79cd4640c8c891e042d207121f7a61542a4"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_clipboard.m",
+      "size": 8420,
+      "sha256": "6ac9cf79857ef3f8ce5fb329033092254ed5a1097a34772c09b5c9754424ae49"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_cursorclipping.h",
+      "size": 2329,
+      "sha256": "55305632801cded83ec9c464e340a931fd109088e2eed064f32297242192d0e2"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_cursorclipping.m",
+      "size": 17823,
+      "sha256": "082d079412a955cf96c1e948a5a8c1921daba7cab21f92ecf2259a2688c4347d"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_display.m",
+      "size": 34083,
+      "sha256": "2b9957cf7349d94e804306b3cf7bbf4c208aab1a6d2044352e8d5bf0b2a48764"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_event.h",
+      "size": 2112,
+      "sha256": "a55f0e8c6aa5c80ab2713b9c74b6ca5ed526582d10e380caea2168d99f9a8bc2"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_event.m",
+      "size": 24156,
+      "sha256": "9367d74d7a4eceadba149cbf39fa9cc57239378edef6ff00b723697fa4c2c28e"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_icon_utils.h",
+      "size": 1079,
+      "sha256": "02e28cfa6044c8d556f62fbbf846c75eb70fe20f848451476e84991447c2dfa5"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_icon_utils.m",
+      "size": 7361,
+      "sha256": "04edd067b4d42437b4fa028d438b2d54865e1ee60501bba692880692457ec568"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_main.m",
+      "size": 5500,
+      "sha256": "a6feb609a5e729000f9217484b352d4d3a5696875748d1c79b26bb380099eaf5"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_opengl.h",
+      "size": 1086,
+      "sha256": "e3c7c3d0e371faa6e3ef29ff2350ffd42dea6caf1a0b65a6a085296790f5ff11"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_opengl.m",
+      "size": 10796,
+      "sha256": "8e01a5804fa5e6655b5e6a3b36e6e29235d57c88ce5cb2c81e18e6a66188c9a1"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_status_item.m",
+      "size": 9404,
+      "sha256": "ae3d0b54ba46785539d1ec7c61870fc01056475f9a0c39d44f5f69c01dab5bc0"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_window.h",
+      "size": 3315,
+      "sha256": "8ae092be881770e36f5ca46a3d12cde545a2790fab4c7ffbe732e5cfd58f6286"
+    },
+    {
+      "path": "source/dlls/winemac.drv/cocoa_window.m",
+      "size": 146988,
+      "sha256": "60eca74dd61183ce4a5d699d2fc26f780d0f409b952084e96d10f1b058844bf6"
+    },
+    {
+      "path": "source/dlls/winemac.drv/d3dmetal.c",
+      "size": 15263,
+      "sha256": "f4667b5c90b3c0e94befb0188de72de69cf5b5de16a6f5b1c7cecde51735fc32"
+    },
+    {
+      "path": "source/dlls/winemac.drv/d3dmetal_objc.h",
+      "size": 1007,
+      "sha256": "6eeb595910f4dd495786b3d206d54e6859edbcf234b267b4245849479639eb56"
+    },
+    {
+      "path": "source/dlls/winemac.drv/d3dmetal_objc.m",
+      "size": 2735,
+      "sha256": "6a2f914b8d1ece300170e388716bd6c26cf52d222aa9f32aac8a203e3b9f3976"
+    },
+    {
+      "path": "source/dlls/winemac.drv/display.c",
+      "size": 39798,
+      "sha256": "80f6b8e9797130bc650477f46a75133cdb67a93d15c098b748b3ba8efdb9a396"
+    },
+    {
+      "path": "source/dlls/winemac.drv/dllmain.c",
+      "size": 16134,
+      "sha256": "20b56ace57f87d73f70803d049b00324577fe7bc4aa2a267cff83cb399bb8296"
+    },
+    {
+      "path": "source/dlls/winemac.drv/event.c",
+      "size": 17315,
+      "sha256": "cb8344a2d76db2263365d1913262dc8105ca8409b71f8f09f3eaa1e4e76f4329"
+    },
+    {
+      "path": "source/dlls/winemac.drv/gdi.c",
+      "size": 8876,
+      "sha256": "d96e80a17413a11fed94aee493756c6e3b8a277b29dabb463b726c91e667b92f"
+    },
+    {
+      "path": "source/dlls/winemac.drv/image.c",
+      "size": 9968,
+      "sha256": "ffeb126cf88eed076b961fcb5f387a276722d6a2d98bf919dae9cfd03015c8ec"
+    },
+    {
+      "path": "source/dlls/winemac.drv/keyboard.c",
+      "size": 74434,
+      "sha256": "5007b53ce6f2caf36dd0063aa1898624495c3442756ac8c396b126039b4f69de"
+    },
+    {
+      "path": "source/dlls/winemac.drv/macdrv.h",
+      "size": 15485,
+      "sha256": "b54bb9ee52afcc8684d6761471ce075c9cb2470a216a958b11027e3e76e86e0f"
+    },
+    {
+      "path": "source/dlls/winemac.drv/macdrv_cocoa.h",
+      "size": 21017,
+      "sha256": "63792e5b5acfc51b70c9147e5349af98ead37f3acd452f0ed1e3c49601ef845e"
+    },
+    {
+      "path": "source/dlls/winemac.drv/macdrv_main.c",
+      "size": 22759,
+      "sha256": "6661999f5843849ef5e3ba26a83b760ff5c6ffeb3fb500bc3fad599dd8bdcbc6"
+    },
+    {
+      "path": "source/dlls/winemac.drv/macdrv_res.h",
+      "size": 1576,
+      "sha256": "75809aefe47769005c61d274a2192a2553f3fc0442d9f1a5ce1e298908bef909"
+    },
+    {
+      "path": "source/dlls/winemac.drv/mouse.c",
+      "size": 31901,
+      "sha256": "29e6e3e3c3886178d1f1ac4974a2a793f121871932d81b2c21734a50e2b409a4"
+    },
+    {
+      "path": "source/dlls/winemac.drv/opengl.c",
+      "size": 107388,
+      "sha256": "91a56243f9e7c978bd340f438b7ed53d83b83190ff0a896ac5f36b2e8ba4fa2a"
+    },
+    {
+      "path": "source/dlls/winemac.drv/opengl_bcdec.h",
+      "size": 70997,
+      "sha256": "d781e6de37a4b3180ad61cd1067d37c380d57052e1abe99a35b7d5e6cfa4c608"
+    },
+    {
+      "path": "source/dlls/winemac.drv/surface.c",
+      "size": 8379,
+      "sha256": "f99c41502bb8d29c164283f0586bd4ec7e933148448904dadbe82e972fb7fb7a"
+    },
+    {
+      "path": "source/dlls/winemac.drv/systray.c",
+      "size": 11375,
+      "sha256": "a6e7144ef3d7ba40a235b72833a58c627ee9ed95c0cee711211c91b23ae16bd4"
+    },
+    {
+      "path": "source/dlls/winemac.drv/unixlib.h",
+      "size": 2787,
+      "sha256": "7ea99ee6d84a05793a5733d56f12fcb8b700dbb57270fb1c2887f18f73c09d44"
+    },
+    {
+      "path": "source/dlls/winemac.drv/vulkan.c",
+      "size": 4969,
+      "sha256": "80e8ef619ef5d3335f120c635560750e09284ff4fc3950968be811adaf35705c"
+    },
+    {
+      "path": "source/dlls/winemac.drv/window.c",
+      "size": 72991,
+      "sha256": "78b1f1748fb8dc2701089695b140a7080129ab8712567426d720d0c7978a35ca"
+    },
+    {
+      "path": "source/dlls/winemac.drv/winemac.rc",
+      "size": 1830,
+      "sha256": "aa2af15506e2b452381ee64f897d25143f665b49f559633f0dd686c04291751e"
+    },
+    {
+      "path": "source.patch",
+      "size": 110634,
+      "sha256": "9d3493929c421538eb2a8edd9dc605ef89608565c4e8b1993a52f33d9642b61e"
+    },
+    {
+      "path": "tests/ax/completion-regression.m",
+      "size": 4674,
+      "sha256": "1eaf8f89128dcfe01170be05ad11a5ef83a300dd7906fc1d72a37dc0bb349021"
+    },
+    {
+      "path": "tests/ax/completion.m",
+      "size": 9014,
+      "sha256": "34d2b73bcd734153c78cf0efdae630f91957500cbbf509fbdea6fa1e52598c6d"
+    },
+    {
+      "path": "tests/ax/native-transport.m",
+      "size": 15760,
+      "sha256": "4da724b01a2e7cc8f77822aa545f534bca4d77438f3f411b5d406a813f3eb469"
+    },
+    {
+      "path": "tests/ax/references/baseline/ax_native.inc",
+      "size": 25936,
+      "sha256": "0521555c4a48a3de2df90409aee0f97df8d84456605cc669396dbc611f69b46a"
+    },
+    {
+      "path": "tests/ax/references/pre-completion/ax_native.inc",
+      "size": 26880,
+      "sha256": "7e304a535a25a1eaec79901357d40405aad27bf19cb8c0404faf111950624678"
+    },
+    {
+      "path": "tests/ax/roles.m",
+      "size": 7134,
+      "sha256": "891a1dde673fae94f14d1995017afb6f297a060ee0078f736521bdb65749f30d"
+    },
+    {
+      "path": "tests/ax/scheduling.m",
+      "size": 10330,
+      "sha256": "188a4292ed212b124f30fd5aa27482634f60dfbe9a938d550882311c5606897d"
+    },
+    {
+      "path": "tests/ax/stability.m",
+      "size": 6838,
+      "sha256": "77a3ba014ed5c47e46fe086d6bb5ea808d9559de5fdf36941c55bc66b2fe8f09"
+    },
+    {
+      "path": "tests/display/fixture-template.m",
+      "size": 9879,
+      "sha256": "d9e16ffefe4ae38bf4c2495767f1ffbd3cc6ad4cc4287e0a67099eaaec6c849a"
+    },
+    {
+      "path": "tests/display/run_tests.py",
+      "size": 2110,
+      "sha256": "4b86fc1767ebd0d0da57c06324a8f588852d8b7aa8a8670d41483f67ebc18332"
+    },
+    {
+      "path": "tests/provider/harness.c",
+      "size": 12230,
+      "sha256": "1a4b1d13b25bb9063a72875f9d51ea40bc948a426597feafc69512c2098208e0"
+    },
+    {
+      "path": "tests/retina/retina_fixture.c",
+      "size": 10714,
+      "sha256": "72a4d0b66f208366bd249095bcfd0106cfc2c9832ccc976c45691833a5fa77fb"
+    },
+    {
+      "path": "tests/retina/run_tests.py",
+      "size": 3920,
+      "sha256": "09fee5b8a7e81b9d849f8c670ee9621e5e8897813f27856187ab96664a7e4590"
+    },
+    {
+      "path": "tests/run.py",
+      "size": 1021,
+      "sha256": "a8a797081e75a6c6babc5f1f82bfb79c37eb2c3c9fd91c11461924d0d5a16519"
+    },
+    {
+      "path": "upstream/AUTHORS",
+      "size": 29845,
+      "sha256": "4e2f062fd9c658b60ba7c0000f88f08d2b8f1333fa7b1c37ec27859ecb2de59d"
+    },
+    {
+      "path": "upstream/LICENSE",
+      "size": 824,
+      "sha256": "ae025f125a5d639f0f7abe5146efa1e3d7453cc10b744b2910806fa3f46626ef"
+    },
+    {
+      "path": "upstream/VERSION",
+      "size": 18,
+      "sha256": "01908412a1095caf363668a6f051dfc85a6e7adf30dfd6d0a781818d6a46e42b"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+--- a/dlls/xinput1_3/main.c
++++ b/dlls/xinput1_3/main.c
+@@ -296,25 +296,17 @@
+     return TRUE;
+ }
+ 
+-static DWORD HID_set_state(struct xinput_controller *controller, XINPUT_VIBRATION *state)
++static DWORD HID_send_state(struct xinput_controller *controller, const XINPUT_VIBRATION *state)
+ {
+     ULONG report_len = controller->hid.caps.OutputReportByteLength;
+     PHIDP_PREPARSED_DATA preparsed = controller->hid.preparsed;
+     char *report_buf = controller->hid.output_report_buf;
+-    BOOL ret, update_rumble, update_buzz;
++    BOOL ret;
+     USHORT collection;
+     NTSTATUS status;
+     BYTE report_id;
+ 
+     if (!(controller->caps.Flags & XINPUT_CAPS_FFB_SUPPORTED)) return ERROR_SUCCESS;
+-
+-    update_rumble = (controller->vibration.wLeftMotorSpeed != state->wLeftMotorSpeed);
+-    controller->vibration.wLeftMotorSpeed = state->wLeftMotorSpeed;
+-    update_buzz = (controller->vibration.wRightMotorSpeed != state->wRightMotorSpeed);
+-    controller->vibration.wRightMotorSpeed = state->wRightMotorSpeed;
+-
+-    if (!controller->enabled) return ERROR_SUCCESS;
+-    if (!update_rumble && !update_buzz) return ERROR_SUCCESS;
+ 
+     report_id = controller->hid.haptics_report;
+     status = HidP_InitializeReportForID(HidP_Output, report_id, preparsed, report_buf, report_len);
+@@ -332,9 +324,17 @@
+ 
+     ret = HidD_SetOutputReport(controller->device, report_buf, report_len);
+     if (!ret) WARN("HidD_SetOutputReport failed with error %lu\n", GetLastError());
+-    return 0;
+-
+     return ERROR_SUCCESS;
++}
++
++static DWORD HID_set_state(struct xinput_controller *controller, XINPUT_VIBRATION *state)
++{
++    BOOL changed = controller->vibration.wLeftMotorSpeed != state->wLeftMotorSpeed ||
++                   controller->vibration.wRightMotorSpeed != state->wRightMotorSpeed;
++
++    controller->vibration = *state;
++    if (!controller->enabled || !changed) return ERROR_SUCCESS;
++    return HID_send_state(controller, state);
+ }
+ 
+ static void controller_destroy(struct xinput_controller *controller, BOOL already_removed);
+@@ -347,8 +347,8 @@
+     BOOL ret;
+ 
+     if (controller->enabled) return;
+-    if (controller->caps.Flags & XINPUT_CAPS_FFB_SUPPORTED) HID_set_state(controller, &state);
+     controller->enabled = TRUE;
++    HID_send_state(controller, &state);
+ 
+     memset(&controller->hid.read_ovl, 0, sizeof(controller->hid.read_ovl));
+     controller->hid.read_ovl.hEvent = controller->hid.read_event;
+@@ -362,7 +362,7 @@
+     XINPUT_VIBRATION state = {0};
+ 
+     if (!controller->enabled) return;
+-    if (controller->caps.Flags & XINPUT_CAPS_FFB_SUPPORTED) HID_set_state(controller, &state);
++    HID_send_state(controller, &state);
+     controller->enabled = FALSE;
+ 
+     CancelIoEx(controller->device, &controller->hid.read_ovl);
+@@ -388,6 +388,7 @@
+     if (!(controller->hid.output_report_buf = calloc(1, controller->hid.caps.OutputReportByteLength))) goto failed;
+ 
+     memset(&controller->state, 0, sizeof(controller->state));
++    memset(&controller->last_keystroke, 0, sizeof(controller->last_keystroke));
+     memset(&controller->vibration, 0, sizeof(controller->vibration));
+     lstrcpynW(controller->device_path, device_path, MAX_PATH);
+     controller->enabled = FALSE;
+@@ -854,6 +855,7 @@
+     if (!controller_lock(&controllers[index])) return ERROR_DEVICE_NOT_CONNECTED;
+ 
+     *state = controllers[index].state;
++    if (!controllers[index].enabled) memset(&state->Gamepad, 0, sizeof(state->Gamepad));
+     controller_unlock(&controllers[index]);
+ 
+     return ERROR_SUCCESS;

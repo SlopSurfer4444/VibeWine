@@ -1,0 +1,11 @@
+{
+  "baseVersion": "Wine 11.0",
+  "upstreamCommit": null,
+  "baseArchiveSha256": "7be5819017b34f09670293f2be7ed9f4476734b8f42dab121a8b74e6619c92a8",
+  "patchSha256": "9d3493929c421538eb2a8edd9dc605ef89608565c4e8b1993a52f33d9642b61e",
+  "exportType": "source-only audit snapshot",
+  "integratedWinemacFilesMatched": 46,
+  "binaryDistribution": false,
+  "license": "LGPL-2.1-or-later",
+  "baseArchiveIncluded": false
+}
