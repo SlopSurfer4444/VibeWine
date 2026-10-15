@@ -1,6 +1,16 @@
-# Wine macOS integration lab — Wave5 source audit
+# Wine macOS integration lab — Wave6 integrated audit snapshot
 
-Source-only Wine macOS driver and DXMT renderer research snapshot, succeeding public audit 43ea42cc. This is not a complete Wine checkout, upstream release, or bundled game runtime.
+Source-only Wine macOS driver and DXMT renderer research snapshot, succeeding public audit 421e6b0. This is not a complete Wine checkout, upstream release, or bundled game runtime.
+
+## Current generation: Wave6
+
+Start with `renderer/wave6/source`, `renderer/wave6/README.md`, `WAVE6_AUDIT_DISPOSITIONS.md`, and `NEXT_WAVE_BRIEF.md`. Wave6 supersedes the historical renderer trees described below; native Wine source remains Wave5. The exact installed renderer SHA256 is `ec522fc64a14f57c026f879414caa15aa4687a5294194dba2c35629ed61b9e22`. User confirmed full-display borderless DS3 and controller operation. Normal exit of this final build, actual exclusive fullscreen, real-game CUA and matched FPS gain remain unverified. New user observations: closing background apps removed perceived lag; increasing resolution in the game appeared to have no effect. Neither observation is a measured causal result.
+
+Run `python3 tests/run_wave6.py` for the combined disposable offline source suite. No Wine/game launch or live changes occur. Binary distribution and complete runtime reproduction remain excluded.
+
+## Historical Wave5 snapshot (retained for comparison)
+
+The following sections describe the earlier generation; references to installed be876 renderer or uninstalled synchronization probes are historical. Current Wave6 incorporates V2 trace/probe work and uses a new opt-in DS3 owner-thread borderless route, not the optional external helper. See current dispositions for remaining limits.
 
 ## What is included
 

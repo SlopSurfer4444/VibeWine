@@ -10,6 +10,9 @@
     "engine/lib/wine/x86_64-windows/oleacc.dll": "7bacf6f38c01bd8d5703197de9faebd76b27de87e06c746d60519e54c2b5ca87",
     "engine/lib/wine/x86_64-windows/winemac.drv": "e151e618b31555150e7fe7fd093e6f876f48ac2e5fa3838842ffdc0c5c83797c"
   },
+  "currentRendererGeneration": "wave6",
+  "currentRendererLiveObservation": "renderer/wave6/live-result.json",
+  "currentRendererProvenance": "renderer/wave6/provenance.json",
   "driverSourceFilesMatched": 46,
   "driverSourceHashes": {
     ".gitattributes": "f82b99b04a647026fbb2fdb8501237ec9c1e3abb5647d9f690fbbe25f8139e77",
@@ -1096,6 +1099,7 @@
       "renderer/guarded/source/version.h.in": "7df6667ca57b57a2d4301c7c781a45c8b5431e0c024479d1cc69545367c34bd4"
     }
   },
+  "retainedRendererEntriesAreHistorical": true,
   "schema": 2,
   "upstreamCommit": null
 }

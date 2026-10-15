@@ -1,0 +1,15 @@
+{
+  "cuaInventoryGameVisible": false,
+  "fpsGainClaimed": false,
+  "nativeBorderlessInitializationResult": 4,
+  "normalGameExitVerified": false,
+  "renderResolution": [
+    1920,
+    1080
+  ],
+  "rendererModuleMappingObserved": true,
+  "rendererSha256": "ec522fc64a14f57c026f879414caa15aa4687a5294194dba2c35629ed61b9e22",
+  "scope": "Single DS3 session: user confirmed full display without Dock/frame and working controller; observation is not a general compatibility guarantee.",
+  "sourceCommit": "d7940ae798c6258bc8dfc9b9359dbe0c443bac1a",
+  "userScreenControllerVerified": true
+}

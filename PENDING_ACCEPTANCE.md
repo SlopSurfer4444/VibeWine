@@ -1,3 +1,14 @@
+# Current pending acceptance — Wave6
+
+- Real-game CUA discovery, attachment and observable actions remain unresolved, despite fixture/shallow AX success.
+- DS3 full-display borderless/controller confirmed in one session. Actual normal exit and exclusive-fullscreen lifecycle still need verification; no dangerous modeset test authorized by this document.
+- In-game resolution changes appear ineffective per user. Source path discards ResizeTarget dimensions then retains previous dimensions on zero ResizeBuffers; actual DS3 sequence/effective allocation remains unobserved.
+- No matched displayed-FPS uplift; background-app closure improved perceived smoothness but cause is unproven.
+- HDR fidelity, Metal view ownership and broader cross-game validation remain open; optional XInput uninstalled.
+- Management launcher/source, native donor binaries and live profiles excluded; this source snapshot is not a complete distributable runtime.
+
+## Retained historical notes
+
 # Acceptance boundaries and pending hooks
 
 ## Included optional, not installed

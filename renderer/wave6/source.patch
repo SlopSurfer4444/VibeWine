@@ -1,0 +1,2139 @@
+diff --git a/src/d3d11/cs2_trace.hpp b/src/d3d11/cs2_trace.hpp
+index b3b3e9c..d3bda98 100644
+--- a/src/d3d11/cs2_trace.hpp
++++ b/src/d3d11/cs2_trace.hpp
+@@ -1,5 +1,6 @@
+ #pragma once
+ #include "util_env.hpp"
++#include "cs2_trace_protocol.hpp"
+ #include <windows.h>
+ #include <atomic>
+ #include <chrono>
+@@ -7,38 +8,75 @@
+ #include <cstddef>
+ #include <string>
+ namespace dxmt::cs2trace {
+-constexpr uint64_t Magic=0x4353325452414345ULL, Capacity=131072;
+-struct Header { uint64_t magic,version,capacity,next; uint32_t capture,reserved; uint64_t dropped; };
+-struct Event { uint64_t start,end,object; uint32_t type,thread,flags,reserved; uint64_t padding[2]; uint64_t committed; };
+-static_assert(sizeof(Event)==64 && offsetof(Event,committed)==56 && offsetof(Header,capture)==32);
+ inline uint64_t now() {return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();}
+ inline Header* buffer() {
+  static Header *result=[]()->Header* {
+   std::string path=env::getEnvVar("DXMT_CS2_TRACE_DIR"); if(path.empty())return nullptr;
+   path+="\\events-"+std::to_string(GetCurrentProcessId())+".bin";
+-  HANDLE file=CreateFileA(path.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
++  HANDLE file=CreateFileA(path.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+   if(file==INVALID_HANDLE_VALUE)return nullptr;
+   HANDLE mapping=CreateFileMappingA(file,nullptr,PAGE_READWRITE,0,4096+Capacity*sizeof(Event),nullptr);
+   if(!mapping){CloseHandle(file);return nullptr;}
+   auto ptr=(Header*)MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,0);
+   CloseHandle(mapping);CloseHandle(file);if(!ptr)return nullptr;
+-  ptr->version=1;ptr->capacity=Capacity;ptr->next=0;ptr->capture=0;ptr->dropped=0;
++  ptr->version=Version;ptr->capacity=Capacity;ptr->next=0;ptr->control=0;ptr->dropped=0;ptr->boundaryRejected=0;
+   std::atomic_ref<uint64_t>(ptr->magic).store(Magic,std::memory_order_release);
+   return ptr; // Process-lifetime mapping; no file writes in event hot paths.
+  }();
+  return result;
+ }
+-inline uint32_t generation() {auto h=buffer();return h?std::atomic_ref<uint32_t>(h->capture).load(std::memory_order_relaxed):0;}
++inline uint32_t generation() {auto h=buffer();if(!h)return 0;auto word=std::atomic_ref<uint64_t>(h->control).load(std::memory_order_relaxed);return controlState(word)==CaptureState::Open?controlGeneration(word):0;}
+ inline bool configured() {static bool value=!env::getEnvVar("DXMT_CS2_TRACE_DIR").empty();return value;}
+-inline void record(uint32_t generation,uint32_t type,uint64_t start,uint64_t end,uint64_t object=0,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
+- if(!generation)return;
+- auto h=buffer();if(!h||std::atomic_ref<uint32_t>(h->capture).load(std::memory_order_relaxed)!=generation)return;
+- uint64_t index=std::atomic_ref<uint64_t>(h->next).fetch_add(1,std::memory_order_relaxed);
+- if(index>=Capacity){std::atomic_ref<uint64_t>(h->dropped).fetch_add(1,std::memory_order_relaxed);return;}
+- auto e=(Event*)((char*)h+4096)+index;
+- e->start=start;e->end=end;e->object=object;e->type=type;e->thread=GetCurrentThreadId();e->flags=flags;e->reserved=generation;e->padding[0]=detail0;e->padding[1]=detail1;
+- std::atomic_ref<uint64_t>(e->committed).store(index+1,std::memory_order_release);
++inline void record(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64_t object=0,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
++ if(!gen)return;
++ writeEvent(buffer(),gen,type,start,end,object,flags,detail0,detail1,GetCurrentThreadId());
+ }
++// Process-lifetime monotonic birth identities; assigned once per object.
++inline uint64_t newSerial() {static std::atomic<uint64_t> next{1};return next.fetch_add(1,std::memory_order_relaxed);}
++struct ApiScope {
++ uint32_t gen=generation(),type;uint64_t object,detail0=0,detail1=0;uint32_t result=0xffffffffu;uint64_t start=gen?now():0;
++ ApiScope(uint32_t event,uint64_t identity,uint64_t arg0=0,uint64_t arg1=0):type(event),object(identity),detail0(arg0),detail1(arg1){}
++ ApiScope(const ApiScope&)=delete;
++ template<class F> auto invoke(F &&fn) {auto value=fn();result=uint32_t(value);return value;}
++ ~ApiScope(){if(gen)record(gen,type,start,now(),object,result,detail0,detail1);}
++};
++// Diagnostic attribution only: queue scoped, generation scoped, thread local.
++enum class CommitReason : uint32_t { Unknown=0, Present=1, StagingMap=2,
++  GetDataNotReady=3, ExplicitFlush=4, GPUIdle=5, FenceSignal=6,
++  FenceWait=7, PassPromotion=8 };
++struct ReasonState { uint32_t generation=0; CommitReason reason=CommitReason::Unknown; uint64_t queue=0; bool active=false; };
++inline thread_local ReasonState reason_state;
++struct ReasonScope {
++  ReasonState previous; bool changed=false;
++  ReasonScope(CommitReason reason, uint64_t queue, bool fallback=false) {
++    auto gen=generation();
++    previous=reason_state;
++    if (previous.active && previous.queue==queue) {
++      gen=previous.generation;
++      if (fallback) return;
++    }
++    reason_state={gen,reason,queue,true}; changed=true;
++  }
++  ~ReasonScope() { if(changed) reason_state=previous; }
++  ReasonScope(const ReasonScope&)=delete;
++  ReasonScope& operator=(const ReasonScope&)=delete;
++};
++inline void commitReason(uint32_t gen,uint64_t queue,uint64_t sequence,uint64_t frame) {
++  if(!gen)return;
++  if(reason_state.active && reason_state.queue==queue && reason_state.generation!=gen)return;
++  auto reason=(reason_state.generation==gen && reason_state.queue==queue)?reason_state.reason:CommitReason::Unknown;
++  auto t=now(); record(gen,33,t,t,queue,(uint32_t)reason,sequence,frame);
++}
++inline uint32_t operationGeneration(uint64_t queue) {
++  return reason_state.active && reason_state.queue==queue ? reason_state.generation : generation();
++}
++// Uncensored diagnostic calls; no clock read or payload when unarmed.
++struct SyncScope {
++  uint32_t gen=generation(); uint32_t type; uint64_t object=0;
++  uint32_t flags=0; uint64_t queue=0,frame=0; uint64_t start=gen?now():0;
++  ~SyncScope() { if(gen) record(gen,type,start,now(),object,flags,queue,frame); }
++};
++
+ struct Scope {
+  uint32_t gen=generation();uint32_t type;uint64_t object=0;uint32_t flags=0;uint64_t start=gen?now():0;
+  ~Scope(){if(gen){auto end=now();if(end-start>=100000)record(gen,type,start,end,object,flags);}}
+diff --git a/src/d3d11/cs2_trace_protocol.hpp b/src/d3d11/cs2_trace_protocol.hpp
+new file mode 100644
+index 0000000..a3b8b92
+--- /dev/null
++++ b/src/d3d11/cs2_trace_protocol.hpp
+@@ -0,0 +1,55 @@
++#pragma once
++#include <atomic>
++#include <cstdint>
++#include <cstddef>
++namespace dxmt::cs2trace {
++// Changed magic prevents version-1 controllers mutating this control word.
++constexpr uint64_t Magic=0x4353325452414332ULL, Version=2, Capacity=131072;
++constexpr uint64_t WriterMask=(1ULL<<30)-1, StateMask=3ULL<<30;
++enum class CaptureState : uint64_t { Closed=0, Open=1ULL<<30, Closing=2ULL<<30 };
++constexpr uint64_t controlWord(uint32_t gen,CaptureState state,uint64_t writers=0) { return (uint64_t(gen)<<32)|uint64_t(state)|writers; }
++constexpr uint32_t controlGeneration(uint64_t word) { return uint32_t(word>>32); }
++constexpr uint64_t controlWriters(uint64_t word) { return word&WriterMask; }
++constexpr CaptureState controlState(uint64_t word) { return CaptureState(word&StateMask); }
++struct Header { uint64_t magic,version,capacity,next,control,dropped,boundaryRejected; };
++struct Event { uint64_t start,end,object; uint32_t type,thread,flags,reserved; uint64_t padding[2]; uint64_t committed; };
++static_assert(sizeof(Header)==56 && sizeof(Event)==64 && offsetof(Header,control)==32 && offsetof(Event,committed)==56);
++static_assert(std::atomic_ref<uint64_t>::is_always_lock_free);
++inline bool admit(Header *h,uint32_t gen) {
++ auto a=std::atomic_ref<uint64_t>(h->control);auto word=a.load(std::memory_order_relaxed);
++ for(;;) {
++  if(controlGeneration(word)!=gen || controlState(word)!=CaptureState::Open)return false;
++  if(controlWriters(word)==WriterMask)return false;
++  if(a.compare_exchange_weak(word,word+1,std::memory_order_acquire,std::memory_order_relaxed))return true;
++ }
++}
++inline void releaseWriter(Header *h) {
++ auto a=std::atomic_ref<uint64_t>(h->control);auto word=a.load(std::memory_order_relaxed);
++ for(;;) {
++  auto desired=word-1;
++  if(controlState(word)==CaptureState::Closing && controlWriters(word)==1)desired=controlWord(controlGeneration(word),CaptureState::Closed);
++  if(a.compare_exchange_weak(word,desired,std::memory_order_release,std::memory_order_relaxed))return;
++ }
++}
++#ifndef DXMT_TRACE_WRITER_BARRIER
++#define DXMT_TRACE_WRITER_BARRIER(point) ((void)0)
++#endif
++// Shared by the real Windows producer and native barrier fixture; no extracted imitation.
++inline void writeEvent(Header *h,uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64_t object,uint32_t flags,uint64_t detail0,uint64_t detail1,uint32_t thread) {
++ if(!h || !gen)return;
++ if(!admit(h,gen)) {
++  if(controlGeneration(std::atomic_ref<uint64_t>(h->control).load(std::memory_order_relaxed))==gen)
++   std::atomic_ref<uint64_t>(h->boundaryRejected).fetch_add(1,std::memory_order_relaxed);
++  return;
++ }
++ struct Exit {Header *h;~Exit(){releaseWriter(h);}} exit{h};
++ DXMT_TRACE_WRITER_BARRIER(1); // admitted, before reservation
++ auto index=std::atomic_ref<uint64_t>(h->next).fetch_add(1,std::memory_order_relaxed);
++ DXMT_TRACE_WRITER_BARRIER(2); // reserved
++ if(index>=h->capacity){std::atomic_ref<uint64_t>(h->dropped).fetch_add(1,std::memory_order_relaxed);return;}
++ auto e=reinterpret_cast<Event*>(reinterpret_cast<char*>(h)+4096)+index;
++ e->start=start;e->end=end;e->object=object;e->type=type;e->thread=thread;e->flags=flags;e->reserved=gen;e->padding[0]=detail0;e->padding[1]=detail1;
++ DXMT_TRACE_WRITER_BARRIER(3); // payload filled, before publication
++ std::atomic_ref<uint64_t>(e->committed).store(index+1,std::memory_order_release);
++}
++} // namespace dxmt::cs2trace
+diff --git a/src/d3d11/d3d11_context_imm.cpp b/src/d3d11/d3d11_context_imm.cpp
+index b361f17..e803265 100644
+--- a/src/d3d11/d3d11_context_imm.cpp
++++ b/src/d3d11/d3d11_context_imm.cpp
+@@ -137,6 +137,8 @@ public:
+   STDMETHODCALLTYPE
+   Map(ID3D11Resource *pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags,
+       D3D11_MAPPED_SUBRESOURCE *pMappedResource) override {
++    cs2trace::ApiScope api(42,cmd_queue.traceSerial(),(uint64_t)pResource,(uint64_t(MapType)<<32)|MapFlags);
++    return api.invoke([&]() -> HRESULT {
+     std::lock_guard<d3d11_device_mutex> lock(mutex);
+ 
+     if (unlikely(!pResource || !pMappedResource))
+@@ -232,6 +234,7 @@ public:
+       return S_OK;
+     }
+     if (auto staging = GetStagingResource(pResource, Subresource)) {
++      cs2trace::ReasonScope reason(cs2trace::CommitReason::StagingMap,cmd_queue.traceSerial());
+       if (MapType > 3 || MapType == 0)
+           return E_INVALIDARG;
+ 
+@@ -248,7 +251,7 @@ public:
+           // can't guarantee a full overwrite
+           std::memcpy(staging->mappedMemory(next_name), staging->mappedImmediateMemory(), staging->length);
+           staging->updateImmediateName(current_seq_id, next_name);
+-          EmitST([staging, next_name](ArgumentEncodingContext &enc) mutable { 
++          EmitST([staging, next_name](ArgumentEncodingContext &enc) mutable {
+             auto _ = staging->buffer()->rename(staging->allocation(next_name));
+           });
+           result = StagingMapResult::Mappable;
+@@ -268,12 +271,14 @@ public:
+         // and the following calls are essentially no-op
+         Flush();
+         TRACE("staging map block");
+-        auto& statistics = cmd_queue.CurrentFrameStatistics();
+         auto t0 = clock::now();
+-        cmd_queue.WaitCPUFence(coherent_seq_id + uint64_t(result));
++        { cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=30,.object=coherent_seq_id+uint64_t(result),.flags=(uint32_t)MapType,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
++          cmd_queue.WaitCPUFence(coherent_seq_id + uint64_t(result)); }
+         auto t1 = clock::now();
+-        statistics.sync_count++;
+-        statistics.sync_interval += (t1 - t0);
++        cmd_queue.UpdateCurrentFrameStatistics([&](auto &statistics) {
++          statistics.sync_count++;
++          statistics.sync_interval += (t1 - t0);
++        });
+         current_seq_id = cmd_queue.CurrentSeqId();
+         coherent_seq_id = cmd_queue.CoherentSeqId();
+       };
+@@ -282,6 +287,8 @@ public:
+       UNIMPLEMENTED("map-on-default: map");
+     }
+     return E_INVALIDARG;
++
++    });
+   }
+ 
+   void
+@@ -398,6 +405,8 @@ public:
+   HRESULT
+   STDMETHODCALLTYPE
+   GetData(ID3D11Asynchronous *pAsync, void *pData, UINT DataSize, UINT GetDataFlags) override {
++    cs2trace::ApiScope api(41,cmd_queue.traceSerial(),(uint64_t)pAsync,(uint64_t(DataSize)<<32)|GetDataFlags);
++    return api.invoke([&]() -> HRESULT {
+     if (!pAsync || (DataSize && !pData))
+       return E_INVALIDARG;
+ 
+@@ -470,10 +479,14 @@ public:
+       return E_FAIL;
+     }
+     if (hr == S_FALSE && (GetDataFlags & D3D11_ASYNC_GETDATA_DONOTFLUSH) == 0) {
+-      cmd_queue.CurrentFrameStatistics().event_stall++;
++      cmd_queue.UpdateCurrentFrameStatistics([](auto &statistics) { statistics.event_stall++; });
++      cs2trace::ReasonScope reason(cs2trace::CommitReason::GetDataNotReady,cmd_queue.traceSerial());
++      cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=31,.object=(uint64_t)pAsync,.flags=(uint32_t)desc.Query,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
+       Flush();
+     }
+     return hr;
++
++    });
+   }
+ 
+   void
+@@ -485,9 +498,13 @@ public:
+   void
+   STDMETHODCALLTYPE
+   Flush1(D3D11_CONTEXT_TYPE Type, HANDLE hEvent) override {
++    cs2trace::ApiScope api(43,cmd_queue.traceSerial(),uint64_t(Type),(uint64_t)hEvent);
+     std::lock_guard<d3d11_device_mutex> lock(mutex);
++    cs2trace::ReasonScope reason(cs2trace::CommitReason::ExplicitFlush,cmd_queue.traceSerial(),true);
+ 
++    api.result=0; // no submission unless Commit below actually runs
+     if (ctx_state.has_dirty_op_since_last_event || promote_flush) {
++      api.result=1;
+       InvalidateCurrentPass(true);
+       Commit();
+     }
+@@ -578,10 +595,12 @@ public:
+ 
+   virtual void
+   WaitUntilGPUIdle() override {
++    cs2trace::ReasonScope reason(cs2trace::CommitReason::GPUIdle,cmd_queue.traceSerial());
+     uint64_t seq = cmd_queue.CurrentSeqId();
+     if(!InvalidateCurrentPass())
+       Commit();
+-    cmd_queue.WaitCPUFence(seq);
++    { cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=32,.object=seq,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
++      cmd_queue.WaitCPUFence(seq); }
+   };
+ 
+   void
+@@ -593,6 +612,7 @@ public:
+   };
+ 
+   HRESULT STDMETHODCALLTYPE Signal(ID3D11Fence *pFence, UINT64 Value) override {
++    cs2trace::ReasonScope reason(cs2trace::CommitReason::FenceSignal,cmd_queue.traceSerial());
+     auto fence = static_cast<MTLD3D11Fence *>(pFence);
+ 
+     InvalidateCurrentPass();
+@@ -605,6 +625,7 @@ public:
+   }
+ 
+   HRESULT STDMETHODCALLTYPE Wait(ID3D11Fence *pFence, UINT64 Value) override {
++    cs2trace::ReasonScope reason(cs2trace::CommitReason::FenceWait,cmd_queue.traceSerial());
+     auto fence = static_cast<MTLD3D11Fence *>(pFence);
+ 
+     Flush();
+diff --git a/src/d3d11/d3d11_context_impl.cpp b/src/d3d11/d3d11_context_impl.cpp
+index d53be63..cc908e0 100644
+--- a/src/d3d11/d3d11_context_impl.cpp
++++ b/src/d3d11/d3d11_context_impl.cpp
+@@ -237,7 +237,7 @@ get_gs_vertex_count(D3D11_PRIMITIVE_TOPOLOGY primitive) {
+   case D3D_PRIMITIVE_TOPOLOGY_31_CONTROL_POINT_PATCHLIST:
+   case D3D_PRIMITIVE_TOPOLOGY_32_CONTROL_POINT_PATCHLIST:
+     return {
+-      uint32_t(primitive) - uint32_t(D3D_PRIMITIVE_TOPOLOGY_1_CONTROL_POINT_PATCHLIST) + 1, 
++      uint32_t(primitive) - uint32_t(D3D_PRIMITIVE_TOPOLOGY_1_CONTROL_POINT_PATCHLIST) + 1,
+       uint32_t(primitive) - uint32_t(D3D_PRIMITIVE_TOPOLOGY_1_CONTROL_POINT_PATCHLIST) + 1
+     };
+   default:
+@@ -834,7 +834,7 @@ public:
+           enc.clear_rt_cmd.clear(rect_offset_x, rect_offset_y, rect_width, rect_height, color);
+         });
+       }
+-      EmitST([](ArgumentEncodingContext &enc) { 
++      EmitST([](ArgumentEncodingContext &enc) {
+         enc.clear_rt_cmd.end();
+       });
+       return;
+@@ -875,7 +875,7 @@ public:
+           enc.clear_rt_cmd.clear(rect_offset_x, rect_offset_y, rect_width, rect_height, color);
+         });
+       }
+-      EmitST([](ArgumentEncodingContext &enc) { 
++      EmitST([](ArgumentEncodingContext &enc) {
+         enc.clear_rt_cmd.end();
+       });
+       return;
+@@ -1637,7 +1637,7 @@ public:
+         auto dispatch_arg = enc.allocateTempBuffer1(sizeof(DXMT_DISPATCH_ARGUMENTS), 4);
+ 
+         auto [vertex_per_warp, vertex_increment_per_wrap] = get_gs_vertex_count(topo);
+-  
++
+         enc.bumpVisibilityResultOffset();
+         enc.encodeGSDispatchArgumentsMarshal(
+           buffer->buffer(), buffer->gpuAddress() + buffer_offset, AlignedByteOffsetForArgs, vertex_increment_per_wrap,
+@@ -1672,7 +1672,7 @@ public:
+ 
+         auto [vertex_per_warp, vertex_increment_per_wrap] = get_gs_vertex_count(topo);
+         auto [index_buffer, index_sub_offset] = enc.currentIndexBuffer();
+-  
++
+         enc.bumpVisibilityResultOffset();
+         enc.encodeGSDispatchArgumentsMarshal(
+           buffer->buffer(), buffer->gpuAddress() + buffer_offset, AlignedByteOffsetForArgs, vertex_increment_per_wrap,
+@@ -1707,7 +1707,7 @@ public:
+ 
+         auto PatchPerGroup = 32 / enc.tess_threads_per_patch;
+         auto ThreadsPerPatch = enc.tess_threads_per_patch;
+-  
++
+         enc.bumpVisibilityResultOffset();
+         enc.encodeTSDispatchArgumentsMarshal(
+             buffer->buffer(), buffer->gpuAddress() + buffer_offset,
+@@ -1745,7 +1745,7 @@ public:
+         auto PatchPerGroup = 32 / enc.tess_threads_per_patch;
+         auto ThreadsPerPatch = enc.tess_threads_per_patch;
+         auto [index_buffer, index_sub_offset] = enc.currentIndexBuffer();
+-  
++
+         enc.bumpVisibilityResultOffset();
+         enc.encodeTSDispatchArgumentsMarshal(
+             buffer->buffer(), buffer->gpuAddress() + buffer_offset,
+@@ -4005,7 +4005,7 @@ public:
+             cmd_cpbuf.offset = offset;
+             cmd_cpbuf.bytes_per_row = bytes_per_row;
+             cmd_cpbuf.bytes_per_image = bytes_per_image;
+-  
++
+             auto &cmd_cptex = enc.encodeBlitCommand<wmtcmd_blit_copy_from_buffer_to_texture>();
+             cmd_cptex.type = WMTBlitCommandCopyFromBufferToTexture;
+             cmd_cptex.src = buffer;
+@@ -4279,7 +4279,12 @@ public:
+ 
+     cmdbuf_state = CommandBufferState::Idle;
+     if (promote_flush && !defer_commit) {
+-      Commit();
++      if constexpr (requires { ctx_state.cmd_queue; }) {
++        cs2trace::ReasonScope reason(cs2trace::CommitReason::PassPromotion,ctx_state.cmd_queue.traceSerial(),true);
++        Commit();
++      } else {
++        Commit();
++      }
+       return true;
+     }
+ 
+@@ -5318,7 +5323,7 @@ public:
+            .miplevelCount = 1,
+            .firstArraySlice = 0,
+            .arraySize = 1});
+-      auto &scaler_info = enc.currentFrameStatistics().last_scaler_info;
++      ScalerInfo scaler_info{};
+       scaler_info.type = ScalerType::Temporal;
+       scaler_info.auto_exposure = exposure == nullptr;
+       scaler_info.input_width = props.input_content_width;
+@@ -5327,6 +5332,7 @@ public:
+       scaler_info.output_height = output->height();
+ 
+       scaler_info.motion_vector_highres = mv_downscaled != nullptr;
++      enc.updateFrameStatistics([&](auto &statistics) { statistics.last_scaler_info = scaler_info; });
+ 
+       if (scaler_info.motion_vector_highres) {
+         enc.mv_scale_cmd.dispatch(
+@@ -5520,7 +5526,7 @@ private:
+   CommandList<ArgumentEncodingContext> list;
+ 
+   RingBumpState<StagingBufferBlockAllocator, kStagingBlockSizeForDeferredContext> staging_allocator;
+-  RingBumpState<HostBufferBlockAllocator, kStagingBlockSizeForDeferredContext, dxmt::null_mutex> cpu_command_allocator; 
++  RingBumpState<HostBufferBlockAllocator, kStagingBlockSizeForDeferredContext, dxmt::null_mutex> cpu_command_allocator;
+ 
+ };
+ 
+diff --git a/src/d3d11/d3d11_shader.cpp b/src/d3d11/d3d11_shader.cpp
+index 54f6fdd..14654ee 100644
+--- a/src/d3d11/d3d11_shader.cpp
++++ b/src/d3d11/d3d11_shader.cpp
+@@ -264,7 +264,7 @@ CreateVariantShader(MTLD3D11Device *pDevice, ManagedShader shader,
+     sm50_bitcode_t compile_result = nullptr;
+     sm50_error_t sm50_err = nullptr;
+     if (SM50CompileTessellationPipelineHull(
+-            variant.vertex_shader_handle->handle(), shader->handle(), 
++            variant.vertex_shader_handle->handle(), shader->handle(),
+             (SM50_SHADER_COMPILATION_ARGUMENT_DATA *)&ia_layout, func_name,
+             &compile_result, &sm50_err)) {
+       ERR("Failed to compile shader: ", SM50GetErrorMessageString(sm50_err));
+@@ -283,6 +283,10 @@ CreateVariantShader(MTLD3D11Device *pDevice, ManagedShader shader,
+                     ShaderVariantTessellationDomain variant) {
+   Sha1HashState h;
+   h.update(getGlobalShaderFlag());
++  // Isolate corrected domain variants from cached results compiled with an
++  // uninitialized argument discriminator. Other shader cache keys are unchanged.
++  constexpr uint32_t domain_argument_version = 1;
++  h.update(domain_argument_version);
+   h.update(variant.hull_shader_handle->sha1());
+   h.update(variant.gs_passthrough);
+   h.update(variant.rasterization_disabled);
+@@ -290,8 +294,9 @@ CreateVariantShader(MTLD3D11Device *pDevice, ManagedShader shader,
+   auto variant_digest = h.final();
+   std::string func_name = "ds_" + shader->sha1().string().substr(0, 8) + "_" + variant_digest.string();
+   auto proc = [=](const char *func_name, SM50_SHADER_COMMON_DATA *common) -> sm50_bitcode_t  {
+-    SM50_SHADER_GS_PASS_THROUGH_DATA gs_passthrough;
+-    SM50_SHADER_PSO_TESSELLATOR_DATA pso_tess;
++    SM50_SHADER_GS_PASS_THROUGH_DATA gs_passthrough{};
++    SM50_SHADER_PSO_TESSELLATOR_DATA pso_tess{};
++    gs_passthrough.type = SM50_SHADER_GS_PASS_THROUGH;
+     gs_passthrough.DataEncoded = variant.gs_passthrough;
+     gs_passthrough.RasterizationDisabled = variant.rasterization_disabled;
+     gs_passthrough.next = &pso_tess;
+@@ -447,4 +452,4 @@ CreateVariantShader(MTLD3D11Device *pDevice, ManagedShader shader,
+       pDevice, shader, std::move(proc), func_name, variant_digest);
+ }
+ 
+-} // namespace dxmt
+\ No newline at end of file
++} // namespace dxmt
+diff --git a/src/d3d11/d3d11_swapchain.cpp b/src/d3d11/d3d11_swapchain.cpp
+index 9ae0d72..1417cce 100644
+--- a/src/d3d11/d3d11_swapchain.cpp
++++ b/src/d3d11/d3d11_swapchain.cpp
+@@ -21,9 +21,13 @@
+ #include "wsi_monitor.hpp"
+ #include "wsi_platform_win32.hpp"
+ #include "wsi_window.hpp"
++#include "ds3_borderless.hpp"
+ #include "dxmt_info.hpp"
+ #include "dxmt_presenter.hpp"
++#include <algorithm>
+ #include <atomic>
++#include <iterator>
++#include <string_view>
+ #include <cfloat>
+ #include <format>
+ 
+@@ -193,25 +197,50 @@ public:
+       .MiscFlags = {},
+       .TextureLayout = {},
+     };
+-    
++
+     if (desc_.BufferUsage & DXGI_USAGE_SHADER_INPUT)
+       backbuffer_desc_.BindFlags |= D3D11_BIND_SHADER_RESOURCE;
+     if (desc_.BufferUsage & DXGI_USAGE_UNORDERED_ACCESS)
+       backbuffer_desc_.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
+ 
+-    // FIXME: check HRESULT!
+-    ResizeBuffers(0, desc_.Width, desc_.Height, DXGI_FORMAT_UNKNOWN, desc_.Flags);
++    initialization_result_ = ResizeBuffers(0, desc_.Width, desc_.Height, DXGI_FORMAT_UNKNOWN, desc_.Flags);
++    if (FAILED(initialization_result_)) return;
+     if (!fullscreen_desc_.Windowed)
+       EnterFullscreenMode(nullptr);
+   };
+ 
++  HRESULT CleanupFullscreenForDestruction() {
++    HRESULT hr = S_OK;
++    if (pending_display_name_[0] || window_state_.captured)
++      hr = LeaveFullscreenMode();
++    if (FAILED(hr))
++      WARN("DXGI: Swapchain destruction leaves fullscreen cleanup incomplete: ",
++           hr, " display pending=", pending_display_name_[0] != 0,
++           " style=", window_state_.style_pending, " exstyle=", window_state_.exstyle_pending,
++           " present rect=", window_state_.present_rect_pending, " position=", window_state_.position_pending);
++    // The HWND can outlive the swapchain. Its property must no longer refer to
++    // window_state_ before that member is freed, even when physical cleanup failed.
++    if (!wsi::detachFullscreenState(hWnd, &window_state_)) {
++      WARN("DXGI: Swapchain destruction could not detach fullscreen ownership token");
++      if (!FAILED(hr))
++        hr = DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++    }
++    return hr;
++  }
++
+   ~MTLD3D11SwapChain() {
++    cs2trace::ApiScope trace_teardown(48,trace_serial_);
++    trace_teardown.result=static_cast<uint32_t>(CleanupFullscreenForDestruction());
+     device_context_->WaitUntilGPUIdle();
+-    WMT::ReleaseMetalView(native_view_);
++    { cs2trace::ApiScope trace_release(49,trace_serial_);
++      WMT::ReleaseMetalView(native_view_);
++      trace_release.result=0; }
+     native_view_ = {};
+     CloseHandle(present_semaphore_);
+   };
+ 
++  HRESULT InitializationResult() const { return initialization_result_; }
++
+   HRESULT
+   STDMETHODCALLTYPE
+   QueryInterface(REFIID riid, void **ppvObject) final {
+@@ -263,13 +292,28 @@ public:
+   HRESULT
+   STDMETHODCALLTYPE
+   SetFullscreenState(BOOL Fullscreen, IDXGIOutput *pTarget) final {
++    cs2trace::ApiScope api(46,trace_serial_,uint64_t(Fullscreen),(uint64_t)pTarget);
++    return api.invoke([&]() -> HRESULT {
++    // This admitted DS3 route uses geometric borderless with DXGI windowed.
++    // Reject an accidental menu/Alt+Enter request before querying outputs or
++    // changing modes. FALSE still takes the normal WSI cleanup path.
++    if (Fullscreen && wsi::ds3BorderlessEnabled())
++      return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++
+     Com<IDXGIOutput1> target;
+ 
++    if (!Fullscreen && pTarget)
++      return DXGI_ERROR_INVALID_CALL;
++
+     if (pTarget) {
+       DXGI_OUTPUT_DESC desc;
+ 
+-      pTarget->QueryInterface(IID_PPV_ARGS(&target));
+-      target->GetDesc(&desc);
++      HRESULT hr = pTarget->QueryInterface(IID_PPV_ARGS(&target));
++      if (FAILED(hr))
++        return hr;
++      hr = target->GetDesc(&desc);
++      if (FAILED(hr))
++        return hr;
+ 
+       if (!fullscreen_desc_.Windowed && Fullscreen && monitor_ != desc.Monitor) {
+         HRESULT hr = LeaveFullscreenMode();
+@@ -280,10 +324,13 @@ public:
+ 
+     if (fullscreen_desc_.Windowed && Fullscreen)
+       return EnterFullscreenMode(target.ptr());
+-    else if (!fullscreen_desc_.Windowed && !Fullscreen)
++    else if (!Fullscreen)
++      // A prior exit can be logically windowed with physical cleanup pending.
+       return LeaveFullscreenMode();
+ 
+     return S_OK;
++
++    });
+   };
+ 
+   HRESULT EnterFullscreenMode(IDXGIOutput1* pTarget) {
+@@ -295,7 +342,7 @@ public:
+ 
+     if (!wsi::isWindow(hWnd))
+       return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+-    
++
+     if (output == nullptr) {
+       if (FAILED(GetOutputFromMonitor(wsi::getWindowMonitor(hWnd), &output))) {
+        ERR("DXGI: EnterFullscreenMode: Cannot query containing output");
+@@ -304,6 +351,16 @@ public:
+     }
+ 
+     std::unique_lock<dxmt::mutex> lock(mutex_);
++    if (pending_display_name_[0] || window_state_.captured)
++      return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++
++    // Fullscreen construction also enters here with Windowed initially false.
++    // Failed entry must never leave a successful no-op fullscreen fast path.
++    fullscreen_desc_.Windowed = TRUE;
++    DXGI_OUTPUT_DESC desc = {};
++    HRESULT output_hr = output->GetDesc(&desc);
++    if (FAILED(output_hr))
++      return output_hr;
+ 
+     DXGI_MODE_DESC1 preferred_display_mode = {
+         desc_.Width,
+@@ -318,55 +375,59 @@ public:
+       return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+     }
+ 
+-    // Update swap chain description
+-    fullscreen_desc_.Windowed = FALSE;
+-    
++    // Display cleanup is recorded separately until the window entry completes.
++
+     // Move the window so that it covers the entire output
+     bool modeSwitch = (desc_.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH) != 0u;
+ 
+-    DXGI_OUTPUT_DESC desc;
+-    output->GetDesc(&desc);
+-
+     monitor_ = desc.Monitor;
+     target_  = std::move(output);
+ 
+     lock = {};
+ 
+     if (!wsi::enterFullscreenMode(desc.Monitor, hWnd, &window_state_, modeSwitch)) {
++      std::lock_guard<dxmt::mutex> cleanup_lock(mutex_);
++      target_ = nullptr;
+       ERR("DXGI: EnterFullscreenMode: Failed to enter fullscreen mode");
+       return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+     }
+-
++    std::lock_guard<dxmt::mutex> commit_lock(mutex_);
++    fullscreen_desc_.Windowed = FALSE;
+     return S_OK;
+   }
+-  
+-  
++
++
+   HRESULT LeaveFullscreenMode() {
+     ModeSetGuard::ModeSetInProgress modeset_inprogress(modeset_guard_);
+     if (modeset_inprogress)
+       return DXGI_STATUS_MODE_CHANGE_IN_PROGRESS;
+ 
+-    std::lock_guard<dxmt::mutex> lock(mutex_);
+-
+-    if (FAILED(RestoreDisplayMode(monitor_)))
+-      WARN("DXGI: LeaveFullscreenMode: Failed to restore display mode");
++    std::unique_lock<dxmt::mutex> lock(mutex_);
++    HRESULT display_hr = S_OK;
++    if (pending_display_name_[0]) {
++      display_hr = RestoreDisplayMode(pending_display_name_);
++      if (FAILED(display_hr))
++        WARN("DXGI: LeaveFullscreenMode: Display restore remains pending");
++      else
++        pending_display_name_[0] = 0;
++    }
+ 
+-    // Restore internal state
++    // Logical exit is useful even if physical display release failed. Keep its
++    // original device name separately so another exit can retry the obligation.
+     fullscreen_desc_.Windowed = TRUE;
+-    target_  = nullptr;
++    target_ = nullptr;
+     monitor_ = wsi::getWindowMonitor(hWnd);
+-    
+-    if (!wsi::isWindow(hWnd))
+-      return S_OK;
+-    
+-    if (!wsi::leaveFullscreenMode(hWnd, &window_state_, true)) {
+-      ERR("DXGI: LeaveFullscreenMode: Failed to exit fullscreen mode");
+-      return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+-    }
+-    
+-    presenter->changeGammaRamp(nullptr);
++    lock = {};
+ 
+-    return S_OK;
++    // WSI knows which individual mutations completed and validates the window
++    // property before touching it, including when the HWND has been recycled.
++    bool window_restored = wsi::leaveFullscreenMode(hWnd, &window_state_, true);
++    presenter->changeGammaRamp(nullptr);
++    if (!window_restored) {
++      ERR("DXGI: LeaveFullscreenMode: Window restore remains pending");
++      return FAILED(display_hr) ? display_hr : DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++    }
++    return display_hr;
+   }
+ 
+   HRESULT
+@@ -404,8 +465,17 @@ public:
+     if (!selected_mode.RefreshRate.Denominator)
+       selected_mode.RefreshRate.Denominator = 1;
+ 
+-    DXGI_OUTPUT_DESC output_desc;
+-    pOutput->GetDesc(&output_desc);
++    DXGI_OUTPUT_DESC output_desc = {};
++    hr = pOutput->GetDesc(&output_desc);
++    if (FAILED(hr))
++      return hr;
++    WCHAR display_name[32] = {};
++    if (!wsi::getDisplayName(output_desc.Monitor, display_name))
++      return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++    // Reject stale/replaced output identity rather than overwrite an obligation.
++    if (pending_display_name_[0] &&
++        std::wstring_view(pending_display_name_) != std::wstring_view(display_name))
++      return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+     wsi::WsiMode wsi_mode{
+         selected_mode.Width,
+         selected_mode.Height,
+@@ -414,6 +484,8 @@ public:
+         selected_mode.ScanlineOrdering == DXGI_MODE_SCANLINE_ORDER_UPPER_FIELD_FIRST ||
+             selected_mode.ScanlineOrdering == DXGI_MODE_SCANLINE_ORDER_LOWER_FIELD_FIRST
+     };
++    // Preserve identity even on a failed mode-set, which may be partial.
++    std::copy(std::begin(display_name), std::end(display_name), std::begin(pending_display_name_));
+     if (!wsi::setWindowMode(output_desc.Monitor, hWnd, wsi_mode))
+       return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+ 
+@@ -423,11 +495,11 @@ public:
+   }
+ 
+   HRESULT
+-  RestoreDisplayMode(HMONITOR hMonitor) {
+-    if (!hMonitor)
++  RestoreDisplayMode(const WCHAR *deviceName) {
++    if (!deviceName || !deviceName[0])
+       return DXGI_ERROR_INVALID_CALL;
+ 
+-    if (!wsi::restoreDisplayMode(hMonitor))
++    if (!wsi::restoreDisplayMode(deviceName))
+       return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+ 
+     init_refresh_rate_ = DBL_MAX;
+@@ -444,7 +516,7 @@ public:
+ 
+     if (pFullscreen != nullptr)
+       *pFullscreen = !fullscreen_desc_.Windowed;
+-    
++
+     if (ppTarget != nullptr)
+       *ppTarget = target_.ref();
+ 
+@@ -477,13 +549,23 @@ public:
+   STDMETHODCALLTYPE
+   ResizeBuffers(UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT Format,
+                 UINT flags) final {
+-    /* BufferCount ignored */
+-    if (Width == 0 || Height == 0) {
+-      wsi::getWindowSize(hWnd, &desc_.Width, &desc_.Height);
+-    } else {
+-      desc_.Width = Width;
+-      desc_.Height = Height;
++    cs2trace::ApiScope api(44,trace_serial_,(uint64_t(Width)<<32)|Height,(uint64_t(BufferCount)<<32)|flags);
++    return api.invoke([&]() -> HRESULT {
++    /* BufferCount ignored. Capture requested render dimensions before any
++     * owner-thread window repair. Reentrant repairs return before changing
++     * buffer state, and no geometry call runs under the renderer mutex. */
++    uint32_t render_width = Width, render_height = Height;
++    auto borderless_result = wsi::prepareDS3Borderless(hWnd, fullscreen_desc_.Windowed, render_width, render_height, desc_.Width, desc_.Height);
++    if (borderless_result == wsi::DS3BorderlessResult::Disabled && (Width == 0 || Height == 0))
++      wsi::getWindowSize(hWnd, &render_width, &render_height);
++    if (borderless_result != wsi::DS3BorderlessResult::Disabled &&
++        borderless_result != wsi::DS3BorderlessResult::Applied &&
++        borderless_result != wsi::DS3BorderlessResult::Unchanged) {
++      WARN("DS3 native borderless buffer repair failed ", static_cast<int>(borderless_result));
++      return E_FAIL;
+     }
++    desc_.Width = render_width;
++    desc_.Height = render_height;
+     if (Format != DXGI_FORMAT_UNKNOWN) {
+       if (ConvertSwapChainFormat(Format) != WMTPixelFormatInvalid)
+         desc_.Format = Format;
+@@ -533,11 +615,15 @@ public:
+     }
+ 
+     return S_OK;
++
++    });
+   };
+ 
+   HRESULT
+   STDMETHODCALLTYPE
+   ResizeTarget(const DXGI_MODE_DESC *pDesc) final {
++    cs2trace::ApiScope api(45,trace_serial_,pDesc?(uint64_t(pDesc->Width)<<32)|pDesc->Height:0,pDesc?(uint64_t(pDesc->RefreshRate.Numerator)<<32)|pDesc->RefreshRate.Denominator:0);
++    return api.invoke([&]() -> HRESULT {
+     if (!pDesc)
+       return DXGI_ERROR_INVALID_CALL;
+ 
+@@ -552,8 +638,21 @@ public:
+     if (!wsi::isWindow(hWnd))
+       return DXGI_ERROR_INVALID_CALL;
+ 
++    if (fullscreen_desc_.Windowed && wsi::ds3BorderlessEnabled()) {
++      if (pending_display_name_[0] || window_state_.captured)
++        return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++      auto result = wsi::applyDS3Borderless(hWnd, true);
++      if (result == wsi::DS3BorderlessResult::Applied || result == wsi::DS3BorderlessResult::Unchanged)
++        return S_OK;
++      WARN("DS3 native borderless target repair failed ", static_cast<int>(result));
++      return E_FAIL;
++    }
++
+     std::unique_lock<dxmt::mutex> lock(mutex_);
+ 
++    if (fullscreen_desc_.Windowed && (pending_display_name_[0] || window_state_.captured))
++      return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++
+     // Promote display mode
+     DXGI_MODE_DESC1 newDisplayMode = {};
+     newDisplayMode.Width = pDesc->Width;
+@@ -563,23 +662,27 @@ public:
+     newDisplayMode.ScanlineOrdering = pDesc->ScanlineOrdering;
+     newDisplayMode.Scaling = pDesc->Scaling;
+ 
+-    // Update the swap chain description
+-    if (newDisplayMode.RefreshRate.Numerator != 0)
+-      fullscreen_desc_.RefreshRate = newDisplayMode.RefreshRate;
+-
+-    fullscreen_desc_.ScanlineOrdering = newDisplayMode.ScanlineOrdering;
+-    fullscreen_desc_.Scaling = newDisplayMode.Scaling;
+-
++    // Commit descriptor fields only after the corresponding mode operation.
+     if (fullscreen_desc_.Windowed) {
+       wsi::resizeWindow(hWnd, &window_state_, newDisplayMode.Width,
+                         newDisplayMode.Height);
+     } else {
+-      ChangeDisplayMode(target_.ptr(), &newDisplayMode);
++      HRESULT hr = ChangeDisplayMode(target_.ptr(), &newDisplayMode);
++      if (FAILED(hr))
++        return hr;
++    }
++    if (newDisplayMode.RefreshRate.Numerator != 0)
++      fullscreen_desc_.RefreshRate = newDisplayMode.RefreshRate;
++    fullscreen_desc_.ScanlineOrdering = newDisplayMode.ScanlineOrdering;
++    fullscreen_desc_.Scaling = newDisplayMode.Scaling;
++    if (!fullscreen_desc_.Windowed) {
+       lock = {};
+       wsi::updateFullscreenWindow(monitor_, hWnd, false);
+     }
+ 
+     return S_OK;
++
++    });
+   };
+ 
+   void ApplyLayerProps() {
+@@ -610,13 +713,13 @@ public:
+     for (uint32_t i = 0; SUCCEEDED(adapter->EnumOutputs(i, &output)); i++) {
+       DXGI_OUTPUT_DESC outputDesc;
+       output->GetDesc(&outputDesc);
+-      
++
+       if (outputDesc.Monitor == Monitor)
+         return output->QueryInterface(IID_PPV_ARGS(ppOutput));
+-      
++
+       output = nullptr;
+     }
+-    
++
+     return DXGI_ERROR_NOT_FOUND;
+   }
+ 
+@@ -624,10 +727,10 @@ public:
+   STDMETHODCALLTYPE
+   GetContainingOutput(IDXGIOutput **ppOutput) final {
+     InitReturnPtr(ppOutput);
+-    
++
+     if (!wsi::isWindow(hWnd))
+       return DXGI_ERROR_INVALID_CALL;
+-    
++
+     Com<IDXGIOutput1> output;
+ 
+     if (target_ == nullptr) {
+@@ -742,6 +845,8 @@ public:
+   STDMETHODCALLTYPE
+   Present1(UINT SyncInterval, UINT PresentFlags,
+            const DXGI_PRESENT_PARAMETERS *pPresentParameters) final {
++    cs2trace::ApiScope api(40,trace_serial_,SyncInterval,PresentFlags);
++    return api.invoke([&]() -> HRESULT {
+     if (SyncInterval > 4)
+       return DXGI_ERROR_INVALID_CALL;
+ 
+@@ -782,7 +887,7 @@ public:
+     auto &cmd_queue = device_->GetDXMTDevice().queue();
+     if (auto gen = cs2trace::generation()) {
+       auto t = cs2trace::now();
+-      cs2trace::record(gen,25,t,t,(uint64_t)this,0,(uint64_t)&cmd_queue,cmd_queue.CurrentFrameSeq()-1);
++      cs2trace::record(gen,25,t,t,trace_serial_,0,cmd_queue.traceSerial(),cmd_queue.CurrentFrameSeq()-1);
+     }
+     auto chunk = cmd_queue.CurrentChunk();
+     chunk->signal_frame_latency_fence_ = cmd_queue.CurrentFrameSeq();
+@@ -797,12 +902,13 @@ public:
+         upscaled = upscaled_backbuffer_->texture(),
+         scaler = this->metalfx_scaler, state = presenter->synchronizeLayerProperties()
+       ](ArgumentEncodingContext &ctx) mutable {
+-        auto &scaler_info = ctx.currentFrameStatistics().last_scaler_info;
++        ScalerInfo scaler_info{};
+         scaler_info.type = ScalerType::Spatial;
+         scaler_info.input_width = backbuffer->width();
+         scaler_info.input_height = backbuffer->height();
+         scaler_info.output_width = upscaled->width();
+         scaler_info.output_height = upscaled->height();
++        ctx.updateFrameStatistics([&](auto &statistics) { statistics.last_scaler_info = scaler_info; });
+         ctx.upscale(backbuffer, upscaled, scaler);
+         ctx.present(upscaled, presenter, vsync_duration, state.metadata);
+         ReleaseSemaphore(present_semaphore_, 1, nullptr);
+@@ -819,19 +925,26 @@ public:
+         this->UpdateStatistics(ctx.queue().statistics, ctx.currentFrameId());
+       });
+     }
+-    { cs2trace::Scope trace{.type=10,.object=(uint64_t)this}; device_context_->Commit(); }
++    { cs2trace::ReasonScope reason(cs2trace::CommitReason::Present,cmd_queue.traceSerial());
++      cs2trace::Scope trace{.type=10,.object=(uint64_t)this}; device_context_->Commit(); }
+ 
++    const auto presented_frame = cmd_queue.AdvanceFrame();
++    const auto max_latency = cmd_queue.GetMaxLatency();
+     lock.unlock(); // since PresentBoundary() will and should only stall current thread
+ 
+-    cmd_queue.PresentBoundary();
++    cmd_queue.PresentBoundary(presented_frame, max_latency);
+ 
+     return hr;
++
++    });
+   };
+ 
+   void UpdateStatistics(const FrameStatisticsContainer& statistics, uint64_t frame_id) {
++#ifdef DXMT_DEBUG
++    const auto snapshot = statistics.snapshot(frame_id);
++    const auto &frame = snapshot.frame; // latest completed frame before this present
++    const auto &average = snapshot.average;
+     hud.begin();
+-    auto &frame = statistics.at(frame_id - 1); // show the previous one frame statistics
+-    auto &average = statistics.average();
+     Flags<FeatureCompatibility> flags = frame.compatibility_flags;
+     char text[] = "---------------------------";
+     if (flags.test(FeatureCompatibility::UnsupportedGeometryDraw)) {
+@@ -867,11 +980,11 @@ public:
+     hud.printLine(std::format(
+         "Commit: {:2} -{:4.1f} -{:4.1f}", std::min(frame.command_buffer_count, 99u),
+         std::min(average.commit_interval.count() / 1000000.0, 99.9),
+-        std::min(statistics.max().commit_interval.count() / 1000000.0, 99.9)
++        std::min(snapshot.max.commit_interval.count() / 1000000.0, 99.9)
+     ));
+     hud.printLine(std::format(
+         "Sync:   {:2} {:4.1f}  {:2} {:4.1f} {:2}", std::min(frame.sync_count, 99u),
+-        std::min(average.sync_interval.count() / 1000000.0, 99.9), std::min(statistics.max().event_stall, 99u),
++        std::min(average.sync_interval.count() / 1000000.0, 99.9), std::min(snapshot.max.event_stall, 99u),
+         std::min(average.present_latency_interval.count() / 1000000.0, 99.9), frame.latency
+     ));
+     hud.printLine(std::format(
+@@ -907,6 +1020,10 @@ public:
+       }
+     }
+     hud.end();
++#else
++    (void)statistics;
++    (void)frame_id;
++#endif
+   }
+ 
+   BOOL STDMETHODCALLTYPE IsTemporaryMonoSupported() final { return FALSE; };
+@@ -1065,6 +1182,7 @@ public:
+   }
+ 
+ private:
++  const uint64_t trace_serial_=cs2trace::newSerial();
+   bool LayerSupportEDR() {
+     WMTEDRValue edr_value;
+     MetalLayer_getEDRValue(layer_weak_, &edr_value);
+@@ -1085,6 +1203,8 @@ private:
+   std::unique_ptr<CpuFence> frame_latency_fence_;
+   HWND hWnd;
+   HMONITOR monitor_;
++  // Logical windowed state does not discharge a failed physical display restore.
++  WCHAR pending_display_name_[32] = {};
+   Com<IDXGIOutput1> target_;
+   wsi::DXMTWindowState window_state_;
+   uint32_t frame_latency;
+@@ -1097,6 +1217,7 @@ private:
+   dxmt::mutex mutex_;
+ 
+   bool handle_alt_tab_;
++  HRESULT initialization_result_ = S_OK;
+ 
+   std::conditional<EnableMetalFX, Rc<SpatialScaler>, std::monostate>::type metalfx_scaler;
+   std::conditional<EnableMetalFX, Com<D3D11ResourceCommon>, std::monostate>::type upscaled_backbuffer_;
+@@ -1108,11 +1229,11 @@ CreateSwapChain(
+     IDXGIFactory1 *pFactory, MTLD3D11Device *pDevice, HWND hWnd, const DXGI_SWAP_CHAIN_DESC1 *pDesc,
+     const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *pFullscreenDesc, IDXGISwapChain1 **ppSwapChain
+ ) {
+-  if (pDesc == NULL)
+-    return DXGI_ERROR_INVALID_CALL;
+   if (ppSwapChain == NULL)
+     return DXGI_ERROR_INVALID_CALL;
+   InitReturnPtr(ppSwapChain);
++  if (pDesc == NULL)
++    return DXGI_ERROR_INVALID_CALL;
+ 
+   DWORD window_process_id;
+   GetWindowThreadProcessId(hWnd, &window_process_id);
+@@ -1121,11 +1242,29 @@ CreateSwapChain(
+     return E_FAIL;
+   }
+ 
++  // Initial fullscreen descriptors bypass SetFullscreenState. The admitted
++  // DS3 borderless route must refuse these before constructing an exclusive
++  // swapchain or performing any output/mode/window mutation.
++  if (pFullscreenDesc && !pFullscreenDesc->Windowed && wsi::ds3BorderlessEnabled())
++    return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++
+   Com<IMTLDXGIDevice> layer_factory;
+   if (FAILED(pDevice->QueryInterface(IID_PPV_ARGS(&layer_factory)))) {
+     ERR("CreateSwapChain: failed to get IMTLDXGIDevice");
+     return E_FAIL;
+   }
++  DXGI_SWAP_CHAIN_DESC1 borderless_desc = *pDesc;
++  if ((!pFullscreenDesc || pFullscreenDesc->Windowed) && wsi::ds3BorderlessEnabled()) {
++    // Snapshot zero-sized requests while the game still has its chosen client
++    // dimensions. Never derive render resolution from the enlarged monitor.
++    auto result = wsi::prepareDS3Borderless(hWnd, true, borderless_desc.Width, borderless_desc.Height);
++    WARN("DS3 native borderless initialization result ", static_cast<int>(result),
++         " render ", borderless_desc.Width, "x", borderless_desc.Height);
++    if (result != wsi::DS3BorderlessResult::Applied && result != wsi::DS3BorderlessResult::Unchanged)
++      return E_FAIL;
++    pDesc = &borderless_desc;
++  }
++
+   if ((pDesc->SwapEffect != DXGI_SWAP_EFFECT_DISCARD &&
+        pDesc->SwapEffect != DXGI_SWAP_EFFECT_FLIP_DISCARD) &&
+       pDesc->BufferCount != 1) {
+@@ -1133,17 +1272,23 @@ CreateSwapChain(
+   }
+   if (env::getEnvVar("DXMT_METALFX_SPATIAL_SWAPCHAIN") == "1") {
+     if (pDevice->GetMTLDevice().supportsFXSpatialScaler()) {
+-      *ppSwapChain = new MTLD3D11SwapChain<true>(
++      auto *swapchain = new MTLD3D11SwapChain<true>(
+           pFactory, pDevice, layer_factory.ptr(), hWnd, pDesc, pFullscreenDesc
+       );
++      HRESULT initialized = swapchain->InitializationResult();
++      if (FAILED(initialized)) { swapchain->Release(); return initialized; }
++      *ppSwapChain = swapchain;
+       return S_OK;
+     } else {
+       WARN("MetalFX spatial scaler is not supported on this device");
+     }
+   }
+-  *ppSwapChain = new MTLD3D11SwapChain<false>(
++  auto *swapchain = new MTLD3D11SwapChain<false>(
+       pFactory, pDevice, layer_factory.ptr(), hWnd, pDesc, pFullscreenDesc
+   );
++  HRESULT initialized = swapchain->InitializationResult();
++  if (FAILED(initialized)) { swapchain->Release(); return initialized; }
++  *ppSwapChain = swapchain;
+   return S_OK;
+ };
+ 
+diff --git a/src/dxmt/dxmt_command_queue.cpp b/src/dxmt/dxmt_command_queue.cpp
+index 7ee678a..a188420 100644
+--- a/src/dxmt/dxmt_command_queue.cpp
++++ b/src/dxmt/dxmt_command_queue.cpp
+@@ -53,6 +53,8 @@ CommandQueue::CommandQueue(WMT::Device device) :
+ }
+ 
+ CommandQueue::~CommandQueue() {
++  cs2trace::ApiScope trace_shutdown(47,traceSerial());
++  trace_shutdown.result=0;
+   TRACE("Destructing command queue");
+   stopped.store(true);
+   ready_for_encode++;
+@@ -79,12 +81,12 @@ CommandQueue::CommitCurrentChunk() {
+   chunk.frame_ = frame_count;
+   chunk.trace_generation = cs2trace::generation();
+   chunk.resource_initializer_event_id = initializer.flushToWait();
+-  auto& statistics = CurrentFrameStatistics();
+-  statistics.command_buffer_count++;
++  UpdateCurrentFrameStatistics([](auto &statistics) { statistics.command_buffer_count++; });
+ #if ASYNC_ENCODING
+   if (chunk.trace_generation) {
+     auto t = cs2trace::now();
+-    cs2trace::record(chunk.trace_generation,20,t,t,(uint64_t)this,0,chunk_id,chunk.frame_);
++    cs2trace::record(chunk.trace_generation,20,t,t,traceSerial(),0,chunk_id,chunk.frame_);
++    cs2trace::commitReason(chunk.trace_generation,traceSerial(),chunk_id,chunk.frame_);
+   }
+   ready_for_encode.fetch_add(1, std::memory_order_release);
+   ready_for_encode.notify_one();
+@@ -94,7 +96,7 @@ CommandQueue::CommitCurrentChunk() {
+     chunk_ongoing.wait(kCommandChunkCount - 1, std::memory_order_acquire); }
+   chunk_ongoing.fetch_add(1, std::memory_order_relaxed);
+   auto t1 = clock::now();
+-  statistics.commit_interval += (t1 - t0);
++  UpdateCurrentFrameStatistics([&](auto &statistics) { statistics.commit_interval += (t1 - t0); });
+ 
+ #else
+   CommitChunkInternal(chunk, ready_for_encode.fetch_add(1, std::memory_order_relaxed));
+@@ -108,7 +110,7 @@ CommandQueue::CommitChunkInternal(CommandChunk &chunk, uint64_t seq) {
+ 
+   if (chunk.trace_generation) {
+     auto t = cs2trace::now();
+-    cs2trace::record(chunk.trace_generation,21,t,t,(uint64_t)this,0,seq,chunk.frame_);
++    cs2trace::record(chunk.trace_generation,21,t,t,traceSerial(),0,seq,chunk.frame_);
+   }
+   auto pool = WMT::MakeAutoreleasePool();
+ 
+@@ -153,7 +155,7 @@ CommandQueue::CommitChunkInternal(CommandChunk &chunk, uint64_t seq) {
+ 
+   if (chunk.trace_generation) {
+     auto t = cs2trace::now();
+-    cs2trace::record(chunk.trace_generation,22,t,t,(uint64_t)this,0,seq,chunk.frame_);
++    cs2trace::record(chunk.trace_generation,22,t,t,traceSerial(),0,seq,chunk.frame_);
+   }
+   ready_for_commit.fetch_add(1, std::memory_order_release);
+   ready_for_commit.notify_one();
+@@ -196,13 +198,13 @@ CommandQueue::WaitForFinishThread() {
+     if (chunk.trace_generation && chunk.trace_generation == cs2trace::generation()) {
+       auto t = cs2trace::now();
+       auto status = chunk.attached_cmdbuf.status();
+-      cs2trace::record(chunk.trace_generation,23,t,t,(uint64_t)this,status,internal_seq,chunk.frame_);
++      cs2trace::record(chunk.trace_generation,23,t,t,traceSerial(),status,internal_seq,chunk.frame_);
+       // Completed command-buffer properties only; no new wait or counter buffer.
+       if (status == WMTCommandBufferStatusCompleted) {
+         auto gpu_start = chunk.attached_cmdbuf.gpuStartTime();
+         auto gpu_end = chunk.attached_cmdbuf.gpuEndTime();
+         if (gpu_start && gpu_end >= gpu_start)
+-          cs2trace::record(chunk.trace_generation,24,gpu_start,gpu_end,(uint64_t)this,status,internal_seq,chunk.frame_);
++          cs2trace::record(chunk.trace_generation,24,gpu_start,gpu_end,traceSerial(),status,internal_seq,chunk.frame_);
+       }
+     }
+     if (chunk.attached_cmdbuf.status() == WMTCommandBufferStatusError) {
+diff --git a/src/dxmt/dxmt_command_queue.hpp b/src/dxmt/dxmt_command_queue.hpp
+index 26aa607..2c0e6f2 100644
+--- a/src/dxmt/dxmt_command_queue.hpp
++++ b/src/dxmt/dxmt_command_queue.hpp
+@@ -92,15 +92,18 @@ public:
+       chunk_id,
+       frame_
+     );
+-    auto& statistics = enc.currentFrameStatistics();
+     auto t0 = clock::now();
+     list_enc.execute(enc);
+     attached_cmdbuf = cmdbuf;
+     auto t1 = clock::now();
+     readback = enc.flushCommands(cmdbuf, chunk_id, chunk_event_id);
+     auto t2 = clock::now();
+-    statistics.encode_prepare_interval += (t1 - t0);
+-    statistics.encode_flush_interval += (t2 - t1);
++    enc.updateFrameStatistics([&](auto &statistics) {
++      statistics.encode_prepare_interval += (t1 - t0);
++      statistics.encode_flush_interval += (t2 - t1);
++    });
++    if (signal_frame_latency_fence_ != ~0ull)
++      enc.frameStatistics().encodingComplete(frame_);
+   };
+ 
+   uint32_t trace_generation = 0;
+@@ -114,7 +117,7 @@ public:
+ private:
+   CommandQueue *queue;
+   WMT::Reference<WMT::CommandBuffer> attached_cmdbuf;
+-  
++
+   CommandList<ArgumentEncodingContext> list_enc;
+   AllocationRefTracking ref_tracker;
+ 
+@@ -134,6 +137,7 @@ public:
+ };
+ 
+ class CommandQueue {
++  const uint64_t trace_serial_=cs2trace::newSerial();
+ 
+ private:
+   void CommitChunkInternal(CommandChunk &chunk, uint64_t seq);
+@@ -152,7 +156,7 @@ private:
+   std::array<CommandChunk, kCommandChunkCount> chunks;
+   uint64_t encoder_seq = 1;
+   uint64_t frame_count = 0;
+-  uint32_t max_latency_ = 3;
++  std::atomic_uint32_t max_latency_ = 3;
+ 
+   dxmt::thread encodeThread;
+   dxmt::thread finishThread;
+@@ -176,6 +180,7 @@ private:
+   CaptureState capture_state;
+ 
+ public:
++  uint64_t traceSerial() const {return trace_serial_;}
+   InternalCommandLibrary cmd_library;
+   ArgumentEncodingContext argument_encoding_ctx;
+   WMT::Reference<WMT::SharedEvent> event;
+@@ -234,29 +239,38 @@ public:
+     return frame_count + 1;
+   }
+ 
+-  FrameStatistics& CurrentFrameStatistics() {
+-    return statistics.at(frame_count);
++  template <typename F>
++  void UpdateCurrentFrameStatistics(F &&mutate) {
++    statistics.update(frame_count, std::forward<F>(mutate));
+   }
+ 
++  // Called under the device/context submission lock immediately after the
++  // present chunk commit: subsequent CPU submissions belong to the next frame.
++  uint64_t AdvanceFrame() { return frame_count++; }
++
+   void
+-  PresentBoundary() {
+-    statistics.compute(frame_count);
+-    frame_count++;
+-    statistics.at(frame_count).reset();
+-    // After present N-th frame (N starts from 1), wait for (N - max_latency)-th frame to finish rendering 
+-    if (likely(frame_count > max_latency_)) {
++  PresentBoundary(uint64_t presented_frame, uint32_t max_latency) {
++    const auto next_frame = presented_frame + 1;
++    clock::duration wait_interval{};
++    // After present N-th frame (N starts from 1), wait for (N - max_latency)-th frame.
++    if (likely(next_frame > max_latency)) {
+       auto t0 = clock::now();
+-      { cs2trace::Scope trace{.type=11,.object=frame_count,.flags=max_latency_};
+-        frame_latency_fence_.wait(frame_count - max_latency_); }
+-      auto t1 = clock::now();
+-      statistics.at(frame_count).present_latency_interval += (t1 - t0);
++      { cs2trace::Scope trace{.type=11,.object=next_frame,.flags=max_latency};
++        frame_latency_fence_.wait(next_frame - max_latency); }
++      wait_interval = clock::now() - t0;
+     }
+-    statistics.at(frame_count).latency = max_latency_;
++    // Attribute this present's CPU wait to its own frame and close only after
++    // timing is recorded. Neither submission nor statistics locks span the wait.
++    statistics.update(presented_frame, [&](auto &frame) {
++      frame.present_latency_interval += wait_interval;
++      frame.latency = max_latency;
++    });
++    statistics.cpuComplete(presented_frame);
+   }
+ 
+-  uint32_t GetMaxLatency() { return max_latency_; }
++  uint32_t GetMaxLatency() { return max_latency_.load(std::memory_order_relaxed); }
+ 
+-  void SetMaxLatency(uint32_t value) { max_latency_ = value; };
++  void SetMaxLatency(uint32_t value) { max_latency_.store(value, std::memory_order_relaxed); };
+ 
+   void
+   WaitCPUFence(uint64_t seq) {
+diff --git a/src/dxmt/dxmt_context.cpp b/src/dxmt/dxmt_context.cpp
+index 6181fe4..75f75cc 100644
+--- a/src/dxmt/dxmt_context.cpp
++++ b/src/dxmt/dxmt_context.cpp
+@@ -414,7 +414,7 @@ ArgumentEncodingContext::clearColor(Rc<Texture> &&texture, uint64_t viewId, unsi
+ 
+   encoder_info->attachment = access(texture, viewId, ResourceAccess::Write);
+ 
+-  currentFrameStatistics().clear_pass_count++;
++  updateFrameStatistics([](auto &statistics) { statistics.clear_pass_count++; });
+ 
+   endPass();
+ }
+@@ -438,8 +438,8 @@ ArgumentEncodingContext::clearDepthStencil(
+ 
+   encoder_info->attachment = access(texture, viewId, ResourceAccess::Write);
+ 
+-  currentFrameStatistics().clear_pass_count++;
+-  
++  updateFrameStatistics([](auto &statistics) { statistics.clear_pass_count++; });
++
+   endPass();
+ }
+ 
+@@ -583,7 +583,7 @@ ArgumentEncodingContext::startRenderPass(
+   encoder_info->allocated_argbuf_mapping = gpu_buffer_contents;
+   encoder_current = encoder_info;
+ 
+-  currentFrameStatistics().render_pass_count++;
++  updateFrameStatistics([](auto &statistics) { statistics.render_pass_count++; });
+ 
+   vro_state_.beginEncoder();
+ 
+@@ -607,7 +607,7 @@ ArgumentEncodingContext::startComputePass(uint64_t encoder_argbuf_size) {
+   encoder_info->allocated_argbuf_mapping = gpu_buffer_contents;
+   encoder_current = encoder_info;
+ 
+-  currentFrameStatistics().compute_pass_count++;
++  updateFrameStatistics([](auto &statistics) { statistics.compute_pass_count++; });
+ 
+   return encoder_info;
+ }
+@@ -625,7 +625,7 @@ ArgumentEncodingContext::startBlitPass() {
+   encoder_info->cmd_tail = (wmtcmd_base *)&encoder_info->cmd_head;
+   encoder_current = encoder_info;
+ 
+-  currentFrameStatistics().blit_pass_count++;
++  updateFrameStatistics([](auto &statistics) { statistics.blit_pass_count++; });
+ 
+   return encoder_info;
+ }
+@@ -707,9 +707,9 @@ ArgumentEncodingContext::bumpVisibilityResultOffset() {
+   }
+ }
+ 
+-FrameStatistics&
+-ArgumentEncodingContext::currentFrameStatistics() {
+-  return queue_.statistics.at(frame_id_);
++FrameStatisticsContainer &
++ArgumentEncodingContext::frameStatistics() {
++  return queue_.statistics;
+ }
+ 
+ void
+@@ -1027,7 +1027,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
+           }
+       );
+       auto t1 = clock::now();
+-      currentFrameStatistics().drawable_blocking_interval += (t1 - t0);
++      updateFrameStatistics([&](auto &statistics) { statistics.drawable_blocking_interval += (t1 - t0); });
+       if (data->after > 0)
+         cmdbuf.presentDrawableAfterMinimumDuration(drawable, data->after);
+       else
+@@ -1163,7 +1163,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
+         {
+           /**
+           `sampleBufferAttachments` does not work when the blit encoder is empty, just do something
+-          FIXME: potential perf overhead? 
++          FIXME: potential perf overhead?
+           */
+           struct wmtcmd_blit_fillbuffer fill;
+           fill.next.set(nullptr);
+@@ -1249,7 +1249,7 @@ ArgumentEncodingContext::checkEncoderRelation(EncoderData *former, EncoderData *
+           render->fence_update.merge(clear->fence_update);
+           render->fence_wait.merge(clear->fence_wait);
+           render->fence_wait.subtract(clear->fence_update);
+-          currentFrameStatistics().clear_pass_optimized++;
++          updateFrameStatistics([](auto &statistics) { statistics.clear_pass_optimized++; });
+           clear->~ClearEncoderData();
+           clear->next = nullptr;
+           clear->type = EncoderType::Null;
+@@ -1264,7 +1264,7 @@ ArgumentEncodingContext::checkEncoderRelation(EncoderData *former, EncoderData *
+           render->fence_update.merge(clear->fence_update);
+           render->fence_wait.merge(clear->fence_wait);
+           render->fence_wait.subtract(clear->fence_update);
+-          currentFrameStatistics().clear_pass_optimized++;
++          updateFrameStatistics([](auto &statistics) { statistics.clear_pass_optimized++; });
+           clear->~ClearEncoderData();
+           clear->next = nullptr;
+           clear->type = EncoderType::Null;
+@@ -1295,7 +1295,7 @@ ArgumentEncodingContext::checkEncoderRelation(EncoderData *former, EncoderData *
+         render->fence_wait.merge(resolve->fence_wait);
+         render->fence_wait.subtract(resolve->fence_update);
+ 
+-        currentFrameStatistics().resolve_pass_optimized++;
++        updateFrameStatistics([](auto &statistics) { statistics.resolve_pass_optimized++; });
+         resolve->~ResolveEncoderData();
+         resolve->next = nullptr;
+         resolve->type = EncoderType::Null;
+@@ -1357,12 +1357,12 @@ ArgumentEncodingContext::checkEncoderRelation(EncoderData *former, EncoderData *
+ 
+       // just in case
+       r1->fence_wait.subtract(r0->fence_update_vertex);
+-      /* 
++      /*
+       r1->fence_wait_vertex.subtract(r0->fence_update);
+       does not make sense
+       */
+ 
+-      currentFrameStatistics().render_pass_optimized++;
++      updateFrameStatistics([](auto &statistics) { statistics.render_pass_optimized++; });
+       r0->~RenderEncoderData();
+       r0->next = nullptr;
+       r0->type = EncoderType::Null;
+diff --git a/src/dxmt/dxmt_context.hpp b/src/dxmt/dxmt_context.hpp
+index 6356fae..de54c5b 100644
+--- a/src/dxmt/dxmt_context.hpp
++++ b/src/dxmt/dxmt_context.hpp
+@@ -699,7 +699,7 @@ public:
+   }
+ 
+   std::pair<WMT::Buffer , size_t> allocateTempBuffer(size_t size, size_t alignment);
+-  
++
+   AllocatedTempBufferSlice allocateTempBuffer1(size_t size, size_t alignment);
+ 
+   QueryReadbacks flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId, uint64_t event_seq_id);
+@@ -743,12 +743,17 @@ public:
+ 
+   void resolveRenderPassBarrier();
+ 
+-  FrameStatistics&
+-  currentFrameStatistics();
++  FrameStatisticsContainer &
++  frameStatistics();
++
++  template <typename F>
++  void updateFrameStatistics(F &&mutate) {
++    frameStatistics().update(frame_id_, std::forward<F>(mutate));
++  }
+ 
+   void
+   setCompatibilityFlag(FeatureCompatibility flag) {
+-    currentFrameStatistics().compatibility_flags.set(flag);
++    updateFrameStatistics([&](auto &statistics) { statistics.compatibility_flags.set(flag); });
+   }
+ 
+   void
+@@ -804,7 +809,7 @@ private:
+   EncoderData *encoder_last = &encoder_head;
+   EncoderData *encoder_current = nullptr;
+   unsigned encoder_count_ = 0;
+-  
++
+   uint64_t encoder_id_ = kParityLane; // actually important to not start from 0
+   std::array<WMT::Reference<WMT::Fence>, kParityLane> fence_pool_;
+   FenceLocalityCheck fence_locality_;
+diff --git a/src/dxmt/dxmt_shader_cache.hpp b/src/dxmt/dxmt_shader_cache.hpp
+index d102112..88d2dec 100644
+--- a/src/dxmt/dxmt_shader_cache.hpp
++++ b/src/dxmt/dxmt_shader_cache.hpp
+@@ -1,6 +1,7 @@
+ #pragma once
+ #include "Metal.hpp"
+ #include "thread.hpp"
++#include <utility>
+ 
+ namespace dxmt {
+ 
+@@ -23,7 +24,10 @@ public:
+     }
+     T object;
+     LockProtected(const LockProtected &copy) = delete;
+-    LockProtected(LockProtected &&move) = default;
++    LockProtected(LockProtected &&move)
++        : object(std::move(move.object)), mutex_(std::exchange(move.mutex_, nullptr)) {
++      move.object = {};
++    }
+ 
+     operator bool() const {
+       return mutex_ != nullptr;
+@@ -65,4 +69,4 @@ private:
+   dxmt::mutex scache_reader_mutex_;
+ };
+ 
+-} // namespace dxmt
+\ No newline at end of file
++} // namespace dxmt
+diff --git a/src/dxmt/dxmt_statistics.hpp b/src/dxmt/dxmt_statistics.hpp
+index 2d549c8..c2be31a 100644
+--- a/src/dxmt/dxmt_statistics.hpp
++++ b/src/dxmt/dxmt_statistics.hpp
+@@ -1,7 +1,14 @@
+ #pragma once
+ 
+ #include "util_flags.hpp"
++#include <algorithm>
+ #include <array>
++#include <cstdint>
++#ifdef DXMT_DEBUG
++#include <map>
++#include <mutex>
++#endif
++#include <utility>
+ #include <chrono>
+ 
+ namespace dxmt {
+@@ -76,94 +83,153 @@ struct FrameStatistics {
+     encode_flush_interval = {};
+     drawable_blocking_interval = {};
+     present_latency_interval = {};
+-    last_scaler_info.type = {};
++    last_scaler_info = {};
+   };
+ };
+ 
+ constexpr size_t kFrameStatisticsCount = 16;
+ 
+-class FrameStatisticsContainer {
+-  std::array<FrameStatistics, kFrameStatisticsCount> frames_;
+-  FrameStatistics min_;
+-  FrameStatistics max_;
+-  FrameStatistics average_;
+-
+-public:
+-  FrameStatistics &
+-  at(uint64_t frame) {
+-    return frames_[frame % kFrameStatisticsCount];
+-  }
+-  const FrameStatistics &
+-  at(uint64_t frame) const {
+-    return frames_.at(frame % kFrameStatisticsCount);
+-  }
++// A HUD snapshot owns its data. No references to mutable producer state escape.
++struct FrameStatisticsSnapshot {
++  FrameStatistics frame{};
++  FrameStatistics min{};
++  FrameStatistics max{};
++  FrameStatistics average{};
++  size_t sample_count = 0;
++};
+ 
+-  const FrameStatistics &
+-  min() const {
+-    return min_;
+-  }
++class FrameStatisticsContainer {
++#ifdef DXMT_DEBUG
++  struct PendingFrame {
++    FrameStatistics data{};
++    bool cpu_complete = false;
++    bool encoding_complete = false;
++  };
++  struct CompletedFrame {
++    FrameStatistics data{};
++    uint64_t id = 0;
++    bool valid = false;
++  };
++  mutable std::mutex mutex_;
++  // In-flight frames cannot alias when the CPU laps the completed-sample ring.
++  std::map<uint64_t, PendingFrame> pending_;
++  std::array<CompletedFrame, kFrameStatisticsCount> completed_{};
++  uint64_t latest_completed_ = 0;
++  bool has_completed_ = false;
+ 
+-  const FrameStatistics &
+-  max() const {
+-    return max_;
++  void
++  complete(uint64_t frame, bool cpu) {
++    std::lock_guard lock(mutex_);
++    auto found = pending_.find(frame);
++    if (found == pending_.end() && has_completed_ && frame <= latest_completed_)
++      return; // duplicate completion cannot recreate an already published frame
++    auto &pending = pending_[frame];
++    (cpu ? pending.cpu_complete : pending.encoding_complete) = true;
++    if (pending.cpu_complete && pending.encoding_complete) {
++      auto slot = std::min_element(completed_.begin(), completed_.end(), [](const auto &a, const auto &b) {
++        if (a.valid != b.valid)
++          return !a.valid;
++        return a.id < b.id;
++      });
++      if (!slot->valid || slot->id < frame)
++        *slot = {pending.data, frame, true};
++      latest_completed_ = has_completed_ ? std::max(latest_completed_, frame) : frame;
++      has_completed_ = true;
++      pending_.erase(frame);
++    }
+   }
+ 
+-  const FrameStatistics &
+-  average() const {
+-    return average_;
++public:
++  // Callbacks only mutate/copy statistics. Never call native APIs, wait, format,
++  // or reenter the container while holding this lock.
++  template <typename F>
++  void
++  update(uint64_t frame, F &&mutate) {
++    std::lock_guard lock(mutex_);
++    auto found = pending_.find(frame);
++    if (found == pending_.end() && has_completed_ && frame <= latest_completed_)
++      return; // late updates cannot corrupt a finalized sample
++    std::forward<F>(mutate)(pending_[frame].data);
+   }
+ 
+-  void
+-  compute(uint64_t current_frame) {
+-    min_.reset();
+-    max_.reset();
+-    average_.reset();
+-    current_frame = current_frame % kFrameStatisticsCount;
+-    for(unsigned i = 0; i < kFrameStatisticsCount; i++) {
+-      if (i == current_frame)
+-        continue; // deliberately exclude current frame since it
+-      min_.command_buffer_count = std::min(min_.command_buffer_count, frames_[i].command_buffer_count);
+-      min_.sync_count = std::min(min_.sync_count, frames_[i].sync_count);
+-      min_.event_stall = std::min(min_.sync_count, frames_[i].event_stall);
+-      min_.commit_interval = std::min(min_.commit_interval, frames_[i].commit_interval);
+-      min_.sync_interval = std::min(min_.sync_interval, frames_[i].sync_interval);
+-      min_.encode_prepare_interval = std::min(min_.encode_prepare_interval, frames_[i].encode_prepare_interval);
+-      min_.encode_flush_interval = std::min(min_.encode_flush_interval, frames_[i].encode_flush_interval);
+-      min_.drawable_blocking_interval =
+-          std::min(min_.drawable_blocking_interval, frames_[i].drawable_blocking_interval);
+-      min_.present_latency_interval = std::min(min_.present_latency_interval, frames_[i].present_latency_interval);
+-
+-      max_.command_buffer_count = std::max(max_.command_buffer_count, frames_[i].command_buffer_count);
+-      max_.sync_count = std::max(max_.sync_count, frames_[i].sync_count);
+-      max_.event_stall = std::max(max_.event_stall, frames_[i].event_stall);
+-      max_.commit_interval = std::max(max_.commit_interval, frames_[i].commit_interval);
+-      max_.sync_interval = std::max(max_.sync_interval, frames_[i].sync_interval);
+-      max_.encode_prepare_interval = std::max(max_.encode_prepare_interval, frames_[i].encode_prepare_interval);
+-      max_.encode_flush_interval = std::max(max_.encode_flush_interval, frames_[i].encode_flush_interval);
+-      max_.drawable_blocking_interval =
+-          std::max(max_.drawable_blocking_interval, frames_[i].drawable_blocking_interval);
+-      max_.present_latency_interval = std::max(max_.present_latency_interval, frames_[i].present_latency_interval);
+-
+-      average_.command_buffer_count += frames_[i].command_buffer_count;
+-      average_.sync_count += frames_[i].sync_count;
+-      average_.event_stall += frames_[i].event_stall;
+-      average_.commit_interval += frames_[i].commit_interval;
+-      average_.sync_interval += frames_[i].sync_interval;
+-      average_.encode_prepare_interval += frames_[i].encode_prepare_interval;
+-      average_.encode_flush_interval += frames_[i].encode_flush_interval;
+-      average_.drawable_blocking_interval += frames_[i].drawable_blocking_interval;
+-      average_.present_latency_interval += frames_[i].present_latency_interval;
++  void cpuComplete(uint64_t frame) { complete(frame, true); }
++  // Encoding completion means all statistics writes, including flush timing,
++  // have finished; it does not claim GPU execution has completed.
++  void encodingComplete(uint64_t frame) { complete(frame, false); }
++
++  FrameStatisticsSnapshot
++  snapshot(uint64_t before_frame) const {
++    std::array<CompletedFrame, kFrameStatisticsCount> samples;
++    {
++      std::lock_guard lock(mutex_);
++      samples = completed_;
+     }
+-    average_.command_buffer_count /= (kFrameStatisticsCount - 1);
+-    average_.sync_count /= (kFrameStatisticsCount - 1);
+-    average_.event_stall /= (kFrameStatisticsCount - 1);
+-    average_.commit_interval /= (kFrameStatisticsCount - 1);
+-    average_.sync_interval /= (kFrameStatisticsCount - 1);
+-    average_.encode_prepare_interval /= (kFrameStatisticsCount - 1);
+-    average_.encode_flush_interval /= (kFrameStatisticsCount - 1);
+-    average_.drawable_blocking_interval /= (kFrameStatisticsCount - 1);
+-    average_.present_latency_interval /= (kFrameStatisticsCount - 1);
+-  };
++    std::sort(samples.begin(), samples.end(), [](const auto &a, const auto &b) { return a.id > b.id; });
++    FrameStatisticsSnapshot result;
++    std::array<FrameStatistics, kFrameStatisticsCount - 1> frames{};
++    for (const auto &sample : samples) {
++      if (!sample.valid || sample.id >= before_frame)
++        continue;
++      frames[result.sample_count++] = sample.data;
++      if (result.sample_count == frames.size())
++        break;
++    }
++    if (!result.sample_count)
++      return result;
++    result.frame = result.min = result.max = frames[0];
++    const auto count = result.sample_count;
++    // Widen integer totals so a full ring of uint32_t counters cannot wrap.
++#define DXMT_AGGREGATE_COUNTER(member) do { \
++    uint64_t total = 0; \
++    for (size_t i = 0; i < count; ++i) { \
++      result.min.member = std::min(result.min.member, frames[i].member); \
++      result.max.member = std::max(result.max.member, frames[i].member); \
++      total += frames[i].member; \
++    } \
++    result.average.member = total / count; \
++  } while (false)
++    DXMT_AGGREGATE_COUNTER(command_buffer_count);
++    DXMT_AGGREGATE_COUNTER(sync_count);
++    DXMT_AGGREGATE_COUNTER(render_pass_count);
++    DXMT_AGGREGATE_COUNTER(render_pass_optimized);
++    DXMT_AGGREGATE_COUNTER(clear_pass_count);
++    DXMT_AGGREGATE_COUNTER(clear_pass_optimized);
++    DXMT_AGGREGATE_COUNTER(resolve_pass_optimized);
++    DXMT_AGGREGATE_COUNTER(compute_pass_count);
++    DXMT_AGGREGATE_COUNTER(blit_pass_count);
++    DXMT_AGGREGATE_COUNTER(event_stall);
++    DXMT_AGGREGATE_COUNTER(latency);
++#undef DXMT_AGGREGATE_COUNTER
++    // Divide before summing to avoid overflow even for very long durations.
++#define DXMT_AGGREGATE_DURATION(member) do { \
++    clock::duration::rep quotient = 0, remainder = 0; \
++    const auto divisor = static_cast<clock::duration::rep>(count); \
++    for (size_t i = 0; i < count; ++i) { \
++      result.min.member = std::min(result.min.member, frames[i].member); \
++      result.max.member = std::max(result.max.member, frames[i].member); \
++      quotient += frames[i].member.count() / divisor; \
++      remainder += frames[i].member.count() % divisor; \
++    } \
++    result.average.member = clock::duration(quotient + remainder / divisor); \
++  } while (false)
++    DXMT_AGGREGATE_DURATION(commit_interval);
++    DXMT_AGGREGATE_DURATION(sync_interval);
++    DXMT_AGGREGATE_DURATION(encode_prepare_interval);
++    DXMT_AGGREGATE_DURATION(encode_flush_interval);
++    DXMT_AGGREGATE_DURATION(drawable_blocking_interval);
++    DXMT_AGGREGATE_DURATION(present_latency_interval);
++#undef DXMT_AGGREGATE_DURATION
++    return result;
++  }
++#else
++public:
++  // Statistics feed only the DXMT_DEBUG HUD. Release builds keep no producer
++  // state and do not invoke mutation callbacks or allocate pending records.
++  template <typename F> void update(uint64_t, F &&) {}
++  void cpuComplete(uint64_t) {}
++  void encodingComplete(uint64_t) {}
++  FrameStatisticsSnapshot snapshot(uint64_t) const { return {}; }
++#endif
+ };
+ 
+-} // namespace dxmt
+\ No newline at end of file
++} // namespace dxmt
+diff --git a/src/dxmt/dxmt_tasks.hpp b/src/dxmt/dxmt_tasks.hpp
+index 6762d47..4b7b8b0 100644
+--- a/src/dxmt/dxmt_tasks.hpp
++++ b/src/dxmt/dxmt_tasks.hpp
+@@ -56,7 +56,12 @@ template <typename Task> task_scheduler<Task>::task_scheduler() {
+ }
+ 
+ template <typename Task> task_scheduler<Task>::~task_scheduler() {
+-  destroyed.store(true);
++  // Publish the wait predicate under the same mutex used by the waiter.
++  // An atomic flag alone does not prevent notify_all from preceding wait.
++  {
++    std::unique_lock<dxmt::mutex> lock(worker_mutex_);
++    destroyed.store(true);
++  }
+   worker_cond_.notify_all();
+ 
+   for (auto &worker : workers_) {
+@@ -84,6 +89,9 @@ task_scheduler<Task>::worker_func() {
+         });
+       }
+ 
++      if (destroyed.load())
++        break;
++
+       if (!task_continuation_queue_.empty()) {
+         task = task_continuation_queue_.front();
+         task_continuation_queue_.pop();
+@@ -133,6 +141,10 @@ template <typename Task>
+ void
+ task_scheduler<Task>::submit(Task task) {
+   std::unique_lock<dxmt::mutex> lock(worker_mutex_);
++  // Shutdown cancels queued work; it only joins tasks already executing.
++  // Callers must still keep the scheduler alive for the duration of submit.
++  if (destroyed.load())
++    return;
+   task_queue_.push(task);
+ 
+   if (running.load(std::memory_order_relaxed) == threads && threads < max_threads) {
+diff --git a/src/util/ds3_borderless.hpp b/src/util/ds3_borderless.hpp
+new file mode 100644
+index 0000000..9202dc7
+--- /dev/null
++++ b/src/util/ds3_borderless.hpp
+@@ -0,0 +1,116 @@
++#pragma once
++#include <cwchar>
++#include <cstdint>
++
++/* DS3's windowed swapchain can fill the monitor without DXGI exclusive mode.
++ * Every mutation runs on the owning Win32 thread; no external process wait,
++ * display-mode switch, display capture request, or persistent topmost flag. */
++namespace dxmt::wsi {
++enum class DS3BorderlessResult { Disabled, Deferred, Refused, Unchanged, Applied, Failed, RollbackFailed };
++
++inline bool ds3BorderlessEnabled() {
++  wchar_t opt[2] = {}, path[32768] = {};
++  if (GetEnvironmentVariableW(L"DXMT_DS3_BORDERLESS", opt, 2) != 1 || opt[0] != L'1') return false;
++  DWORD len = GetModuleFileNameW(nullptr, path, 32768);
++  constexpr wchar_t suffix[] = L"\\Game\\DarkSoulsIII.exe";
++  constexpr size_t suffix_len = sizeof(suffix) / sizeof(*suffix) - 1;
++  return len > suffix_len && len < 32768 && !_wcsicmp(path + len - suffix_len, suffix);
++}
++
++inline bool ds3BorderlessCaptureSafe() {
++  const wchar_t *keys[] = {L"Software\\Wine\\Mac Driver", L"Software\\Wine\\AppDefaults\\DarkSoulsIII.exe\\Mac Driver"};
++  for (auto name : keys) {
++    HKEY key;
++    LONG error = RegOpenKeyExW(HKEY_CURRENT_USER, name, 0, KEY_QUERY_VALUE, &key);
++    if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) continue;
++    if (error != ERROR_SUCCESS) return false;
++    wchar_t value[32] = {}; DWORD bytes = sizeof(value), type = 0;
++    error = RegQueryValueExW(key, L"CaptureDisplaysForFullscreen", nullptr, &type, reinterpret_cast<BYTE *>(value), &bytes);
++    RegCloseKey(key);
++    if (error == ERROR_FILE_NOT_FOUND) continue;
++    if (error != ERROR_SUCCESS || type != REG_SZ || bytes < sizeof(wchar_t) || bytes > sizeof(value) ||
++        bytes % sizeof(wchar_t) || value[bytes / sizeof(wchar_t) - 1]) return false;
++    auto first = value[0];
++    if (first && first != L'N' && first != L'n' && first != L'F' && first != L'f' && first != L'0') return false;
++  }
++  return true;
++}
++
++inline DS3BorderlessResult applyDS3Borderless(HWND window, bool windowed) {
++  if (!windowed || !ds3BorderlessEnabled()) return DS3BorderlessResult::Disabled;
++  static thread_local bool mutating = false;
++  DWORD pid = 0;
++  DWORD tid = GetWindowThreadProcessId(window, &pid);
++  if (!tid || pid != GetCurrentProcessId()) return DS3BorderlessResult::Refused;
++  if (tid != GetCurrentThreadId() || mutating) return DS3BorderlessResult::Deferred;
++  if (!IsWindow(window) || GetAncestor(window, GA_ROOT) != window || GetWindow(window, GW_OWNER) ||
++      IsIconic(window) || !ds3BorderlessCaptureSafe()) return DS3BorderlessResult::Refused;
++  auto read = [&](int index, LONG_PTR &value) {
++    SetLastError(0); value = GetWindowLongPtrW(window, index); return value || !GetLastError();
++  };
++  auto write = [&](int index, LONG_PTR value) {
++    SetLastError(0); auto prior = SetWindowLongPtrW(window, index, value); return prior || !GetLastError();
++  };
++  LONG_PTR style, ex;
++  RECT rect;
++  MONITORINFO monitor = {}; monitor.cbSize = sizeof(monitor);
++  if (!read(GWL_STYLE, style) || !read(GWL_EXSTYLE, ex) || (style & (WS_CHILD | WS_MAXIMIZE)) ||
++      !GetWindowRect(window, &rect) || !GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor))
++    return DS3BorderlessResult::Refused;
++  RECT target = monitor.rcMonitor;
++  int64_t width = static_cast<int64_t>(target.right) - target.left;
++  int64_t height = static_cast<int64_t>(target.bottom) - target.top;
++  if (width <= 0 || height <= 0 || width > 16384 || height > 16384) return DS3BorderlessResult::Refused;
++  LONG_PTR desired_style = (style & ~static_cast<LONG_PTR>(WS_OVERLAPPEDWINDOW)) | WS_POPUP;
++  LONG_PTR desired_ex = ex & ~static_cast<LONG_PTR>(WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME | WS_EX_STATICEDGE | WS_EX_TOPMOST);
++  if (style == desired_style && ex == desired_ex && EqualRect(&rect, &target)) return DS3BorderlessResult::Unchanged;
++  struct Guard { bool &flag; Guard(bool &f) : flag(f) { flag = true; } ~Guard() { flag = false; } } guard(mutating);
++  auto matches = [&](LONG_PTR s, LONG_PTR e, const RECT &r) {
++    LONG_PTR actual_s, actual_e; RECT actual;
++    return IsWindow(window) && read(GWL_STYLE, actual_s) && read(GWL_EXSTYLE, actual_e) &&
++        actual_s == s && actual_e == e && GetWindowRect(window, &actual) && EqualRect(&actual, &r);
++  };
++  bool changed_style = write(GWL_STYLE, desired_style);
++  bool changed_ex = changed_style && write(GWL_EXSTYLE, desired_ex);
++  bool positioned = changed_ex && SetWindowPos(window, HWND_NOTOPMOST, target.left, target.top, width, height,
++      SWP_FRAMECHANGED | SWP_NOACTIVATE);
++  RECT client;
++  if (positioned && matches(desired_style, desired_ex, target) && GetClientRect(window, &client) &&
++      client.right - client.left == width && client.bottom - client.top == height) return DS3BorderlessResult::Applied;
++  /* A window procedure can reject or alter a mutation. Do not overwrite that
++   * third state. Restore only fields still equal to our request or original. */
++  LONG_PTR current_style, current_ex; RECT current_rect;
++  if (!IsWindow(window) || !read(GWL_STYLE, current_style) || !read(GWL_EXSTYLE, current_ex) ||
++      !GetWindowRect(window, &current_rect) || (!EqualRect(&current_rect, &rect) && !EqualRect(&current_rect, &target)) ||
++      (current_style != style && current_style != desired_style) || (current_ex != ex && current_ex != desired_ex))
++    return DS3BorderlessResult::RollbackFailed;
++  bool restored = write(GWL_STYLE, style) && write(GWL_EXSTYLE, ex) &&
++      SetWindowPos(window, (ex & WS_EX_TOPMOST) ? HWND_TOPMOST : HWND_NOTOPMOST, rect.left, rect.top,
++          rect.right - rect.left, rect.bottom - rect.top, SWP_FRAMECHANGED | SWP_NOACTIVATE) && matches(style, ex, rect);
++  return restored ? DS3BorderlessResult::Failed : DS3BorderlessResult::RollbackFailed;
++}
++
++/* Render dimensions are captured before SetWindowPos can dispatch WM_SIZE.
++ * The caller publishes buffer state only after a successful window request. */
++inline DS3BorderlessResult prepareDS3Borderless(HWND window, bool windowed, uint32_t &width, uint32_t &height, uint32_t previous_width = 0, uint32_t previous_height = 0) {
++  if (!windowed || !ds3BorderlessEnabled()) return DS3BorderlessResult::Disabled;
++  uint32_t render_width = width, render_height = height;
++  if (!width || !height) {
++    if (windowed && ds3BorderlessEnabled() && previous_width && previous_height) {
++      render_width = previous_width;
++      render_height = previous_height;
++    } else {
++      RECT client = {};
++      if (!GetClientRect(window, &client)) return DS3BorderlessResult::Refused;
++      render_width = client.right - client.left;
++      render_height = client.bottom - client.top;
++    }
++  }
++  auto result = applyDS3Borderless(window, windowed);
++  if (result == DS3BorderlessResult::Disabled || result == DS3BorderlessResult::Applied || result == DS3BorderlessResult::Unchanged) {
++    width = render_width;
++    height = render_height;
++  }
++  return result;
++}
++}
+diff --git a/src/util/wsi_platform_win32.hpp b/src/util/wsi_platform_win32.hpp
+index 7ab8dc5..f459268 100644
+--- a/src/util/wsi_platform_win32.hpp
++++ b/src/util/wsi_platform_win32.hpp
+@@ -18,6 +18,14 @@ namespace dxmt::wsi {
+  * \brief Impl-dependent state
+  */
+ struct DXMTWindowState {
++  // A window property binds this snapshot to this HWND generation. Destroying
++  // a window removes its properties, so handle reuse cannot consume old state.
++  HWND owner = nullptr;
++  bool captured = false;
++  bool style_pending = false;
++  bool exstyle_pending = false;
++  bool present_rect_pending = false;
++  bool position_pending = false;
+   LONG style = 0;
+   LONG exstyle = 0;
+   RECT rect = {0, 0, 0, 0};
+diff --git a/src/util/wsi_window.hpp b/src/util/wsi_window.hpp
+index 30d9bc8..8da7a9a 100644
+--- a/src/util/wsi_window.hpp
++++ b/src/util/wsi_window.hpp
+@@ -70,6 +70,10 @@ bool enterFullscreenMode(HMONITOR hMonitor, HWND hWindow,
+ bool leaveFullscreenMode(HWND hWindow, DXMTWindowState *pState,
+                          bool restoreCoordinates);
+ 
++// Terminal ownership detach before pState is destroyed. This does not restore
++// window mutations or discharge physical cleanup flags. Do not resume using it.
++bool detachFullscreenState(HWND hWindow, const DXMTWindowState *pState);
++
+ /**
+  * \brief Restores the display mode if necessary
+  *
+@@ -77,6 +81,9 @@ bool leaveFullscreenMode(HWND hWindow, DXMTWindowState *pState,
+  */
+ bool restoreDisplayMode(HMONITOR hMonitor);
+ 
++// Retry by the captured device name, never by a newly selected window monitor.
++bool restoreDisplayMode(const WCHAR *deviceName);
++
+ /**
+  * \brief The monitor a window is on
+  *
+diff --git a/src/util/wsi_window_win32.cpp b/src/util/wsi_window_win32.cpp
+index 295a99b..596f946 100644
+--- a/src/util/wsi_window_win32.cpp
++++ b/src/util/wsi_window_win32.cpp
+@@ -124,84 +124,189 @@ bool setWindowMode(HMONITOR hMonitor, HWND hWindow, const WsiMode &mode) {
+   return setMonitorDisplayMode(hMonitor, &devMode);
+ }
+ 
++static constexpr WCHAR fullscreenStateProperty[] = L"DXMTFullscreenState";
++
++static bool ownsFullscreenState(HWND window, const DXMTWindowState *state) {
++  return ::IsWindow(window) && state->captured && state->owner == window &&
++      ::GetPropW(window, fullscreenStateProperty) == reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(state));
++}
++
++static bool getWindowLongChecked(HWND window, int index, LONG *value) {
++  ::SetLastError(ERROR_SUCCESS);
++  *value = ::GetWindowLongW(window, index);
++  return *value != 0 || ::GetLastError() == ERROR_SUCCESS;
++}
++
++static bool setWindowLongChecked(HWND window, int index, LONG value) {
++  ::SetLastError(ERROR_SUCCESS);
++  LONG previous = ::SetWindowLongW(window, index, value);
++  return previous != 0 || ::GetLastError() == ERROR_SUCCESS;
++}
++
+ bool enterFullscreenMode(HMONITOR hMonitor, HWND hWindow,
+                          DXMTWindowState *pState,
+                          [[maybe_unused]] bool modeSwitch) {
++  if (pState->captured || !::IsWindow(hWindow))
++    return false;
++
+   RECT rect = {};
+-  getDesktopCoordinates(hMonitor, &rect);
++  DXMTWindowState saved = {};
++  if (!getDesktopCoordinates(hMonitor, &rect) ||
++      !::GetWindowRect(hWindow, &saved.rect) ||
++      !getWindowLongChecked(hWindow, GWL_STYLE, &saved.style) ||
++      !getWindowLongChecked(hWindow, GWL_EXSTYLE, &saved.exstyle))
++    return false;
++
++  // Do not steal another swapchain's cleanup obligation on this window.
++  if (::GetPropW(hWindow, fullscreenStateProperty) ||
++      !::SetPropW(hWindow, fullscreenStateProperty, reinterpret_cast<HANDLE>(pState)))
++    return false;
++  saved.owner = hWindow;
++  saved.captured = true;
++  *pState = saved;
+ 
+   D3DKMT_ESCAPE escape = {};
+   escape.Type = D3DKMT_ESCAPE_SET_PRESENT_RECT_WINE;
+   escape.pPrivateDriverData = &rect;
+   escape.PrivateDriverDataSize = sizeof(rect);
+   escape.hContext = HandleToUlong(hWindow);
+-  D3DKMTEscape(&escape);
+-
+-  // Find a display mode that matches what we need
+-  ::GetWindowRect(hWindow, &pState->rect);
+-
+-  // Change the window flags to remove the decoration etc.
+-  LONG style = ::GetWindowLongW(hWindow, GWL_STYLE);
+-  LONG exstyle = ::GetWindowLongW(hWindow, GWL_EXSTYLE);
+-
+-  pState->style = style;
+-  pState->exstyle = exstyle;
+-
+-  style &= ~WS_OVERLAPPEDWINDOW;
+-  exstyle &= ~WS_EX_OVERLAPPEDWINDOW;
++  pState->present_rect_pending = true;
++  if (!ownsFullscreenState(hWindow, pState) || D3DKMTEscape(&escape) != 0)
++    return false;
+ 
+-  ::SetWindowLongW(hWindow, GWL_STYLE, style);
+-  ::SetWindowLongW(hWindow, GWL_EXSTYLE, exstyle);
++  if (!ownsFullscreenState(hWindow, pState) ||
++      !setWindowLongChecked(hWindow, GWL_STYLE, saved.style & ~WS_OVERLAPPEDWINDOW))
++    return false;
++  pState->style_pending = true;
++  pState->position_pending = true;
+ 
+-  ::SetWindowPos(hWindow, HWND_TOPMOST, rect.left, rect.top,
+-                 rect.right - rect.left, rect.bottom - rect.top,
+-                 SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE);
++  if (!ownsFullscreenState(hWindow, pState) ||
++      !setWindowLongChecked(hWindow, GWL_EXSTYLE, saved.exstyle & ~WS_EX_OVERLAPPEDWINDOW))
++    return false;
++  pState->exstyle_pending = true;
+ 
+-  return true;
++  if (!ownsFullscreenState(hWindow, pState) ||
++      !::SetWindowPos(hWindow, HWND_TOPMOST, rect.left, rect.top,
++                     rect.right - rect.left, rect.bottom - rect.top,
++                     SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE))
++    return false;
++  // SetWindowPos can synchronously dispatch code that destroys the HWND.
++  return ownsFullscreenState(hWindow, pState);
+ }
+ 
+ bool leaveFullscreenMode(HWND hWindow, DXMTWindowState *pState,
+                          bool restoreCoordinates) {
+-  // Only restore the window style if the application hasn't
+-  // changed them. This is in line with what native DXGI does.
+-  LONG curStyle = ::GetWindowLongW(hWindow, GWL_STYLE) & ~WS_VISIBLE;
+-  LONG curExstyle = ::GetWindowLongW(hWindow, GWL_EXSTYLE) & ~WS_EX_TOPMOST;
+-
+-  if (curStyle == (pState->style & ~(WS_VISIBLE | WS_OVERLAPPEDWINDOW)) &&
+-      curExstyle ==
+-          (pState->exstyle & ~(WS_EX_TOPMOST | WS_EX_OVERLAPPEDWINDOW))) {
+-    ::SetWindowLongW(hWindow, GWL_STYLE, pState->style);
+-    ::SetWindowLongW(hWindow, GWL_EXSTYLE, pState->exstyle);
++  if (!pState->captured)
++    return true;
++  if (!ownsFullscreenState(hWindow, pState)) {
++    // The original window is gone; never restore an HWND recycled for another.
++    *pState = {};
++    return true;
+   }
+ 
+-  RECT empty = {};
+-  D3DKMT_ESCAPE escape = {};
+-  escape.Type = D3DKMT_ESCAPE_SET_PRESENT_RECT_WINE;
+-  escape.pPrivateDriverData = &empty;
+-  escape.PrivateDriverDataSize = sizeof(empty);
+-  escape.hContext = HandleToUlong(hWindow);
+-  D3DKMTEscape(&escape);
+-
+-  // Restore window position and apply the style
+-  UINT flags = SWP_FRAMECHANGED | SWP_NOACTIVATE;
+-  const RECT rect = pState->rect;
+-
+-  if (!restoreCoordinates)
+-    flags |= SWP_NOSIZE | SWP_NOMOVE;
++  bool success = true;
++  // Independently restore each completed mutation. A partial entry need not
++  // have changed both styles; application changes are preserved as in DXGI.
++  if (pState->style_pending) {
++    LONG current = 0;
++    if (!getWindowLongChecked(hWindow, GWL_STYLE, &current)) {
++      success = false;
++    } else if ((current & ~WS_VISIBLE) != (pState->style & ~(WS_VISIBLE | WS_OVERLAPPEDWINDOW))) {
++      pState->style_pending = false;
++    } else if (ownsFullscreenState(hWindow, pState) &&
++               setWindowLongChecked(hWindow, GWL_STYLE, pState->style)) {
++      pState->style_pending = false;
++    } else {
++      success = false;
++    }
++  }
++  if (!ownsFullscreenState(hWindow, pState)) {
++    *pState = {};
++    return true;
++  }
++  if (pState->exstyle_pending) {
++    LONG current = 0;
++    if (!getWindowLongChecked(hWindow, GWL_EXSTYLE, &current)) {
++      success = false;
++    } else if ((current & ~WS_EX_TOPMOST) != (pState->exstyle & ~(WS_EX_TOPMOST | WS_EX_OVERLAPPEDWINDOW))) {
++      pState->exstyle_pending = false;
++    } else if (ownsFullscreenState(hWindow, pState) &&
++               setWindowLongChecked(hWindow, GWL_EXSTYLE, pState->exstyle)) {
++      pState->exstyle_pending = false;
++    } else {
++      success = false;
++    }
++  }
++  if (!ownsFullscreenState(hWindow, pState)) {
++    *pState = {};
++    return true;
++  }
++  if (pState->present_rect_pending) {
++    RECT empty = {};
++    D3DKMT_ESCAPE escape = {};
++    escape.Type = D3DKMT_ESCAPE_SET_PRESENT_RECT_WINE;
++    escape.pPrivateDriverData = &empty;
++    escape.PrivateDriverDataSize = sizeof(empty);
++    escape.hContext = HandleToUlong(hWindow);
++    if (D3DKMTEscape(&escape) == 0)
++      pState->present_rect_pending = false;
++    else
++      success = false;
++  }
++  if (!ownsFullscreenState(hWindow, pState)) {
++    *pState = {};
++    return true;
++  }
++  if (pState->position_pending) {
++    UINT flags = SWP_FRAMECHANGED | SWP_NOACTIVATE;
++    if (!restoreCoordinates)
++      flags |= SWP_NOSIZE | SWP_NOMOVE;
++    const RECT rect = pState->rect;
++    if (::SetWindowPos(hWindow,
++                      (pState->exstyle & WS_EX_TOPMOST) ? HWND_TOPMOST : HWND_NOTOPMOST,
++                      rect.left, rect.top, rect.right - rect.left,
++                      rect.bottom - rect.top, flags))
++      pState->position_pending = false;
++    else
++      success = false;
++  }
+ 
+-  ::SetWindowPos(hWindow,
+-                 (pState->exstyle & WS_EX_TOPMOST) ? HWND_TOPMOST
+-                                                   : HWND_NOTOPMOST,
+-                 rect.left, rect.top, rect.right - rect.left,
+-                 rect.bottom - rect.top, flags);
++  if (!pState->style_pending && !pState->exstyle_pending &&
++      !pState->present_rect_pending && !pState->position_pending) {
++    if (ownsFullscreenState(hWindow, pState)) {
++      ::RemovePropW(hWindow, fullscreenStateProperty);
++      if (::GetPropW(hWindow, fullscreenStateProperty) == reinterpret_cast<HANDLE>(pState))
++        return false;
++    }
++    *pState = {};
++  }
++  return success;
++}
+ 
+-  return true;
++bool detachFullscreenState(HWND hWindow, const DXMTWindowState *pState) {
++  // Only remove this object's token. Destroyed/recycled windows and a marker
++  // installed by another owner must not be modified during terminal cleanup.
++  if (!::IsWindow(hWindow) || ::GetPropW(hWindow, fullscreenStateProperty) !=
++      reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(pState)))
++    return true;
++  ::RemovePropW(hWindow, fullscreenStateProperty);
++  // Removal failure must be visible; never claim the physical mutations were
++  // restored, or delete a replacement marker installed during an API callback.
++  return ::GetPropW(hWindow, fullscreenStateProperty) !=
++      reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(pState));
+ }
+ 
+ bool restoreDisplayMode(HMONITOR hMonitor) {
+-  WCHAR device_name[32];
+-  DEVMODEW current_mode, registry_mode;
+-  getDisplayName(hMonitor, device_name);
++  WCHAR device_name[32] = {};
++  return getDisplayName(hMonitor, device_name) && restoreDisplayMode(device_name);
++}
++
++bool restoreDisplayMode(const WCHAR *device_name) {
++  if (!device_name || !device_name[0])
++    return false;
++  DEVMODEW current_mode = {}, registry_mode = {};
++  current_mode.dmSize = sizeof(current_mode);
++  registry_mode.dmSize = sizeof(registry_mode);
+   if (!EnumDisplaySettingsExW(device_name, ENUM_CURRENT_SETTINGS, &current_mode, 0))
+     return false;
+   if (!EnumDisplaySettingsExW(device_name, ENUM_REGISTRY_SETTINGS, &registry_mode, 0))

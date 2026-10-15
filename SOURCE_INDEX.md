@@ -1,3 +1,16 @@
+# Current Wave6 entry points
+
+- `renderer/wave6/source/src/d3d11/d3d11_swapchain.cpp`: fullscreen, resolution, complete API trace.
+- `renderer/wave6/source/src/util/ds3_borderless.hpp`: opt-in geometry policy; DS3-specific compatibility route, not universal acceptance.
+- `renderer/wave6/source/src/util/wsi_window_win32.cpp`: display/window restore and failure state.
+- `renderer/wave6/source/src/d3d11/cs2_trace.hpp` and `cs2_trace_protocol.hpp`: V2 capture.
+- `renderer/wave6/source/src/dxmt/dxmt_statistics.hpp`: debug/release statistics.
+- `renderer/wave6/consumer`: matching decoder/controller and checks.
+- `tests/run_wave6.py`: aggregate offline checks, including retained Wave5.
+- `WAVE6_AUDIT_DISPOSITIONS.md`, `NEXT_WAVE_BRIEF.md`: evidence and priorities.
+
+## Historical index
+
 # Audit source map
 
 All paths below are repository-relative under `source/dlls/`.
