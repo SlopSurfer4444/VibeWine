@@ -1,16 +1,17 @@
 {
-  "candidate": "checked-mask-successor1",
-  "d3d11Sha256": "b032446544a63b502d783177448cd2a9183e131390be59d90d2c05d2fa3ad5d9",
-  "deliverySourceCommit": "64fdb5d1fc98b4d97ff1943c49650ff977f586b8",
+  "candidate": "admission-graphics-successor1-graphics-source-only",
+  "d3d11Sha256": "54329c945747632e609b0df454aa21978c37067c8f1deb09af2e9dc1d43bd381",
+  "deliverySourceCommit": "487b4065d15eec81daa3d37179bd123adf0a3924",
   "generation": "wave7",
+  "nativeAdmissionIncluded": false,
   "nativeIdentityHashes": {
     "engine/lib/wine/i386-windows/ntdll.dll": "ba0f4e2a534f9598d89d8b3d6488f6bcfeee6513fecec813cc8e564cf6ccf66c",
     "engine/lib/wine/x86_64-windows/ntdll.dll": "2ca3e842cf641d254e651c56222491a582549429e360c7d8479de9ccf316b0a3"
   },
   "nativeRuntimeHashes": {
     "engine/lib/wine/x86_64-unix/ntdll.so": "353502c7f7760fa30960a70ba2ebe26c3621140083a40fa36c66ceef1219e71e",
-    "engine/lib/wine/x86_64-unix/winemac.so": "c62ae85d35d2319ceb570597413308152050e2c5425f24754c31a1cc45059b21",
-    "engine/lib/wine/x86_64-unix/winemetal.so": "6b21c0c3157967053d5b942b080e9f91ffd7eb402ca3b0f09e5b2c4af0de1615"
+    "engine/lib/wine/x86_64-unix/winemac.so": "1b371c71cd21b7452632dab470f4d19cb143228361345ab207327dd4d14b27c3",
+    "engine/lib/wine/x86_64-unix/winemetal.so": "32b4e0a67267d648e7ab976fb793c529869c3e55a1ce30e2263f8d959a5e8ca2"
   },
   "observationStatus": "See WAVE7_ACCEPTANCE.md; source-only export does not update installed state",
   "publicFileHashes": "FILE_MANIFEST.json",
@@ -24,20 +25,20 @@
     "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
     "configHeaderSha256": "b2a0d7abe14507bda09ecc4cc86d9d79d1fae0f7e88533c43e4c5b84de95de3e",
     "configuredMakefileSha256": "8cf89bdc3147cc948698955bc583d8dc1797f669e756f1a1102e6590dc4fa8ff",
-    "incrementalMaskBuild": "Two objects rebuilt; 23 reused from hash-bound baseline-v6. Public native recipe performs a full source build.",
+    "fullCurrentDriverBuild": "25 translation units plus ABI assertion compile and link; no reused driver objects",
     "linkDonorHashes": {
       "ntdll.so": "2821162854bf0d3072333ec77cc6464fca15b2e1e9bfd195f15a1ab70df1ea49",
       "win32u.so": "7bb7e4de97a77d148a58941b091af71c3d6516cf420e67bce720069b3d0cd694"
     }
   },
   "schema": 1,
-  "sourceArchiveSha256": "2abe3cb80921fcdbab098ceb79a8f2d4826c50c2f351ad9118bc501efaf38b9a",
+  "sourceArchiveSha256": "fcff597fe923982c6f088b24d90d3cfa901bf65f789a9d134cd41f070308351f",
   "sourceMappings": "WAVE7_ADAPTATIONS.json",
-  "sourceState": "Frozen reviewed graphics source; portable recipe derivatives not clean-room rebuilt",
+  "sourceState": "Exact reviewed graphics sources; portable public adapters statically checked, not a clean-room build",
   "unsignedBuildHashes": {
     "ntdll.so": "681d58dac152a521b5222837656548f82b168aa85bfbd4c61886d9f8999fad0f",
-    "winemac.so": "9ab78b738d72076f828eaed112830088cdb3bcf92b066e1443b04dbcabcf1341",
-    "winemetal.so": "64639c18a7306faf1b7eb3c080d28f1166917e51d862ea7e2e9cf3913abfab96"
+    "winemac.so": "3be465d2219d4c508f12a3374d962616f424173c78526b0a36ce2f950591669e",
+    "winemetal.so": "7b0e005f00c111ea022292f76dc616ee9b77384b930763d4d35c54a624e35c50"
   },
   "wineBaseSourceArchiveSha256": "7be5819017b34f09670293f2be7ed9f4476734b8f42dab121a8b74e6619c92a8"
 }

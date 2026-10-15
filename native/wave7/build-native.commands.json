@@ -1,11 +1,6 @@
 {
-  "outputDirectory": "${OUTPUT}/native",
-  "generatedFiles": {
-    "native-abi-check.c": "#include \"wine/gdi_driver.h\"\n#include \"unixlib.h\"\n_Static_assert(WINE_GDI_DRIVER_VERSION == 108, \"GDI version\");\n_Static_assert(sizeof(struct user_driver_funcs) == 0x4c8, \"GDI table size\");\n_Static_assert(unix_init == 0 && unix_quit_result == 1 && unix_ax_poll == 2 && unix_ax_publish == 3 && unix_funcs_count == 4, \"Unix ordinal\");\n_Static_assert(sizeof(struct init_params) == 48, \"init layout\");\n_Static_assert(sizeof(struct app_quit_request_params) == 16, \"request layout\");\n"
-  },
   "commands": [
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -45,10 +40,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -88,10 +83,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -131,10 +126,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -174,10 +169,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -217,10 +212,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -260,10 +255,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -303,10 +298,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -346,10 +341,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -389,10 +384,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -432,10 +427,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -475,10 +470,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -518,10 +513,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -561,10 +556,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -604,10 +599,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -647,10 +642,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -690,10 +685,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -733,10 +728,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -776,10 +771,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -819,10 +814,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -862,10 +857,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -905,10 +900,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -948,10 +943,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -991,10 +986,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -1034,10 +1029,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -1077,10 +1072,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -1120,10 +1115,10 @@
         "-DIS_WOW64_BUILD",
         "-U_FORTIFY_SOURCE",
         "-D_FORTIFY_SOURCE=0"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     },
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -1180,7 +1175,12 @@
         "QuartzCore",
         "-framework",
         "Security"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     }
-  ]
+  ],
+  "generatedFiles": {
+    "native-abi-check.c": "#include \"wine/gdi_driver.h\"\n#include \"unixlib.h\"\n_Static_assert(WINE_GDI_DRIVER_VERSION == 108, \"GDI version\");\n_Static_assert(sizeof(struct user_driver_funcs) == 0x4c8, \"GDI table size\");\n_Static_assert(unix_init == 0 && unix_quit_result == 1 && unix_ax_poll == 2 && unix_ax_publish == 3 && unix_funcs_count == 4, \"Unix ordinal\");\n_Static_assert(sizeof(struct init_params) == 48, \"init layout\");\n_Static_assert(sizeof(struct app_quit_request_params) == 16, \"request layout\");\n"
+  },
+  "outputDirectory": "${OUTPUT}/native"
 }

@@ -336,7 +336,7 @@ void Presenter::observePresentation(WMT::MetalDrawable drawable, uint64_t frame_
 WMT::MetalDrawable
 Presenter::encodeCommands(
     WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, const PresentationConfiguration &configuration,
-    DXMTPresentMetadata metadata,
+    DXMTPresentMetadata metadata, uint32_t trace_generation,
     std::function<void(WMT::RenderCommandEncoder)> &&wait_fences,
     std::function<void(WMT::RenderCommandEncoder)> &&update_fences
 ) {
@@ -349,9 +349,9 @@ Presenter::encodeCommands(
     const auto status = layer_.setConfigurationChecked(
         configuration.layer_props, configuration.colorspace, configuration.revision);
     if (status != W7LA_OK) {
-      if (auto generation = cs2trace::generation()) {
+      if (trace_generation) {
         const auto t = cs2trace::now();
-        cs2trace::record(generation, 77, t, t, swapchain_serial_, status, configuration.revision, 0);
+        cs2trace::record(trace_generation, 77, t, t, swapchain_serial_, status, configuration.revision, 0);
       }
       return {};
     }

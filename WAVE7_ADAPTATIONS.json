@@ -577,9 +577,9 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "native/source/bridge/src/winemetal/unix/wave7_layer_apply.inc",
-      "originalSha256": "6ce7ed0158a3483767e5257624b34dcae1d82711f48b64738999d12564d3fb61",
+      "originalSha256": "28461b6b3ca793cebcdb0e846fcd32c788ed2835b96bb53e893203f698b657c5",
       "publicPath": "native/wave7/source/bridge/src/winemetal/unix/wave7_layer_apply.inc",
-      "publicSha256": "6ce7ed0158a3483767e5257624b34dcae1d82711f48b64738999d12564d3fb61"
+      "publicSha256": "28461b6b3ca793cebcdb0e846fcd32c788ed2835b96bb53e893203f698b657c5"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -661,9 +661,9 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "native/source/winemac.drv/ax_application.inc",
-      "originalSha256": "596be4a945dc83ac128ea0bafbe48809379900eb9c70079430372e153583887b",
+      "originalSha256": "55c01c44accc0f08a5684708b01d1829715951c84fc3268e9134dea71d3e8d1f",
       "publicPath": "native/wave7/source/winemac.drv/ax_application.inc",
-      "publicSha256": "596be4a945dc83ac128ea0bafbe48809379900eb9c70079430372e153583887b"
+      "publicSha256": "55c01c44accc0f08a5684708b01d1829715951c84fc3268e9134dea71d3e8d1f"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -692,6 +692,20 @@
       "originalSha256": "0499269832ec21419ce226da691b5844c2d1a64942740a713ca32c8f4570937c",
       "publicPath": "native/wave7/source/winemac.drv/ax_validation.h",
       "publicSha256": "0499269832ec21419ce226da691b5844c2d1a64942740a713ca32c8f4570937c"
+    },
+    {
+      "adaptation": "Exact archived source bytes",
+      "origin": "native/source/winemac.drv/ax_window_identity.inc",
+      "originalSha256": "dc32fd06b058bd879431d01fe0d5636158f73b6e5aff088c5184b3fa695ef639",
+      "publicPath": "native/wave7/source/winemac.drv/ax_window_identity.inc",
+      "publicSha256": "dc32fd06b058bd879431d01fe0d5636158f73b6e5aff088c5184b3fa695ef639"
+    },
+    {
+      "adaptation": "Exact archived source bytes",
+      "origin": "native/source/winemac.drv/ax_window_root_policy.h",
+      "originalSha256": "277350620f0012958bb380a7042cd3d2397d1e91e4eba5e8bcb7aaca8bbe91ab",
+      "publicPath": "native/wave7/source/winemac.drv/ax_window_root_policy.h",
+      "publicSha256": "277350620f0012958bb380a7042cd3d2397d1e91e4eba5e8bcb7aaca8bbe91ab"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -808,9 +822,9 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "native/source/winemac.drv/cocoa_window.m",
-      "originalSha256": "597acfdf52ca0a1b4841a30e4a6c59b1144ecbce7fd81a2af2bec09250ac0fce",
+      "originalSha256": "950fe74c8b6e752bd71297e86be07b82327d7ba3c3263f0973db36a9b9ed56bc",
       "publicPath": "native/wave7/source/winemac.drv/cocoa_window.m",
-      "publicSha256": "597acfdf52ca0a1b4841a30e4a6c59b1144ecbce7fd81a2af2bec09250ac0fce"
+      "publicSha256": "950fe74c8b6e752bd71297e86be07b82327d7ba3c3263f0973db36a9b9ed56bc"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -2523,9 +2537,9 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/d3d11/cs2_recipe.hpp",
-      "originalSha256": "4fd32c57c829c4d4d4a34d04933a867b7cbe8ae98c35b42475b0b73542270c7a",
+      "originalSha256": "4fbb23be404dd6113b1b59c151ad113d31715ae34cd240c369c5595b19926ab7",
       "publicPath": "renderer/wave7/source/src/d3d11/cs2_recipe.hpp",
-      "publicSha256": "4fd32c57c829c4d4d4a34d04933a867b7cbe8ae98c35b42475b0b73542270c7a"
+      "publicSha256": "4fbb23be404dd6113b1b59c151ad113d31715ae34cd240c369c5595b19926ab7"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -2719,9 +2733,9 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/d3d11/d3d11_pipeline.cpp",
-      "originalSha256": "011f487244002831665e322d46651c33c6b65b708c228087f40de8357d492701",
+      "originalSha256": "62a64b51377f35327261d67225fb94379b75477d05155f8e7544a6e3492c2c8a",
       "publicPath": "renderer/wave7/source/src/d3d11/d3d11_pipeline.cpp",
-      "publicSha256": "011f487244002831665e322d46651c33c6b65b708c228087f40de8357d492701"
+      "publicSha256": "62a64b51377f35327261d67225fb94379b75477d05155f8e7544a6e3492c2c8a"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -2733,9 +2747,9 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/d3d11/d3d11_pipeline_cache.cpp",
-      "originalSha256": "f214f717c83312be172a658ac454d16e07d3c0f6945b66e80d3e2605b872e21e",
+      "originalSha256": "3cb62817aa686a6c77d3d2258d5cca4d11650a4a85179227ae5b18c912f227d6",
       "publicPath": "renderer/wave7/source/src/d3d11/d3d11_pipeline_cache.cpp",
-      "publicSha256": "f214f717c83312be172a658ac454d16e07d3c0f6945b66e80d3e2605b872e21e"
+      "publicSha256": "3cb62817aa686a6c77d3d2258d5cca4d11650a4a85179227ae5b18c912f227d6"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -2817,9 +2831,9 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/d3d11/d3d11_shader.hpp",
-      "originalSha256": "54b2dd52d85d845f9058f77ba1b65793a32f93dafe5ea29cf8d28c875221766e",
+      "originalSha256": "277efc8b5ad76f2c63ddb92c96497ffe8bc55cc79cf0ef55079acbf1000da1fa",
       "publicPath": "renderer/wave7/source/src/d3d11/d3d11_shader.hpp",
-      "publicSha256": "54b2dd52d85d845f9058f77ba1b65793a32f93dafe5ea29cf8d28c875221766e"
+      "publicSha256": "277efc8b5ad76f2c63ddb92c96497ffe8bc55cc79cf0ef55079acbf1000da1fa"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -3055,16 +3069,16 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/dxmt/dxmt_command.cpp",
-      "originalSha256": "ac57a91b378d2aff5e256fef68429afc95f4ad0a85c307a1399e250882ba8585",
+      "originalSha256": "78775fba26454ea00a53396b7fae22cd2896fc1d17c76f68056192b26f1bc0ff",
       "publicPath": "renderer/wave7/source/src/dxmt/dxmt_command.cpp",
-      "publicSha256": "ac57a91b378d2aff5e256fef68429afc95f4ad0a85c307a1399e250882ba8585"
+      "publicSha256": "78775fba26454ea00a53396b7fae22cd2896fc1d17c76f68056192b26f1bc0ff"
     },
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/dxmt/dxmt_command.hpp",
-      "originalSha256": "a72450116910ba4cf00238ef8f2d97092a549f7a6a3d73d9727847abd539531e",
+      "originalSha256": "5b4b4b0d7ab31778fb68eef4e9eb7e0647d89aa570ff3fdb5a99ef42b2766f3d",
       "publicPath": "renderer/wave7/source/src/dxmt/dxmt_command.hpp",
-      "publicSha256": "a72450116910ba4cf00238ef8f2d97092a549f7a6a3d73d9727847abd539531e"
+      "publicSha256": "5b4b4b0d7ab31778fb68eef4e9eb7e0647d89aa570ff3fdb5a99ef42b2766f3d"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -3097,9 +3111,9 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/dxmt/dxmt_context.cpp",
-      "originalSha256": "5f20ece0548442f0fd6dd561d7040019f7a3e718460fd41a55af8d1cffd41331",
+      "originalSha256": "d42cc68746975a61fecedd7c68521d87d174e8c77fab011491b1014b66a4076d",
       "publicPath": "renderer/wave7/source/src/dxmt/dxmt_context.cpp",
-      "publicSha256": "5f20ece0548442f0fd6dd561d7040019f7a3e718460fd41a55af8d1cffd41331"
+      "publicSha256": "d42cc68746975a61fecedd7c68521d87d174e8c77fab011491b1014b66a4076d"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -3216,16 +3230,16 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/dxmt/dxmt_presenter.cpp",
-      "originalSha256": "2fded822875e278bb951dcf218096df0b6c3c47f4789f300a533f0157f81ac32",
+      "originalSha256": "d7d3aa635d51eba4e09cdf80793a712c9f66ee56a7614acf11683591d7179002",
       "publicPath": "renderer/wave7/source/src/dxmt/dxmt_presenter.cpp",
-      "publicSha256": "2fded822875e278bb951dcf218096df0b6c3c47f4789f300a533f0157f81ac32"
+      "publicSha256": "d7d3aa635d51eba4e09cdf80793a712c9f66ee56a7614acf11683591d7179002"
     },
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/dxmt/dxmt_presenter.hpp",
-      "originalSha256": "5879b306c1b5e549161d1fbbc06c531f31c10d0907ca2e1d0c5a946841139a3b",
+      "originalSha256": "b5c8e57094a53f4ffb8886b68ca094194a9458757b48fea4db1ccca3f8ca1c29",
       "publicPath": "renderer/wave7/source/src/dxmt/dxmt_presenter.hpp",
-      "publicSha256": "5879b306c1b5e549161d1fbbc06c531f31c10d0907ca2e1d0c5a946841139a3b"
+      "publicSha256": "b5c8e57094a53f4ffb8886b68ca094194a9458757b48fea4db1ccca3f8ca1c29"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -3335,9 +3349,9 @@
     {
       "adaptation": "Exact archived source bytes",
       "origin": "renderer/source/src/dxmt/dxmt_tasks.hpp",
-      "originalSha256": "4f003de7132fb1aadb2b05c9b51288f9fbf67565a5600bc4073a3eddc83c84f1",
+      "originalSha256": "714ed0461efcfe6e76acb636e95645f3cc7ad309baa04d2eb458f551c85902c8",
       "publicPath": "renderer/wave7/source/src/dxmt/dxmt_tasks.hpp",
-      "publicSha256": "4f003de7132fb1aadb2b05c9b51288f9fbf67565a5600bc4073a3eddc83c84f1"
+      "publicSha256": "714ed0461efcfe6e76acb636e95645f3cc7ad309baa04d2eb458f551c85902c8"
     },
     {
       "adaptation": "Exact archived source bytes",
@@ -4111,229 +4125,278 @@
     },
     {
       "adaptation": "Exact archived source bytes",
-      "origin": "renderer/build.py",
+      "origin": "integration/candidate1/renderer/build.py",
       "originalSha256": "e3fd264ad4bf38f9245e825233258c8f4d945fbd1ff61ea12cf905344446f985",
       "publicPath": "renderer/wave7/build.py",
       "publicSha256": "e3fd264ad4bf38f9245e825233258c8f4d945fbd1ff61ea12cf905344446f985"
     },
     {
-      "adaptation": "Exact archived source bytes",
-      "origin": "renderer/helper-library.json",
-      "originalSha256": "42e15d093b2724450da10c3a192bce4834b346cb1a451e1b3f27178f08f931b6",
-      "publicPath": "renderer/wave7/helper-library.json",
-      "publicSha256": "42e15d093b2724450da10c3a192bce4834b346cb1a451e1b3f27178f08f931b6"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate1/abi-receipt.json",
+      "originalSha256": "98e07f6ee961a75605714da388d0399c6d1b12344bd760657eff6ffc7cbc5da9",
+      "publicPath": "evidence/next-graphics/integration/candidate1/abi-receipt.json",
+      "publicSha256": "89475d2d1bdd264b129ba4509c1a257e5081577315f4bf2e568c441424326612"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "renderer/build.json",
-      "originalSha256": "62e84c4a92e4726cc7ed691b8d1454d416ceb2656af7ff69177e0407c054a1eb",
-      "publicPath": "evidence/checked-mask/renderer/build.json",
-      "publicSha256": "80ac7440e4c70af9b9deebdb7ac3c7e0efe4d82f9496fce58da97cf54269fb25"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate1/renderer/build/build-receipt.json",
+      "originalSha256": "fa69ebccde4229c21deadf32f9cea6db98d5dd9c2e7b33fbb2d37bd317b0d3a2",
+      "publicPath": "evidence/next-graphics/integration/candidate1/renderer/build/build-receipt.json",
+      "publicSha256": "73acfc3e84b465a5a78a6bc72f70d1f1b88239dcbe1253b1abd7faaa3a7d6b13"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "renderer/presenter-preflight/build/abi-receipt.json",
-      "originalSha256": "b68ef1214ca7a7c55e306535a2bb29de99c4153caeab6a2b45df45b665796344",
-      "publicPath": "evidence/checked-mask/renderer/presenter-preflight/build/abi-receipt.json",
-      "publicSha256": "3f5b92539d1ebf78da00b4c04a70a6d6e26491f718e456028585c1d9593514b3"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate1/native/build-bridge/build-receipt.json",
+      "originalSha256": "e9771ddf78e9563d8f33e8e72bbed38f4e31314dad9b06d64c6a0d6fc6f11dee",
+      "publicPath": "evidence/next-graphics/integration/candidate1/native/build-bridge/build-receipt.json",
+      "publicSha256": "ae422ca8a13d2c10e64d28db01c58348ce7f481060eaea6202af53a3d61bbbc7"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "renderer/presenter-preflight/build/native-bridge-build.json",
-      "originalSha256": "f98c04d5c96df3e8ed26f5b12116313457521ed06967ce6a493b4ad0873f3a3c",
-      "publicPath": "evidence/checked-mask/renderer/presenter-preflight/build/native-bridge-build.json",
-      "publicSha256": "2ecbb20533784dfbc6cac9320dfd29b64d189bdf196204226f655299db697757"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate1/native/signed/signing-receipt.json",
+      "originalSha256": "dc4d25210f08820cfdc77c29fdedf8c1fb669c4956b3657f9e8adc6aa1d8af80",
+      "publicPath": "evidence/next-graphics/integration/candidate1/native/signed/signing-receipt.json",
+      "publicSha256": "5238e969e6542832c2e90cc1c4ea8b9da6a1b7184831cc09d07c63f9e17ee609"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "renderer/presenter-preflight/build/signing-receipt.json",
-      "originalSha256": "a208806368de8d33e7a7fb464e340421bfa77659a963207c46fe026a4ba2fc6b",
-      "publicPath": "evidence/checked-mask/renderer/presenter-preflight/build/signing-receipt.json",
-      "publicSha256": "3ace5f8f454b28d640e33f28ff7f60a9f71f20a28105849700768e14bafce065"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate1/combined-tests/receipt.json",
+      "originalSha256": "def1f38e0590f894d45e29befaa4d9ae999bdb684de469f4e4a8b297405b3dc1",
+      "publicPath": "evidence/next-graphics/integration/candidate1/combined-tests/receipt.json",
+      "publicSha256": "e15e35241b7d827503787ff3fe25ddea69829b654d5b3fa29e2696c1a5a291cd"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "renderer/presenter-preflight/tests/results.json",
-      "originalSha256": "e1302a3f8acf0d6e4bd503ae60b405280579e1ab4062038b584d589bcce49baa",
-      "publicPath": "evidence/checked-mask/renderer/presenter-preflight/tests/results.json",
-      "publicSha256": "b39078ae1dadfef7b1d74b03bb5665918b20aa0bdd7bb08de0b1e207b4dd4030"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate1/renderer-build-source-manifest.json",
+      "originalSha256": "a4890ec8b7f2766b6ee3acbc545d42d8a32ccec455845f7f1d44482d22f994ac",
+      "publicPath": "evidence/next-graphics/integration/candidate1/renderer-build-source-manifest.json",
+      "publicSha256": "a4890ec8b7f2766b6ee3acbc545d42d8a32ccec455845f7f1d44482d22f994ac"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "renderer/presenter-preflight/native-tests/result.json",
-      "originalSha256": "c8d1d79e6d3aa6bef4366fc2fea6f7b9c1c3bca01fac7cbc1a759570f0d9f90a",
-      "publicPath": "evidence/checked-mask/renderer/presenter-preflight/native-tests/result.json",
-      "publicSha256": "27e50d207fe7d083f2faabc519beed6b8356738d391287b0f9abfcd8b0785e87"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate1/bridge-build-source-manifest.json",
+      "originalSha256": "be0e3147e739ead5518a0c12fe211c72d136f03d22fe30ded798b553c36b865b",
+      "publicPath": "evidence/next-graphics/integration/candidate1/bridge-build-source-manifest.json",
+      "publicSha256": "be0e3147e739ead5518a0c12fe211c72d136f03d22fe30ded798b553c36b865b"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "native/mask-coordinate-fix/build-receipt.json",
-      "originalSha256": "65334546ef35609e423cdb447086bada02994d26123d6b4419a6eb52aa192be8",
-      "publicPath": "evidence/checked-mask/native/mask-coordinate-fix/build-receipt.json",
-      "publicSha256": "23e47927f052d6af4fccc1b50494cfa6900055508ff4837f5f17e1491e9c6b2e"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate2/driver-abi-receipt.json",
+      "originalSha256": "fc8e4ae1153c7701bc974ccb8fd2d6951211b9478a5d2a8c5b87e02746ba84f1",
+      "publicPath": "evidence/next-graphics/integration/candidate2/driver-abi-receipt.json",
+      "publicSha256": "5db30d9cc667688bb09ecc4b4b3591133491a2b341f2e148528c8eecb932a83a"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "native/mask-coordinate-fix/signing-receipt.json",
-      "originalSha256": "bed23614040f631f4c5036073c98a724c34ca1953941689725d1bb11bdb489f0",
-      "publicPath": "evidence/checked-mask/native/mask-coordinate-fix/signing-receipt.json",
-      "publicSha256": "b358c04a39e4cc364339f6e1530398bab36268544171f92f377c519566de05af"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate2/driver-build-source-manifest.json",
+      "originalSha256": "4812f0b957e0d1ae13e28351eb670222accbc105c2dd9ecf895b57442fd16e1a",
+      "publicPath": "evidence/next-graphics/integration/candidate2/driver-build-source-manifest.json",
+      "publicSha256": "4812f0b957e0d1ae13e28351eb670222accbc105c2dd9ecf895b57442fd16e1a"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "native/baseline-v6/driver-build.json",
-      "originalSha256": "8cb48708b7cf07915a8cde62d499aa9269912263901352efaa89783c364f1ca6",
-      "publicPath": "evidence/checked-mask/native/baseline-v6/driver-build.json",
-      "publicSha256": "925eae3f23676d592e19b57853f4503816d85d5e4226a56cc87e0118ea177101"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate2/native/build-driver/build-receipt.json",
+      "originalSha256": "22b728ae6382d5ed483ebb52a6ca2bb41fc7ae94f03be5a65c085928b2bf6709",
+      "publicPath": "evidence/next-graphics/integration/candidate2/native/build-driver/build-receipt.json",
+      "publicSha256": "c649b2b847a09f253984a38b2fd0cc5df92c0ac7e7438a78e1ab814095d23d46"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "metrics/feedback-review/receipt.json",
-      "originalSha256": "9c9bea207687ebdd146252040f6284bea7b1b65a6fdedac2af92dd5518b303a1",
-      "publicPath": "evidence/checked-mask/metrics/feedback-review/receipt.json",
-      "publicSha256": "9bdbac16b423205e7643ede4e4206372513acc025f3de38c302a18418d1e4fb3"
+      "adaptation": "Receipt derivative: replace host/temp roots and omit raw output fields; retain original hash",
+      "origin": "integration/candidate2/native/signed/signing-receipt.json",
+      "originalSha256": "247f57d584b3dd26d28c42ea64652f80e9c9fa519db5ea88c4ed761ab0412b26",
+      "publicPath": "evidence/next-graphics/integration/candidate2/native/signed/signing-receipt.json",
+      "publicSha256": "d164895ec7057202bbed4d3b077ad89635abe7ef815acd7261a07f98583ab282"
     },
     {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "metrics/feedback-review/native-close/receipt.json",
-      "originalSha256": "48304fa9e30d122f02e3166eaee5fdc4b72a75d568131fc6479c05a3aad4cff3",
-      "publicPath": "evidence/checked-mask/metrics/feedback-review/native-close/receipt.json",
-      "publicSha256": "229fadf111fa92d34e607d8da541de0c8e0129e2ca0e0fa463ce5bb9762a2987"
-    },
-    {
-      "adaptation": "Receipt derivative: host and temporary paths replaced; raw output fields omitted; original hash retained",
-      "origin": "metrics/feedback-review/presenter/writer-receipt.json",
-      "originalSha256": "35c168a095256989460f065201a746067637fa1e2a38ff4814943bc9264b95b6",
-      "publicPath": "evidence/checked-mask/metrics/feedback-review/presenter/writer-receipt.json",
-      "publicSha256": "2dbb9b92cb6a8f2a7363f0d56e812e742f18d1f20c054f093b1c47483a0b44a1"
-    },
-    {
-      "adaptation": "Exact final recorded compile/link argv with explicit portable input roots",
-      "origin": "renderer/presenter-preflight/build/native-bridge-build.json",
-      "originalSha256": "f98c04d5c96df3e8ed26f5b12116313457521ed06967ce6a493b4ad0873f3a3c",
+      "adaptation": "Exact executed compile/link argv and generated ABI source with explicit portable roots; donor identities retained in provenance",
+      "origin": "integration/candidate1/recipes/bridge.json",
+      "originalSha256": "f21aa5a71739b3119f89765a753f55223d9fb07c78f8770948d269f3a3528df7",
       "publicPath": "native/wave7/build-bridge.commands.json",
       "publicSha256": "329f8001b1d4499a6ff6b81fb9421eaf8f1b1b33812c525f2af0734e1e0bc531"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "renderer/presenter-preflight/tests/run.py",
-      "originalSha256": "7e70529b6f6dde00be6c2dc152f1868f1c9dac6f13a44153190e72c0c9193166",
-      "publicPath": "renderer/wave7/presenter-tests/run.py",
-      "publicSha256": "7e70529b6f6dde00be6c2dc152f1868f1c9dac6f13a44153190e72c0c9193166"
+      "adaptation": "Exact executed compile/link argv and generated ABI source with explicit portable roots; donor identities retained in provenance",
+      "origin": "integration/candidate2/recipes/driver.json",
+      "originalSha256": "e863a53477a42fb535d4452e74d6627d150c659264027df99f8f3b7e00949177",
+      "publicPath": "native/wave7/build-native.commands.json",
+      "publicSha256": "13eff608faad89c5b253c1a5507d6ea30bf9bc1af40e89d64f4d3a3451696e37"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "renderer/presenter-preflight/tests/presenter_regression.cpp",
-      "originalSha256": "f46f8b6527de3976c53583f8d3a63dd79dfd585bcbab6f6a33b2d0ebe70bce9a",
-      "publicPath": "renderer/wave7/presenter-tests/presenter_regression.cpp",
-      "publicSha256": "f46f8b6527de3976c53583f8d3a63dd79dfd585bcbab6f6a33b2d0ebe70bce9a"
+      "adaptation": "Exact archived fixture source",
+      "origin": "integration/candidate1/combined-tests/event77/tests/presenter_regression.cpp",
+      "originalSha256": "9ac06c9e82ccef5fd8caeaa7277929ea9cd14c5cab257aa9d697fc8e29e4828c",
+      "publicPath": "renderer/wave7/next-tests/event77/tests/presenter_regression.cpp",
+      "publicSha256": "9ac06c9e82ccef5fd8caeaa7277929ea9cd14c5cab257aa9d697fc8e29e4828c"
     },
     {
-      "adaptation": "Public final bridge/Winemac and retained candidate1 legacy property source paths; scenarios and assertions unchanged",
-      "origin": "renderer/presenter-preflight/native-tests/run.py",
-      "originalSha256": "34d411c30a907ec2ddeb3bb1be51060d5b49f5aca93448ca6345027c20b82699",
-      "publicPath": "native/wave7/checked-tests/run.py",
-      "publicSha256": "58fe671b2da03ad40eef3f46ca8a045fb9e905534493e5ce633ffdb919ef2a32"
+      "adaptation": "Exact archived fixture source",
+      "origin": "integration/candidate1/combined-tests/persistence/tests/persistence_regression.cpp",
+      "originalSha256": "43e68c3482b3d3cbd4b5005b59c551612ff52c65a86c55da5eb99ae09bb1fa0a",
+      "publicPath": "renderer/wave7/next-tests/persistence/tests/persistence_regression.cpp",
+      "publicSha256": "43e68c3482b3d3cbd4b5005b59c551612ff52c65a86c55da5eb99ae09bb1fa0a"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "renderer/presenter-preflight/native-tests/fixture_prefix.m",
-      "originalSha256": "5de6a33778c4b09003ef9a37a346c57f063f313c301ad04434da064c583be0f1",
-      "publicPath": "native/wave7/checked-tests/fixture_prefix.m",
-      "publicSha256": "5de6a33778c4b09003ef9a37a346c57f063f313c301ad04434da064c583be0f1"
+      "adaptation": "Default to final public renderer source; event77 assertions and extraction unchanged",
+      "origin": "integration/candidate1/combined-tests/event77/tests/run.py",
+      "originalSha256": "f408014289876fae2949b9ef19674fca8f5186564ae69c86a4b806539b2ebf64",
+      "publicPath": "renderer/wave7/next-tests/event77/tests/run.py",
+      "publicSha256": "eccef379b7a5991c977206d0760978da62a5c407a1631d254d86ab5707101574"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "renderer/presenter-preflight/native-tests/fixture_body.m",
+      "adaptation": "Public source default; optional baseline must be explicitly supplied and retain original archive/source hash checks",
+      "origin": "integration/candidate1/combined-tests/persistence/tests/run.py",
+      "originalSha256": "3f157c8783f2edd9e7782cb4d3bf9b91355f1bf5f608bbd5962723025af001a2",
+      "publicPath": "renderer/wave7/next-tests/persistence/tests/run.py",
+      "publicSha256": "392242f40468af8f307fd99b5685aed5b3a49cb5aabf707a85e425356d96d06f"
+    },
+    {
+      "adaptation": "Remove private archive path; retain all baseline identity hashes and public revision",
+      "origin": "integration/candidate1/combined-tests/persistence/baseline-binding.json",
+      "originalSha256": "8b308cc732cbea55aac18a9135265aae5b257449cda8ac0211b60c06086582d0",
+      "publicPath": "renderer/wave7/next-tests/persistence/baseline-binding.json",
+      "publicSha256": "cbb29698af67a4835801c7e0b82ee51c9bc9efaeadf0967ae9772fda89ffc056"
+    },
+    {
+      "adaptation": "Exact archived fixture source",
+      "origin": "integration/candidate1/combined-tests/r1/tests/body.m",
+      "originalSha256": "52cd06885ee9b7b266598d8a7075d91e586cd9da1558698516e07cff7808aa4b",
+      "publicPath": "renderer/wave7/next-tests/r1/tests/body.m",
+      "publicSha256": "52cd06885ee9b7b266598d8a7075d91e586cd9da1558698516e07cff7808aa4b"
+    },
+    {
+      "adaptation": "Exact archived fixture source",
+      "origin": "integration/candidate1/combined-tests/r1/tests/fixture_body.m",
       "originalSha256": "d28a88ba40fff0833d81c41d25b1c90e4a47ef19b96b703247b12ca9ab06f606",
-      "publicPath": "native/wave7/checked-tests/fixture_body.m",
+      "publicPath": "renderer/wave7/next-tests/r1/tests/fixture_body.m",
       "publicSha256": "d28a88ba40fff0833d81c41d25b1c90e4a47ef19b96b703247b12ca9ab06f606"
     },
     {
-      "adaptation": "Public final Winemac and retained candidate1 baseline paths; extracted code and all four positive/negative variants unchanged",
-      "origin": "native/mask-coordinate-fix/tests/test_mask_coordinates.py",
-      "originalSha256": "dc6b2e8add56ad0736acc8090a501117b4bc5058f5c701f51121317278711317",
-      "publicPath": "native/wave7/mask-tests/test_mask_coordinates.py",
-      "publicSha256": "2f69d3e82f4b80be07c538e765ab437c321aba69ad3626945b8a69839f093989"
+      "adaptation": "Exact archived fixture source",
+      "origin": "integration/candidate1/combined-tests/r1/tests/fixture_prefix.m",
+      "originalSha256": "5de6a33778c4b09003ef9a37a346c57f063f313c301ad04434da064c583be0f1",
+      "publicPath": "renderer/wave7/next-tests/r1/tests/fixture_prefix.m",
+      "publicSha256": "5de6a33778c4b09003ef9a37a346c57f063f313c301ad04434da064c583be0f1"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "metrics/feedback-review/native-close/baseline/wave7_feedback.h",
-      "originalSha256": "4fe445118e8dc674c7bce278c0a7ba33afb9d430c7fb74886aa26a3e467b88a2",
-      "publicPath": "renderer/wave7/feedback-tests/native-close/baseline/wave7_feedback.h",
-      "publicSha256": "4fe445118e8dc674c7bce278c0a7ba33afb9d430c7fb74886aa26a3e467b88a2"
+      "adaptation": "Extract exact final public bridge/executor source; preserve combined positive cases and historical negative-control limit",
+      "origin": "integration/candidate1/combined-tests/r1/tests/run.py",
+      "originalSha256": "e9edd224af84c31ade9b81dff10016a14ad76362df842669c64c738585f720b8",
+      "publicPath": "renderer/wave7/next-tests/r1/tests/run.py",
+      "publicSha256": "5a768bdcb8c8de3a14e77894012e8546c1dec4c9cd65e8c7c79a98dbfce5af58"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "metrics/feedback-review/native-close/baseline/wave7_feedback.inc",
-      "originalSha256": "4b66c17baa9a37395c371fabbf6c5219bbd3d8623ce3a00cd4768d3374cc35fa",
-      "publicPath": "renderer/wave7/feedback-tests/native-close/baseline/wave7_feedback.inc",
-      "publicSha256": "4b66c17baa9a37395c371fabbf6c5219bbd3d8623ce3a00cd4768d3374cc35fa"
+      "adaptation": "Exact archived fixture source",
+      "origin": "integration/candidate1/combined-tests/clear/baseline/dxmt_command.cpp",
+      "originalSha256": "ac57a91b378d2aff5e256fef68429afc95f4ad0a85c307a1399e250882ba8585",
+      "publicPath": "renderer/wave7/next-tests/clear/baseline/dxmt_command.cpp",
+      "publicSha256": "ac57a91b378d2aff5e256fef68429afc95f4ad0a85c307a1399e250882ba8585"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "metrics/feedback-review/native-close/candidate/wave7_feedback.h",
-      "originalSha256": "f55da4920fca9300d186d6bd7b9ea198c0ba8a5871b5184647cf13b7945975a5",
-      "publicPath": "renderer/wave7/feedback-tests/native-close/candidate/wave7_feedback.h",
-      "publicSha256": "f55da4920fca9300d186d6bd7b9ea198c0ba8a5871b5184647cf13b7945975a5"
+      "adaptation": "Exact archived fixture source",
+      "origin": "integration/candidate1/combined-tests/clear/baseline/dxmt_command.hpp",
+      "originalSha256": "a72450116910ba4cf00238ef8f2d97092a549f7a6a3d73d9727847abd539531e",
+      "publicPath": "renderer/wave7/next-tests/clear/baseline/dxmt_command.hpp",
+      "publicSha256": "a72450116910ba4cf00238ef8f2d97092a549f7a6a3d73d9727847abd539531e"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "metrics/feedback-review/native-close/candidate/wave7_feedback.inc",
-      "originalSha256": "8ccd41a3e5ce2f7755a9b6f1a19ee067dfbbf4412d5b6514a26f4a8bfc9bccb4",
-      "publicPath": "renderer/wave7/feedback-tests/native-close/candidate/wave7_feedback.inc",
-      "publicSha256": "8ccd41a3e5ce2f7755a9b6f1a19ee067dfbbf4412d5b6514a26f4a8bfc9bccb4"
+      "adaptation": "Exact archived fixture source",
+      "origin": "integration/candidate1/combined-tests/clear/tests/behavior.cpp",
+      "originalSha256": "785c5067266c96f86bc0685761eed6c48e8bd50fb62aedfa41769ceb53304e68",
+      "publicPath": "renderer/wave7/next-tests/clear/tests/behavior.cpp",
+      "publicSha256": "785c5067266c96f86bc0685761eed6c48e8bd50fb62aedfa41769ceb53304e68"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "metrics/feedback-review/native-close/capture_mock.c",
-      "originalSha256": "11c3bd6a799856097668a7371ddac407c3a821a8eb9062297381e4bacce2d6df",
-      "publicPath": "renderer/wave7/feedback-tests/native-close/capture_mock.c",
-      "publicSha256": "11c3bd6a799856097668a7371ddac407c3a821a8eb9062297381e4bacce2d6df"
+      "adaptation": "Exact archived fixture source",
+      "origin": "integration/candidate1/combined-tests/clear/tests/mock_runtime.hpp",
+      "originalSha256": "82a80901e8838f5683a0a09133453d1bd5c4936259ffc8df76d13ed64fb37415",
+      "publicPath": "renderer/wave7/next-tests/clear/tests/mock_runtime.hpp",
+      "publicSha256": "82a80901e8838f5683a0a09133453d1bd5c4936259ffc8df76d13ed64fb37415"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "metrics/feedback-review/native-close/test_close.m",
-      "originalSha256": "34dd4dd3ab81b36e7650323c1202e438f290cbbb1c5714eaf185af5d58a55c5d",
-      "publicPath": "renderer/wave7/feedback-tests/native-close/test_close.m",
-      "publicSha256": "34dd4dd3ab81b36e7650323c1202e438f290cbbb1c5714eaf185af5d58a55c5d"
+      "adaptation": "Use full reviewed owner fixture with exact archived baseline and final public source; all six tests and semantic controls retained",
+      "origin": "integration/reviewed-patches/clear-pso/tests/test_clear_pso.py",
+      "originalSha256": "af152fd9300d73fc5ca06845b3f7ec4e65d70aa62cd2021768b837e026a2f5fd",
+      "publicPath": "renderer/wave7/next-tests/clear/tests/test_clear_pso.py",
+      "publicSha256": "2515cd64e889c96f9d8294173e8243a8b9b13a2cc5b41e029a88eca874020b75"
     },
     {
-      "adaptation": "Exact frozen fixture source",
-      "origin": "metrics/feedback-review/native-close/test_feedback.m",
-      "originalSha256": "7fa87402e6bad1b9cace8decd58a0a7154a5471c0eb5454f311e270aac8f120b",
-      "publicPath": "renderer/wave7/feedback-tests/native-close/test_feedback.m",
-      "publicSha256": "7fa87402e6bad1b9cace8decd58a0a7154a5471c0eb5454f311e270aac8f120b"
+      "adaptation": "Supplemental owner fixture, separately SHA-pinned; include final public production directly; assertions unchanged",
+      "originalSha256": "04f142611e68138563abdf696b79e330f9f10fb652313961faece08696adc321",
+      "publicPath": "native/wave7/ax-root-tests/test_policy.m",
+      "publicSha256": "9ec7cfd3565fac5dbe27ede3668adf85d836f84ec637fddb95eb45c5cbb1afbb",
+      "supplementalSource": "ax-root/test_policy.m"
     },
     {
-      "adaptation": "Bind candidate include/header copies to exported final production before compiling; baseline controls and all assertions unchanged",
-      "origin": "metrics/feedback-review/native-close/run.sh",
-      "originalSha256": "3638959fc062ec89bb1d58b67f058f3ef3185da806795566e92fffdfe202bc67",
-      "publicPath": "renderer/wave7/feedback-tests/native-close/run.sh",
-      "publicSha256": "5c58abccf0650d43915249b62e70c7b7c7be4061dcfa6c1705f1255b8dc1aa17"
+      "adaptation": "Supplemental owner fixture, separately SHA-pinned; include final public production directly; assertions unchanged",
+      "originalSha256": "da0d3184a393a5bd8b664569ccfb7b1c755c68b4ed0f44cc575ceeab1f7f005c",
+      "publicPath": "native/wave7/ax-root-tests/fixture.m",
+      "publicSha256": "2d7e766f50c73f6ce8bc3aea2b15d13aba1511700fb57c33bf6a696179251571",
+      "supplementalSource": "ax-root/fixture.m"
     },
     {
-      "adaptation": "Extract final public presenter bodies and protocol; require copied native test inputs byte-match final bridge; retain fixture assertions and sanitizer modes",
-      "origin": "metrics/feedback-review/run_writer_tests.py",
-      "originalSha256": "ebfc32f12f163e839d95accb6cae4b8723853d998f35454d777622c4dba8eb3c",
-      "publicPath": "renderer/wave7/feedback-tests/run_writer_tests.py",
-      "publicSha256": "d09af53fe5dcd4ce9c159ffc4fe89adf23a42022c076ca83c11e8f535b4292e3"
+      "adaptation": "Exact separately SHA-pinned supplemental AppKit fixture ownership helper",
+      "originalSha256": "e49ca08f14e22d1ba4a53d04d7026b10fc767ffed8d40f870f4d807eac16a67b",
+      "publicPath": "native/wave7/ax-root-tests/fixture_ownership.h",
+      "publicSha256": "e49ca08f14e22d1ba4a53d04d7026b10fc767ffed8d40f870f4d807eac16a67b",
+      "supplementalSource": "ax-root/fixture_ownership.h"
+    },
+    {
+      "adaptation": "Authored portable runner/documentation/source-binding manifest; not an archived fixture or execution receipt",
+      "authoredSource": "next_fixtures.py",
+      "originalSha256": "848a051a37813e9c5ba4fa5a1ff41bbcb6c6dd122877a2bed58780257496a572",
+      "publicPath": "renderer/wave7/next-tests/run.py",
+      "publicSha256": "caf739f1352be6e3d016c1112424abda3c0ff4604c293560083a480356839cde"
+    },
+    {
+      "adaptation": "Authored portable runner/documentation/source-binding manifest; not an archived fixture or execution receipt",
+      "authoredSource": "next_fixtures.py",
+      "originalSha256": "848a051a37813e9c5ba4fa5a1ff41bbcb6c6dd122877a2bed58780257496a572",
+      "publicPath": "renderer/wave7/next-tests/README.md",
+      "publicSha256": "dbd92aedd8dd4f1ed7c723738184df2e5dc50f805c8997d1fbad2ab76280018d"
+    },
+    {
+      "adaptation": "Authored portable runner/documentation/source-binding manifest; not an archived fixture or execution receipt",
+      "authoredSource": "next_fixtures.py",
+      "originalSha256": "848a051a37813e9c5ba4fa5a1ff41bbcb6c6dd122877a2bed58780257496a572",
+      "publicPath": "native/wave7/ax-root-tests/run.py",
+      "publicSha256": "6b406a495c06faab8f20c48dcb39515b68b60b7e53c55b46d81b444a6e612b50"
+    },
+    {
+      "adaptation": "Authored portable runner/documentation/source-binding manifest; not an archived fixture or execution receipt",
+      "authoredSource": "next_fixtures.py",
+      "originalSha256": "848a051a37813e9c5ba4fa5a1ff41bbcb6c6dd122877a2bed58780257496a572",
+      "publicPath": "tests/run_wave7.py",
+      "publicSha256": "0caff4055c7eb3ad909a565ac3a98ee2ad6ee470e2c2fd346b7632c4908b9dab"
+    },
+    {
+      "adaptation": "Authored portable runner/documentation/source-binding manifest; not an archived fixture or execution receipt",
+      "authoredSource": "next_fixtures.py",
+      "originalSha256": "848a051a37813e9c5ba4fa5a1ff41bbcb6c6dd122877a2bed58780257496a572",
+      "publicPath": "native/wave7/ax-root-tests/README.md",
+      "publicSha256": "5586c59b11e68075af4b012cd3dab23e566f783a8bdef6146deb69a1204734f4"
+    },
+    {
+      "adaptation": "Authored portable runner/documentation/source-binding manifest; not an archived fixture or execution receipt",
+      "authoredSource": "next_fixtures.py",
+      "originalSha256": "848a051a37813e9c5ba4fa5a1ff41bbcb6c6dd122877a2bed58780257496a572",
+      "publicPath": "renderer/wave7/next-tests/source-bindings.json",
+      "publicSha256": "a6d3f63b331837963d52f19550f04034eab8ce4dabb40e72a38800ad6bb95519"
     }
   ],
-  "frozenSourceArchiveSha256": "2abe3cb80921fcdbab098ceb79a8f2d4826c50c2f351ad9118bc501efaf38b9a",
-  "historicalMappings": "history/wave7-candidate1/WAVE7_ADAPTATIONS.json",
+  "frozenSourceArchiveSha256": "fcff597fe923982c6f088b24d90d3cfa901bf65f789a9d134cd41f070308351f",
+  "historicalMappings": "history/wave7-checked-mask/WAVE7_ADAPTATIONS.json",
   "omitted": [
     {
       "archivePath": "renderer/source/tests/dx11/test.png",
-      "reason": "Historical text-only upstream image omission",
+      "reason": "Retained text-only upstream unused image omission",
       "sha256": "16f7b855e9f83ffafe3e1136935d9f4b25e82069401aec56f1bed463c47ab4f6"
     },
     {
       "archivePath": "renderer/source/tests/dx11/testTexture.png",
-      "reason": "Historical text-only upstream image omission",
+      "reason": "Retained text-only upstream unused image omission",
       "sha256": "9dfe608f7542aa26ab9ddda6097e40584410c65392e973e369db1490bdea206f"
     }
   ],
-  "publicBaseCommit": "9276fb09580cfee3e1d0e02f3cca012725856d53",
+  "publicBaseCommit": "ebf85135dc94ce810c5e16e492fd58eda64832e9",
   "schema": 2
 }

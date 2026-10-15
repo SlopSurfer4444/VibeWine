@@ -1,40 +1,218 @@
 {
-  "schema": 1,
-  "sourceArchiveSha256": "2abe3cb80921fcdbab098ceb79a8f2d4826c50c2f351ad9118bc501efaf38b9a",
+  "omitted": [
+    {
+      "archivePath": "renderer/source/tests/dx11/test.png",
+      "reason": "Retained text-only upstream unused image omission",
+      "sha256": "16f7b855e9f83ffafe3e1136935d9f4b25e82069401aec56f1bed463c47ab4f6"
+    },
+    {
+      "archivePath": "renderer/source/tests/dx11/testTexture.png",
+      "reason": "Retained text-only upstream unused image omission",
+      "sha256": "9dfe608f7542aa26ab9ddda6097e40584410c65392e973e369db1490bdea206f"
+    }
+  ],
+  "schema": 2,
+  "scope": "Exported graphics members and explicit image omissions only; private lifecycle metadata excluded",
+  "sourceArchiveSha256": "fcff597fe923982c6f088b24d90d3cfa901bf65f789a9d134cd41f070308351f",
   "sourceEntries": [
     {
-      "archivePath": "metrics/baseline-candidate1/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "b40d012fbff7f4ee95fa0f37151171f409afd4f45c50ab422bff46c4b72e6146"
+      "archivePath": "integration/candidate1/abi-receipt.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate1/abi-receipt.json"
+      ],
+      "sha256": "98e07f6ee961a75605714da388d0399c6d1b12344bd760657eff6ffc7cbc5da9"
     },
     {
-      "archivePath": "metrics/baseline-candidate1/consumer.patch",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "670f45fffa3f94ca4dc0ea58d8c0cf21db1194d100bfcd505b06aa41e1fd740c"
+      "archivePath": "integration/candidate1/bridge-build-source-manifest.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate1/bridge-build-source-manifest.json"
+      ],
+      "sha256": "be0e3147e739ead5518a0c12fe211c72d136f03d22fe30ded798b553c36b865b"
     },
     {
-      "archivePath": "metrics/baseline-candidate1/receipt.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "17cc1588c0d05865f64997564f49718a4fe06a0cad809ecc5d0a7e0eb1feae86"
+      "archivePath": "integration/candidate1/combined-tests/clear/baseline/dxmt_command.cpp",
+      "publicPaths": [
+        "renderer/wave7/next-tests/clear/baseline/dxmt_command.cpp"
+      ],
+      "sha256": "ac57a91b378d2aff5e256fef68429afc95f4ad0a85c307a1399e250882ba8585"
     },
     {
-      "archivePath": "metrics/baseline-candidate1/source-binding.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "94bac97bd29b429b540b075cc5376ffa227e11e18c0db6c9c48a9b8464e6466f"
+      "archivePath": "integration/candidate1/combined-tests/clear/baseline/dxmt_command.hpp",
+      "publicPaths": [
+        "renderer/wave7/next-tests/clear/baseline/dxmt_command.hpp"
+      ],
+      "sha256": "a72450116910ba4cf00238ef8f2d97092a549f7a6a3d73d9727847abd539531e"
     },
     {
-      "archivePath": "metrics/baseline-candidate1/verify.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "77e43de6089a1682a66f43a8104dd40f3b63efe6d5d8a0a829e90d8e876e7daf"
+      "archivePath": "integration/candidate1/combined-tests/clear/tests/behavior.cpp",
+      "publicPaths": [
+        "renderer/wave7/next-tests/clear/tests/behavior.cpp"
+      ],
+      "sha256": "785c5067266c96f86bc0685761eed6c48e8bd50fb62aedfa41769ceb53304e68"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/clear/tests/mock_runtime.hpp",
+      "publicPaths": [
+        "renderer/wave7/next-tests/clear/tests/mock_runtime.hpp"
+      ],
+      "sha256": "82a80901e8838f5683a0a09133453d1bd5c4936259ffc8df76d13ed64fb37415"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/event77/tests/presenter_regression.cpp",
+      "publicPaths": [
+        "renderer/wave7/next-tests/event77/tests/presenter_regression.cpp"
+      ],
+      "sha256": "9ac06c9e82ccef5fd8caeaa7277929ea9cd14c5cab257aa9d697fc8e29e4828c"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/event77/tests/run.py",
+      "publicPaths": [
+        "renderer/wave7/next-tests/event77/tests/run.py"
+      ],
+      "sha256": "f408014289876fae2949b9ef19674fca8f5186564ae69c86a4b806539b2ebf64"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/persistence/baseline-binding.json",
+      "publicPaths": [
+        "renderer/wave7/next-tests/persistence/baseline-binding.json"
+      ],
+      "sha256": "8b308cc732cbea55aac18a9135265aae5b257449cda8ac0211b60c06086582d0"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/persistence/tests/persistence_regression.cpp",
+      "publicPaths": [
+        "renderer/wave7/next-tests/persistence/tests/persistence_regression.cpp"
+      ],
+      "sha256": "43e68c3482b3d3cbd4b5005b59c551612ff52c65a86c55da5eb99ae09bb1fa0a"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/persistence/tests/run.py",
+      "publicPaths": [
+        "renderer/wave7/next-tests/persistence/tests/run.py"
+      ],
+      "sha256": "3f157c8783f2edd9e7782cb4d3bf9b91355f1bf5f608bbd5962723025af001a2"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/r1/tests/body.m",
+      "publicPaths": [
+        "renderer/wave7/next-tests/r1/tests/body.m"
+      ],
+      "sha256": "52cd06885ee9b7b266598d8a7075d91e586cd9da1558698516e07cff7808aa4b"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/r1/tests/fixture_body.m",
+      "publicPaths": [
+        "renderer/wave7/next-tests/r1/tests/fixture_body.m"
+      ],
+      "sha256": "d28a88ba40fff0833d81c41d25b1c90e4a47ef19b96b703247b12ca9ab06f606"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/r1/tests/fixture_prefix.m",
+      "publicPaths": [
+        "renderer/wave7/next-tests/r1/tests/fixture_prefix.m"
+      ],
+      "sha256": "5de6a33778c4b09003ef9a37a346c57f063f313c301ad04434da064c583be0f1"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/r1/tests/run.py",
+      "publicPaths": [
+        "renderer/wave7/next-tests/r1/tests/run.py"
+      ],
+      "sha256": "e9edd224af84c31ade9b81dff10016a14ad76362df842669c64c738585f720b8"
+    },
+    {
+      "archivePath": "integration/candidate1/combined-tests/receipt.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate1/combined-tests/receipt.json"
+      ],
+      "sha256": "def1f38e0590f894d45e29befaa4d9ae999bdb684de469f4e4a8b297405b3dc1"
+    },
+    {
+      "archivePath": "integration/candidate1/native/build-bridge/build-receipt.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate1/native/build-bridge/build-receipt.json"
+      ],
+      "sha256": "e9771ddf78e9563d8f33e8e72bbed38f4e31314dad9b06d64c6a0d6fc6f11dee"
+    },
+    {
+      "archivePath": "integration/candidate1/native/signed/signing-receipt.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate1/native/signed/signing-receipt.json"
+      ],
+      "sha256": "dc4d25210f08820cfdc77c29fdedf8c1fb669c4956b3657f9e8adc6aa1d8af80"
+    },
+    {
+      "archivePath": "integration/candidate1/recipes/bridge.json",
+      "publicPaths": [
+        "native/wave7/build-bridge.commands.json"
+      ],
+      "sha256": "f21aa5a71739b3119f89765a753f55223d9fb07c78f8770948d269f3a3528df7"
+    },
+    {
+      "archivePath": "integration/candidate1/renderer-build-source-manifest.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate1/renderer-build-source-manifest.json"
+      ],
+      "sha256": "a4890ec8b7f2766b6ee3acbc545d42d8a32ccec455845f7f1d44482d22f994ac"
+    },
+    {
+      "archivePath": "integration/candidate1/renderer/build.py",
+      "publicPaths": [
+        "renderer/wave7/build.py"
+      ],
+      "sha256": "e3fd264ad4bf38f9245e825233258c8f4d945fbd1ff61ea12cf905344446f985"
+    },
+    {
+      "archivePath": "integration/candidate1/renderer/build/build-receipt.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate1/renderer/build/build-receipt.json"
+      ],
+      "sha256": "fa69ebccde4229c21deadf32f9cea6db98d5dd9c2e7b33fbb2d37bd317b0d3a2"
+    },
+    {
+      "archivePath": "integration/candidate2/driver-abi-receipt.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate2/driver-abi-receipt.json"
+      ],
+      "sha256": "fc8e4ae1153c7701bc974ccb8fd2d6951211b9478a5d2a8c5b87e02746ba84f1"
+    },
+    {
+      "archivePath": "integration/candidate2/driver-build-source-manifest.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate2/driver-build-source-manifest.json"
+      ],
+      "sha256": "4812f0b957e0d1ae13e28351eb670222accbc105c2dd9ecf895b57442fd16e1a"
+    },
+    {
+      "archivePath": "integration/candidate2/native/build-driver/build-receipt.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate2/native/build-driver/build-receipt.json"
+      ],
+      "sha256": "22b728ae6382d5ed483ebb52a6ca2bb41fc7ae94f03be5a65c085928b2bf6709"
+    },
+    {
+      "archivePath": "integration/candidate2/native/signed/signing-receipt.json",
+      "publicPaths": [
+        "evidence/next-graphics/integration/candidate2/native/signed/signing-receipt.json"
+      ],
+      "sha256": "247f57d584b3dd26d28c42ea64652f80e9c9fa519db5ea88c4ed761ab0412b26"
+    },
+    {
+      "archivePath": "integration/candidate2/recipes/driver.json",
+      "publicPaths": [
+        "native/wave7/build-native.commands.json"
+      ],
+      "sha256": "e863a53477a42fb535d4452e74d6627d150c659264027df99f8f3b7e00949177"
+    },
+    {
+      "archivePath": "integration/reviewed-patches/clear-pso/tests/test_clear_pso.py",
+      "publicPaths": [
+        "renderer/wave7/next-tests/clear/tests/test_clear_pso.py"
+      ],
+      "sha256": "af152fd9300d73fc5ca06845b3f7ec4e65d70aa62cd2021768b837e026a2f5fd"
     },
     {
       "archivePath": "metrics/consumer/analyze.py",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/analyze.py"
       ],
@@ -42,7 +220,6 @@
     },
     {
       "archivePath": "metrics/consumer/probe_semantics.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/probe_semantics.hpp"
       ],
@@ -50,7 +227,6 @@
     },
     {
       "archivePath": "metrics/consumer/test_analyze.py",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/test_analyze.py"
       ],
@@ -58,7 +234,6 @@
     },
     {
       "archivePath": "metrics/consumer/test_api_analyze.py",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/test_api_analyze.py"
       ],
@@ -66,7 +241,6 @@
     },
     {
       "archivePath": "metrics/consumer/test_sync_analyze.py",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/test_sync_analyze.py"
       ],
@@ -74,7 +248,6 @@
     },
     {
       "archivePath": "metrics/consumer/test_wave7_binary.py",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/test_wave7_binary.py"
       ],
@@ -82,7 +255,6 @@
     },
     {
       "archivePath": "metrics/consumer/tests_cli.py",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/tests_cli.py"
       ],
@@ -90,7 +262,6 @@
     },
     {
       "archivePath": "metrics/consumer/trace_controller.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/trace_controller.cpp"
       ],
@@ -98,7 +269,6 @@
     },
     {
       "archivePath": "metrics/consumer/trace_core.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/trace_core.hpp"
       ],
@@ -106,619 +276,20 @@
     },
     {
       "archivePath": "metrics/consumer/wave7_analysis.py",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/consumer/wave7_analysis.py"
       ],
       "sha256": "60f2234193fffb23bb8e9632f26bbe98a182fd8f6d33ab21354c5c69b4d7666e"
     },
     {
-      "archivePath": "metrics/feedback-review/FINAL.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "7a130d9037b133e6af5e27c85cee5b516966fccabe70f0ed85c88ae4e398e8c5"
-    },
-    {
-      "archivePath": "metrics/feedback-review/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "204f6e3109dfb5326288d9c6cdd83d089d9206876340953f776827f207c5cc35"
-    },
-    {
-      "archivePath": "metrics/feedback-review/REVIEW.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "2a9f8c816d278c1a1deabc5c4d1db56a947b8147d3fbe2efec6c46fba0ffe6ec"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/baseline/wave7_feedback.h",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/feedback-tests/native-close/baseline/wave7_feedback.h"
-      ],
-      "sha256": "4fe445118e8dc674c7bce278c0a7ba33afb9d430c7fb74886aa26a3e467b88a2"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/baseline/wave7_feedback.inc",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/feedback-tests/native-close/baseline/wave7_feedback.inc"
-      ],
-      "sha256": "4b66c17baa9a37395c371fabbf6c5219bbd3d8623ce3a00cd4768d3374cc35fa"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/candidate/wave7_feedback.h",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/feedback-tests/native-close/candidate/wave7_feedback.h"
-      ],
-      "sha256": "f55da4920fca9300d186d6bd7b9ea198c0ba8a5871b5184647cf13b7945975a5"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/candidate/wave7_feedback.inc",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/feedback-tests/native-close/candidate/wave7_feedback.inc"
-      ],
-      "sha256": "8ccd41a3e5ce2f7755a9b6f1a19ee067dfbbf4412d5b6514a26f4a8bfc9bccb4"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/capture_mock.c",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/feedback-tests/native-close/capture_mock.c"
-      ],
-      "sha256": "11c3bd6a799856097668a7371ddac407c3a821a8eb9062297381e4bacce2d6df"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/findings.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "a35f64c075808fc05bdf36ddbd60240ed07bbafc12e5014df57d76b760b1c353"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/receipt.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/metrics/feedback-review/native-close/receipt.json"
-      ],
-      "sha256": "48304fa9e30d122f02e3166eaee5fdc4b72a75d568131fc6479c05a3aad4cff3"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/run.sh",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/feedback-tests/native-close/run.sh"
-      ],
-      "sha256": "3638959fc062ec89bb1d58b67f058f3ef3185da806795566e92fffdfe202bc67"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/source-binding.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "a56d1c88f6707636f87d4d5b081b4f333c060fd1c170e43b744556537529df66"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/suggested.patch",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "ed4ca86a2c22a4fae78e95f76a1f1881fb44f2ea29658ed9cc53888dc96f7c79"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/test_close.m",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/feedback-tests/native-close/test_close.m"
-      ],
-      "sha256": "34dd4dd3ab81b36e7650323c1202e438f290cbbb1c5714eaf185af5d58a55c5d"
-    },
-    {
-      "archivePath": "metrics/feedback-review/native-close/test_feedback.m",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/feedback-tests/native-close/test_feedback.m"
-      ],
-      "sha256": "7fa87402e6bad1b9cace8decd58a0a7154a5471c0eb5454f311e270aac8f120b"
-    },
-    {
-      "archivePath": "metrics/feedback-review/presenter/baseline.cpp",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "b5ad613c69707b8bc576a01270aecc702fdfa224a45cf75e69b605ddeb6bf74d"
-    },
-    {
-      "archivePath": "metrics/feedback-review/presenter/candidate.cpp",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "2fded822875e278bb951dcf218096df0b6c3c47f4789f300a533f0157f81ac32"
-    },
-    {
-      "archivePath": "metrics/feedback-review/presenter/presenter.patch",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "34019930856fe96098dabf9bc30f641c333ef5550245feb480b7b78a51e9c42c"
-    },
-    {
-      "archivePath": "metrics/feedback-review/presenter/source-binding.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "24d32e5312aa5e2f402ebefa857ab77ece5e37d736a2b343cb998450c20a0a71"
-    },
-    {
-      "archivePath": "metrics/feedback-review/presenter/writer-receipt.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/metrics/feedback-review/presenter/writer-receipt.json"
-      ],
-      "sha256": "35c168a095256989460f065201a746067637fa1e2a38ff4814943bc9264b95b6"
-    },
-    {
-      "archivePath": "metrics/feedback-review/presenter/writer_fixture.mm",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "152e4442d89659dcb958ad91ecce155e8de4f05680ca45b6b22db03502d29533"
-    },
-    {
-      "archivePath": "metrics/feedback-review/receipt.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/metrics/feedback-review/receipt.json"
-      ],
-      "sha256": "9c9bea207687ebdd146252040f6284bea7b1b65a6fdedac2af92dd5518b303a1"
-    },
-    {
-      "archivePath": "metrics/feedback-review/run_writer_tests.py",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/feedback-tests/run_writer_tests.py"
-      ],
-      "sha256": "ebfc32f12f163e839d95accb6cae4b8723853d998f35454d777622c4dba8eb3c"
-    },
-    {
-      "archivePath": "metrics/feedback-review/successor-source-comparison.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "6760ed6560c68583522aeb0bf7a4ca4c3d7ae9dc2f53404e49b6d182f04bc9d4"
-    },
-    {
-      "archivePath": "metrics/feedback-review/verify.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "77e43de6089a1682a66f43a8104dd40f3b63efe6d5d8a0a829e90d8e876e7daf"
-    },
-    {
       "archivePath": "metrics/protocol/src/d3d11/cs2_trace_protocol.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/protocol/src/d3d11/cs2_trace_protocol.hpp"
       ],
       "sha256": "c09680878717ca907a41f0c0807041dfd587c7fe627051289a6ad91a783f79d0"
     },
     {
-      "archivePath": "native/baseline-candidate1/bridge-build-command.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "2c8d88881e067b6e2a4e2f4056cf5fd5041c64e75f8821c10fa4a11f880dea69"
-    },
-    {
-      "archivePath": "native/baseline-candidate1/bridge-build.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "607ae37102809b248472202d12ca939225b936a5cc5f4e6f99c741cbdfaec5f0"
-    },
-    {
-      "archivePath": "native/baseline-candidate1/build-bridge.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "1e4e1e25b6c4fa7dba9b14ed91b2ca0240b6ff77626abcd5975e0b06fcf9945a"
-    },
-    {
-      "archivePath": "native/baseline-v6/build-native.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "31ec599f27335fabb49dbede68bda6e52b5efcb983c22a0012222f4adcf3e685"
-    },
-    {
-      "archivePath": "native/baseline-v6/driver-build.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/native/baseline-v6/driver-build.json"
-      ],
-      "sha256": "8cb48708b7cf07915a8cde62d499aa9269912263901352efaa89783c364f1ca6"
-    },
-    {
-      "archivePath": "native/baseline-v6/driver-compile-commands.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "3573f0d55ce9a4ec1318bef929a7f349451c674f7b8f075cc7c5fca28b3c79f6"
-    },
-    {
-      "archivePath": "native/baseline-v6/signed-native-receipt.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "410dd2ace8a436d05947ad8fae7f512a1e6004829b80c3b60a1361152d07bda0"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/.gitattributes",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "f82b99b04a647026fbb2fdb8501237ec9c1e3abb5647d9f690fbbe25f8139e77"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/Makefile.in",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "8ccca0e204038a5e208681069952617fcfb23cb976b92d43c05fd1cbe84a077d"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/ax_application.inc",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "596be4a945dc83ac128ea0bafbe48809379900eb9c70079430372e153583887b"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/ax_native.inc",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "8aa926387620ab3c56925c732c5733c0616d2e83dc7e0521812417286ae97552"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/ax_protocol.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "804caecef7d9c03cd927a28a6180d9cda666c080044c1322ffed789cb6246e70"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/ax_provider.inc",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "8f2fd1f5f865cb0e2271dd98b45b6fcaca1fafe20b29382e8e3a63a5c861027c"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/ax_validation.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "0499269832ec21419ce226da691b5844c2d1a64942740a713ca32c8f4570937c"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/clipboard.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "00ccc294b01f809f983fd258ec34e51fd92d857f1e236b0d22a1e4e4e5120018"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_app.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "0469113ead868bb8c936198a653057954fdf3d19327dbfb28b37e98f9b3f1753"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_app.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "5a15a9203341190f54fced6c7d9758561cd83383972e3bf796ba26ccd996791b"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_clipboard.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "6ac9cf79857ef3f8ce5fb329033092254ed5a1097a34772c09b5c9754424ae49"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_cursorclipping.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "55305632801cded83ec9c464e340a931fd109088e2eed064f32297242192d0e2"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_cursorclipping.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "082d079412a955cf96c1e948a5a8c1921daba7cab21f92ecf2259a2688c4347d"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_display.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "9e08e154f14bd09fc6d478133d7245e1a4fa9f72491d8a8257ac0203c1c212e1"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_event.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "a55f0e8c6aa5c80ab2713b9c74b6ca5ed526582d10e380caea2168d99f9a8bc2"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_event.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "8a363b9db1dc14e5742ce9bedf32dd965200513c3434a99de7345a3ff35cfc2f"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_icon_utils.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "02e28cfa6044c8d556f62fbbf846c75eb70fe20f848451476e84991447c2dfa5"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_icon_utils.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "04edd067b4d42437b4fa028d438b2d54865e1ee60501bba692880692457ec568"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_main.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "4993bcb0bf7af9635626cc0f9f966b4f9b712dcc3e7d224b1c24b4d9e08afbcb"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_opengl.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "e3c7c3d0e371faa6e3ef29ff2350ffd42dea6caf1a0b65a6a085296790f5ff11"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_opengl.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "8e01a5804fa5e6655b5e6a3b36e6e29235d57c88ce5cb2c81e18e6a66188c9a1"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_status_item.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "ae3d0b54ba46785539d1ec7c61870fc01056475f9a0c39d44f5f69c01dab5bc0"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_window.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "8ae092be881770e36f5ca46a3d12cde545a2790fab4c7ffbe732e5cfd58f6286"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/cocoa_window.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "616902ca4548e5f969b6e791951a9bc646ff1e06a7cbf372d9ae642d5b9fe091"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/d3dmetal.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "f4667b5c90b3c0e94befb0188de72de69cf5b5de16a6f5b1c7cecde51735fc32"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/d3dmetal_objc.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "6eeb595910f4dd495786b3d206d54e6859edbcf234b267b4245849479639eb56"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/d3dmetal_objc.m",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "6a2f914b8d1ece300170e388716bd6c26cf52d222aa9f32aac8a203e3b9f3976"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/display.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "1e231cd5036f3139e09dd4a9e59bd4675dfb6d2faac35814b5c4ac3f39e3cfa8"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/dllmain.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "20b56ace57f87d73f70803d049b00324577fe7bc4aa2a267cff83cb399bb8296"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/event.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "cb8344a2d76db2263365d1913262dc8105ca8409b71f8f09f3eaa1e4e76f4329"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/gdi.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "d96e80a17413a11fed94aee493756c6e3b8a277b29dabb463b726c91e667b92f"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/image.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "ffeb126cf88eed076b961fcb5f387a276722d6a2d98bf919dae9cfd03015c8ec"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/keyboard.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "5007b53ce6f2caf36dd0063aa1898624495c3442756ac8c396b126039b4f69de"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/macdrv.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "b54bb9ee52afcc8684d6761471ce075c9cb2470a216a958b11027e3e76e86e0f"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/macdrv_cocoa.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "63792e5b5acfc51b70c9147e5349af98ead37f3acd452f0ed1e3c49601ef845e"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/macdrv_main.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "6661999f5843849ef5e3ba26a83b760ff5c6ffeb3fb500bc3fad599dd8bdcbc6"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/macdrv_res.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "75809aefe47769005c61d274a2192a2553f3fc0442d9f1a5ce1e298908bef909"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/mouse.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "29e6e3e3c3886178d1f1ac4974a2a793f121871932d81b2c21734a50e2b409a4"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/opengl.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "91a56243f9e7c978bd340f438b7ed53d83b83190ff0a896ac5f36b2e8ba4fa2a"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/opengl_bcdec.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "d781e6de37a4b3180ad61cd1067d37c380d57052e1abe99a35b7d5e6cfa4c608"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/surface.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "f99c41502bb8d29c164283f0586bd4ec7e933148448904dadbe82e972fb7fb7a"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/systray.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "a6e7144ef3d7ba40a235b72833a58c627ee9ed95c0cee711211c91b23ae16bd4"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/unixlib.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "7ea99ee6d84a05793a5733d56f12fcb8b700dbb57270fb1c2887f18f73c09d44"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/vulkan.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "80e8ef619ef5d3335f120c635560750e09284ff4fc3950968be811adaf35705c"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/wave7_display_edr.inc",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "7bda0774837744b5809c78b666b77b377e40d12e68b2d003f4ea8edf07def3da"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/wave7_main_executor.inc",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "5acf6562156681ca6766e14c759f63162140d860e5dc91367d628bc413772898"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/window.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "78b1f1748fb8dc2701089695b140a7080129ab8712567426d720d0c7978a35ca"
-    },
-    {
-      "archivePath": "native/baseline-v6/source/winemac.drv/winemac.rc",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "aa2af15506e2b452381ee64f897d25143f665b49f559633f0dd686c04291751e"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/BUILD-REVIEW.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "ec9e131629e07725b5f8eb07919d7451da2b73d5d6045be60915d30d1a24129e"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "98b0df5d4788c6d4dc3a1898b1aaeaf41270b54c99281b2012d13efab25aca94"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/RESULT.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "e57142745efbce164174c181f555b12eb6f56016b306004bdd92ad49e60e2bb1"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/REVIEW.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "dab579f372db5957f9e7d983437040535874a9aa951fe9e2134ddb7dfc1b0b34"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/build-private.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "97a1389fd60b6816a1f407d4c9ff461438a1b8d2b090fee0a238a2fb64495ce3"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/build-receipt.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/native/mask-coordinate-fix/build-receipt.json"
-      ],
-      "sha256": "65334546ef35609e423cdb447086bada02994d26123d6b4419a6eb52aa192be8"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/compile_commands.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "b86d95fb132cc65ec7adb291d349b2b2b3760a93574ce2c0207a6615202ae178"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/native-abi-check.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "f49192b9fbc5593ca5a120f25e6355214f93baa1b4a8f173d3040e872134ad58"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/receipt.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "571ceb621b29b911282a1e23e8b29934dbf85a44662ddeca2508a8b9ccb5d943"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/signing-receipt.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/native/mask-coordinate-fix/signing-receipt.json"
-      ],
-      "sha256": "bed23614040f631f4c5036073c98a724c34ca1953941689725d1bb11bdb489f0"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/source.patch",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "768c856d894ffaa7d8b114e21b932c37b246d8958fed067bfe9c4208eaaf3873"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/state.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "21595a5af7bc600d0dc775f96ba38f3e0848011e5233d3d1e1c479daf5aa6719"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/tests/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "053674f5a219ce34c0f91ce7e4d0d25fa2b3c5056e3a5e937d74d2d808960347"
-    },
-    {
-      "archivePath": "native/mask-coordinate-fix/tests/test_mask_coordinates.py",
-      "disposition": "mapped",
-      "publicPaths": [
-        "native/wave7/mask-tests/test_mask_coordinates.py"
-      ],
-      "sha256": "dc6b2e8add56ad0736acc8090a501117b4bc5058f5c701f51121317278711317"
-    },
-    {
       "archivePath": "native/source/bridge/ds3_bridge.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/ds3_bridge.h"
       ],
@@ -726,7 +297,6 @@
     },
     {
       "archivePath": "native/source/bridge/expected.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/expected.h"
       ],
@@ -734,7 +304,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/.clang-format"
       ],
@@ -742,7 +311,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/adt.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/adt.hpp"
       ],
@@ -750,7 +318,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/ftl.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/ftl.hpp"
       ],
@@ -758,7 +325,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/oaidl.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/oaidl.h"
       ],
@@ -766,7 +332,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/objbase.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/objbase.h"
       ],
@@ -774,7 +339,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/ocidl.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/ocidl.h"
       ],
@@ -782,7 +346,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/ole2.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/ole2.h"
       ],
@@ -790,7 +353,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/poppack.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/poppack.h"
       ],
@@ -798,7 +360,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/pshpack1.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/pshpack1.h"
       ],
@@ -806,7 +367,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/pshpack4.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/pshpack4.h"
       ],
@@ -814,7 +374,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/rpc.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/rpc.h"
       ],
@@ -822,7 +381,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/rpcndr.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/rpcndr.h"
       ],
@@ -830,7 +388,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/unknwn.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/unknwn.h"
       ],
@@ -838,7 +395,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/windows.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/windows.h"
       ],
@@ -846,7 +402,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/native/windows/windows_base.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/native/windows/windows_base.h"
       ],
@@ -854,7 +409,6 @@
     },
     {
       "archivePath": "native/source/bridge/include/tl/generator.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/include/tl/generator.hpp"
       ],
@@ -862,7 +416,6 @@
     },
     {
       "archivePath": "native/source/bridge/patched_source.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/patched_source.h"
       ],
@@ -870,7 +423,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/.clang-format"
       ],
@@ -878,7 +430,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/air_operations.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/air_operations.cpp"
       ],
@@ -886,7 +437,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/air_operations.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/air_operations.hpp"
       ],
@@ -894,7 +444,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/air_signature.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/air_signature.cpp"
       ],
@@ -902,7 +451,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/air_signature.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/air_signature.hpp"
       ],
@@ -910,7 +458,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/air_type.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/air_type.cpp"
       ],
@@ -918,7 +465,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/air_type.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/air_type.hpp"
       ],
@@ -926,7 +472,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/airconv_cli.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/airconv_cli.cpp"
       ],
@@ -934,7 +479,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/airconv_context.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/airconv_context.cpp"
       ],
@@ -942,7 +486,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/airconv_context.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/airconv_context.hpp"
       ],
@@ -950,7 +493,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/airconv_error.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/airconv_error.hpp"
       ],
@@ -958,7 +500,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/airconv_public.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/airconv_public.h"
       ],
@@ -966,7 +507,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/darwin/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/darwin/meson.build"
       ],
@@ -974,7 +514,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_constants.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_constants.hpp"
       ],
@@ -982,7 +521,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_converter.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_converter.cpp"
       ],
@@ -990,7 +528,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_converter.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_converter.hpp"
       ],
@@ -998,7 +535,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_converter_basicblock.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_converter_basicblock.cpp"
       ],
@@ -1006,7 +542,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_converter_cfg.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_converter_cfg.cpp"
       ],
@@ -1014,7 +549,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_converter_gs.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_converter_gs.cpp"
       ],
@@ -1022,7 +556,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_converter_ts.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_converter_ts.cpp"
       ],
@@ -1030,7 +563,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_instructions.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_instructions.cpp"
       ],
@@ -1038,7 +570,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_instructions.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_instructions.hpp"
       ],
@@ -1046,7 +577,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/dxbc_signature.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/dxbc_signature.cpp"
       ],
@@ -1054,7 +584,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/meson.build"
       ],
@@ -1062,7 +591,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/metallib_writer.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/metallib_writer.cpp"
       ],
@@ -1070,7 +598,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/metallib_writer.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/metallib_writer.hpp"
       ],
@@ -1078,7 +605,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/monad.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/monad.hpp"
       ],
@@ -1086,7 +612,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/nt/air_builder.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/nt/air_builder.cpp"
       ],
@@ -1094,7 +619,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/nt/air_builder.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/nt/air_builder.hpp"
       ],
@@ -1102,7 +626,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/nt/dxbc_converter_base.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/nt/dxbc_converter_base.cpp"
       ],
@@ -1110,7 +633,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/nt/dxbc_converter_base.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/nt/dxbc_converter_base.hpp"
       ],
@@ -1118,7 +640,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/packed_variant_list.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/packed_variant_list.hpp"
       ],
@@ -1126,7 +647,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/sha256.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/sha256.hpp"
       ],
@@ -1134,7 +654,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/shader_common.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/shader_common.hpp"
       ],
@@ -1142,7 +661,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/shaders/air_msad.metal",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/shaders/air_msad.metal"
       ],
@@ -1150,7 +668,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/shaders/air_samplepos.metal",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/shaders/air_samplepos.metal"
       ],
@@ -1158,7 +675,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/shaders/air_tessellation.metal",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/shaders/air_tessellation.metal"
       ],
@@ -1166,7 +682,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/transforms/lower_16bit_texread.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/transforms/lower_16bit_texread.cpp"
       ],
@@ -1174,7 +689,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/transforms/lower_16bit_texread.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/transforms/lower_16bit_texread.hpp"
       ],
@@ -1182,7 +696,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/transforms/simdgroup_implicit_membarrier.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/transforms/simdgroup_implicit_membarrier.cpp"
       ],
@@ -1190,7 +703,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/airconv/transforms/simdgroup_implicit_membarrier.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/airconv/transforms/simdgroup_implicit_membarrier.hpp"
       ],
@@ -1198,7 +710,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/.clang-format"
       ],
@@ -1206,7 +717,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/Metal.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/Metal.hpp"
       ],
@@ -1214,7 +724,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/airconv_thunks.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/airconv_thunks.c"
       ],
@@ -1222,7 +731,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/airconv_thunks.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/airconv_thunks.h"
       ],
@@ -1230,7 +738,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/main.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/main.c"
       ],
@@ -1238,7 +745,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/meson.build"
       ],
@@ -1246,7 +752,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/unix/cache.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/unix/cache.c"
       ],
@@ -1254,7 +759,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/unix/install.sh",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/unix/install.sh"
       ],
@@ -1262,7 +766,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/unix/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/unix/meson.build"
       ],
@@ -1270,7 +773,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/unix/wave7_display_snapshot.inc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/unix/wave7_display_snapshot.inc"
       ],
@@ -1278,7 +780,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/unix/wave7_feedback.inc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/unix/wave7_feedback.inc"
       ],
@@ -1286,15 +787,13 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/unix/wave7_layer_apply.inc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/unix/wave7_layer_apply.inc"
       ],
-      "sha256": "6ce7ed0158a3483767e5257624b34dcae1d82711f48b64738999d12564d3fb61"
+      "sha256": "28461b6b3ca793cebcdb0e846fcd32c788ed2835b96bb53e893203f698b657c5"
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/unix/wave7_shared_listener.inc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/unix/wave7_shared_listener.inc"
       ],
@@ -1302,7 +801,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/unix/winemetal_ds3.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/unix/winemetal_ds3.c"
       ],
@@ -1310,7 +808,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/unix/winemetal_unix.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/unix/winemetal_unix.c"
       ],
@@ -1318,7 +815,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/winemetal.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/winemetal.h"
       ],
@@ -1326,7 +822,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/winemetal_thunks.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/winemetal_thunks.c"
       ],
@@ -1334,7 +829,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/winemetal_thunks.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/winemetal_thunks.h"
       ],
@@ -1342,7 +836,6 @@
     },
     {
       "archivePath": "native/source/bridge/src/winemetal/wineunixlib.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/src/winemetal/wineunixlib.h"
       ],
@@ -1350,7 +843,6 @@
     },
     {
       "archivePath": "native/source/bridge/wave7_feedback.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/wave7_feedback.h"
       ],
@@ -1358,7 +850,6 @@
     },
     {
       "archivePath": "native/source/bridge/wave7_layer_apply.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/bridge/wave7_layer_apply.h"
       ],
@@ -1366,7 +857,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/.gitattributes",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/.gitattributes"
       ],
@@ -1374,7 +864,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/Makefile.in",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/Makefile.in"
       ],
@@ -1382,15 +871,13 @@
     },
     {
       "archivePath": "native/source/winemac.drv/ax_application.inc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/ax_application.inc"
       ],
-      "sha256": "596be4a945dc83ac128ea0bafbe48809379900eb9c70079430372e153583887b"
+      "sha256": "55c01c44accc0f08a5684708b01d1829715951c84fc3268e9134dea71d3e8d1f"
     },
     {
       "archivePath": "native/source/winemac.drv/ax_native.inc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/ax_native.inc"
       ],
@@ -1398,7 +885,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/ax_protocol.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/ax_protocol.h"
       ],
@@ -1406,7 +892,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/ax_provider.inc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/ax_provider.inc"
       ],
@@ -1414,15 +899,27 @@
     },
     {
       "archivePath": "native/source/winemac.drv/ax_validation.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/ax_validation.h"
       ],
       "sha256": "0499269832ec21419ce226da691b5844c2d1a64942740a713ca32c8f4570937c"
     },
     {
+      "archivePath": "native/source/winemac.drv/ax_window_identity.inc",
+      "publicPaths": [
+        "native/wave7/source/winemac.drv/ax_window_identity.inc"
+      ],
+      "sha256": "dc32fd06b058bd879431d01fe0d5636158f73b6e5aff088c5184b3fa695ef639"
+    },
+    {
+      "archivePath": "native/source/winemac.drv/ax_window_root_policy.h",
+      "publicPaths": [
+        "native/wave7/source/winemac.drv/ax_window_root_policy.h"
+      ],
+      "sha256": "277350620f0012958bb380a7042cd3d2397d1e91e4eba5e8bcb7aaca8bbe91ab"
+    },
+    {
       "archivePath": "native/source/winemac.drv/clipboard.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/clipboard.c"
       ],
@@ -1430,7 +927,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_app.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_app.h"
       ],
@@ -1438,7 +934,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_app.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_app.m"
       ],
@@ -1446,7 +941,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_clipboard.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_clipboard.m"
       ],
@@ -1454,7 +948,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_cursorclipping.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_cursorclipping.h"
       ],
@@ -1462,7 +955,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_cursorclipping.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_cursorclipping.m"
       ],
@@ -1470,7 +962,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_display.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_display.m"
       ],
@@ -1478,7 +969,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_event.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_event.h"
       ],
@@ -1486,7 +976,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_event.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_event.m"
       ],
@@ -1494,7 +983,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_icon_utils.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_icon_utils.h"
       ],
@@ -1502,7 +990,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_icon_utils.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_icon_utils.m"
       ],
@@ -1510,7 +997,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_main.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_main.m"
       ],
@@ -1518,7 +1004,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_opengl.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_opengl.h"
       ],
@@ -1526,7 +1011,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_opengl.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_opengl.m"
       ],
@@ -1534,7 +1018,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_status_item.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_status_item.m"
       ],
@@ -1542,7 +1025,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_window.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_window.h"
       ],
@@ -1550,15 +1032,13 @@
     },
     {
       "archivePath": "native/source/winemac.drv/cocoa_window.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/cocoa_window.m"
       ],
-      "sha256": "597acfdf52ca0a1b4841a30e4a6c59b1144ecbce7fd81a2af2bec09250ac0fce"
+      "sha256": "950fe74c8b6e752bd71297e86be07b82327d7ba3c3263f0973db36a9b9ed56bc"
     },
     {
       "archivePath": "native/source/winemac.drv/d3dmetal.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/d3dmetal.c"
       ],
@@ -1566,7 +1046,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/d3dmetal_objc.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/d3dmetal_objc.h"
       ],
@@ -1574,7 +1053,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/d3dmetal_objc.m",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/d3dmetal_objc.m"
       ],
@@ -1582,7 +1060,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/display.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/display.c"
       ],
@@ -1590,7 +1067,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/dllmain.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/dllmain.c"
       ],
@@ -1598,7 +1074,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/event.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/event.c"
       ],
@@ -1606,7 +1081,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/gdi.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/gdi.c"
       ],
@@ -1614,7 +1088,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/image.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/image.c"
       ],
@@ -1622,7 +1095,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/keyboard.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/keyboard.c"
       ],
@@ -1630,7 +1102,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/macdrv.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/macdrv.h"
       ],
@@ -1638,7 +1109,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/macdrv_cocoa.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/macdrv_cocoa.h"
       ],
@@ -1646,7 +1116,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/macdrv_main.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/macdrv_main.c"
       ],
@@ -1654,7 +1123,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/macdrv_res.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/macdrv_res.h"
       ],
@@ -1662,7 +1130,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/mouse.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/mouse.c"
       ],
@@ -1670,7 +1137,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/opengl.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/opengl.c"
       ],
@@ -1678,7 +1144,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/opengl_bcdec.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/opengl_bcdec.h"
       ],
@@ -1686,7 +1151,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/surface.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/surface.c"
       ],
@@ -1694,7 +1158,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/systray.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/systray.c"
       ],
@@ -1702,7 +1165,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/unixlib.h",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/unixlib.h"
       ],
@@ -1710,7 +1172,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/vulkan.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/vulkan.c"
       ],
@@ -1718,7 +1179,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/wave7_display_edr.inc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/wave7_display_edr.inc"
       ],
@@ -1726,7 +1186,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/wave7_main_executor.inc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/wave7_main_executor.inc"
       ],
@@ -1734,7 +1193,6 @@
     },
     {
       "archivePath": "native/source/winemac.drv/window.c",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/window.c"
       ],
@@ -1742,105 +1200,13 @@
     },
     {
       "archivePath": "native/source/winemac.drv/winemac.rc",
-      "disposition": "mapped",
       "publicPaths": [
         "native/wave7/source/winemac.drv/winemac.rc"
       ],
       "sha256": "aa2af15506e2b452381ee64f897d25143f665b49f559633f0dd686c04291751e"
     },
     {
-      "archivePath": "ntdll/assemble_runtime.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "c539d2018947b75bf4c7486b30826bbe1a0417c358c54c104db5075284194fb8"
-    },
-    {
-      "archivePath": "ntdll/bundles/runtime-linked-v2/receipt.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "86c7b53fcb1e2e0beb4b711909a8d6c398c60a27d10e3728c4dcd21ce9a849ee"
-    },
-    {
-      "archivePath": "ntdll/check_runtime_paths.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "23d85bab00e6023e90a68045b2572dacdcd191f043d3f61373ff57440ec43275"
-    },
-    {
-      "archivePath": "ntdll/rebuild-review/abi-candidate-v2.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "947727ed21a85e2b93bfff4d670a30afa6be8bc3f20a42832030282702e6d9cf"
-    },
-    {
-      "archivePath": "ntdll/rebuild-review/path-audit.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "1a156d15179a210bf360587f7235496f613de0a0ae99c27e3e5e0926b03c9561"
-    },
-    {
-      "archivePath": "ntdll/rebuild-v2/compile_commands.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "8f733b8e24b253cef1c5e1d4ef18755b73d482dbbc9c1b87f4fb46f3e728361f"
-    },
-    {
-      "archivePath": "ntdll/rebuild-v2/receipt.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "b646094ceb4e51b4daf42e79be23a35f34edfc489bdbf66d1179da0505a846b3"
-    },
-    {
-      "archivePath": "ntdll/rebuild-v2/resolved-path-flags.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "73b456e599d27dc117d948e81f44c90a8aa2c715b836594bfd00a22e970f37eb"
-    },
-    {
-      "archivePath": "ntdll/rebuild-v2/runtime-path-checks.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "2b38cb0cd5a641e464896cc262f94678ad02378f7330059636b0e0cb6f16ab15"
-    },
-    {
-      "archivePath": "ntdll/rebuild-v2/runtime-paths.c",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "f31ff05398ebed4e789361bab19543acd73e939ccaf01fba4c73c38900d3e59a"
-    },
-    {
-      "archivePath": "ntdll/rebuild_ntdll.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "c0d2555a9293fb87c56ea3529d62412b51a3ca9cb25364dfb3a5508da9b1a839"
-    },
-    {
-      "archivePath": "ntdll/runtime-candidate-v2/checks.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "fd53a2f9a8b9b1579dae77bf5c735f846e85aa673589093396a70ae94ab847ad"
-    },
-    {
-      "archivePath": "ntdll/runtime-candidate-v2/final-static-admission.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "06746c9efdc1562ca475a82651422b808f3b4787e9e0887a09f0f68f040f2881"
-    },
-    {
-      "archivePath": "ntdll/runtime-candidate-v2/receipt.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "9ab5a899fb8ee0478d4b2ab9a4538cd47188a4c9130d1ac5a5a1e8e66868c69c"
-    },
-    {
-      "archivePath": "ntdll/runtime-candidate-v2/symlinks.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "36bd30a7c07a3520b6fd65f34b1096e021210d751dd454d00316037178e768ee"
-    },
-    {
       "archivePath": "ntdll/source/Makefile.in",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/Makefile.in"
       ],
@@ -1848,7 +1214,6 @@
     },
     {
       "archivePath": "ntdll/source/actctx.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/actctx.c"
       ],
@@ -1856,7 +1221,6 @@
     },
     {
       "archivePath": "ntdll/source/atom.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/atom.c"
       ],
@@ -1864,7 +1228,6 @@
     },
     {
       "archivePath": "ntdll/source/crypt.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/crypt.c"
       ],
@@ -1872,7 +1235,6 @@
     },
     {
       "archivePath": "ntdll/source/debugbuffer.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/debugbuffer.c"
       ],
@@ -1880,7 +1242,6 @@
     },
     {
       "archivePath": "ntdll/source/env.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/env.c"
       ],
@@ -1888,7 +1249,6 @@
     },
     {
       "archivePath": "ntdll/source/error.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/error.c"
       ],
@@ -1896,7 +1256,6 @@
     },
     {
       "archivePath": "ntdll/source/error.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/error.h"
       ],
@@ -1904,7 +1263,6 @@
     },
     {
       "archivePath": "ntdll/source/exception.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/exception.c"
       ],
@@ -1912,7 +1270,6 @@
     },
     {
       "archivePath": "ntdll/source/handletable.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/handletable.c"
       ],
@@ -1920,7 +1277,6 @@
     },
     {
       "archivePath": "ntdll/source/heap.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/heap.c"
       ],
@@ -1928,7 +1284,6 @@
     },
     {
       "archivePath": "ntdll/source/large_int.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/large_int.c"
       ],
@@ -1936,7 +1291,6 @@
     },
     {
       "archivePath": "ntdll/source/loader.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/loader.c"
       ],
@@ -1944,7 +1298,6 @@
     },
     {
       "archivePath": "ntdll/source/locale.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/locale.c"
       ],
@@ -1952,7 +1305,6 @@
     },
     {
       "archivePath": "ntdll/source/locale_private.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/locale_private.h"
       ],
@@ -1960,7 +1312,6 @@
     },
     {
       "archivePath": "ntdll/source/make_errors",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/make_errors"
       ],
@@ -1968,7 +1319,6 @@
     },
     {
       "archivePath": "ntdll/source/math.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/math.c"
       ],
@@ -1976,7 +1326,6 @@
     },
     {
       "archivePath": "ntdll/source/misc.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/misc.c"
       ],
@@ -1984,7 +1333,6 @@
     },
     {
       "archivePath": "ntdll/source/ntdll.spec",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/ntdll.spec"
       ],
@@ -1992,7 +1340,6 @@
     },
     {
       "archivePath": "ntdll/source/ntdll_misc.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/ntdll_misc.h"
       ],
@@ -2000,7 +1347,6 @@
     },
     {
       "archivePath": "ntdll/source/ntsyscalls.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/ntsyscalls.h"
       ],
@@ -2008,7 +1354,6 @@
     },
     {
       "archivePath": "ntdll/source/path.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/path.c"
       ],
@@ -2016,7 +1361,6 @@
     },
     {
       "archivePath": "ntdll/source/printf.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/printf.c"
       ],
@@ -2024,7 +1368,6 @@
     },
     {
       "archivePath": "ntdll/source/printf.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/printf.h"
       ],
@@ -2032,7 +1375,6 @@
     },
     {
       "archivePath": "ntdll/source/process.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/process.c"
       ],
@@ -2040,7 +1382,6 @@
     },
     {
       "archivePath": "ntdll/source/reg.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/reg.c"
       ],
@@ -2048,7 +1389,6 @@
     },
     {
       "archivePath": "ntdll/source/relay.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/relay.c"
       ],
@@ -2056,7 +1396,6 @@
     },
     {
       "archivePath": "ntdll/source/resource.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/resource.c"
       ],
@@ -2064,7 +1403,6 @@
     },
     {
       "archivePath": "ntdll/source/rtl.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/rtl.c"
       ],
@@ -2072,7 +1410,6 @@
     },
     {
       "archivePath": "ntdll/source/rtlbitmap.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/rtlbitmap.c"
       ],
@@ -2080,7 +1417,6 @@
     },
     {
       "archivePath": "ntdll/source/rtlstr.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/rtlstr.c"
       ],
@@ -2088,7 +1424,6 @@
     },
     {
       "archivePath": "ntdll/source/sec.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/sec.c"
       ],
@@ -2096,7 +1431,6 @@
     },
     {
       "archivePath": "ntdll/source/signal_arm.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/signal_arm.c"
       ],
@@ -2104,7 +1438,6 @@
     },
     {
       "archivePath": "ntdll/source/signal_arm64.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/signal_arm64.c"
       ],
@@ -2112,7 +1445,6 @@
     },
     {
       "archivePath": "ntdll/source/signal_arm64ec.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/signal_arm64ec.c"
       ],
@@ -2120,7 +1452,6 @@
     },
     {
       "archivePath": "ntdll/source/signal_i386.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/signal_i386.c"
       ],
@@ -2128,7 +1459,6 @@
     },
     {
       "archivePath": "ntdll/source/signal_x86_64.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/signal_x86_64.c"
       ],
@@ -2136,7 +1466,6 @@
     },
     {
       "archivePath": "ntdll/source/string.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/string.c"
       ],
@@ -2144,7 +1473,6 @@
     },
     {
       "archivePath": "ntdll/source/sync.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/sync.c"
       ],
@@ -2152,7 +1480,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/Makefile.in",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/Makefile.in"
       ],
@@ -2160,7 +1487,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/atom.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/atom.c"
       ],
@@ -2168,7 +1494,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/change.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/change.c"
       ],
@@ -2176,7 +1501,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/directory.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/directory.c"
       ],
@@ -2184,7 +1508,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/env.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/env.c"
       ],
@@ -2192,7 +1515,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/error.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/error.c"
       ],
@@ -2200,7 +1522,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/exception.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/exception.c"
       ],
@@ -2208,7 +1529,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/file.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/file.c"
       ],
@@ -2216,7 +1536,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/generated.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/generated.c"
       ],
@@ -2224,7 +1543,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/info.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/info.c"
       ],
@@ -2232,7 +1550,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/large_int.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/large_int.c"
       ],
@@ -2240,7 +1557,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/om.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/om.c"
       ],
@@ -2248,7 +1564,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/path.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/path.c"
       ],
@@ -2256,7 +1571,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/pipe.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/pipe.c"
       ],
@@ -2264,7 +1578,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/port.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/port.c"
       ],
@@ -2272,7 +1585,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/reg.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/reg.c"
       ],
@@ -2280,7 +1592,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/rtl.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/rtl.c"
       ],
@@ -2288,7 +1599,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/rtlbitmap.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/rtlbitmap.c"
       ],
@@ -2296,7 +1606,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/rtlstr.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/rtlstr.c"
       ],
@@ -2304,7 +1613,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/string.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/string.c"
       ],
@@ -2312,7 +1620,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/sync.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/sync.c"
       ],
@@ -2320,7 +1627,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/testdll.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/testdll.c"
       ],
@@ -2328,7 +1634,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/testdll.spec",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/testdll.spec"
       ],
@@ -2336,7 +1641,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/thread.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/thread.c"
       ],
@@ -2344,7 +1648,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/threadpool.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/threadpool.c"
       ],
@@ -2352,7 +1655,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/time.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/time.c"
       ],
@@ -2360,7 +1662,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/unwind.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/unwind.c"
       ],
@@ -2368,7 +1669,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/virtual.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/virtual.c"
       ],
@@ -2376,7 +1676,6 @@
     },
     {
       "archivePath": "ntdll/source/tests/wow64.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/tests/wow64.c"
       ],
@@ -2384,7 +1683,6 @@
     },
     {
       "archivePath": "ntdll/source/thread.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/thread.c"
       ],
@@ -2392,7 +1690,6 @@
     },
     {
       "archivePath": "ntdll/source/threadpool.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/threadpool.c"
       ],
@@ -2400,7 +1697,6 @@
     },
     {
       "archivePath": "ntdll/source/time.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/time.c"
       ],
@@ -2408,7 +1704,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/aoe_code_cache.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/aoe_code_cache.h"
       ],
@@ -2416,7 +1711,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/aoe_coop.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/aoe_coop.h"
       ],
@@ -2424,7 +1718,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/aoe_diag.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/aoe_diag.h"
       ],
@@ -2432,7 +1725,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/aoe_hde64.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/aoe_hde64.h"
       ],
@@ -2440,7 +1732,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/aoe_hde_impl.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/aoe_hde_impl.h"
       ],
@@ -2448,7 +1739,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/aoe_hde_table.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/aoe_hde_table.h"
       ],
@@ -2456,7 +1746,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/aoe_relocate.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/aoe_relocate.h"
       ],
@@ -2464,7 +1753,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/cdrom.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/cdrom.c"
       ],
@@ -2472,7 +1760,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/coop_proto.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/coop_proto.h"
       ],
@@ -2480,7 +1767,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/debug.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/debug.c"
       ],
@@ -2488,7 +1774,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/dwarf.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/dwarf.h"
       ],
@@ -2496,7 +1781,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/env.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/env.c"
       ],
@@ -2504,7 +1788,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/file.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/file.c"
       ],
@@ -2512,7 +1795,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/loader.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/loader.c"
       ],
@@ -2520,7 +1802,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/loadorder.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/loadorder.c"
       ],
@@ -2528,7 +1809,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/msync.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/msync.c"
       ],
@@ -2536,7 +1816,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/msync.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/msync.h"
       ],
@@ -2544,7 +1823,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/native_app_route.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/native_app_route.h"
       ],
@@ -2552,7 +1830,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/process.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/process.c"
       ],
@@ -2560,7 +1837,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/registry.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/registry.c"
       ],
@@ -2568,7 +1844,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/security.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/security.c"
       ],
@@ -2576,7 +1851,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/serial.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/serial.c"
       ],
@@ -2584,7 +1858,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/server.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/server.c"
       ],
@@ -2592,7 +1865,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/signal_arm.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/signal_arm.c"
       ],
@@ -2600,7 +1872,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/signal_arm64.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/signal_arm64.c"
       ],
@@ -2608,7 +1879,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/signal_i386.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/signal_i386.c"
       ],
@@ -2616,7 +1886,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/signal_x86_64.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/signal_x86_64.c"
       ],
@@ -2624,7 +1893,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/socket.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/socket.c"
       ],
@@ -2632,7 +1900,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/sync.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/sync.c"
       ],
@@ -2640,7 +1907,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/system.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/system.c"
       ],
@@ -2648,7 +1914,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/tape.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/tape.c"
       ],
@@ -2656,7 +1921,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/thread.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/thread.c"
       ],
@@ -2664,7 +1928,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/unix_private.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/unix_private.h"
       ],
@@ -2672,7 +1935,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/version.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/version.c"
       ],
@@ -2680,7 +1942,6 @@
     },
     {
       "archivePath": "ntdll/source/unix/virtual.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unix/virtual.c"
       ],
@@ -2688,7 +1949,6 @@
     },
     {
       "archivePath": "ntdll/source/unixlib.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unixlib.h"
       ],
@@ -2696,7 +1956,6 @@
     },
     {
       "archivePath": "ntdll/source/unwind.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unwind.c"
       ],
@@ -2704,7 +1963,6 @@
     },
     {
       "archivePath": "ntdll/source/unwind.h",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/unwind.h"
       ],
@@ -2712,7 +1970,6 @@
     },
     {
       "archivePath": "ntdll/source/version.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/version.c"
       ],
@@ -2720,7 +1977,6 @@
     },
     {
       "archivePath": "ntdll/source/version.rc",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/version.rc"
       ],
@@ -2728,282 +1984,13 @@
     },
     {
       "archivePath": "ntdll/source/wcstring.c",
-      "disposition": "mapped",
       "publicPaths": [
         "ntdll/wave7/source/wcstring.c"
       ],
       "sha256": "40e52b36dfb2e7b3772d7360cdbe56ec9435fc10efe1da4192a6060435ad4471"
     },
     {
-      "archivePath": "packaging/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "c81c7ecab6d02435f16e649016d36b0956d75e49eb3032217f3c8961dde633a0"
-    },
-    {
-      "archivePath": "packaging/build_package.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "ad0b629c10725b4473964a686bddcad9063c1d2078292b8fb2f0f51dc125d38c"
-    },
-    {
-      "archivePath": "packaging/checked-mask-successor1/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "f5f9847b66ca6b453d3b8377d516f8b1f74ed2ff818b2275cfb8b3679eb0f20f"
-    },
-    {
-      "archivePath": "packaging/checked-mask-successor1/selection.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "cd31ce1fe58864ec805b48808b7c14fc16708f50e5003965846369dda73f8ae0"
-    },
-    {
-      "archivePath": "packaging/mask-successor1/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "ca9474bb2777361e44f3f7ac3a14dccbb81ae8a0d94bcbe42c48d95f1629f96c"
-    },
-    {
-      "archivePath": "renderer/baseline-candidate1/build.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "9c4c3fd6b0699c99b23e4a1284281b97d0e3e51518f4613f1e04fb09e03f37cb"
-    },
-    {
-      "archivePath": "renderer/baseline-candidate1/build.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "e3fd264ad4bf38f9245e825233258c8f4d945fbd1ff61ea12cf905344446f985"
-    },
-    {
-      "archivePath": "renderer/baseline-candidate1/helper-library.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "42e15d093b2724450da10c3a192bce4834b346cb1a451e1b3f27178f08f931b6"
-    },
-    {
-      "archivePath": "renderer/build.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/renderer/build.json"
-      ],
-      "sha256": "62e84c4a92e4726cc7ed691b8d1454d416ceb2656af7ff69177e0407c054a1eb"
-    },
-    {
-      "archivePath": "renderer/build.py",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/build.py"
-      ],
-      "sha256": "e3fd264ad4bf38f9245e825233258c8f4d945fbd1ff61ea12cf905344446f985"
-    },
-    {
-      "archivePath": "renderer/checked-baseline/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "95e6ec9c2886322aaf4d6312bd16ae243f7f2feb1da3bb619b97947cb0c7e03d"
-    },
-    {
-      "archivePath": "renderer/checked-baseline/baseline-manifest.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "1a44662ebed569e59145769a21f892664cf5338619e1ee97b8b516a6280d4cff"
-    },
-    {
-      "archivePath": "renderer/checked-baseline/native.patch",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "6a818279f61f748a813f16d5bdf97a005aac25180953357bfd513f0d565c6a0d"
-    },
-    {
-      "archivePath": "renderer/checked-baseline/renderer.patch",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "f389c77523061fe912467e599c21f4e0eea4a1eac936f9a3fc9f6682b86d92a5"
-    },
-    {
-      "archivePath": "renderer/checked-baseline/review/native-lifetime-review.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "3211687c45709b562a3543a7e05c5a79cd567dbc6bcb9022c47bb008cea85799"
-    },
-    {
-      "archivePath": "renderer/checked-baseline/source-manifest.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "02f4bc576aae912d39f51f88701f6867f8b0de339b6b634ec96a79c3bf2f343d"
-    },
-    {
-      "archivePath": "renderer/checked-baseline/verify-artifacts.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "e47cf2e3a38ee7fbcdf19818781eb412b63596e327431174785e8ebd38ef9127"
-    },
-    {
-      "archivePath": "renderer/helper-library.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/helper-library.json"
-      ],
-      "sha256": "42e15d093b2724450da10c3a192bce4834b346cb1a451e1b3f27178f08f931b6"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/FINAL.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "7d742ddd2d556a77bc9dea59c6ffd8b428490e690041fc85bb616357b5c041a6"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "52885da4a88ea44bfc34ba7ac973ba03291f24f99f90d23a737052b49d413775"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/build-native.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "e14c58248d6446096aef1d4b5beb1d67a0d487351d70a7aa576dd9eabfc38032"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/build/abi-receipt.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/renderer/presenter-preflight/build/abi-receipt.json"
-      ],
-      "sha256": "b68ef1214ca7a7c55e306535a2bb29de99c4153caeab6a2b45df45b665796344"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/build/native-bridge-build.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/renderer/presenter-preflight/build/native-bridge-build.json",
-        "native/wave7/build-bridge.commands.json"
-      ],
-      "sha256": "f98c04d5c96df3e8ed26f5b12116313457521ed06967ce6a493b4ad0873f3a3c"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/build/renderer-source-final-manifest.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "e1a3ae56ffcbfce9e2643f34cf57881a832169fe6b7d5dd3e1d8274d27d540a8"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/build/signing-receipt.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/renderer/presenter-preflight/build/signing-receipt.json"
-      ],
-      "sha256": "a208806368de8d33e7a7fb464e340421bfa77659a963207c46fe026a4ba2fc6b"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/native-successor.patch",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "d67508fe177bd8a875d87c8b51b6fb79cdd4ab36474cd2f4d2d7f5e3a083a4a2"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/native-tests/fixture_body.m",
-      "disposition": "mapped",
-      "publicPaths": [
-        "native/wave7/checked-tests/fixture_body.m"
-      ],
-      "sha256": "d28a88ba40fff0833d81c41d25b1c90e4a47ef19b96b703247b12ca9ab06f606"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/native-tests/fixture_prefix.m",
-      "disposition": "mapped",
-      "publicPaths": [
-        "native/wave7/checked-tests/fixture_prefix.m"
-      ],
-      "sha256": "5de6a33778c4b09003ef9a37a346c57f063f313c301ad04434da064c583be0f1"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/native-tests/result.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/renderer/presenter-preflight/native-tests/result.json"
-      ],
-      "sha256": "c8d1d79e6d3aa6bef4366fc2fea6f7b9c1c3bca01fac7cbc1a759570f0d9f90a"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/native-tests/run.py",
-      "disposition": "mapped",
-      "publicPaths": [
-        "native/wave7/checked-tests/run.py"
-      ],
-      "sha256": "34d411c30a907ec2ddeb3bb1be51060d5b49f5aca93448ca6345027c20b82699"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/preflight.patch",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "28e09b7c46cd7aabf2ee552a2c524a212e32ebbd80ec896ebcacdde694edf02d"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/renderer-successor.patch",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "e7a0b81fd9ddc8d5d90e96c83113a137e855266e17722499da91dc2a0f0ab9f9"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/review/native-lifetime-preflight-review.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "9f565abb0a296e2b1d4e42264cada917bc4405d39ce22db65ac3f999368fa521"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/review/native-lifetime-preflight-review.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "042e883dfa2559a355fec2938330ad7136a529dda45896090138bc0f7c94537c"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/source-manifest.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "51ec846ac07fbb10e9a48007ef40c7b89f140ff24a544c7b1de0f09740c24206"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/tests/README.md",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "5d318182e3d3c5482c2e8eb6923a1215d717e3045bad158b73225bb9ab4932d1"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/tests/presenter_regression.cpp",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/presenter-tests/presenter_regression.cpp"
-      ],
-      "sha256": "f46f8b6527de3976c53583f8d3a63dd79dfd585bcbab6f6a33b2d0ebe70bce9a"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/tests/results.json",
-      "disposition": "mapped",
-      "publicPaths": [
-        "evidence/checked-mask/renderer/presenter-preflight/tests/results.json"
-      ],
-      "sha256": "e1302a3f8acf0d6e4bd503ae60b405280579e1ab4062038b584d589bcce49baa"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/tests/run.py",
-      "disposition": "mapped",
-      "publicPaths": [
-        "renderer/wave7/presenter-tests/run.py"
-      ],
-      "sha256": "7e70529b6f6dde00be6c2dc152f1868f1c9dac6f13a44153190e72c0c9193166"
-    },
-    {
-      "archivePath": "renderer/presenter-preflight/verify-artifacts.py",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "a19e053f1d72f91fc47a481d9b0182bb51639d2fc7308627993d93392a57a9dc"
-    },
-    {
       "archivePath": "renderer/source/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/.clang-format"
       ],
@@ -3011,7 +1998,6 @@
     },
     {
       "archivePath": "renderer/source/.clangd",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/.clangd"
       ],
@@ -3019,7 +2005,6 @@
     },
     {
       "archivePath": "renderer/source/.github/ISSUE_TEMPLATE/bug-tracking.md",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/.github/ISSUE_TEMPLATE/bug-tracking.md"
       ],
@@ -3027,7 +2012,6 @@
     },
     {
       "archivePath": "renderer/source/.github/ISSUE_TEMPLATE/don-t-create-new-issue-unless-you-are-told-to-do-.md",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/.github/ISSUE_TEMPLATE/don-t-create-new-issue-unless-you-are-told-to-do-.md"
       ],
@@ -3035,7 +2019,6 @@
     },
     {
       "archivePath": "renderer/source/.github/workflows/ci.yml",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/.github/workflows/ci.yml"
       ],
@@ -3043,7 +2026,6 @@
     },
     {
       "archivePath": "renderer/source/.gitignore",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/.gitignore"
       ],
@@ -3051,7 +2033,6 @@
     },
     {
       "archivePath": "renderer/source/.gitmodules",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/.gitmodules"
       ],
@@ -3059,7 +2040,6 @@
     },
     {
       "archivePath": "renderer/source/LICENSE",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/LICENSE"
       ],
@@ -3067,7 +2047,6 @@
     },
     {
       "archivePath": "renderer/source/README.md",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/README.md"
       ],
@@ -3075,7 +2054,6 @@
     },
     {
       "archivePath": "renderer/source/build-arm64ec.txt",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/build-arm64ec.txt"
       ],
@@ -3083,7 +2061,6 @@
     },
     {
       "archivePath": "renderer/source/build-win32.txt",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/build-win32.txt"
       ],
@@ -3091,7 +2068,6 @@
     },
     {
       "archivePath": "renderer/source/build-win64.txt",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/build-win64.txt"
       ],
@@ -3099,7 +2075,6 @@
     },
     {
       "archivePath": "renderer/source/docs/COMPATIBILITY_FLAG.md",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/docs/COMPATIBILITY_FLAG.md"
       ],
@@ -3107,7 +2082,6 @@
     },
     {
       "archivePath": "renderer/source/docs/CUSTOMIZATION.md",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/docs/CUSTOMIZATION.md"
       ],
@@ -3115,7 +2089,6 @@
     },
     {
       "archivePath": "renderer/source/docs/DEVELOPMENT.md",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/docs/DEVELOPMENT.md"
       ],
@@ -3123,7 +2096,6 @@
     },
     {
       "archivePath": "renderer/source/docs/GLOSSARY.md",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/docs/GLOSSARY.md"
       ],
@@ -3131,7 +2103,6 @@
     },
     {
       "archivePath": "renderer/source/dxmt.conf",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/dxmt.conf"
       ],
@@ -3139,7 +2110,6 @@
     },
     {
       "archivePath": "renderer/source/include/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/.clang-format"
       ],
@@ -3147,7 +2117,6 @@
     },
     {
       "archivePath": "renderer/source/include/adt.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/adt.hpp"
       ],
@@ -3155,7 +2124,6 @@
     },
     {
       "archivePath": "renderer/source/include/ftl.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/ftl.hpp"
       ],
@@ -3163,7 +2131,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/oaidl.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/oaidl.h"
       ],
@@ -3171,7 +2138,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/objbase.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/objbase.h"
       ],
@@ -3179,7 +2145,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/ocidl.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/ocidl.h"
       ],
@@ -3187,7 +2152,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/ole2.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/ole2.h"
       ],
@@ -3195,7 +2159,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/poppack.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/poppack.h"
       ],
@@ -3203,7 +2166,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/pshpack1.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/pshpack1.h"
       ],
@@ -3211,7 +2173,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/pshpack4.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/pshpack4.h"
       ],
@@ -3219,7 +2180,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/rpc.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/rpc.h"
       ],
@@ -3227,7 +2187,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/rpcndr.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/rpcndr.h"
       ],
@@ -3235,7 +2194,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/unknwn.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/unknwn.h"
       ],
@@ -3243,7 +2201,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/windows.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/windows.h"
       ],
@@ -3251,7 +2208,6 @@
     },
     {
       "archivePath": "renderer/source/include/native/windows/windows_base.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/native/windows/windows_base.h"
       ],
@@ -3259,7 +2215,6 @@
     },
     {
       "archivePath": "renderer/source/include/tl/generator.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/include/tl/generator.hpp"
       ],
@@ -3267,7 +2222,6 @@
     },
     {
       "archivePath": "renderer/source/libs/DXBCParser/BlobContainer.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/libs/DXBCParser/BlobContainer.cpp"
       ],
@@ -3275,7 +2229,6 @@
     },
     {
       "archivePath": "renderer/source/libs/DXBCParser/BlobContainer.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/libs/DXBCParser/BlobContainer.h"
       ],
@@ -3283,7 +2236,6 @@
     },
     {
       "archivePath": "renderer/source/libs/DXBCParser/DXBCUtils.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/libs/DXBCParser/DXBCUtils.cpp"
       ],
@@ -3291,7 +2243,6 @@
     },
     {
       "archivePath": "renderer/source/libs/DXBCParser/DXBCUtils.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/libs/DXBCParser/DXBCUtils.h"
       ],
@@ -3299,7 +2250,6 @@
     },
     {
       "archivePath": "renderer/source/libs/DXBCParser/ShaderBinary.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/libs/DXBCParser/ShaderBinary.cpp"
       ],
@@ -3307,7 +2257,6 @@
     },
     {
       "archivePath": "renderer/source/libs/DXBCParser/ShaderBinary.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/libs/DXBCParser/ShaderBinary.h"
       ],
@@ -3315,7 +2264,6 @@
     },
     {
       "archivePath": "renderer/source/libs/DXBCParser/d3d12tokenizedprogramformat.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/libs/DXBCParser/d3d12tokenizedprogramformat.hpp"
       ],
@@ -3323,7 +2271,6 @@
     },
     {
       "archivePath": "renderer/source/libs/DXBCParser/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/libs/DXBCParser/meson.build"
       ],
@@ -3331,7 +2278,6 @@
     },
     {
       "archivePath": "renderer/source/libs/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/libs/meson.build"
       ],
@@ -3339,7 +2285,6 @@
     },
     {
       "archivePath": "renderer/source/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/meson.build"
       ],
@@ -3347,7 +2292,6 @@
     },
     {
       "archivePath": "renderer/source/meson.options",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/meson.options"
       ],
@@ -3355,7 +2299,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/.clang-format"
       ],
@@ -3363,7 +2306,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/air_operations.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/air_operations.cpp"
       ],
@@ -3371,7 +2313,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/air_operations.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/air_operations.hpp"
       ],
@@ -3379,7 +2320,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/air_signature.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/air_signature.cpp"
       ],
@@ -3387,7 +2327,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/air_signature.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/air_signature.hpp"
       ],
@@ -3395,7 +2334,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/air_type.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/air_type.cpp"
       ],
@@ -3403,7 +2341,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/air_type.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/air_type.hpp"
       ],
@@ -3411,7 +2348,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/airconv_cli.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/airconv_cli.cpp"
       ],
@@ -3419,7 +2355,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/airconv_context.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/airconv_context.cpp"
       ],
@@ -3427,7 +2362,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/airconv_context.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/airconv_context.hpp"
       ],
@@ -3435,7 +2369,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/airconv_error.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/airconv_error.hpp"
       ],
@@ -3443,7 +2376,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/airconv_public.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/airconv_public.h"
       ],
@@ -3451,7 +2383,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/darwin/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/darwin/meson.build"
       ],
@@ -3459,7 +2390,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_constants.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_constants.hpp"
       ],
@@ -3467,7 +2397,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_converter.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_converter.cpp"
       ],
@@ -3475,7 +2404,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_converter.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_converter.hpp"
       ],
@@ -3483,7 +2411,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_converter_basicblock.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_converter_basicblock.cpp"
       ],
@@ -3491,7 +2418,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_converter_cfg.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_converter_cfg.cpp"
       ],
@@ -3499,7 +2425,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_converter_gs.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_converter_gs.cpp"
       ],
@@ -3507,7 +2432,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_converter_ts.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_converter_ts.cpp"
       ],
@@ -3515,7 +2439,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_instructions.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_instructions.cpp"
       ],
@@ -3523,7 +2446,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_instructions.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_instructions.hpp"
       ],
@@ -3531,7 +2453,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/dxbc_signature.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/dxbc_signature.cpp"
       ],
@@ -3539,7 +2460,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/meson.build"
       ],
@@ -3547,7 +2467,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/metallib_writer.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/metallib_writer.cpp"
       ],
@@ -3555,7 +2474,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/metallib_writer.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/metallib_writer.hpp"
       ],
@@ -3563,7 +2481,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/monad.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/monad.hpp"
       ],
@@ -3571,7 +2488,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/nt/air_builder.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/nt/air_builder.cpp"
       ],
@@ -3579,7 +2495,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/nt/air_builder.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/nt/air_builder.hpp"
       ],
@@ -3587,7 +2502,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/nt/dxbc_converter_base.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/nt/dxbc_converter_base.cpp"
       ],
@@ -3595,7 +2509,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/nt/dxbc_converter_base.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/nt/dxbc_converter_base.hpp"
       ],
@@ -3603,7 +2516,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/packed_variant_list.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/packed_variant_list.hpp"
       ],
@@ -3611,7 +2523,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/sha256.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/sha256.hpp"
       ],
@@ -3619,7 +2530,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/shader_common.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/shader_common.hpp"
       ],
@@ -3627,7 +2537,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/shaders/air_msad.metal",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/shaders/air_msad.metal"
       ],
@@ -3635,7 +2544,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/shaders/air_samplepos.metal",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/shaders/air_samplepos.metal"
       ],
@@ -3643,7 +2551,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/shaders/air_tessellation.metal",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/shaders/air_tessellation.metal"
       ],
@@ -3651,7 +2558,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/transforms/lower_16bit_texread.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/transforms/lower_16bit_texread.cpp"
       ],
@@ -3659,7 +2565,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/transforms/lower_16bit_texread.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/transforms/lower_16bit_texread.hpp"
       ],
@@ -3667,7 +2572,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/transforms/simdgroup_implicit_membarrier.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/transforms/simdgroup_implicit_membarrier.cpp"
       ],
@@ -3675,7 +2579,6 @@
     },
     {
       "archivePath": "renderer/source/src/airconv/transforms/simdgroup_implicit_membarrier.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/airconv/transforms/simdgroup_implicit_membarrier.hpp"
       ],
@@ -3683,7 +2586,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/.clang-format"
       ],
@@ -3691,7 +2593,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_buffer.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_buffer.cpp"
       ],
@@ -3699,7 +2600,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_buffer.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_buffer.hpp"
       ],
@@ -3707,7 +2607,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_device.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_device.cpp"
       ],
@@ -3715,7 +2614,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_device.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_device.hpp"
       ],
@@ -3723,7 +2621,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_input_layout.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_input_layout.hpp"
       ],
@@ -3731,7 +2628,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_query.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_query.hpp"
       ],
@@ -3739,7 +2635,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_shader.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_shader.hpp"
       ],
@@ -3747,7 +2642,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_state_object.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_state_object.cpp"
       ],
@@ -3755,7 +2649,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_state_object.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_state_object.hpp"
       ],
@@ -3763,7 +2656,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_texture.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_texture.cpp"
       ],
@@ -3771,7 +2663,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_texture.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_texture.hpp"
       ],
@@ -3779,7 +2670,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_util.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_util.cpp"
       ],
@@ -3787,7 +2677,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_util.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_util.hpp"
       ],
@@ -3795,7 +2684,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_view.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_view.cpp"
       ],
@@ -3803,7 +2691,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10_view.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10_view.hpp"
       ],
@@ -3811,7 +2698,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10core.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10core.cpp"
       ],
@@ -3819,7 +2705,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/d3d10core.def",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/d3d10core.def"
       ],
@@ -3827,7 +2712,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/meson.build"
       ],
@@ -3835,7 +2719,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d10/version.rc",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d10/version.rc"
       ],
@@ -3843,7 +2726,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/.clang-format"
       ],
@@ -3851,7 +2733,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/cs2_compile_lab.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/cs2_compile_lab.hpp"
       ],
@@ -3859,7 +2740,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/cs2_pipeline_archive.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/cs2_pipeline_archive.hpp"
       ],
@@ -3867,15 +2747,13 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/cs2_recipe.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/cs2_recipe.hpp"
       ],
-      "sha256": "4fd32c57c829c4d4d4a34d04933a867b7cbe8ae98c35b42475b0b73542270c7a"
+      "sha256": "4fbb23be404dd6113b1b59c151ad113d31715ae34cd240c369c5595b19926ab7"
     },
     {
       "archivePath": "renderer/source/src/d3d11/cs2_trace.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/cs2_trace.hpp"
       ],
@@ -3883,7 +2761,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/cs2_trace_protocol.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/cs2_trace_protocol.hpp"
       ],
@@ -3891,7 +2768,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11.cpp"
       ],
@@ -3899,7 +2775,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11.def",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11.def"
       ],
@@ -3907,7 +2782,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_annotation.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_annotation.hpp"
       ],
@@ -3915,7 +2789,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_buffer.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_buffer.cpp"
       ],
@@ -3923,7 +2796,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_class_linkage.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_class_linkage.cpp"
       ],
@@ -3931,7 +2803,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_class_linkage.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_class_linkage.hpp"
       ],
@@ -3939,7 +2810,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_context.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_context.hpp"
       ],
@@ -3947,7 +2817,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_context_def.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_context_def.cpp"
       ],
@@ -3955,7 +2824,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_context_imm.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_context_imm.cpp"
       ],
@@ -3963,7 +2831,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_context_impl.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_context_impl.cpp"
       ],
@@ -3971,7 +2838,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_context_state.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_context_state.hpp"
       ],
@@ -3979,7 +2845,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_device.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_device.cpp"
       ],
@@ -3987,7 +2852,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_device.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_device.hpp"
       ],
@@ -3995,7 +2859,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_device_child.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_device_child.hpp"
       ],
@@ -4003,7 +2866,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_enumerable.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_enumerable.cpp"
       ],
@@ -4011,7 +2873,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_enumerable.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_enumerable.hpp"
       ],
@@ -4019,7 +2880,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_fence.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_fence.cpp"
       ],
@@ -4027,7 +2887,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_fence.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_fence.hpp"
       ],
@@ -4035,7 +2894,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_input_layout.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_input_layout.cpp"
       ],
@@ -4043,7 +2901,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_input_layout.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_input_layout.hpp"
       ],
@@ -4051,7 +2908,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_inspection.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_inspection.cpp"
       ],
@@ -4059,7 +2915,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_inspection.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_inspection.hpp"
       ],
@@ -4067,7 +2922,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_interfaces.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_interfaces.hpp"
       ],
@@ -4075,7 +2929,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_multithread.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_multithread.cpp"
       ],
@@ -4083,7 +2936,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_multithread.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_multithread.hpp"
       ],
@@ -4091,15 +2943,13 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_pipeline.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_pipeline.cpp"
       ],
-      "sha256": "011f487244002831665e322d46651c33c6b65b708c228087f40de8357d492701"
+      "sha256": "62a64b51377f35327261d67225fb94379b75477d05155f8e7544a6e3492c2c8a"
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_pipeline.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_pipeline.hpp"
       ],
@@ -4107,15 +2957,13 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_pipeline_cache.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_pipeline_cache.cpp"
       ],
-      "sha256": "f214f717c83312be172a658ac454d16e07d3c0f6945b66e80d3e2605b872e21e"
+      "sha256": "3cb62817aa686a6c77d3d2258d5cca4d11650a4a85179227ae5b18c912f227d6"
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_pipeline_cache.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_pipeline_cache.hpp"
       ],
@@ -4123,7 +2971,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_pipeline_gs.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_pipeline_gs.cpp"
       ],
@@ -4131,7 +2978,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_pipeline_ts.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_pipeline_ts.cpp"
       ],
@@ -4139,7 +2985,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_private.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_private.h"
       ],
@@ -4147,7 +2992,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_query.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_query.cpp"
       ],
@@ -4155,7 +2999,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_query.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_query.hpp"
       ],
@@ -4163,7 +3006,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_resource.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_resource.hpp"
       ],
@@ -4171,7 +3013,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_resource_helper.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_resource_helper.cpp"
       ],
@@ -4179,7 +3020,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_resource_staging.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_resource_staging.cpp"
       ],
@@ -4187,7 +3027,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_resource_view_helper.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_resource_view_helper.cpp"
       ],
@@ -4195,7 +3034,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_shader.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_shader.cpp"
       ],
@@ -4203,15 +3041,13 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_shader.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_shader.hpp"
       ],
-      "sha256": "54b2dd52d85d845f9058f77ba1b65793a32f93dafe5ea29cf8d28c875221766e"
+      "sha256": "277efc8b5ad76f2c63ddb92c96497ffe8bc55cc79cf0ef55079acbf1000da1fa"
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_state_object.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_state_object.cpp"
       ],
@@ -4219,7 +3055,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_state_object.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_state_object.hpp"
       ],
@@ -4227,7 +3062,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_swapchain.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_swapchain.cpp"
       ],
@@ -4235,7 +3069,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_swapchain.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_swapchain.hpp"
       ],
@@ -4243,7 +3076,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_texture.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_texture.cpp"
       ],
@@ -4251,7 +3083,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_texture.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_texture.hpp"
       ],
@@ -4259,7 +3090,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_texture_device.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_texture_device.cpp"
       ],
@@ -4267,7 +3097,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_texture_dynamic.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_texture_dynamic.cpp"
       ],
@@ -4275,7 +3104,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_texture_linear.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_texture_linear.cpp"
       ],
@@ -4283,7 +3111,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/d3d11_view.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/d3d11_view.hpp"
       ],
@@ -4291,7 +3118,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/meson.build"
       ],
@@ -4299,7 +3125,6 @@
     },
     {
       "archivePath": "renderer/source/src/d3d11/version.rc",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/d3d11/version.rc"
       ],
@@ -4307,7 +3132,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi.cpp"
       ],
@@ -4315,7 +3139,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi.def",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi.def"
       ],
@@ -4323,7 +3146,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi_adapter.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi_adapter.cpp"
       ],
@@ -4331,7 +3153,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi_factory.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi_factory.cpp"
       ],
@@ -4339,7 +3160,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi_interfaces.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi_interfaces.h"
       ],
@@ -4347,7 +3167,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi_object.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi_object.hpp"
       ],
@@ -4355,7 +3174,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi_options.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi_options.cpp"
       ],
@@ -4363,7 +3181,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi_options.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi_options.hpp"
       ],
@@ -4371,7 +3188,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi_output.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi_output.cpp"
       ],
@@ -4379,7 +3195,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi_output.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi_output.hpp"
       ],
@@ -4387,7 +3202,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/dxgi_resource.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/dxgi_resource.hpp"
       ],
@@ -4395,7 +3209,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/meson.build"
       ],
@@ -4403,7 +3216,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxgi/version.rc",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxgi/version.rc"
       ],
@@ -4411,7 +3223,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/.clang-format"
       ],
@@ -4419,7 +3230,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_allocation.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_allocation.cpp"
       ],
@@ -4427,7 +3237,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_allocation.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_allocation.hpp"
       ],
@@ -4435,7 +3244,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_binding_set.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_binding_set.hpp"
       ],
@@ -4443,7 +3251,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_buffer.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_buffer.cpp"
       ],
@@ -4451,7 +3258,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_buffer.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_buffer.hpp"
       ],
@@ -4459,7 +3265,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_capture.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_capture.cpp"
       ],
@@ -4467,7 +3272,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_capture.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_capture.hpp"
       ],
@@ -4475,23 +3279,20 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_command.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_command.cpp"
       ],
-      "sha256": "ac57a91b378d2aff5e256fef68429afc95f4ad0a85c307a1399e250882ba8585"
+      "sha256": "78775fba26454ea00a53396b7fae22cd2896fc1d17c76f68056192b26f1bc0ff"
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_command.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_command.hpp"
       ],
-      "sha256": "a72450116910ba4cf00238ef8f2d97092a549f7a6a3d73d9727847abd539531e"
+      "sha256": "5b4b4b0d7ab31778fb68eef4e9eb7e0647d89aa570ff3fdb5a99ef42b2766f3d"
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_command.metal",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_command.metal"
       ],
@@ -4499,7 +3300,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_command_list.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_command_list.hpp"
       ],
@@ -4507,7 +3307,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_command_queue.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_command_queue.cpp"
       ],
@@ -4515,7 +3314,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_command_queue.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_command_queue.hpp"
       ],
@@ -4523,15 +3321,13 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_context.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_context.cpp"
       ],
-      "sha256": "5f20ece0548442f0fd6dd561d7040019f7a3e718460fd41a55af8d1cffd41331"
+      "sha256": "d42cc68746975a61fecedd7c68521d87d174e8c77fab011491b1014b66a4076d"
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_context.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_context.hpp"
       ],
@@ -4539,7 +3335,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_deptrack.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_deptrack.cpp"
       ],
@@ -4547,7 +3342,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_deptrack.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_deptrack.hpp"
       ],
@@ -4555,7 +3349,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_device.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_device.cpp"
       ],
@@ -4563,7 +3356,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_device.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_device.hpp"
       ],
@@ -4571,7 +3363,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_dynamic.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_dynamic.cpp"
       ],
@@ -4579,7 +3370,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_dynamic.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_dynamic.hpp"
       ],
@@ -4587,7 +3377,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_format.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_format.cpp"
       ],
@@ -4595,7 +3384,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_format.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_format.hpp"
       ],
@@ -4603,7 +3391,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_hud_state.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_hud_state.cpp"
       ],
@@ -4611,7 +3398,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_hud_state.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_hud_state.hpp"
       ],
@@ -4619,7 +3405,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_info.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_info.cpp"
       ],
@@ -4627,7 +3412,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_info.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_info.hpp"
       ],
@@ -4635,7 +3419,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_names.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_names.cpp"
       ],
@@ -4643,7 +3426,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_names.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_names.hpp"
       ],
@@ -4651,7 +3433,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_occlusion_query.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_occlusion_query.hpp"
       ],
@@ -4659,23 +3440,20 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_presenter.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_presenter.cpp"
       ],
-      "sha256": "2fded822875e278bb951dcf218096df0b6c3c47f4789f300a533f0157f81ac32"
+      "sha256": "d7d3aa635d51eba4e09cdf80793a712c9f66ee56a7614acf11683591d7179002"
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_presenter.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_presenter.hpp"
       ],
-      "sha256": "5879b306c1b5e549161d1fbbc06c531f31c10d0907ca2e1d0c5a946841139a3b"
+      "sha256": "b5c8e57094a53f4ffb8886b68ca094194a9458757b48fea4db1ccca3f8ca1c29"
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_residency.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_residency.hpp"
       ],
@@ -4683,7 +3461,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_resource_initializer.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_resource_initializer.cpp"
       ],
@@ -4691,7 +3468,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_resource_initializer.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_resource_initializer.hpp"
       ],
@@ -4699,7 +3475,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_ring_bump_allocator.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_ring_bump_allocator.hpp"
       ],
@@ -4707,7 +3482,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_sampler.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_sampler.cpp"
       ],
@@ -4715,7 +3489,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_sampler.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_sampler.hpp"
       ],
@@ -4723,7 +3496,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_scaler.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_scaler.cpp"
       ],
@@ -4731,7 +3503,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_scaler.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_scaler.hpp"
       ],
@@ -4739,7 +3510,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_shader_cache.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_shader_cache.cpp"
       ],
@@ -4747,7 +3517,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_shader_cache.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_shader_cache.hpp"
       ],
@@ -4755,7 +3524,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_staging.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_staging.cpp"
       ],
@@ -4763,7 +3531,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_staging.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_staging.hpp"
       ],
@@ -4771,7 +3538,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_statistics.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_statistics.hpp"
       ],
@@ -4779,7 +3545,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_subresource.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_subresource.cpp"
       ],
@@ -4787,7 +3552,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_subresource.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_subresource.hpp"
       ],
@@ -4795,15 +3559,13 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_tasks.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_tasks.hpp"
       ],
-      "sha256": "4f003de7132fb1aadb2b05c9b51288f9fbf67565a5600bc4073a3eddc83c84f1"
+      "sha256": "714ed0461efcfe6e76acb636e95645f3cc7ad309baa04d2eb458f551c85902c8"
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_texture.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_texture.cpp"
       ],
@@ -4811,7 +3573,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/dxmt_texture.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/dxmt_texture.hpp"
       ],
@@ -4819,7 +3580,6 @@
     },
     {
       "archivePath": "renderer/source/src/dxmt/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/dxmt/meson.build"
       ],
@@ -4827,7 +3587,6 @@
     },
     {
       "archivePath": "renderer/source/src/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/meson.build"
       ],
@@ -4835,7 +3594,6 @@
     },
     {
       "archivePath": "renderer/source/src/nativemetal/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nativemetal/meson.build"
       ],
@@ -4843,7 +3601,6 @@
     },
     {
       "archivePath": "renderer/source/src/nativemetal/wineunixlib.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nativemetal/wineunixlib.h"
       ],
@@ -4851,7 +3608,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvapi/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvapi/.clang-format"
       ],
@@ -4859,7 +3615,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvapi/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvapi/meson.build"
       ],
@@ -4867,7 +3622,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvapi/nvapi.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvapi/nvapi.cpp"
       ],
@@ -4875,7 +3629,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvapi/nvapi64.def",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvapi/nvapi64.def"
       ],
@@ -4883,7 +3636,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvngx/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvngx/.clang-format"
       ],
@@ -4891,7 +3643,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvngx/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvngx/meson.build"
       ],
@@ -4899,7 +3650,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvngx/nvngx.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvngx/nvngx.cpp"
       ],
@@ -4907,7 +3657,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvngx/nvngx.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvngx/nvngx.hpp"
       ],
@@ -4915,7 +3664,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvngx/nvngx_feature.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvngx/nvngx_feature.hpp"
       ],
@@ -4923,7 +3671,6 @@
     },
     {
       "archivePath": "renderer/source/src/nvngx/nvngx_parameter.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/nvngx/nvngx_parameter.hpp"
       ],
@@ -4931,7 +3678,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/com/com_aggregatable.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/com/com_aggregatable.hpp"
       ],
@@ -4939,7 +3685,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/com/com_guid.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/com/com_guid.cpp"
       ],
@@ -4947,7 +3692,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/com/com_guid.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/com/com_guid.hpp"
       ],
@@ -4955,7 +3699,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/com/com_object.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/com/com_object.hpp"
       ],
@@ -4963,7 +3706,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/com/com_pointer.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/com/com_pointer.hpp"
       ],
@@ -4971,7 +3713,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/com/com_private_data.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/com/com_private_data.cpp"
       ],
@@ -4979,7 +3720,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/com/com_private_data.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/com/com_private_data.hpp"
       ],
@@ -4987,7 +3727,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/config/config.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/config/config.cpp"
       ],
@@ -4995,7 +3734,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/config/config.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/config/config.hpp"
       ],
@@ -5003,7 +3741,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/ds3_borderless.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/ds3_borderless.hpp"
       ],
@@ -5011,7 +3748,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/dxvk.LICENSE",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/dxvk.LICENSE"
       ],
@@ -5019,7 +3755,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/log/log.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/log/log.cpp"
       ],
@@ -5027,7 +3762,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/log/log.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/log/log.hpp"
       ],
@@ -5035,7 +3769,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/meson.build"
       ],
@@ -5043,7 +3776,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/objc_pointer.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/objc_pointer.hpp"
       ],
@@ -5051,7 +3783,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/rc/util_rc.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/rc/util_rc.hpp"
       ],
@@ -5059,7 +3790,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/rc/util_rc_ptr.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/rc/util_rc_ptr.hpp"
       ],
@@ -5067,7 +3797,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/sha1/sha1.c",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/sha1/sha1.c"
       ],
@@ -5075,7 +3804,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/sha1/sha1.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/sha1/sha1.h"
       ],
@@ -5083,7 +3811,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/sha1/sha1_util.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/sha1/sha1_util.cpp"
       ],
@@ -5091,7 +3818,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/sha1/sha1_util.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/sha1/sha1_util.hpp"
       ],
@@ -5099,7 +3825,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/thread.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/thread.cpp"
       ],
@@ -5107,7 +3832,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/thread.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/thread.hpp"
       ],
@@ -5115,7 +3839,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/threadpool.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/threadpool.hpp"
       ],
@@ -5123,7 +3846,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_bit.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_bit.hpp"
       ],
@@ -5131,7 +3853,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_bloom.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_bloom.cpp"
       ],
@@ -5139,7 +3860,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_bloom.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_bloom.hpp"
       ],
@@ -5147,7 +3867,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_cpu_fence.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_cpu_fence.hpp"
       ],
@@ -5155,7 +3874,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_d3dkmt.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_d3dkmt.h"
       ],
@@ -5163,7 +3881,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_env.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_env.cpp"
       ],
@@ -5171,7 +3888,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_env.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_env.hpp"
       ],
@@ -5179,7 +3895,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_error.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_error.hpp"
       ],
@@ -5187,7 +3902,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_flags.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_flags.hpp"
       ],
@@ -5195,7 +3909,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_hash.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_hash.hpp"
       ],
@@ -5203,7 +3916,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_likely.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_likely.hpp"
       ],
@@ -5211,7 +3923,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_math.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_math.hpp"
       ],
@@ -5219,7 +3930,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_names.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_names.hpp"
       ],
@@ -5227,7 +3937,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_string.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_string.cpp"
       ],
@@ -5235,7 +3944,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_string.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_string.hpp"
       ],
@@ -5243,7 +3951,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_svector.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_svector.hpp"
       ],
@@ -5251,7 +3958,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/util_win32_compat.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/util_win32_compat.h"
       ],
@@ -5259,7 +3965,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_monitor.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_monitor.hpp"
       ],
@@ -5267,7 +3972,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_monitor_headless.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_monitor_headless.cpp"
       ],
@@ -5275,7 +3979,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_monitor_win32.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_monitor_win32.cpp"
       ],
@@ -5283,7 +3986,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_platform.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_platform.hpp"
       ],
@@ -5291,7 +3993,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_platform_darwin.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_platform_darwin.cpp"
       ],
@@ -5299,7 +4000,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_platform_win32.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_platform_win32.cpp"
       ],
@@ -5307,7 +4007,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_platform_win32.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_platform_win32.hpp"
       ],
@@ -5315,7 +4014,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_window.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_window.hpp"
       ],
@@ -5323,7 +4021,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_window_headless.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_window_headless.cpp"
       ],
@@ -5331,7 +4028,6 @@
     },
     {
       "archivePath": "renderer/source/src/util/wsi_window_win32.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/util/wsi_window_win32.cpp"
       ],
@@ -5339,7 +4035,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/.clang-format",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/.clang-format"
       ],
@@ -5347,7 +4042,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/Metal.hpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/Metal.hpp"
       ],
@@ -5355,7 +4049,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/airconv_thunks.c",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/airconv_thunks.c"
       ],
@@ -5363,7 +4056,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/airconv_thunks.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/airconv_thunks.h"
       ],
@@ -5371,7 +4063,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/main.c",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/main.c"
       ],
@@ -5379,7 +4070,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/meson.build"
       ],
@@ -5387,7 +4077,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/unix/cache.c",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/unix/cache.c"
       ],
@@ -5395,7 +4084,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/unix/install.sh",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/unix/install.sh"
       ],
@@ -5403,7 +4091,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/unix/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/unix/meson.build"
       ],
@@ -5411,7 +4098,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/unix/winemetal_unix.c",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/unix/winemetal_unix.c"
       ],
@@ -5419,7 +4105,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/wave7_feedback.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/wave7_feedback.h"
       ],
@@ -5427,7 +4112,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/wave7_layer_apply.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/wave7_layer_apply.h"
       ],
@@ -5435,7 +4119,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/winemetal.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/winemetal.h"
       ],
@@ -5443,7 +4126,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/winemetal_thunks.c",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/winemetal_thunks.c"
       ],
@@ -5451,7 +4133,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/winemetal_thunks.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/winemetal_thunks.h"
       ],
@@ -5459,7 +4140,6 @@
     },
     {
       "archivePath": "renderer/source/src/winemetal/wineunixlib.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/src/winemetal/wineunixlib.h"
       ],
@@ -5467,7 +4147,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/3DMaths.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/3DMaths.h"
       ],
@@ -5475,7 +4154,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/ObjLoading.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/ObjLoading.h"
       ],
@@ -5483,7 +4161,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/cube.obj",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/cube.obj"
       ],
@@ -5491,7 +4168,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_animated.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_animated.cpp"
       ],
@@ -5499,7 +4175,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_bpl.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_bpl.cpp"
       ],
@@ -5507,7 +4182,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_camera.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_camera.cpp"
       ],
@@ -5515,7 +4189,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_cbuffer.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_cbuffer.cpp"
       ],
@@ -5523,7 +4196,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_cube.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_cube.cpp"
       ],
@@ -5531,7 +4203,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_hdr_linear.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_hdr_linear.cpp"
       ],
@@ -5539,7 +4210,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_hdr_pq.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_hdr_pq.cpp"
       ],
@@ -5547,7 +4217,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_model.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_model.cpp"
       ],
@@ -5555,7 +4224,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_obj.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_obj.cpp"
       ],
@@ -5563,7 +4231,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_texquad.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_texquad.cpp"
       ],
@@ -5571,7 +4238,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/dx11_triangle.cpp",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/dx11_triangle.cpp"
       ],
@@ -5579,7 +4245,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/meson.build"
       ],
@@ -5587,7 +4252,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/shader_animated.hlsl",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/shader_animated.hlsl"
       ],
@@ -5595,7 +4259,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/shader_bp.hlsl",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/shader_bp.hlsl"
       ],
@@ -5603,7 +4266,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/shader_camera.hlsl",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/shader_camera.hlsl"
       ],
@@ -5611,7 +4273,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/shader_cbuffer.hlsl",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/shader_cbuffer.hlsl"
       ],
@@ -5619,7 +4280,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/shader_cube.hlsl",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/shader_cube.hlsl"
       ],
@@ -5627,7 +4287,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/shader_hdr.hlsl",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/shader_hdr.hlsl"
       ],
@@ -5635,7 +4294,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/shader_lighting.hlsl",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/shader_lighting.hlsl"
       ],
@@ -5643,7 +4301,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/shader_obj.hlsl",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/shader_obj.hlsl"
       ],
@@ -5651,7 +4308,6 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/shaders.hlsl",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/shaders.hlsl"
       ],
@@ -5659,27 +4315,13 @@
     },
     {
       "archivePath": "renderer/source/tests/dx11/stb_image.h",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/dx11/stb_image.h"
       ],
       "sha256": "14f6cbf1852774d6b6007339f35674a83a9eacab5e90ea0f73f9a39b934e49ba"
     },
     {
-      "archivePath": "renderer/source/tests/dx11/test.png",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "16f7b855e9f83ffafe3e1136935d9f4b25e82069401aec56f1bed463c47ab4f6"
-    },
-    {
-      "archivePath": "renderer/source/tests/dx11/testTexture.png",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "9dfe608f7542aa26ab9ddda6097e40584410c65392e973e369db1490bdea206f"
-    },
-    {
       "archivePath": "renderer/source/tests/meson.build",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/tests/meson.build"
       ],
@@ -5687,41 +4329,10 @@
     },
     {
       "archivePath": "renderer/source/version.h.in",
-      "disposition": "mapped",
       "publicPaths": [
         "renderer/wave7/source/version.h.in"
       ],
       "sha256": "7df6667ca57b57a2d4301c7c781a45c8b5431e0c024479d1cc69545367c34bd4"
-    },
-    {
-      "archivePath": "wine/LGPL-NOTICE.txt",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "0e64e9d364c2b9d3a40f43ed72ffbfe26743bbcda8c289a853e752b329f1f503"
-    },
-    {
-      "archivePath": "wine/configured/Makefile",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "8cf89bdc3147cc948698955bc583d8dc1797f669e756f1a1102e6590dc4fa8ff"
-    },
-    {
-      "archivePath": "wine/configured/compile_commands.json",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "a0bf58689b0be3f493889ba2636ab644d917178552b970a224b1d265cac8ec7c"
-    },
-    {
-      "archivePath": "wine/configured/include/config.h",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "b2a0d7abe14507bda09ecc4cc86d9d79d1fae0f7e88533c43e4c5b84de95de3e"
-    },
-    {
-      "archivePath": "wine/wine-source.tar.gz",
-      "disposition": "Not exported: redundant historical/private metadata or external Wine archive",
-      "publicPaths": [],
-      "sha256": "7be5819017b34f09670293f2be7ed9f4476734b8f42dab121a8b74e6619c92a8"
     }
   ]
 }

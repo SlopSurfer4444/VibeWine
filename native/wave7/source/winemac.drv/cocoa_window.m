@@ -30,6 +30,7 @@
 
 #include "macdrv_cocoa.h"
 #import "cocoa_app.h"
+#include "ax_window_root_policy.h"
 #import "cocoa_event.h"
 #import "cocoa_opengl.h"
 #import "d3dmetal_objc.h" /* CW HACK 22435 */
@@ -1065,23 +1066,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     @synthesize himc, commandDone;
     @synthesize contentViewMaskLayer;
 
-    - (BOOL) isAccessibilityElement
-    {
-        if (macdrv_ax_bridge_enabled() && hwnd) return !self.closing;
-        return [super isAccessibilityElement];
-    }
-
-    - (NSString*) accessibilityRole
-    {
-        if (macdrv_ax_bridge_enabled() && hwnd) return NSAccessibilityWindowRole;
-        return [super accessibilityRole];
-    }
-
-    - (id) accessibilityParent
-    {
-        if (macdrv_ax_bridge_enabled() && hwnd) return self.closing ? nil : NSApp;
-        return [super accessibilityParent];
-    }
+#include "ax_window_identity.inc"
 
     - (NSArray*) accessibilityChildren
     {
@@ -1094,15 +1079,6 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                 return children ? [children arrayByAddingObject:view] : @[view];
         }
         return children;
-    }
-
-    - (NSString*) accessibilityIdentifier
-    {
-        /* Window titles may be empty, duplicated, or changed by the application.
-           Use the Windows handle to identify the native AX window for its lifetime.
-           This does not expose the application's Windows accessibility tree. */
-        if (!hwnd) return [super accessibilityIdentifier];
-        return [NSString stringWithFormat:@"wine-hwnd-%p", hwnd];
     }
 
     + (WineWindow*) createWindowWithFeatures:(const struct macdrv_window_features*)wf

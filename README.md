@@ -1,7 +1,7 @@
-# Wave7 checked graphics source checkpoint
+# Wave7 reviewed graphics source checkpoint
 
 Current source and portable fixtures are in `renderer/wave7`, `native/wave7`, and
-`ntdll/wave7`. This is the checked graphics successor. Read [acceptance limits](WAVE7_ACCEPTANCE.md): private GPU fixtures passed; actual DS3 fullscreen, input, relaunch and FPS acceptance remain pending.
+`ntdll/wave7`. This successor includes R1, B1/B2, B3, event 77 repair and native AX root seams. Read [acceptance limits](WAVE7_ACCEPTANCE.md): actual game AX enumeration improved, but CUA clicks still fail; DS3 fullscreen, normal exit and FPS acceptance remain pending.
 
 Use [BUILDING_WAVE7.md](BUILDING_WAVE7.md) for offline checks and explicit build
 inputs. [WAVE7_PROVENANCE.json](WAVE7_PROVENANCE.json) identifies the frozen

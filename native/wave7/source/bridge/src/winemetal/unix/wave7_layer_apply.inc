@@ -46,22 +46,26 @@ static uint64_t w7la_dispatch(struct W7LARequest *request)
     @try {
         accepted = execute_on_main_checked(^{
             entered = true;
-            layer.device = (id<MTLDevice>)config.device;
-            layer.opaque = config.opaque;
-            layer.framebufferOnly = config.framebuffer_only;
-            layer.contentsScale = config.contents_scale;
-            layer.displaySyncEnabled = config.display_sync_enabled;
-            layer.drawableSize = CGSizeMake(config.drawable_width, config.drawable_height);
-            layer.pixelFormat = to_metal_pixel_format((enum WMTPixelFormat)config.pixel_format);
-            layer.colorspace = color;
-            layer.wantsExtendedDynamicRangeContent = WMT_COLORSPACE_IS_HDR(config.colorspace);
-            const char *aspect = getenv("DXMT_DS3_ASPECT_FIT");
-            if (aspect && !strcmp(aspect, "1") && ds3_process_gate()) {
-                layer.contentsGravity = kCAGravityResizeAspect;
-                layer.backgroundColor = CGColorGetConstantColor(kCGColorBlack);
+            @try {
+                layer.device = (id<MTLDevice>)config.device;
+                layer.opaque = config.opaque;
+                layer.framebufferOnly = config.framebuffer_only;
+                layer.contentsScale = config.contents_scale;
+                layer.displaySyncEnabled = config.display_sync_enabled;
+                layer.drawableSize = CGSizeMake(config.drawable_width, config.drawable_height);
+                layer.pixelFormat = to_metal_pixel_format((enum WMTPixelFormat)config.pixel_format);
+                layer.colorspace = color;
+                layer.wantsExtendedDynamicRangeContent = WMT_COLORSPACE_IS_HDR(config.colorspace);
+                const char *aspect = getenv("DXMT_DS3_ASPECT_FIT");
+                if (aspect && !strcmp(aspect, "1") && ds3_process_gate()) {
+                    layer.contentsGravity = kCAGravityResizeAspect;
+                    layer.backgroundColor = CGColorGetConstantColor(kCGColorBlack);
+                }
+                w7ds_refresh_layer_main(layer);
+                completed = true;
+            } @catch (id exception) {
+                (void)exception;
             }
-            w7ds_refresh_layer_main(layer);
-            completed = true;
         });
     } @catch (id exception) {
         (void)exception;

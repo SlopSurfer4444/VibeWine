@@ -1,3 +1,3 @@
 # Follow-up
 
-Complete independently reviewed native admission delivery, then observe the actual game through resolution/fullscreen, input, normal exit and relaunch. Measure comparable frame times before claiming any gain. See WAVE7_ACCEPTANCE.md. Native admission code is outside this graphics-only snapshot.
+Resolve the actual-game accessibility action failure despite improved root enumeration. Observe actual DS3 resolution/fullscreen and normal exit/relaunch, and measure comparable frame times before claiming a performance gain. Do not infer game acceptance from isolated AppKit or procedural GPU fixtures. Native admission delivery is maintained separately from this graphics source export.

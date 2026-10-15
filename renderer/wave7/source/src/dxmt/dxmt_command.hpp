@@ -212,6 +212,23 @@ public:
   void end();
 
 private:
+  struct PipelineKey {
+    WMTPixelFormat format;
+    unsigned sample_count;
+
+    bool operator==(const PipelineKey &other) const noexcept {
+      return format == other.format && sample_count == other.sample_count;
+    }
+  };
+
+  struct PipelineKeyHash {
+    size_t operator()(const PipelineKey &key) const noexcept {
+      auto format_hash = std::hash<WMTPixelFormat>{}(key.format);
+      return format_hash ^ (std::hash<unsigned>{}(key.sample_count) + 0x9e3779b9u +
+                            (format_hash << 6) + (format_hash >> 2));
+    }
+  };
+
   ArgumentEncodingContext &ctx_;
   WMT::Device device_;
   WMT::Reference<WMT::Function> vs_clear_;
@@ -221,7 +238,7 @@ private:
   WMT::Reference<WMT::Function> fs_clear_depth_;
   WMT::Reference<WMT::DepthStencilState> depth_write_state_;
   WMT::Reference<WMT::DepthStencilState> depth_readonly_state_;
-  std::unordered_map<WMTPixelFormat, WMT::Reference<WMT::RenderPipelineState>> pso_cache_;
+  std::unordered_map<PipelineKey, WMT::Reference<WMT::RenderPipelineState>, PipelineKeyHash> pso_cache_;
   Rc<Texture> clearing_texture_;
   TextureViewKey clearing_texture_view_;
 };

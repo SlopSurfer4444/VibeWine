@@ -1,0 +1,44 @@
+{
+  "installed": false,
+  "runtimeExecuted": false,
+  "signedPath": "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate1/native/signed/winemetal.so",
+  "signedSha256": "32b4e0a67267d648e7ab976fb793c529869c3e55a1ce30e2263f8d959a5e8ca2",
+  "state": "AD_HOC_SIGNED_STRICT_VERIFIED_PRIVATE",
+  "steps": [
+    {
+      "argv": [
+        "/usr/bin/codesign",
+        "--force",
+        "--sign",
+        "-",
+        "outputs/wine-wave7/next-graphics-candidate1/native/signed/winemetal.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/usr/bin/codesign",
+        "--verify",
+        "--strict",
+        "--verbose=4",
+        "outputs/wine-wave7/next-graphics-candidate1/native/signed/winemetal.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "30c54682d621da08a85c9140d4cc920df07023c364b6a807509c1e621b79124d"
+    },
+    {
+      "argv": [
+        "/usr/bin/codesign",
+        "-d",
+        "--verbose=4",
+        "outputs/wine-wave7/next-graphics-candidate1/native/signed/winemetal.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "b442cdf82ba14f8df958dac3b7df5d6d5a7ae084e997785e66829c3b35c464be"
+    }
+  ],
+  "unsignedArtifactPreserved": true,
+  "unsignedPath": "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate1/native/build-bridge/winemetal.so",
+  "unsignedSha256": "7b0e005f00c111ea022292f76dc616ee9b77384b930763d4d35c54a624e35c50"
+}

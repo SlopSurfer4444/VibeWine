@@ -1,0 +1,43 @@
+{
+  "candidate": "checked-mask-successor1",
+  "d3d11Sha256": "b032446544a63b502d783177448cd2a9183e131390be59d90d2c05d2fa3ad5d9",
+  "deliverySourceCommit": "64fdb5d1fc98b4d97ff1943c49650ff977f586b8",
+  "generation": "wave7",
+  "nativeIdentityHashes": {
+    "engine/lib/wine/i386-windows/ntdll.dll": "ba0f4e2a534f9598d89d8b3d6488f6bcfeee6513fecec813cc8e564cf6ccf66c",
+    "engine/lib/wine/x86_64-windows/ntdll.dll": "2ca3e842cf641d254e651c56222491a582549429e360c7d8479de9ccf316b0a3"
+  },
+  "nativeRuntimeHashes": {
+    "engine/lib/wine/x86_64-unix/ntdll.so": "353502c7f7760fa30960a70ba2ebe26c3621140083a40fa36c66ceef1219e71e",
+    "engine/lib/wine/x86_64-unix/winemac.so": "c62ae85d35d2319ceb570597413308152050e2c5425f24754c31a1cc45059b21",
+    "engine/lib/wine/x86_64-unix/winemetal.so": "6b21c0c3157967053d5b942b080e9f91ffd7eb402ca3b0f09e5b2c4af0de1615"
+  },
+  "observationStatus": "See WAVE7_ACCEPTANCE.md; source-only export does not update installed state",
+  "publicFileHashes": "FILE_MANIFEST.json",
+  "recordedNativeBuild": {
+    "abi": {
+      "installedWin32uDriverTableSize": 1224,
+      "installedWin32uDriverVersion": 108,
+      "limit": "Static version/table-size/Unix-parameter-layout check; not all behavioral or callback ABI compatibility."
+    },
+    "bridgeLinkDriverSha256": "5e40e741f4ba42d0005455e57e1b7ce91d1b3eeda7459a17379bdaca92114a01",
+    "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "configHeaderSha256": "b2a0d7abe14507bda09ecc4cc86d9d79d1fae0f7e88533c43e4c5b84de95de3e",
+    "configuredMakefileSha256": "8cf89bdc3147cc948698955bc583d8dc1797f669e756f1a1102e6590dc4fa8ff",
+    "incrementalMaskBuild": "Two objects rebuilt; 23 reused from hash-bound baseline-v6. Public native recipe performs a full source build.",
+    "linkDonorHashes": {
+      "ntdll.so": "2821162854bf0d3072333ec77cc6464fca15b2e1e9bfd195f15a1ab70df1ea49",
+      "win32u.so": "7bb7e4de97a77d148a58941b091af71c3d6516cf420e67bce720069b3d0cd694"
+    }
+  },
+  "schema": 1,
+  "sourceArchiveSha256": "2abe3cb80921fcdbab098ceb79a8f2d4826c50c2f351ad9118bc501efaf38b9a",
+  "sourceMappings": "WAVE7_ADAPTATIONS.json",
+  "sourceState": "Frozen reviewed graphics source; portable recipe derivatives not clean-room rebuilt",
+  "unsignedBuildHashes": {
+    "ntdll.so": "681d58dac152a521b5222837656548f82b168aa85bfbd4c61886d9f8999fad0f",
+    "winemac.so": "9ab78b738d72076f828eaed112830088cdb3bcf92b066e1443b04dbcabcf1341",
+    "winemetal.so": "64639c18a7306faf1b7eb3c080d28f1166917e51d862ea7e2e9cf3913abfab96"
+  },
+  "wineBaseSourceArchiveSha256": "7be5819017b34f09670293f2be7ed9f4476734b8f42dab121a8b74e6619c92a8"
+}

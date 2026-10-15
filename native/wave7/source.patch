@@ -1,3 +1,102 @@
+--- a/ax_application.inc
++++ b/ax_application.inc
+@@ -1,6 +1,6 @@
+ /* Application root seam: expose actual AppKit-owned WineWindow objects only.
+  * No provider query, fake window, proxy or inferred Windows control enters here. */
+-#include "ax_validation.h"
++#include "ax_window_root_policy.h"
+ 
+ static BOOL wine_ax_window_eligible(WineWindow *window)
+ {
+@@ -27,13 +27,13 @@
+ - (NSArray *)accessibilityWindows
+ {
+     NSArray *inherited = [super accessibilityWindows];
+-    if (!macdrv_ax_bridge_enabled()) return inherited;
++    if (!wine_ax_window_root_enabled()) return inherited;
+     return wine_ax_merge_application_elements(inherited, [self windows]);
+ }
+ - (NSArray *)accessibilityChildren
+ {
+     NSArray *inherited = [super accessibilityChildren];
+-    if (!macdrv_ax_bridge_enabled()) return inherited;
++    if (!wine_ax_window_root_enabled()) return inherited;
+     return wine_ax_merge_application_elements(inherited, [self windows]);
+ }
+ @end
+--- /dev/null
++++ b/ax_window_identity.inc
+@@ -0,0 +1,28 @@
++/* Native window identity only; no PE controls, provider requests, or focus mutation. */
++    - (BOOL) isAccessibilityElement
++    {
++        if (wine_ax_window_root_enabled() && hwnd) return !self.closing;
++        return [super isAccessibilityElement];
++    }
++
++    - (NSString*) accessibilityRole
++    {
++        if (wine_ax_window_root_enabled() && hwnd) return NSAccessibilityWindowRole;
++        return [super accessibilityRole];
++    }
++
++    - (id) accessibilityParent
++    {
++        if (wine_ax_window_root_enabled() && hwnd) return self.closing ? nil : NSApp;
++        return [super accessibilityParent];
++    }
++
++    - (NSString*) accessibilityIdentifier
++    {
++        /* Window titles may be empty, duplicated, or changed by the application.
++           Use the Windows handle to identify the native AX window for its lifetime.
++           This does not expose the application's Windows accessibility tree. */
++        if (!hwnd) return [super accessibilityIdentifier];
++        return [NSString stringWithFormat:@"wine-hwnd-%p", hwnd];
++    }
++
+--- /dev/null
++++ b/ax_window_root_policy.h
+@@ -0,0 +1,39 @@
++/* This scopes native AppKit window enumeration, not PE control access or trust.
++ * Signed-byte/native-route admission remains outside accessibility getters. */
++#ifndef WINE_AX_WINDOW_ROOT_POLICY_H
++#define WINE_AX_WINDOW_ROOT_POLICY_H
++#include "ax_validation.h"
++
++static inline BOOL wine_ax_native_root_metadata_eligible(NSDictionary *info, NSString *identifier,
++                                                        BOOL wine_application, NSInteger policy,
++                                                        BOOL file_app_bundle, BOOL file_executable)
++{
++    if (!wine_application || policy != NSApplicationActivationPolicyRegular ||
++        !file_app_bundle || !file_executable || ![identifier isKindOfClass:[NSString class]] ||
++        ![identifier length]) return NO;
++    /* A plist boolean is required; strings/integers are not opt-in. */
++    if ([info objectForKey:@"WineNativeIdentity"] != (id)kCFBooleanTrue) return NO;
++    id principal = [info objectForKey:@"NSPrincipalClass"];
++    if (![principal isKindOfClass:[NSString class]] || ![principal isEqualToString:@"WineApplication"]) return NO;
++    id ui = [info objectForKey:@"LSUIElement"], background = [info objectForKey:@"LSBackgroundOnly"];
++    if ((ui && ui != (id)kCFBooleanFalse) || (background && background != (id)kCFBooleanFalse)) return NO;
++    return YES;
++}
++
++static inline BOOL wine_ax_native_application_root_enabled(void)
++{
++    NSBundle *bundle = [NSBundle mainBundle];
++    NSURL *url = [bundle bundleURL], *executable = [bundle executableURL];
++    return wine_ax_native_root_metadata_eligible([bundle infoDictionary], [bundle bundleIdentifier],
++        [NSApp isKindOfClass:[WineApplication class]], [NSApp activationPolicy],
++        [url isFileURL] && [[[url pathExtension] lowercaseString] isEqualToString:@"app"],
++        [executable isFileURL]);
++}
++
++static inline BOOL wine_ax_window_root_enabled(void)
++{
++    /* Preserve the existing explicit PE-bridge behavior. Native bundle opt-in
++     * does not change macdrv_ax_bridge_enabled() or start/control its worker. */
++    return macdrv_ax_bridge_enabled() || wine_ax_native_application_root_enabled();
++}
++#endif
 --- a/cocoa_app.h
 +++ b/cocoa_app.h
 @@ -21,6 +21,10 @@
@@ -346,7 +445,15 @@
  }
 --- a/cocoa_window.m
 +++ b/cocoa_window.m
-@@ -737,9 +737,16 @@
+@@ -30,6 +30,7 @@
+ 
+ #include "macdrv_cocoa.h"
+ #import "cocoa_app.h"
++#include "ax_window_root_policy.h"
+ #import "cocoa_event.h"
+ #import "cocoa_opengl.h"
+ #import "d3dmetal_objc.h" /* CW HACK 22435 */
+@@ -737,9 +738,16 @@
  
      - (WineMetalView*) newMetalViewWithDevice:(id<MTLDevice>)device
      {
@@ -364,7 +471,48 @@
          [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
          [self setAutoresizesSubviews:YES];
          [self addSubview:view positioned:NSWindowBelow relativeTo:nil];
-@@ -3872,7 +3879,8 @@
+@@ -1058,23 +1066,7 @@
+     @synthesize himc, commandDone;
+     @synthesize contentViewMaskLayer;
+ 
+-    - (BOOL) isAccessibilityElement
+-    {
+-        if (macdrv_ax_bridge_enabled() && hwnd) return !self.closing;
+-        return [super isAccessibilityElement];
+-    }
+-
+-    - (NSString*) accessibilityRole
+-    {
+-        if (macdrv_ax_bridge_enabled() && hwnd) return NSAccessibilityWindowRole;
+-        return [super accessibilityRole];
+-    }
+-
+-    - (id) accessibilityParent
+-    {
+-        if (macdrv_ax_bridge_enabled() && hwnd) return self.closing ? nil : NSApp;
+-        return [super accessibilityParent];
+-    }
++#include "ax_window_identity.inc"
+ 
+     - (NSArray*) accessibilityChildren
+     {
+@@ -1087,15 +1079,6 @@
+                 return children ? [children arrayByAddingObject:view] : @[view];
+         }
+         return children;
+-    }
+-
+-    - (NSString*) accessibilityIdentifier
+-    {
+-        /* Window titles may be empty, duplicated, or changed by the application.
+-           Use the Windows handle to identify the native AX window for its lifetime.
+-           This does not expose the application's Windows accessibility tree. */
+-        if (!hwnd) return [super accessibilityIdentifier];
+-        return [NSString stringWithFormat:@"wine-hwnd-%p", hwnd];
+     }
+ 
+     + (WineWindow*) createWindowWithFeatures:(const struct macdrv_window_features*)wf
+@@ -3872,7 +3855,8 @@
      WineWindow* window = (WineWindow*)w;
  
      OnMainThread(^{
@@ -374,7 +522,7 @@
      });
  }
  }
-@@ -4132,7 +4140,7 @@
+@@ -4132,7 +4116,7 @@
  {
      id<MTLDevice> device = (id<MTLDevice>)d;
      WineContentView* view = (WineContentView*)v;

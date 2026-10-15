@@ -1,6 +1,6 @@
 /* Application root seam: expose actual AppKit-owned WineWindow objects only.
  * No provider query, fake window, proxy or inferred Windows control enters here. */
-#include "ax_validation.h"
+#include "ax_window_root_policy.h"
 
 static BOOL wine_ax_window_eligible(WineWindow *window)
 {
@@ -27,13 +27,13 @@ static NSArray *wine_ax_merge_application_elements(NSArray *inherited, NSArray *
 - (NSArray *)accessibilityWindows
 {
     NSArray *inherited = [super accessibilityWindows];
-    if (!macdrv_ax_bridge_enabled()) return inherited;
+    if (!wine_ax_window_root_enabled()) return inherited;
     return wine_ax_merge_application_elements(inherited, [self windows]);
 }
 - (NSArray *)accessibilityChildren
 {
     NSArray *inherited = [super accessibilityChildren];
-    if (!macdrv_ax_bridge_enabled()) return inherited;
+    if (!wine_ax_window_root_enabled()) return inherited;
     return wine_ax_merge_application_elements(inherited, [self windows]);
 }
 @end

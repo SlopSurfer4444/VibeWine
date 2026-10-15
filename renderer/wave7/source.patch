@@ -1,3 +1,23 @@
+--- a/src/d3d11/cs2_recipe.hpp
++++ b/src/d3d11/cs2_recipe.hpp
+@@ -21,10 +21,15 @@
+   info.binary_archives_for_lookup.set(nullptr);info.num_binary_archives_for_lookup=0;info.fail_on_binary_archive_miss=false;
+   std::memset(info.padding,0,sizeof(info.padding));r.info=info;r.vertex=vs;r.pixel=ps;return r;
+ }
++inline const std::string &directory() {
++  static const std::string dir=env::getEnvVar("DXMT_CS2_RECIPE_DIR");
++  return dir;
++}
++inline bool enabled(const Recipe &r) { return !directory().empty() && r.magic[0]=='C'; }
+ inline void save(const Recipe &r) {
+-  static std::string dir=env::getEnvVar("DXMT_CS2_RECIPE_DIR");
++  const auto &dir=directory();
+   static std::atomic<unsigned> attempts{0};
+-  if(dir.empty()||r.magic[0]!='C'||attempts.fetch_add(1)>=4096)return;
++  if(!enabled(r)||attempts.fetch_add(1)>=4096)return;
+   auto hash=Sha1HashState::compute(&r,sizeof(r)).string();auto path=cs2archive::winpath(dir+"/"+hash+".recipe");
+   if(cs2archive::size(path)==sizeof(r))return;
+   auto temp=path+"."+std::to_string(GetCurrentProcessId())+"."+std::to_string(GetCurrentThreadId())+".tmp";
 --- a/src/d3d11/d3d11_context_imm.cpp
 +++ b/src/d3d11/d3d11_context_imm.cpp
 @@ -271,14 +271,18 @@
@@ -29,6 +49,59 @@
      HRESULT hr = S_FALSE;
  
      D3D11_QUERY_DESC desc;
+--- a/src/d3d11/d3d11_pipeline.cpp
++++ b/src/d3d11/d3d11_pipeline.cpp
+@@ -119,7 +119,17 @@
+   void SetIsDone(bool state) {
+     ready_.store(state);
+     ready_.notify_all();
+-    if(state){archive_pending_.save();cs2recipe::save(recipe_);}
++  }
++
++  std::function<void()> TakePostCompletionWork() override {
++    if (!archive_pending_.archive && !cs2recipe::enabled(recipe_))
++      return {};
++    // The worker may publish ready and run continuations before this executes.
++    // Keep the archive reference, path and recipe independent of this object.
++    return [pending = std::move(archive_pending_), recipe = recipe_]() mutable {
++      pending.save();
++      cs2recipe::save(recipe);
++    };
+   }
+ 
+ private:
+--- a/src/d3d11/d3d11_pipeline_cache.cpp
++++ b/src/d3d11/d3d11_pipeline_cache.cpp
+@@ -64,6 +64,9 @@
+   }
+   bool get_done(ThreadpoolWork *task) { return task->GetIsDone(); }
+   void set_done(ThreadpoolWork *task) { task->SetIsDone(true); }
++  std::function<void()> take_post_completion(ThreadpoolWork *task) {
++    return task->TakePostCompletionWork();
++  }
+ };
+ 
+ class PipelineCache : public MTLD3D11PipelineCacheBase {
+--- a/src/d3d11/d3d11_shader.hpp
++++ b/src/d3d11/d3d11_shader.hpp
+@@ -8,6 +8,7 @@
+ #include "sha1/sha1_util.hpp"
+ #include "log/log.hpp"
+ #include <variant>
++#include <functional>
+ #include "cs2_recipe.hpp"
+ 
+ struct MTL_COMPILED_SHADER {
+@@ -194,6 +195,9 @@
+   virtual ThreadpoolWork *RunThreadpoolWork() = 0;
+   virtual bool GetIsDone() = 0;
+   virtual void SetIsDone(bool state) = 0;
++  // Called by the worker before SetIsDone. Returned work owns its data and
++  // must remain valid after this task is destroyed.
++  virtual std::function<void()> TakePostCompletionWork() { return {}; }
+ };
+ 
+ class CompiledShader : public ThreadpoolWork {
 --- a/src/d3d11/d3d11_swapchain.cpp
 +++ b/src/d3d11/d3d11_swapchain.cpp
 @@ -139,8 +139,9 @@
@@ -633,6 +706,88 @@
           " render ", borderless_desc.Width, "x", borderless_desc.Height);
      if (result != wsi::DS3BorderlessResult::Applied && result != wsi::DS3BorderlessResult::Unchanged)
        return E_FAIL;
+--- a/src/dxmt/dxmt_command.cpp
++++ b/src/dxmt/dxmt_command.cpp
+@@ -144,10 +144,11 @@
+   // enforce array render target for now
+   view = texture->checkViewUseArray(view, true);
+ 
+-  if (!pso_cache_.contains(format)) {
++  const PipelineKey key{format, texture->sampleCount()};
++  if (!pso_cache_.contains(key)) {
+     WMTRenderPipelineInfo pipeline_info;
+     WMT::InitializeRenderPipelineInfo(pipeline_info);
+-    pipeline_info.raster_sample_count = texture->sampleCount();
++    pipeline_info.raster_sample_count = key.sample_count;
+     pipeline_info.vertex_function = vs_clear_;
+     if (dsv_flag) {
+       pipeline_info.fragment_function = fs_clear_depth_;
+@@ -168,11 +169,12 @@
+     auto pso = device_.newRenderPipelineState(pipeline_info, err);
+     if (pso == nullptr) {
+       ERR("Failed to create ClearRenderTarget PSO of format ", format, ": ", err.description().getUTF8String());
++      return;
+     }
+-    pso_cache_.emplace(format, std::move(pso));
+-  }
+-
+-  WMT::RenderPipelineState pso = pso_cache_.at(format);
++    pso_cache_.emplace(key, std::move(pso));
++  }
++
++  WMT::RenderPipelineState pso = pso_cache_.at(key);
+ 
+   if (!pso)
+     return;
+@@ -744,4 +746,4 @@
+   return psos_.emplace(key, std::move(pso)).first->second;
+ }
+ 
+-} // namespace dxmt
+\ No newline at end of file
++} // namespace dxmt
+--- a/src/dxmt/dxmt_command.hpp
++++ b/src/dxmt/dxmt_command.hpp
+@@ -212,6 +212,23 @@
+   void end();
+ 
+ private:
++  struct PipelineKey {
++    WMTPixelFormat format;
++    unsigned sample_count;
++
++    bool operator==(const PipelineKey &other) const noexcept {
++      return format == other.format && sample_count == other.sample_count;
++    }
++  };
++
++  struct PipelineKeyHash {
++    size_t operator()(const PipelineKey &key) const noexcept {
++      auto format_hash = std::hash<WMTPixelFormat>{}(key.format);
++      return format_hash ^ (std::hash<unsigned>{}(key.sample_count) + 0x9e3779b9u +
++                            (format_hash << 6) + (format_hash >> 2));
++    }
++  };
++
+   ArgumentEncodingContext &ctx_;
+   WMT::Device device_;
+   WMT::Reference<WMT::Function> vs_clear_;
+@@ -221,7 +238,7 @@
+   WMT::Reference<WMT::Function> fs_clear_depth_;
+   WMT::Reference<WMT::DepthStencilState> depth_write_state_;
+   WMT::Reference<WMT::DepthStencilState> depth_readonly_state_;
+-  std::unordered_map<WMTPixelFormat, WMT::Reference<WMT::RenderPipelineState>> pso_cache_;
++  std::unordered_map<PipelineKey, WMT::Reference<WMT::RenderPipelineState>, PipelineKeyHash> pso_cache_;
+   Rc<Texture> clearing_texture_;
+   TextureViewKey clearing_texture_view_;
+ };
+@@ -324,4 +341,4 @@
+   std::unordered_map<TileBarrierPSOKey, WMT::Reference<WMT::RenderPipelineState>> psos_;
+ };
+ 
+-} // namespace dxmt
+\ No newline at end of file
++} // namespace dxmt
 --- a/src/dxmt/dxmt_command_queue.cpp
 +++ b/src/dxmt/dxmt_command_queue.cpp
 @@ -91,12 +91,16 @@
@@ -743,7 +898,7 @@
 +      WMT::MetalDrawable drawable;
 +      if (data->configuration)
 +        drawable = data->presenter->encodeCommands(
-+          cmdbuf, data->backbuffer, *data->configuration, data->metadata,
++          cmdbuf, data->backbuffer, *data->configuration, data->metadata, data->trace_generation,
            [&](WMT::RenderCommandEncoder encoder) {
              data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id], WMTRenderStageFragment); });
            },
@@ -1152,7 +1307,7 @@
  Presenter::encodeCommands(
 -    WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, DXMTPresentMetadata metadata,
 +    WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, const PresentationConfiguration &configuration,
-+    DXMTPresentMetadata metadata,
++    DXMTPresentMetadata metadata, uint32_t trace_generation,
      std::function<void(WMT::RenderCommandEncoder)> &&wait_fences,
      std::function<void(WMT::RenderCommandEncoder)> &&update_fences
  ) {
@@ -1165,9 +1320,9 @@
 +    const auto status = layer_.setConfigurationChecked(
 +        configuration.layer_props, configuration.colorspace, configuration.revision);
 +    if (status != W7LA_OK) {
-+      if (auto generation = cs2trace::generation()) {
++      if (trace_generation) {
 +        const auto t = cs2trace::now();
-+        cs2trace::record(generation, 77, t, t, swapchain_serial_, status, configuration.revision, 0);
++        cs2trace::record(trace_generation, 77, t, t, swapchain_serial_, status, configuration.revision, 0);
 +      }
 +      return {};
 +    }
@@ -1243,7 +1398,9 @@
 +  return true;
  }
  
- } // namespace dxmt--- a/src/dxmt/dxmt_presenter.hpp
+ } // namespace dxmt
+\ No newline at end of file
+--- a/src/dxmt/dxmt_presenter.hpp
 +++ b/src/dxmt/dxmt_presenter.hpp
 @@ -2,9 +2,9 @@
  #include "Metal.hpp"
@@ -1325,7 +1482,7 @@
    WMT::MetalDrawable encodeCommands(
 -      WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, DXMTPresentMetadata metadata,
 +      WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, const PresentationConfiguration &configuration,
-+      DXMTPresentMetadata metadata,
++      DXMTPresentMetadata metadata, uint32_t trace_generation,
        std::function<void(WMT::RenderCommandEncoder)> &&wait_fences,
        std::function<void(WMT::RenderCommandEncoder)> &&update_fences
    );
@@ -1371,7 +1528,9 @@
 +  bool feedback_capability_checked_ = false;
 +  uint64_t feedback_capabilities_ = 0;
  };
- } // namespace dxmt--- a/src/dxmt/dxmt_statistics.hpp
+ } // namespace dxmt
+\ No newline at end of file
+--- a/src/dxmt/dxmt_statistics.hpp
 +++ b/src/dxmt/dxmt_statistics.hpp
 @@ -59,7 +59,7 @@
    uint32_t latency = 0;
@@ -1400,6 +1559,45 @@
      DXMT_AGGREGATE_DURATION(present_latency_interval);
  #undef DXMT_AGGREGATE_DURATION
      return result;
+--- a/src/dxmt/dxmt_tasks.hpp
++++ b/src/dxmt/dxmt_tasks.hpp
+@@ -3,6 +3,7 @@
+ #include "thread.hpp"
+ #include "util_win32_compat.h"
+ #include <atomic>
++#include <functional>
+ #include <queue>
+ #include <unordered_map>
+ 
+@@ -12,6 +13,7 @@
+   Task run_task(Task task);
+   bool get_done(Task task);
+   void set_done(Task task);
++  std::function<void()> take_post_completion(Task task);
+ };
+ 
+ template <typename Task> class task_scheduler {
+@@ -106,6 +108,9 @@
+     while (true) {
+       Task continuation = task_trait.run_task(task);
+       if (continuation == task) {
++        // Detach ownership before ready publication can let consumers retire
++        // the task. The returned work must never retain a raw task pointer.
++        auto post_completion = task_trait.take_post_completion(task);
+         {
+           std::unique_lock<dxmt::mutex> lock(deps_mutex_);
+           auto range = task_continuation_.equal_range(continuation);
+@@ -123,6 +128,10 @@
+         }
+         worker_cond_.notify_all();
+         continuation_buffer.clear();
++        // Persistence may block this worker, but not the dependency graph or
++        // runnable queue. Worker join also joins this owned completion work.
++        if (post_completion)
++          post_completion();
+       } else {
+         std::unique_lock<dxmt::mutex> lock(deps_mutex_);
+         // spurious dependency
 --- a/src/util/ds3_borderless.hpp
 +++ b/src/util/ds3_borderless.hpp
 @@ -90,24 +90,35 @@

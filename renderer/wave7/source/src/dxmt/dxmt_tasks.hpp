@@ -3,6 +3,7 @@
 #include "thread.hpp"
 #include "util_win32_compat.h"
 #include <atomic>
+#include <functional>
 #include <queue>
 #include <unordered_map>
 
@@ -12,6 +13,7 @@ template <typename Task> struct task_trait {
   Task run_task(Task task);
   bool get_done(Task task);
   void set_done(Task task);
+  std::function<void()> take_post_completion(Task task);
 };
 
 template <typename Task> class task_scheduler {
@@ -106,6 +108,9 @@ task_scheduler<Task>::worker_func() {
     while (true) {
       Task continuation = task_trait.run_task(task);
       if (continuation == task) {
+        // Detach ownership before ready publication can let consumers retire
+        // the task. The returned work must never retain a raw task pointer.
+        auto post_completion = task_trait.take_post_completion(task);
         {
           std::unique_lock<dxmt::mutex> lock(deps_mutex_);
           auto range = task_continuation_.equal_range(continuation);
@@ -123,6 +128,10 @@ task_scheduler<Task>::worker_func() {
         }
         worker_cond_.notify_all();
         continuation_buffer.clear();
+        // Persistence may block this worker, but not the dependency graph or
+        // runnable queue. Worker join also joins this owned completion work.
+        if (post_completion)
+          post_completion();
       } else {
         std::unique_lock<dxmt::mutex> lock(deps_mutex_);
         // spurious dependency

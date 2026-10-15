@@ -1,0 +1,44 @@
+{
+  "installed": false,
+  "runtimeExecuted": false,
+  "signedPath": "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate2/native/signed/winemac.so",
+  "signedSha256": "1b371c71cd21b7452632dab470f4d19cb143228361345ab207327dd4d14b27c3",
+  "state": "AD_HOC_SIGNED_STRICT_VERIFIED_PRIVATE",
+  "steps": [
+    {
+      "argv": [
+        "/usr/bin/codesign",
+        "--force",
+        "--sign",
+        "-",
+        "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate2/native/signed/winemac.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/usr/bin/codesign",
+        "--verify",
+        "--strict",
+        "--verbose=4",
+        "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate2/native/signed/winemac.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "781ad225c7de960efce601923a876eaccd66c20728de2881afe716b02adc3ea1"
+    },
+    {
+      "argv": [
+        "/usr/bin/codesign",
+        "-d",
+        "--verbose=4",
+        "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate2/native/signed/winemac.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "edddc3b39e556f8b48e8ee83d44a4efc0b65200c3af8807215146d4dbc29042a"
+    }
+  ],
+  "unsignedArtifactPreserved": true,
+  "unsignedPath": "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate2/native/build-driver/dlls/winemac.drv/winemac.so",
+  "unsignedSha256": "3be465d2219d4c508f12a3374d962616f424173c78526b0a36ce2f950591669e"
+}

@@ -1,0 +1,24 @@
+{
+  "artifact": "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate1/renderer/build/d3d11.dll",
+  "artifactSha256": "54329c945747632e609b0df454aa21978c37067c8f1deb09af2e9dc1d43bd381",
+  "commands": [
+    {
+      "argv": [
+        "/Library/Developer/CommandLineTools/usr/bin/python3",
+        "-B",
+        "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate1/renderer/build.py"
+      ],
+      "cwd": "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate1/renderer",
+      "exitCode": 0,
+      "logSha256": "a294ac41e6c5dfe0283e6785adddb30b4e731e63f08d0be77b98304cf9f4eebf"
+    }
+  ],
+  "component": "renderer",
+  "elapsedSeconds": 36.261805792000004,
+  "installed": false,
+  "recipeSha256": "b643627b87717987d3bff8674ddc669163d799c5c295a33988a74c8fb2686060",
+  "runtimeExecuted": false,
+  "signed": false,
+  "sourceManifestSha256": "56f5225e17d984505643d20723e875cd7208fc3874dd678f1f277212283d7e57",
+  "sourcesAndInputsStable": true
+}

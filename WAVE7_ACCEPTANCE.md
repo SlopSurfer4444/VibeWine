@@ -1,32 +1,20 @@
-# Wave7 checked graphics successor: evidence and limits
+# Current Wave7 graphics evidence and limits
 
-This snapshot contains checked native layer application, synchronous pipeline preflight,
-Retina mask coordinates, and feedback accounting/decoder events 77 and 78. The
-selected renderer, bridge and native driver identities are in WAVE7_PROVENANCE.json.
-The owner reports installation through reviewed source commit 64fdb5d. Native
-admission is a separate delivery and is not included in this graphics stage.
+This source checkpoint includes exception-safe native layer application (R1), clear-pipeline format/sample cache keys and success-only caching (B1/B2), detached persistent prewarm ownership (B3), event 77 accounting repair, and native AX root/window identity seams. Exact artifact identities are in WAVE7_PROVENANCE.json. Native admission delivery code, installed policy, profiles and identity metadata are excluded.
 
-| Evidence | Scope |
+| Evidence | What it establishes |
 |---|---|
-| Renderer build | 69 translation units recompiled; final artifact and source binding reviewed. |
-| Presenter and native checks | Source-connected presenter regular/ASan/TSan checks and negative controls; 12 native scenarios in regular and ASan/UBSan builds. |
-| Mask checks | Five extracted-production/CoreGraphics cases, with three rejected mutations. |
-| Feedback checks | 74 decoder tests; native CLOSE checks and six writer/callback groups in regular and sanitizer builds. |
-| Actual private GPU virtual fixture | Owner reports PASS in 13.46 seconds: 1080→1440→1080 buffer sizes and procedural GPU circle, natural exit. Display samples remained uncaptured and unchanged. |
-| Actual private GPU queued-close fixture | Owner reports PASS in 3.79 seconds: 81/81 readbacks, eight pending frames with owner completion, exit 0 and private cleanup. |
-| Actual Dark Souls III | Requested virtual fullscreen/resolution, keyboard, relaunch and performance acceptance remain pending for this combination. No FPS gain measured. |
+| Production builds | 69 renderer translation units, native bridge compile/link, and all 25 driver translation units plus ABI compile/link succeeded. Exact source, binary and signature bindings were independently reviewed. |
+| Focused source fixtures | Event 77 and persistence checks passed regular, address and thread sanitizer runs; R1 passed 14 cases in regular and ASan/UBSan runs; B1/B2 passed four cases in each mode. Native AX source and focused fixtures were reviewed separately. Original receipts describe private source runs, not execution of public adapters. |
+| ABI/signatures | Renderer imports/exports and bridge Unix tables stayed unchanged; static driver GDI/Unix layout checks passed; selected native libraries passed strict signature verification. These are bounded compatibility checks. |
+| Isolated actual AppKit and GPU fixtures | Owner reports final AppKit fixture and exact selected renderer/bridge/driver virtual-mode and queued-close GPU smokes passed. Procedural fixtures do not establish game behavior. |
+| Installation | Owner reports the reviewed graphics package installed through commit 487b4065. This source export performs no installation or activation. |
+| Actual DS3 trial | Owner observed the game launch. AX root returned one window and two children, compared with zero earlier. CUA click still failed with noWindowsAvailable; the window reported AXWindow, unknown subrole, inactive native state and CG level 27. More AX nodes do not establish actionable game control. |
+| Recovery | A timed restoration returned the desktop to normal. This is not acceptance of a normal in-game exit. |
+| Still pending | Actual DS3 virtual fullscreen/resolution, reliable CUA input, normal exit, relaunch and matched performance acceptance. No FPS gain is measured. |
 
-The GPU fixture results are actual runtime fixture observations, not DS3 gameplay
-acceptance. Earlier candidate1 keyboard-fixture and menu-mouse observations are
-historical, retained under history/wave7-candidate1. They are not automatically
-transferred to this successor. No raw traces, profiles, configurations, recordings
-or authentication material are distributed.
+These are separate source, build, installation and observed-behavior statements. The pointer-offset explanation remains a hypothesis. No game compatibility claim follows from the focused checks. Native AX root eligibility does not enable the optional PE accessibility bridge or prove complete child-provider behavior.
 
-Pipeline preflight fails before frame-admission side effects; it does not refund
-an application-consumed external waitable token. A later encode-thread native
-apply failure cannot retroactively change an already returned Present HRESULT.
-CLOSE accounting exposes queued discards; it does not guarantee last-frame or
-capture-boundary callback finalization. Events 77/78 are CPU instants, not GPU
-present duration or proof of dropped displayed frames. Portable public recipes
-are adapted from recorded commands; a clean-room or bit-identical rebuild has
-not been established. No new test aggregate was run merely to stage these files.
+Pipeline preflight does not refund an application-consumed external waitable token. A later native encode failure cannot change an already returned Present HRESULT. Feedback events 77/78 are CPU instants, not displayed-frame durations or evidence of GPU drops; capture-boundary/last-frame finalization remains limited. B3 detaches lifetime ownership without establishing arbitrary concurrent caller safety. Historical evidence is retained under history/wave7-checked-mask and earlier trees.
+
+No raw game logs, crash reports, authentication, profile/configuration data, installed snapshots or private admission metadata are distributed. No aggregate or full build was rerun simply to export these sources. Portable recipes and adapters have explicit external inputs; no bit-identical or clean-room runtime reproduction is claimed.

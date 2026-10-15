@@ -72,7 +72,7 @@ public:
 
   WMT::MetalDrawable encodeCommands(
       WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, const PresentationConfiguration &configuration,
-      DXMTPresentMetadata metadata,
+      DXMTPresentMetadata metadata, uint32_t trace_generation,
       std::function<void(WMT::RenderCommandEncoder)> &&wait_fences,
       std::function<void(WMT::RenderCommandEncoder)> &&update_fences
   );

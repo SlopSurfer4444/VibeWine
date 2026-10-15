@@ -119,7 +119,17 @@ public:
   void SetIsDone(bool state) {
     ready_.store(state);
     ready_.notify_all();
-    if(state){archive_pending_.save();cs2recipe::save(recipe_);}
+  }
+
+  std::function<void()> TakePostCompletionWork() override {
+    if (!archive_pending_.archive && !cs2recipe::enabled(recipe_))
+      return {};
+    // The worker may publish ready and run continuations before this executes.
+    // Keep the archive reference, path and recipe independent of this object.
+    return [pending = std::move(archive_pending_), recipe = recipe_]() mutable {
+      pending.save();
+      cs2recipe::save(recipe);
+    };
   }
 
 private:

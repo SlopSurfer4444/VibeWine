@@ -8,6 +8,7 @@
 #include "sha1/sha1_util.hpp"
 #include "log/log.hpp"
 #include <variant>
+#include <functional>
 #include "cs2_recipe.hpp"
 
 struct MTL_COMPILED_SHADER {
@@ -194,6 +195,9 @@ public:
   virtual ThreadpoolWork *RunThreadpoolWork() = 0;
   virtual bool GetIsDone() = 0;
   virtual void SetIsDone(bool state) = 0;
+  // Called by the worker before SetIsDone. Returned work owns its data and
+  // must remain valid after this task is destroyed.
+  virtual std::function<void()> TakePostCompletionWork() { return {}; }
 };
 
 class CompiledShader : public ThreadpoolWork {

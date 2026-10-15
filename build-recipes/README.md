@@ -28,7 +28,7 @@ Inputs:
   SYSTEMDLLPATH stays empty. These are compile-time constants, not install actions.
 - OUTPUT: a separate writable scratch root. Native outputs use OUTPUT/native,
   bridge OUTPUT/bridge, ntdll OUTPUT/ntdll. The bridge links explicit baseline-v6
-  driver and donor ntdll inputs; it does not link the newly rebuilt mask driver.
+  driver and donor ntdll inputs; it does not link the newly rebuilt AX/mask driver.
 
 Templates: native/wave7/build-native.commands.json,
 native/wave7/build-bridge.commands.json, ntdll/wave7/rebuild-ntdll.commands.json.
@@ -53,7 +53,9 @@ Signing/relocation and runtime assembly are intentionally separate from source
 compilation; original compiled and selected signed artifact hashes differ.
 Historical receipts are evidence, not promises that these recipes were executed.
 
-For the checked successor bridge template, additionally supply BASELINE_NATIVE_DIR
+For the current successor bridge template, additionally supply BASELINE_NATIVE_DIR
 with baseline-v6 winemac.so (hash in WAVE7_PROVENANCE.json). This reflects the
 recorded link input; final runtime selection uses the mask-corrected driver.
 The native recipe still rebuilds all final-source objects.
+
+Current private driver evidence records all 25 translation units rebuilt, plus ABI assertions and link. The updated public driver template preserves those command vectors and generated ABI input.

@@ -64,6 +64,9 @@ template <> struct task_trait<ThreadpoolWork *> {
   }
   bool get_done(ThreadpoolWork *task) { return task->GetIsDone(); }
   void set_done(ThreadpoolWork *task) { task->SetIsDone(true); }
+  std::function<void()> take_post_completion(ThreadpoolWork *task) {
+    return task->TakePostCompletionWork();
+  }
 };
 
 class PipelineCache : public MTLD3D11PipelineCacheBase {

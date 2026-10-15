@@ -144,10 +144,11 @@ ClearRenderTargetContext::begin(Rc<Texture> texture, TextureViewKey view) {
   // enforce array render target for now
   view = texture->checkViewUseArray(view, true);
 
-  if (!pso_cache_.contains(format)) {
+  const PipelineKey key{format, texture->sampleCount()};
+  if (!pso_cache_.contains(key)) {
     WMTRenderPipelineInfo pipeline_info;
     WMT::InitializeRenderPipelineInfo(pipeline_info);
-    pipeline_info.raster_sample_count = texture->sampleCount();
+    pipeline_info.raster_sample_count = key.sample_count;
     pipeline_info.vertex_function = vs_clear_;
     if (dsv_flag) {
       pipeline_info.fragment_function = fs_clear_depth_;
@@ -168,11 +169,12 @@ ClearRenderTargetContext::begin(Rc<Texture> texture, TextureViewKey view) {
     auto pso = device_.newRenderPipelineState(pipeline_info, err);
     if (pso == nullptr) {
       ERR("Failed to create ClearRenderTarget PSO of format ", format, ": ", err.description().getUTF8String());
+      return;
     }
-    pso_cache_.emplace(format, std::move(pso));
+    pso_cache_.emplace(key, std::move(pso));
   }
 
-  WMT::RenderPipelineState pso = pso_cache_.at(format);
+  WMT::RenderPipelineState pso = pso_cache_.at(key);
 
   if (!pso)
     return;

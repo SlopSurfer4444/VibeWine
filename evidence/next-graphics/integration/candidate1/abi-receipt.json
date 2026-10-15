@@ -1,0 +1,36 @@
+{
+  "buildReceipts": {
+    "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate1/native/build-bridge/build-receipt.json": "e9771ddf78e9563d8f33e8e72bbed38f4e31314dad9b06d64c6a0d6fc6f11dee",
+    "${WORKSPACE}/outputs/wine-wave7/next-graphics-candidate1/renderer/build/build-receipt.json": "fa69ebccde4229c21deadf32f9cea6db98d5dd9c2e7b33fbb2d37bd317b0d3a2"
+  },
+  "driverBuilt": false,
+  "installed": false,
+  "legacyThunkFilesUnchanged": {
+    "src/winemetal/winemetal.h": true,
+    "src/winemetal/winemetal_thunks.c": true,
+    "src/winemetal/winemetal_thunks.h": true,
+    "src/winemetal/wineunixlib.h": true
+  },
+  "nativeDependenciesUnchanged": true,
+  "nativeExportCount": 65,
+  "nativeExportsUnchanged": true,
+  "nativeSignedSha256": "32b4e0a67267d648e7ab976fb793c529869c3e55a1ce30e2263f8d959a5e8ca2",
+  "nativeUnsignedSha256": "7b0e005f00c111ea022292f76dc616ee9b77384b930763d4d35c54a624e35c50",
+  "packetCopiesIdentical": {
+    "wave7_feedback.h": true,
+    "wave7_layer_apply.h": true
+  },
+  "rendererExportsUnchanged": true,
+  "rendererImportsAdded": {},
+  "rendererImportsRemoved": {},
+  "rendererSha256": "54329c945747632e609b0df454aa21978c37067c8f1deb09af2e9dc1d43bd381",
+  "rendererTranslationUnitsCompiled": 69,
+  "runtimeExecuted": false,
+  "sourceManifestSha256": "56f5225e17d984505643d20723e875cd7208fc3874dd678f1f277212283d7e57",
+  "state": "ARTIFACT_ABI_AND_SOURCE_BINDING_PASS",
+  "unixFunctionTableCounts": [
+    119,
+    119
+  ],
+  "unixFunctionTablesUnchanged": true
+}

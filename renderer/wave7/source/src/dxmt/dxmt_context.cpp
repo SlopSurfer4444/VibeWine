@@ -1025,7 +1025,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       WMT::MetalDrawable drawable;
       if (data->configuration)
         drawable = data->presenter->encodeCommands(
-          cmdbuf, data->backbuffer, *data->configuration, data->metadata,
+          cmdbuf, data->backbuffer, *data->configuration, data->metadata, data->trace_generation,
           [&](WMT::RenderCommandEncoder encoder) {
             data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id], WMTRenderStageFragment); });
           },
