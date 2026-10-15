@@ -18,6 +18,9 @@ Presenter::Presenter(WMT::Device device, WMT::MetalLayer layer, InternalCommandL
     lib_(lib),
     sample_count_(sample_count),
     swapchain_serial_(swapchain_serial) {
+  checked_layer_configuration_ = WMT::MetalLayer::supportsCheckedConfiguration();
+  if (!checked_layer_configuration_)
+    return;
   layer_.getProps(layer_props_);
   layer_props_.device = device;
   layer_props_.opaque = true;
@@ -148,7 +151,7 @@ Presenter::synchronizeLayerProperties() {
   }
   if (configuration_dirty_) {
     // A failed pipeline build must not pair a new format with an old pipeline.
-    // The null configuration skips this presentation and retries on the next.
+    // The caller rejects a null configuration before accepting this Present.
     if (pso_valid_) {
       configuration_ = std::make_shared<const PresentationConfiguration>(PresentationConfiguration{
           ++configuration_revision_, layer_props_, final_colorspace,
@@ -180,7 +183,7 @@ Presenter::synchronizeLayerProperties() {
   if (final_colorspace == WMTColorSpaceHDR_scRGB)
     metadata.edr_scale *= 0.8;
 
-  return {metadata, ++frame_requested_, cs2trace::generation(), configuration_};
+  return {metadata, configuration_ ? ++frame_requested_ : 0, cs2trace::generation(), configuration_};
 }
 
 namespace {
@@ -260,6 +263,11 @@ void Presenter::closePresentationFeedback() {
   cs2trace::record(feedback_generation_, 75, t, t, swapchain_serial_,
                    replied ? request.status : uint32_t(W7FB_UNSUPPORTED),
                    request.stats.pending, request.stats.abandoned);
+  // Only the negotiated native extension makes CLOSE queued occupancy exact.
+  const auto discard_status = !replied || !(feedback_capabilities_ & W7FB_CAP_CLOSE_QUEUED_DISCARD)
+      ? uint32_t(W7FB_UNSUPPORTED) : request.status;
+  cs2trace::record(feedback_generation_, 78, t, t, swapchain_serial_, discard_status,
+                   feedback_session_, discard_status == W7FB_OK ? request.stats.queued : 0);
   feedback_session_ = 0;
 }
 
@@ -332,9 +340,21 @@ Presenter::encodeCommands(
     std::function<void(WMT::RenderCommandEncoder)> &&wait_fences,
     std::function<void(WMT::RenderCommandEncoder)> &&update_fences
 ) {
+  if (!checked_layer_configuration_)
+    return {};
   if (encoded_configuration_revision_ != configuration.revision) {
-    layer_.setProps(configuration.layer_props);
-    layer_.setColorSpace(configuration.colorspace);
+    // A failed native application may have changed some properties. Even the
+    // previous revision is no longer safe to reuse until fully reapplied.
+    encoded_configuration_revision_ = 0;
+    const auto status = layer_.setConfigurationChecked(
+        configuration.layer_props, configuration.colorspace, configuration.revision);
+    if (status != W7LA_OK) {
+      if (auto generation = cs2trace::generation()) {
+        const auto t = cs2trace::now();
+        cs2trace::record(generation, 77, t, t, swapchain_serial_, status, configuration.revision, 0);
+      }
+      return {};
+    }
     encoded_configuration_revision_ = configuration.revision;
   }
   auto drawable = [&]() {

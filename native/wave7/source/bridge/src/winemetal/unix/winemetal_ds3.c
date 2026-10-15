@@ -2183,6 +2183,8 @@ _MetalLayer_setColorSpace(void *obj) {
   return STATUS_SUCCESS;
 }
 
+#include "wave7_layer_apply.inc"
+
 static NTSTATUS
 _WMTGetPrimaryDisplayId(void *obj) {
   struct unixcall_generic_obj_ret *params = obj;
@@ -2588,6 +2590,9 @@ _MTLCommandBuffer_property(void *obj) {
   switch (params->arg) {
   case W7FB_PROPERTY:
     params->ret = w7fb_dispatch((struct W7FBRequest *)(uintptr_t)params->handle);
+    break;
+  case W7LA_PROPERTY:
+    params->ret = w7la_dispatch((struct W7LARequest *)(uintptr_t)params->handle);
     break;
   case WMTCommandBufferPropertyKernelStartTime:
     params->ret = (uint64_t)([cmdbuf kernelStartTime] * ns);

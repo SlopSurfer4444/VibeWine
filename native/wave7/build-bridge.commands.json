@@ -1,8 +1,6 @@
 {
-  "outputDirectory": "${OUTPUT}/bridge",
   "commands": [
     {
-      "cwd": "${WINE_CONFIGURED_BUILD}",
       "argv": [
         "/usr/bin/clang",
         "-arch",
@@ -22,7 +20,7 @@
         "${PUBLIC_ROOT}/native/wave7/source/bridge/src/winemetal/unix/cache.c",
         "-x",
         "none",
-        "${OUTPUT}/native/dlls/winemac.drv/winemac.so",
+        "${BASELINE_NATIVE_DIR}/winemac.so",
         "${NATIVE_DEPENDENCY_DIR}/ntdll.so",
         "-Wl,-install_name,@rpath/winemetal.so",
         "-Wl,-rpath,@loader_path",
@@ -46,7 +44,9 @@
         "Cocoa",
         "-o",
         "${OUTPUT}/bridge/winemetal.so"
-      ]
+      ],
+      "cwd": "${WINE_CONFIGURED_BUILD}"
     }
-  ]
+  ],
+  "outputDirectory": "${OUTPUT}/bridge"
 }

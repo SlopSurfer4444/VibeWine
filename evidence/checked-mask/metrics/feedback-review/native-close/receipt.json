@@ -1,0 +1,37 @@
+{
+  "abi": {
+    "checked": "native header static assertions compile in all six fixtures",
+    "record_size": 56,
+    "request_size": 152,
+    "version": 1
+  },
+  "baseline_header_identical": true,
+  "candidate_header_sha256": "f55da4920fca9300d186d6bd7b9ea198c0ba8a5871b5184647cf13b7945975a5",
+  "candidate_inc_sha256": "8ccd41a3e5ce2f7755a9b6f1a19ee067dfbbf4412d5b6514a26f4a8bfc9bccb4",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "query_capabilities": {
+    "baseline": 1,
+    "candidate": 3
+  },
+  "runs": {
+    "baseline-asan.log": {
+      "sha256": "eca1d62e7311ec780d0dc021350ec363a283e1ab84999989d20a6ae2579a7818"
+    },
+    "baseline-regular.log": {
+      "sha256": "eca1d62e7311ec780d0dc021350ec363a283e1ab84999989d20a6ae2579a7818"
+    },
+    "candidate-asan.log": {
+      "sha256": "82ce6077c6fb1a222dd8fcf7b7f3094d4888b7de25c30fdbf09848f4034b86e7"
+    },
+    "candidate-regular.log": {
+      "sha256": "82ce6077c6fb1a222dd8fcf7b7f3094d4888b7de25c30fdbf09848f4034b86e7"
+    },
+    "existing-candidate-asan.log": {
+      "sha256": "7002e6d3ee3fa1304611e9202c3ee85579b21106564315748dd1ef520e2e0695"
+    },
+    "existing-candidate-regular.log": {
+      "sha256": "7002e6d3ee3fa1304611e9202c3ee85579b21106564315748dd1ef520e2e0695"
+    }
+  },
+  "source_bindings_unchanged": true
+}

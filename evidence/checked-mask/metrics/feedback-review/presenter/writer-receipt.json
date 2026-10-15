@@ -1,0 +1,61 @@
+{
+  "runs": [
+    {
+      "binary_sha256": "9e59a4ed8919bed27279090f64c3cd0b68d36c6d316f80d250034a61571e0aff",
+      "compile_command": [
+        "clang++",
+        "-std=c++20",
+        "-x",
+        "objective-c++",
+        "-fblocks",
+        "-fno-objc-arc",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review",
+        "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/presenter/writer_fixture.mm",
+        "-framework",
+        "Foundation",
+        "-framework",
+        "Metal",
+        "-o",
+        "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/presenter/writer_fixture_regular"
+      ],
+      "exit_code": 0,
+      "variant": "regular"
+    },
+    {
+      "binary_sha256": "be2e2b6e6590ad7b64c4cc1c95c56635838e5f28de8f1947bf0b15797da8419a",
+      "compile_command": [
+        "clang++",
+        "-std=c++20",
+        "-x",
+        "objective-c++",
+        "-fblocks",
+        "-fno-objc-arc",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-fsanitize=address,undefined",
+        "-I${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review",
+        "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/presenter/writer_fixture.mm",
+        "-framework",
+        "Foundation",
+        "-framework",
+        "Metal",
+        "-o",
+        "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/presenter/writer_fixture_asan"
+      ],
+      "exit_code": 0,
+      "variant": "asan"
+    }
+  ],
+  "scope": "production native include and exact production presenter method bodies, real v2 Event writer; mocked drawable, no Metal/GPU/live process",
+  "source_sha256": {
+    "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/native-close/candidate/wave7_feedback.h": "f55da4920fca9300d186d6bd7b9ea198c0ba8a5871b5184647cf13b7945975a5",
+    "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/native-close/candidate/wave7_feedback.inc": "8ccd41a3e5ce2f7755a9b6f1a19ee067dfbbf4412d5b6514a26f4a8bfc9bccb4",
+    "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/presenter/candidate.cpp": "2fded822875e278bb951dcf218096df0b6c3c47f4789f300a533f0157f81ac32",
+    "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/presenter/writer_fixture.mm": "152e4442d89659dcb958ad91ecce155e8de4f05680ca45b6b22db03502d29533",
+    "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/source/src/d3d11/cs2_trace_protocol.hpp": "c09680878717ca907a41f0c0807041dfd587c7fe627051289a6ad91a783f79d0"
+  }
+}

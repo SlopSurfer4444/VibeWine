@@ -45,6 +45,7 @@ std::vector<std::string> calls;
 std::vector<Pass> passes;
 std::vector<uint32_t> feedback_operations;
 bool feedback_supported = false, feedback_register_unsupported = false, feedback_session_open = false;
+uint64_t feedback_capabilities = W7FB_CAP_PRESENTED_HANDLER;
 constexpr uint64_t feedback_token = 4242;
 std::vector<W7FBRequest> feedback_registrations;
 std::vector<W7FBRecord> feedback_poll_records;
@@ -56,6 +57,17 @@ obj_handle_t blit_encoder = 0;
 std::vector<std::pair<uint16_t, obj_handle_t>> blit_fences;
 int blit_ends = 0, native_presents = 0;
 double native_present_after = 0;
+enum class CheckedFailure { None, Props, ColorSpace, Unsupported, ExecutorShutdown };
+CheckedFailure checked_failure = CheckedFailure::None;
+unsigned checked_attempts = 0;
+std::vector<W7LARequest> checked_requests;
+unsigned get_props_calls = 0;
+unsigned native_view_acquires = 0, native_view_releases = 0, lifecycle_gpu_waits = 0, cleanup_calls = 0;
+unsigned reached_constructor_rest = 0;
+bool fail_native_view = false;
+bool observe_admission = false;
+std::vector<std::string> admission_events;
+unsigned admission_capture_calls = 0;
 std::optional<std::pair<uint64_t, uint64_t>> actual_geometry;
 bool missing_drawable = false, missing_texture = false;
 bool missing_encoder = false;
@@ -112,12 +124,12 @@ WMT::MetalDrawable encode(dxmt::Presenter &presenter, const dxmt::Presenter::Pre
       });
 }
 void assert_pass(const Pass &p, double requested_width, double requested_height,
-                 double actual_width, double actual_height, bool matched, bool gamma_enabled) {
+                 double actual_width, double actual_height, bool matched, bool gamma_enabled, int expected_waits = 1) {
   require(p.props.drawable_width == requested_width && p.props.drawable_height == requested_height,
           "frame used another revision's native layer geometry");
   require(p.viewport.width == actual_width && p.viewport.height == actual_height,
           "viewport did not use actual drawable texture geometry");
-  require(p.waits == 1 && p.updates == 1 && p.draws == 1 && p.ends == 1,
+  require(p.waits == expected_waits && p.updates == 1 && p.draws == 1 && p.ends == 1,
           "present pass callbacks/encoding incomplete");
   const auto &pipeline = live(p.pipeline);
   require(pipeline.constants[0] == matched, "blit/scale selected from requested instead of actual geometry");
@@ -398,7 +410,7 @@ void execute_present_case(PresentData *current, WMT::CommandBuffer cmdbuf) {
   using clock = std::chrono::steady_clock;
   std::array<WMT::Fence, 3> fence_pool_{WMT::Fence{5}, WMT::Fence{6}, WMT::Fence{7}};
   struct Statistics { clock::duration present_encode_interval{}; } statistics;
-  [[maybe_unused]] auto updateFrameStatistics = [&](auto &&update) { update(statistics); };
+  auto updateFrameStatistics = [&](auto &&update) { update(statistics); };
   switch (EncoderType::Present) {
 #include "production_present_case.inc"
   }
@@ -566,11 +578,552 @@ void supported_feedback_transport() {
   dxmt::cs2trace::active_generation = 0; actual_geometry.reset();
   std::cout << "PASS supported_feedback_registration_poll_payload_clocks_stats_generation_close_disable\n";
 }
+
+void checked_layer_failures_and_single_present() {
+  dxmt::cs2trace::active_generation = 0;
+  actual_geometry.reset(); actual_format.reset();
+  dxmt::InternalCommandLibrary library;
+  auto reset_observations = [] {
+    clear_calls(); blit_fences.clear(); blit_encoder = 0; blit_ends = 0; native_presents = 0;
+    checked_attempts = 0;
+    checked_requests.clear();
+  };
+  auto present_once = [&](dxmt::Presenter &presenter, const dxmt::Presenter::PresentState &state,
+                          WMT::Texture backbuffer) {
+    bool destroyed = false;
+    alignas(PresentData) std::byte storage[sizeof(PresentData)];
+    auto data = new (storage) PresentData{&presenter, backbuffer, state.configuration, state.metadata,
+        state.frame_id, 0, 0, {{0, 1}}, {{2}}, &destroyed};
+    execute_present_case(data, WMT::CommandBuffer{4});
+    require(destroyed, "checked single context Present did not destroy PresentData");
+  };
+  auto assert_failure_fences = [] {
+    require(passes.empty() && native_presents == 0 && blit_ends == 1,
+            "failed checked setter acquired/rendered/presented or omitted fallback endEncoding");
+    require(blit_fences == std::vector<std::pair<uint16_t, obj_handle_t>>{
+        {WMTBlitCommandWaitForFence, 5}, {WMTBlitCommandWaitForFence, 6}, {WMTBlitCommandUpdateFence, 7}},
+        "checked setter failure lost context dependency fences");
+  };
+  for (auto failure : {CheckedFailure::Props, CheckedFailure::ColorSpace, CheckedFailure::ExecutorShutdown}) {
+    dxmt::Presenter presenter(WMT::Device{1}, WMT::MetalLayer{2}, library, 1, 1, 99);
+    presenter.changeLayerProperties(WMTPixelFormatBGRA8Unorm, WMTColorSpaceSRGB, 640, 360, 1);
+    auto state = presenter.synchronizeLayerProperties();
+    reset_observations(); checked_failure = failure;
+    dxmt::cs2trace::active_generation = 10; dxmt::cs2trace::events.clear();
+    present_once(presenter, state, texture(640, 360));
+    assert_failure_fences();
+    require(checked_attempts == 1, "checked setter failure performed an internal retry/pending loop");
+    require(calls == (failure == CheckedFailure::ColorSpace ?
+              std::vector<std::string>{"props", "colorspace-failed"} : std::vector<std::string>{"props-failed"}),
+            "properties failure continued to colorspace or native drawable acquisition");
+    const auto expected_status = failure == CheckedFailure::ExecutorShutdown ? W7LA_REJECTED : W7LA_FAILED;
+    require(dxmt::cs2trace::events.size() == 1 && dxmt::cs2trace::events[0].type == 77 &&
+            dxmt::cs2trace::events[0].flags == uint32_t(expected_status) &&
+            dxmt::cs2trace::events[0].object == 99 &&
+            dxmt::cs2trace::events[0].detail0 == state.configuration->revision,
+            "checked failure diagnostic did not preserve native status/swapchain/revision");
+    dxmt::cs2trace::active_generation = 0;
+    reset_observations(); checked_failure = CheckedFailure::None;
+    present_once(presenter, state, texture(640, 360));
+    require(checked_attempts == 1 && native_presents == 1 && passes.size() == 1 && blit_ends == 0 &&
+            calls == std::vector<std::string>{"props", "colorspace", "drawable", "encoder"},
+            "same-revision successful retry was cached/skipped or required a second Present");
+    assert_pass(passes.back(), 640, 360, 640, 360, true, false, 2);
+    reset_observations();
+    present_once(presenter, state, texture(640, 360));
+    require(checked_attempts == 0 && native_presents == 1,
+            "successfully checked revision was not cached");
+  }
+  // B can update properties before its colorspace fails. Returning to A must
+  // reapply A even though A was the last fully acknowledged revision.
+  {
+    dxmt::Presenter presenter(WMT::Device{1}, WMT::MetalLayer{2}, library, 1, 1, 99);
+    presenter.changeLayerProperties(WMTPixelFormatBGRA8Unorm, WMTColorSpaceSRGB, 640, 360, 1);
+    auto a = presenter.synchronizeLayerProperties();
+    checked_failure = CheckedFailure::None; reset_observations();
+    present_once(presenter, a, texture(640, 360));
+    require(native_presents == 1, "initial A failed single Present");
+    presenter.changeLayerProperties(WMTPixelFormatRGBA16Float, WMTColorSpaceHDR_scRGB, 1280, 720, 1);
+    auto b = presenter.synchronizeLayerProperties();
+    checked_failure = CheckedFailure::ColorSpace; reset_observations();
+    present_once(presenter, b, texture(1280, 720));
+    assert_failure_fences();
+    require(applied_props.drawable_width == 1280 && applied_props.pixel_format == WMTPixelFormatRGBA16Float &&
+            applied_colorspace == WMTColorSpaceSRGB, "mock did not establish partial native B mutation");
+    checked_failure = CheckedFailure::None; reset_observations();
+    present_once(presenter, a, texture(640, 360));
+    require(checked_attempts == 1 && native_presents == 1 &&
+            calls == std::vector<std::string>{"props", "colorspace", "drawable", "encoder"},
+            "failed partial B left old A cache valid instead of reapplying A");
+    assert_pass(passes.back(), 640, 360, 640, 360, true, false, 2);
+  }
+  {
+    dxmt::Presenter presenter(WMT::Device{1}, WMT::MetalLayer{2}, library, 1, 1, 99);
+    presenter.changeLayerProperties(WMTPixelFormatBGRA8Unorm, WMTColorSpaceSRGB, 640, 360, 1);
+    auto state = presenter.synchronizeLayerProperties();
+    checked_failure = CheckedFailure::Unsupported; reset_observations();
+    present_once(presenter, state, texture(640, 360));
+    assert_failure_fences();
+    require(checked_attempts <= 1 && !checked_requests.empty() && calls.empty(),
+            "unsupported checked transport used legacy unchecked setters");
+  }
+  {
+    checked_failure = CheckedFailure::Unsupported; reset_observations();
+    const auto native_prop_queries = get_props_calls;
+    dxmt::Presenter presenter(WMT::Device{1}, WMT::MetalLayer{2}, library, 1, 1, 99);
+    require(!presenter.supportsCheckedLayerConfiguration() && get_props_calls == native_prop_queries &&
+            checked_requests.size() == 1 && checked_requests[0].op == W7LA_QUERY,
+            "unsupported constructor claimed readiness or queried native layer properties");
+  }
+  checked_failure = CheckedFailure::None;
+  std::cout << "PASS checked_props_colorspace_shutdown_failure_retry_partial_cache_restore_unsupported_single_present\n";
+}
+
+namespace swapchain_lifecycle {
+using HRESULT = int32_t;
+constexpr HRESULT S_OK = 0;
+constexpr HRESULT DXGI_ERROR_UNSUPPORTED = int32_t(0x887a0004u);
+constexpr HRESULT DXGI_ERROR_NOT_CURRENTLY_AVAILABLE = int32_t(0x887a0022u);
+constexpr HRESULT DXGI_ERROR_INVALID_CALL = int32_t(0x887a0001u);
+bool FAILED(HRESULT result) { return result < 0; }
+using HWND = intptr_t;
+struct IDXGIFactory1 {};
+struct IMTLDXGIDevice {};
+struct DXGI_SWAP_CHAIN_DESC1 { struct { uint32_t Count = 1; } SampleDesc; };
+struct DXGI_SWAP_CHAIN_FULLSCREEN_DESC {};
+struct IDXGISwapChain1 { virtual ~IDXGISwapChain1() = default; };
+struct Context { void WaitUntilGPUIdle() { ++lifecycle_gpu_waits; } };
+struct MTLD3D11Device {
+  int references = 1;
+  Context context;
+  struct {
+    struct { dxmt::InternalCommandLibrary cmd_library; } commands;
+    auto &queue() { return commands; }
+  } dxmt_device;
+  WMT::Device GetMTLDevice() { return WMT::Device{1}; }
+  auto &GetDXMTDevice() { return dxmt_device; }
+};
+struct DeviceHold {
+  MTLD3D11Device *device;
+  explicit DeviceHold(MTLD3D11Device *device) : device(device) { ++device->references; }
+  ~DeviceHold() { --device->references; }
+};
+struct Config {
+  static Config &getInstance() { static Config config; return config; }
+  template <typename T> T getOption(const char *, T fallback) { return fallback; }
+};
+using dxmt::Presenter;
+using dxmt::Rc;
+namespace cs2trace = dxmt::cs2trace;
+#define ERR(...) ((void)0)
+void CloseHandle(uintptr_t) { throw std::runtime_error("unsupported ctor created a semaphore"); }
+template <bool EnableMetalFX> class MTLD3D11SwapChain final : public IDXGISwapChain1 {
+  DeviceHold device_hold;
+  WMT::Object native_view_;
+  WMT::MetalLayer layer_weak_;
+  DXGI_SWAP_CHAIN_DESC1 desc_;
+  Context *device_context_;
+  HWND hWnd;
+  float scale_factor = 1;
+  uint64_t trace_serial_ = 99;
+  HRESULT initialization_result_ = S_OK;
+  uintptr_t present_semaphore_ = 0;
+  Rc<Presenter> presenter;
+public:
+  MTLD3D11SwapChain(IDXGIFactory1 *pFactory, MTLD3D11Device *pDevice, IMTLDXGIDevice *pDXGIDevice,
+                    HWND hWnd, const DXGI_SWAP_CHAIN_DESC1 *pDesc,
+                    const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *pFullscreenDesc) :
+      device_hold(pDevice), desc_(*pDesc), device_context_(&pDevice->context), hWnd(hWnd) {
+#include "production_constructor_prefix.inc"
+    ++reached_constructor_rest; // Deliberate boundary: rest is outside this failure path.
+  }
+  HRESULT CleanupFullscreenForDestruction() { ++cleanup_calls; return S_OK; }
+  ~MTLD3D11SwapChain() {
+#include "production_destructor_body.inc"
+  }
+  HRESULT InitializationResult() const { return initialization_result_; }
+  uint32_t Release() { delete this; return 0; }
+};
+#undef ERR
+#include "production_init_return_ptr.inc"
+struct LayerFactory { IMTLDXGIDevice object; auto *ptr() { return &object; } };
+HRESULT factory_false(IDXGIFactory1 *pFactory, MTLD3D11Device *pDevice, HWND hWnd,
+                      const DXGI_SWAP_CHAIN_DESC1 *pDesc,
+                      const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *pFullscreenDesc, IDXGISwapChain1 **ppSwapChain) {
+  LayerFactory layer_factory;
+#include "production_factory_false.inc"
+}
+HRESULT factory_true(IDXGIFactory1 *pFactory, MTLD3D11Device *pDevice, HWND hWnd,
+                     const DXGI_SWAP_CHAIN_DESC1 *pDesc,
+                     const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *pFullscreenDesc, IDXGISwapChain1 **ppSwapChain) {
+  LayerFactory layer_factory;
+#include "production_factory_true.inc"
+}
+} // namespace swapchain_lifecycle
+
+void unsupported_factory_cleanup() {
+  using namespace swapchain_lifecycle;
+  checked_failure = CheckedFailure::Unsupported;
+  native_view_acquires = native_view_releases = lifecycle_gpu_waits = cleanup_calls = reached_constructor_rest = 0;
+  for (auto factory : {factory_false, factory_true}) {
+    MTLD3D11Device device;
+    DXGI_SWAP_CHAIN_DESC1 desc;
+    IDXGISwapChain1 *result = reinterpret_cast<IDXGISwapChain1 *>(uintptr_t(0xdead));
+    const int layer_references_before = live(2).references;
+    const auto get_props_before = get_props_calls;
+    require(factory(nullptr, &device, 123, &desc, nullptr, &result) == DXGI_ERROR_UNSUPPORTED && result == nullptr,
+            "production factory branch did not return unsupported with null output");
+    require(device.references == 1 && native_view_acquires == native_view_releases &&
+            lifecycle_gpu_waits == native_view_releases && reached_constructor_rest == 0,
+            "unsupported factory failure leaked device/native view or continued initialization");
+    require(get_props_calls == get_props_before, "unsupported factory queried native properties");
+    require(live(2).references == layer_references_before,
+            "unsupported factory retained native layer after swapchain/presenter cleanup");
+  }
+  checked_failure = CheckedFailure::None;
+  std::cout << "PASS production_unsupported_ctor_factory_hresult_nullout_view_layer_device_cleanup\n";
+}
+
+namespace queued_lifecycle {
+using dxmt::Presenter;
+using dxmt::DXMTPresentMetadata;
+using dxmt::Rc;
+struct EncoderData { FenceSet fence_wait, fence_update; };
+#include "production_present_data.inc"
+void execute(PresentData *current, WMT::CommandBuffer cmdbuf) {
+  using clock = std::chrono::steady_clock;
+  std::array<WMT::Fence, 3> fence_pool_{WMT::Fence{5}, WMT::Fence{6}, WMT::Fence{7}};
+  struct Statistics { clock::duration present_encode_interval{}; } statistics;
+  auto updateFrameStatistics = [&](auto &&update) { update(statistics); };
+  switch (EncoderType::Present) {
+#include "production_present_case.inc"
+  }
+}
+} // namespace queued_lifecycle
+
+void queued_last_reference_and_snapshot_lifetime() {
+  clear_calls(); checked_failure = CheckedFailure::None;
+  dxmt::cs2trace::active_generation = 0;
+  dxmt::InternalCommandLibrary library;
+  const auto layer_references = live(2).references;
+  dxmt::Rc<dxmt::Presenter> owner(new dxmt::Presenter(WMT::Device{1}, WMT::MetalLayer{2}, library, 1, 1));
+  owner->changeLayerProperties(WMTPixelFormatBGRA8Unorm, WMTColorSpaceSRGB, 640, 360, 1);
+  auto ramp = gamma(1, 0.4f); owner->changeGammaRamp(&ramp);
+  auto state = owner->synchronizeLayerProperties();
+  auto retained = state.configuration;
+  const auto gamma_handle = retained->gamma_lut_texture.handle;
+  const auto blit_handle = retained->present_blit.handle;
+  const auto scale_handle = retained->present_scale.handle;
+  alignas(queued_lifecycle::PresentData) std::byte storage[sizeof(queued_lifecycle::PresentData)];
+  auto data = new (storage) queued_lifecycle::PresentData{};
+  const auto backbuffer = texture(640, 360);
+  data->backbuffer = backbuffer;
+  data->presenter = owner;
+  data->after = 0; data->metadata = state.metadata; data->configuration = state.configuration;
+  data->frame_id = state.frame_id; data->trace_generation = 0;
+  data->fence_wait.ids = {0, 1}; data->fence_update.ids = {2};
+  owner = nullptr;
+  state.configuration.reset();
+  require(live(2).references == layer_references + 1,
+          "queued PresentData failed to retain presenter before execution");
+  native_presents = 0;
+  queued_lifecycle::execute(data, WMT::CommandBuffer{4});
+  require(native_presents == 1 && live(2).references == layer_references,
+          "queued last presenter reference was not released exactly after PresentData work");
+  require(live(gamma_handle).pixels[0] == 0.4f && live(blit_handle).references > 0 &&
+          live(scale_handle).references > 0 && live(backbuffer.handle).references == 1,
+          "presenter final release damaged retained configuration/backbuffer ownership");
+  retained.reset();
+  require(objects.at(gamma_handle).references == 0 && objects.at(blit_handle).references == 0 &&
+          objects.at(scale_handle).references == 0, "last retained snapshot leaked resources after presenter destruction");
+  std::cout << "PASS real_rc_queued_presentdata_final_release_after_work_snapshot_resources_survive\n";
+}
+
+namespace present_admission {
+using HRESULT = swapchain_lifecycle::HRESULT;
+constexpr HRESULT S_OK = 0, E_FAIL = int32_t(0x80004005u);
+namespace cs2trace = dxmt::cs2trace;
+void event(const char *name) { admission_events.emplace_back(name); }
+struct Texture { uint32_t w, h; uint32_t width() { return w; } uint32_t height() { return h; } };
+struct Backbuffer {
+  std::shared_ptr<Texture> value;
+  Backbuffer(uint32_t w, uint32_t h) : value(std::make_shared<Texture>(Texture{w, h})) {}
+  auto texture() { return value; }
+};
+struct Scaler {};
+enum class ScalerType { Spatial };
+struct ScalerInfo { ScalerType type; uint32_t input_width, input_height, output_width, output_height; };
+struct Statistics { ScalerInfo last_scaler_info{}; };
+struct Queue;
+struct ArgumentEncodingContext {
+  Queue &owner;
+  void updateFrameStatistics(auto &&update);
+  void upscale(auto &, auto &, auto &) { event("upscale"); }
+  void present(std::shared_ptr<Texture> &, dxmt::Rc<dxmt::Presenter> &, double,
+               const dxmt::Presenter::PresentState &state);
+  Queue &queue() { return owner; }
+  uint64_t currentFrameId() { return 100; }
+};
+struct Command { virtual ~Command() = default; virtual void run(ArgumentEncodingContext &) = 0; };
+struct FenceSlot {
+  uint64_t value = 0;
+  FenceSlot &operator=(uint64_t next) { value = next; event("frame-fence"); return *this; }
+};
+struct Chunk {
+  FenceSlot signal_frame_latency_fence_;
+  std::vector<std::unique_ptr<Command>> commands;
+  template <typename Fn> void emitcc(Fn &&function) {
+    event("emitcc");
+    struct Held final : Command {
+      Fn function;
+      explicit Held(Fn &&function) : function(std::move(function)) {}
+      void run(ArgumentEncodingContext &context) final { function(context); }
+    };
+    commands.push_back(std::make_unique<Held>(std::move(function)));
+  }
+};
+struct Queue {
+  Chunk chunk;
+  Statistics statistics;
+  uint64_t sequence = 100;
+  unsigned advance_calls = 0, boundary_calls = 0;
+  uint64_t seen_frame_id = 0, seen_revision = 0;
+  std::shared_ptr<const dxmt::Presenter::PresentationConfiguration> seen_configuration;
+  uint64_t traceSerial() { return 88; }
+  auto *CurrentChunk() { event("current-chunk"); return &chunk; }
+  uint64_t CurrentFrameSeq() { event("frame-sequence"); return sequence; }
+  uint64_t AdvanceFrame() { event("advance-frame"); ++advance_calls; return sequence++; }
+  uint64_t GetMaxLatency() { return 2; }
+  void PresentBoundary(uint64_t frame, uint64_t latency) {
+    require(frame == sequence - 1 && latency == 2, "PresentBoundary received wrong sequence/latency");
+    ++boundary_calls; event("present-boundary");
+  }
+  void run() {
+    ArgumentEncodingContext context{*this};
+    for (auto &command : chunk.commands) command->run(context);
+    chunk.commands.clear();
+  }
+};
+void ArgumentEncodingContext::updateFrameStatistics(auto &&update) { update(owner.statistics); }
+void ArgumentEncodingContext::present(std::shared_ptr<Texture> &, dxmt::Rc<dxmt::Presenter> &, double,
+                                     const dxmt::Presenter::PresentState &state) {
+  require(bool(state.configuration), "queued branch captured null presentation state");
+  owner.seen_frame_id = state.frame_id; owner.seen_revision = state.configuration->revision;
+  owner.seen_configuration = state.configuration; event("ctx-present");
+}
+struct Device {
+  struct { Queue command_queue; Queue &queue() { event("queue"); return command_queue; } } dxmt_device;
+  auto &GetDXMTDevice() { return dxmt_device; }
+};
+struct DeviceContext { unsigned commits = 0; void Commit() { ++commits; event("commit"); } };
+struct Credits { unsigned issued = 0, released = 0; };
+struct SyncState {
+  Credits *credits;
+  explicit SyncState(Credits *credits) : credits(credits) {}
+  SyncState(const SyncState &) = delete;
+  SyncState(SyncState &&other) : credits(std::exchange(other.credits, nullptr)) {}
+  ~SyncState() { if (credits) ++credits->released; }
+};
+struct Count {
+  uint64_t value = 0;
+  uint64_t operator++() { event("present-count"); return ++value; }
+};
+struct Lock { const char *name; void unlock() { event(name); } };
+struct MTLDXGIOutput {
+  dxmt::DXMTGammaRamp ramp = gamma(1, 0.4f);
+  const auto *GetGammaRamp() { event("gamma"); return &ramp; }
+};
+struct Target {
+  MTLDXGIOutput output;
+  explicit operator bool() const { return true; }
+  auto *ptr() { return &output; }
+};
+void ReleaseSemaphore(uintptr_t, unsigned count, void *) {
+  require(count == 1, "wrong admission semaphore credit"); event("release-semaphore");
+}
+template <bool EnableMetalFX> struct Admission {
+  Target target_;
+  dxmt::Rc<dxmt::Presenter> presenter;
+  Device device_storage;
+  Device *device_ = &device_storage;
+  DeviceContext context_storage;
+  DeviceContext *device_context_ = &context_storage;
+  std::shared_ptr<Backbuffer> backbuffer_ = std::make_shared<Backbuffer>(640, 360);
+  std::shared_ptr<Backbuffer> upscaled_backbuffer_ = std::make_shared<Backbuffer>(1280, 720);
+  std::shared_ptr<Scaler> metalfx_scaler = std::make_shared<Scaler>();
+  Count presentation_count_;
+  Credits credits;
+  uintptr_t present_semaphore_ = 0;
+  uint64_t trace_serial_ = 99;
+  explicit Admission(dxmt::InternalCommandLibrary &library) :
+      presenter(new dxmt::Presenter(WMT::Device{1}, WMT::MetalLayer{2}, library, 1, 1, 99)) {
+    presenter->changeLayerProperties(WMTPixelFormatBGRA8Unorm, WMTColorSpaceSRGB, 640, 360, 1);
+  }
+  SyncState SyncFrame(uint64_t frame) {
+    require(frame == presentation_count_.value, "SyncFrame did not receive incremented Present count");
+    ++credits.issued; event("sync-frame"); return SyncState(&credits);
+  }
+  void UpdateStatistics(const Statistics &, uint64_t) { event("update-statistics"); }
+  HRESULT Present1Admission() {
+    HRESULT hr = S_OK;
+    const double vsync_duration = 0.016;
+    Lock buffer_lock{"unlock-buffer"}, lock{"unlock-device"};
+#include "production_present_admission.inc"
+  }
+};
+
+template <bool EnableMetalFX> void check_admission_branch(dxmt::InternalCommandLibrary &library) {
+  Admission<EnableMetalFX> fixture(library);
+  auto &queue = fixture.device_storage.dxmt_device.command_queue;
+  observe_admission = true;
+  // Reject either pipeline half on successive caller attempts. Neither attempt
+  // has admitted queue state or a Present/frame identity.
+  for (int failing_pipeline : {1, 2}) {
+    admission_events.clear(); admission_capture_calls = 0;
+    pipeline_calls_until_failure = failing_pipeline;
+    require(fixture.Present1Admission() == E_FAIL, "known pipeline failure did not return E_FAIL from Present1");
+    require(admission_capture_calls == 1 && !admission_events.empty() && admission_events.front() == "gamma",
+            "Present1 failed to update gamma and prepare exactly one state");
+    require(fixture.presentation_count_.value == 0 && fixture.credits.issued == 0 && fixture.credits.released == 0 &&
+            queue.chunk.signal_frame_latency_fence_.value == 0 && queue.chunk.commands.empty() &&
+            fixture.context_storage.commits == 0 && queue.advance_calls == 0 && queue.boundary_calls == 0 &&
+            queue.sequence == 100,
+            "known pipeline failure consumed Present count, credit, fence or queue sequence");
+    for (const auto *forbidden : {"queue", "current-chunk", "frame-fence", "present-count", "sync-frame", "emitcc",
+                                 "commit", "advance-frame", "present-boundary"})
+      require(std::find(admission_events.begin(), admission_events.end(), forbidden) == admission_events.end(),
+              "pipeline preflight ran after queue/frame admission effects");
+  }
+  pipeline_calls_until_failure = -1; admission_events.clear(); admission_capture_calls = 0;
+  require(fixture.Present1Admission() == S_OK && admission_capture_calls == 1 &&
+          fixture.presentation_count_.value == 1 && fixture.credits.issued == 1 && fixture.credits.released == 0 &&
+          queue.chunk.signal_frame_latency_fence_.value == 100 && queue.chunk.commands.size() == 1 &&
+          fixture.context_storage.commits == 1 && queue.advance_calls == 1 && queue.boundary_calls == 1,
+          "successful preflight retry did not admit exactly one frame/credit/command");
+  const auto where = [](const char *name) {
+    const auto found = std::find(admission_events.begin(), admission_events.end(), name);
+    require(found != admission_events.end(), "admission event missing"); return found - admission_events.begin();
+  };
+  require(where("synchronize") < where("queue") && where("queue") < where("current-chunk") &&
+          where("current-chunk") < where("frame-fence") && where("frame-fence") < where("sync-frame") &&
+          where("sync-frame") < where("emitcc") && where("emitcc") < where("commit") &&
+          where("commit") < where("advance-frame") && where("advance-frame") < where("present-boundary"),
+          "successful admission call order diverged from prepared-state contract");
+  queue.run();
+  require(queue.seen_configuration && queue.seen_frame_id == 1 && queue.seen_revision == 1 &&
+          admission_capture_calls == 1 && fixture.credits.released == 1,
+          "queued branch recaptured state or consumed frame identity on failed preparation");
+  require((std::find(admission_events.begin(), admission_events.end(), "upscale") != admission_events.end()) == EnableMetalFX,
+          "wrong MetalFX admission branch executed");
+  observe_admission = false;
+}
+} // namespace present_admission
+
+void present1_pipeline_preflight_admission() {
+  checked_failure = CheckedFailure::None; dxmt::cs2trace::active_generation = 0;
+  dxmt::InternalCommandLibrary library;
+  present_admission::check_admission_branch<false>(library);
+  present_admission::check_admission_branch<true>(library);
+  // Direct failed-state identity oracle complements the actual Present1 path.
+  dxmt::Presenter presenter(WMT::Device{1}, WMT::MetalLayer{2}, library, 1, 1, 99);
+  presenter.changeLayerProperties(WMTPixelFormatBGRA8Unorm, WMTColorSpaceSRGB, 640, 360, 1);
+  pipeline_calls_until_failure = 1;
+  auto failed = presenter.synchronizeLayerProperties();
+  require(!failed.configuration && failed.frame_id == 0, "failed prepared state received a requested-frame identity");
+  pipeline_calls_until_failure = -1;
+  auto recovered = presenter.synchronizeLayerProperties();
+  require(recovered.configuration && recovered.frame_id == 1, "failed prepared state incremented requested-frame identity");
+  std::cout << "PASS actual_present1_preflight_both_branches_no_failure_admission_retry_single_capture_frame_identity\n";
+}
+
+void feedback_close_queued_discard_capability() {
+  feedback_supported = true; checked_failure = CheckedFailure::None;
+  actual_geometry.reset(); actual_format.reset();
+  dxmt::InternalCommandLibrary library;
+  for (bool advertised : {false, true}) {
+    clear_calls(); feedback_operations.clear(); feedback_registrations.clear(); feedback_poll_records.clear();
+    dxmt::cs2trace::events.clear(); feedback_session_open = false;
+    feedback_capabilities = W7FB_CAP_PRESENTED_HANDLER | (advertised ? W7FB_CAP_CLOSE_QUEUED_DISCARD : 0);
+    dxmt::cs2trace::active_generation = 15;
+    {
+      dxmt::Presenter presenter(WMT::Device{1}, WMT::MetalLayer{2}, library, 1, 1, 99);
+      presenter.changeLayerProperties(WMTPixelFormatBGRA8Unorm, WMTColorSpaceSRGB, 640, 360, 1);
+      auto state = presenter.synchronizeLayerProperties();
+      auto drawable = encode(presenter, state, texture(640, 360));
+      presenter.observePresentation(drawable, state.frame_id, state.configuration->revision, 15);
+      dxmt::cs2trace::active_generation = 0;
+      presenter.observePresentation({}, state.frame_id, state.configuration->revision, 15);
+      std::vector<dxmt::cs2trace::Event> close_discard;
+      for (const auto &event : dxmt::cs2trace::events) if (event.type == 78) close_discard.push_back(event);
+      require(close_discard.size() == 1 && close_discard[0].generation == 15 && close_discard[0].object == 99 &&
+              close_discard[0].detail0 == feedback_token && close_discard[0].start == 123456789 &&
+              close_discard[0].end == 123456789,
+              "CLOSE discard accounting lost capture/session/swapchain/receipt identity");
+      require(close_discard[0].flags == uint32_t(advertised ? W7FB_OK : W7FB_UNSUPPORTED) &&
+              close_discard[0].detail1 == (advertised ? feedback_stats.queued : 0),
+              "CLOSE discard accounting treated unnegotiated queued occupancy as exact");
+    }
+    require(std::count(feedback_operations.begin(), feedback_operations.end(), W7FB_CLOSE) == 1,
+            "CLOSE discard observation changed native session close count");
+  }
+  feedback_capabilities = W7FB_CAP_PRESENTED_HANDLER; feedback_supported = false;
+  dxmt::cs2trace::events.clear();
+  std::cout << "PASS close_queued_discard_capability_status_session_receipt_payload\n";
+}
 } // namespace fixture
 
 extern "C" {
+obj_handle_t CreateMetalViewFromHWND(intptr_t hwnd, obj_handle_t device, obj_handle_t *layer) {
+  std::lock_guard lock(fixture::mutex); fixture::live(device);
+  if (fixture::fail_native_view) { *layer = 0; return 0; }
+  fixture::require(hwnd == 123, "unexpected lifecycle fixture HWND");
+  *layer = 2; ++fixture::live(2).references;
+  fixture::Object view; view.texture = 2;
+  ++fixture::native_view_acquires;
+  return fixture::allocate(view);
+}
+void ReleaseMetalView(obj_handle_t view) {
+  std::lock_guard lock(fixture::mutex);
+  const auto layer = fixture::live(view).texture;
+  --fixture::live(layer).references; --fixture::live(view).references;
+  ++fixture::native_view_releases;
+}
 uint64_t MTLCommandBuffer_property(obj_handle_t address, WMTCommandBufferProperty property) {
   std::lock_guard lock(fixture::mutex);
+  if (uint32_t(property) == W7LA_PROPERTY) {
+    auto *request = reinterpret_cast<W7LARequest *>(uintptr_t(address));
+    fixture::require(request && request->size == sizeof(W7LARequest) && request->version == W7LA_VERSION,
+                     "checked layer ABI header incorrect");
+    fixture::checked_requests.push_back(*request);
+    if (request->op == W7LA_APPLY) ++fixture::checked_attempts;
+    if (fixture::checked_failure == fixture::CheckedFailure::Unsupported) return 0;
+    request->status = W7LA_OK;
+    if (request->op == W7LA_QUERY) return W7LA_REPLY;
+    fixture::require(request->op == W7LA_APPLY && request->layer == 2 && request->config_revision,
+                     "checked layer APPLY identity incorrect");
+    const auto &configuration = request->configuration;
+    fixture::require(configuration.reserved == 0 && configuration.device == 1,
+                     "checked layer APPLY configuration invalid");
+    if (fixture::checked_failure == fixture::CheckedFailure::Props ||
+        fixture::checked_failure == fixture::CheckedFailure::ExecutorShutdown) {
+      fixture::calls.push_back("props-failed");
+      request->status = fixture::checked_failure == fixture::CheckedFailure::ExecutorShutdown ?
+          W7LA_REJECTED : W7LA_FAILED;
+      return W7LA_REPLY;
+    }
+    fixture::applied_props = {configuration.device, configuration.contents_scale,
+        configuration.drawable_width, configuration.drawable_height,
+        bool(configuration.opaque), bool(configuration.display_sync_enabled),
+        bool(configuration.framebuffer_only), WMTPixelFormat(configuration.pixel_format)};
+    fixture::calls.push_back("props");
+    if (fixture::checked_failure == fixture::CheckedFailure::ColorSpace) {
+      fixture::calls.push_back("colorspace-failed"); request->status = W7LA_FAILED;
+      return W7LA_REPLY;
+    }
+    fixture::applied_colorspace = WMTColorSpace(configuration.colorspace);
+    fixture::calls.push_back("colorspace");
+    return W7LA_REPLY;
+  }
   fixture::require(uint32_t(property) == W7FB_PROPERTY, "unexpected command buffer property");
   auto *request = reinterpret_cast<W7FBRequest *>(uintptr_t(address));
   fixture::require(request && request->size == sizeof(W7FBRequest) && request->version == W7FB_VERSION,
@@ -581,7 +1134,7 @@ uint64_t MTLCommandBuffer_property(obj_handle_t address, WMTCommandBufferPropert
   request->status = W7FB_OK;
   switch (request->op) {
   case W7FB_QUERY:
-    request->capabilities = W7FB_CAP_PRESENTED_HANDLER;
+    request->capabilities = fixture::feedback_capabilities;
     break;
   case W7FB_OPEN:
     fixture::require(!fixture::feedback_session_open, "PE opened duplicate native session");
@@ -653,6 +1206,7 @@ obj_handle_t MTLLibrary_newFunctionWithConstants(obj_handle_t library, const cha
 }
 obj_handle_t MTLDevice_newRenderPipelineState(obj_handle_t device, const WMTRenderPipelineInfo *info, obj_handle_t *) {
   std::lock_guard lock(fixture::mutex); fixture::live(device);
+  if (fixture::observe_admission) fixture::admission_events.push_back("pipeline");
   if (fixture::pipeline_calls_until_failure > 0 && --fixture::pipeline_calls_until_failure == 0) return 0;
   fixture::Object object = fixture::live(info->fragment_function);
   object.references = 1; object.format = info->colors[0].pixel_format;
@@ -660,19 +1214,21 @@ obj_handle_t MTLDevice_newRenderPipelineState(obj_handle_t device, const WMTRend
 }
 void MetalLayer_getProps(obj_handle_t layer, WMTLayerProps *props) {
   std::lock_guard lock(fixture::mutex); fixture::live(layer);
+  ++fixture::get_props_calls;
   *props = {}; props->contents_scale = 1;
 }
 void MetalLayer_setProps(obj_handle_t layer, const WMTLayerProps *props) {
-  std::lock_guard lock(fixture::mutex); fixture::live(layer);
-  fixture::applied_props = *props; fixture::calls.push_back("props");
+  throw std::runtime_error("forbidden unchecked legacy layer property application");
 }
 bool MetalLayer_setColorSpace(obj_handle_t layer, WMTColorSpace colorspace) {
-  std::lock_guard lock(fixture::mutex); fixture::live(layer);
-  fixture::applied_colorspace = colorspace; fixture::calls.push_back("colorspace"); return true;
+  throw std::runtime_error("forbidden unchecked legacy layer colorspace application");
 }
 void WMTQueryDisplaySettingForLayer(obj_handle_t layer, uint64_t *version, WMTColorSpace *colorspace,
                                   WMTHDRMetadata *metadata, WMTEDRValue *edr) {
   std::lock_guard lock(fixture::mutex); fixture::live(layer);
+  if (fixture::observe_admission) {
+    ++fixture::admission_capture_calls; fixture::admission_events.push_back("synchronize");
+  }
   *version = fixture::display_version; *colorspace = fixture::display_colorspace;
   *metadata = {}; *edr = fixture::edr;
 }
@@ -786,6 +1342,11 @@ int main() {
     fixture::unsupported_feedback_transport();
     fixture::context_fence_fallback();
     fixture::supported_feedback_transport();
+    fixture::checked_layer_failures_and_single_present();
+    fixture::unsupported_factory_cleanup();
+    fixture::queued_last_reference_and_snapshot_lifetime();
+    fixture::present1_pipeline_preflight_admission();
+    fixture::feedback_close_queued_discard_capability();
     std::cout << "PASS production_presenter_regression_all\n";
     return 0;
   } catch (const std::exception &error) {

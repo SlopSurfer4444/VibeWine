@@ -15,9 +15,8 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 parser = argparse.ArgumentParser()
 parser.add_argument("--source", type=Path, default=HERE.parent / "source")
-parser.add_argument("--debug", action="store_true")
 parser.add_argument("--sanitizer", choices=["none", "address", "thread"], default="none")
-parser.add_argument("--mutation", choices=["requested-geometry", "mutable-gamma", "cpu-native-apply", "raw-snapshot-resources", "context-fence-update"])
+parser.add_argument("--mutation", choices=["requested-geometry", "mutable-gamma", "cpu-native-apply", "raw-snapshot-resources", "context-fence-update", "checked-ignore-status", "checked-keep-old-cache", "presenter-missing-final-release", "factory-mask-unsupported", "factory-keep-output", "factory-skip-native-view-release", "preflight-count-failed-state", "preflight-remove-null-guard", "preflight-recapture", "preflight-after-credit", "feedback-ignore-close-capability"])
 args = parser.parse_args()
 source = args.source.resolve()
 
@@ -41,7 +40,9 @@ prefix = '''#include <algorithm>
 #include <utility>
 #include "Metal.hpp"
 #include "wave7_feedback.h"
+#include "wave7_layer_apply.h"
 #include "rc/util_rc.hpp"
+#include "rc/util_rc_ptr.hpp"
 namespace dxmt {
 class InternalCommandLibrary {
 public:
@@ -52,6 +53,9 @@ prefix += fmt[fmt_start:fmt_end] + '''
 inline bool Is_sRGBVariant(WMTPixelFormat format) { return Forget_sRGB(format) != format; }
 namespace cs2trace {
 struct Scope { uint64_t type; uint64_t object; ~Scope() {} };
+struct ApiScope { uint32_t result = 0; ApiScope(uint32_t, uint64_t) {} };
+enum class CommitReason { Present };
+struct ReasonScope { ReasonScope(CommitReason, uint64_t) {} };
 struct Event {
   uint32_t generation, type;
   uint64_t start, end, object;
@@ -83,8 +87,13 @@ with tempfile.TemporaryDirectory(prefix="presenter-regression-") as directory:
                            "encoder.setFragmentTexture(gamma_lut_texture_, 1);")],
         "cpu-native-apply": [("return should_invalidated;", "layer_.setProps(layer_props_); return should_invalidated;")],
         "raw-snapshot-resources": [("WMT::Reference<WMT::Texture> gamma_lut_texture;", "WMT::Texture gamma_lut_texture;")],
+        "checked-ignore-status": [("if (status != W7LA_OK) {", "if (false) {")],
+        "checked-keep-old-cache": [("\n    encoded_configuration_revision_ = 0;", "\n    /* deliberately kept earlier applied cache */")],
+        "presenter-missing-final-release": [("  void decRef() {\n    if (RcObject::decRef() == 0)\n      delete this;\n  }\n", "")],
+        "preflight-count-failed-state": [("configuration_ ? ++frame_requested_ : 0", "++frame_requested_")],
+        "feedback-ignore-close-capability": [("!(feedback_capabilities_ & W7FB_CAP_CLOSE_QUEUED_DISCARD)", "false")],
     }
-    if args.mutation and args.mutation != "context-fence-update":
+    if args.mutation and args.mutation != "context-fence-update" and not args.mutation.startswith("factory-") and args.mutation not in ["preflight-remove-null-guard", "preflight-recapture", "preflight-after-credit"]:
         for original, replacement in mutations[args.mutation]:
             if original not in production:
                 raise RuntimeError(f"mutation seam missing: {original}")
@@ -99,12 +108,65 @@ with tempfile.TemporaryDirectory(prefix="presenter-regression-") as directory:
             raise RuntimeError("context fence mutation seam changed")
         present_case = present_case.replace(original, "/* deliberately omitted fallback update */")
     (build / "production_present_case.inc").write_text(present_case)
+    context_header = (source / "src/dxmt/dxmt_context.hpp").read_text()
+    data_start = context_header.index("struct PresentData : EncoderData {")
+    data_end = context_header.index("\n};", data_start) + len("\n};")
+    (build / "production_present_data.inc").write_text(context_header[data_start:data_end])
+    swapchain = source / "src/d3d11/d3d11_swapchain.cpp"
+    swapchain_text = swapchain.read_text()
+    present_start = swapchain_text.index("  Present1(UINT SyncInterval")
+    admission_start = swapchain_text.index("    if (target_) {", present_start)
+    admission_end = swapchain_text.index("    return hr;", admission_start) + len("    return hr;")
+    admission = swapchain_text[admission_start:admission_end]
+    if args.mutation == "preflight-remove-null-guard":
+        original = "    if (!state.configuration)\n      return E_FAIL;"
+        if admission.count(original) != 1: raise RuntimeError("preflight guard seam changed")
+        admission = admission.replace(original, "/* deliberately omitted pipeline null guard */")
+    if args.mutation == "preflight-recapture":
+        if admission.count("state = state") != 2: raise RuntimeError("preflight capture seam changed")
+        admission = admission.replace("state = state", "state = presenter->synchronizeLayerProperties()")
+    if args.mutation == "preflight-after-credit":
+        original = "    const auto state = presenter->synchronizeLayerProperties();\n    if (!state.configuration)\n      return E_FAIL;"
+        if admission.count(original) != 1: raise RuntimeError("preflight order seam changed")
+        admission = admission.replace(original, "")
+        admission = admission.replace("    if constexpr (EnableMetalFX) {", original + "\n    if constexpr (EnableMetalFX) {")
+    (build / "production_present_admission.inc").write_text(admission)
+    ctor_start = swapchain_text.index("    native_view_ = WMT::CreateMetalViewFromHWND")
+    ctor_end = swapchain_text.index("    frame_latency = kSwapchainLatency;", ctor_start)
+    (build / "production_constructor_prefix.inc").write_text(swapchain_text[ctor_start:ctor_end])
+    dtor_start = swapchain_text.index("  ~MTLD3D11SwapChain() {") + len("  ~MTLD3D11SwapChain() {")
+    dtor_end = swapchain_text.index("\n  };", dtor_start)
+    destructor = swapchain_text[dtor_start:dtor_end]
+    if args.mutation == "factory-skip-native-view-release":
+        if destructor.count("WMT::ReleaseMetalView(native_view_);") != 1:
+            raise RuntimeError("native view release mutation seam changed")
+        destructor = destructor.replace("WMT::ReleaseMetalView(native_view_);", "/* deliberately omitted view release */")
+    (build / "production_destructor_body.inc").write_text(destructor)
+    factory_start = swapchain_text.index("HRESULT\nCreateSwapChain(")
+    guards_start = swapchain_text.index("  if (ppSwapChain == NULL)", factory_start)
+    guards_end = swapchain_text.index("  DWORD window_process_id;", guards_start)
+    for mode in ["true", "false"]:
+        tail_start = swapchain_text.index(f"auto *swapchain = new MTLD3D11SwapChain<{mode}>(", guards_end)
+        tail_end = swapchain_text.index("return S_OK;", tail_start) + len("return S_OK;")
+        factory = swapchain_text[guards_start:guards_end] + swapchain_text[tail_start:tail_end]
+        if args.mutation == "factory-mask-unsupported":
+            original = "if (FAILED(initialized)) { swapchain->Release(); return initialized; }"
+            if factory.count(original) != 1:
+                raise RuntimeError("factory HRESULT mutation seam changed")
+            factory = factory.replace(original, "if (FAILED(initialized)) { swapchain->Release(); return S_OK; }")
+        if args.mutation == "factory-keep-output":
+            if factory.count("InitReturnPtr(ppSwapChain);") != 1:
+                raise RuntimeError("factory null output mutation seam changed")
+            factory = factory.replace("InitReturnPtr(ppSwapChain);", "/* deliberately kept poisoned output */")
+        (build / f"production_factory_{mode}.inc").write_text(factory)
+    com = (source / "src/util/com/com_object.hpp").read_text()
+    init_start = com.index("template <typename T> inline void InitReturnPtr")
+    init_end = com.index("\n}", init_start) + 2
+    (build / "production_init_return_ptr.inc").write_text(com[init_start:init_end])
     binary = build / "presenter-regression"
-    command = ["clang++", "-std=c++20", "-pthread", "-g", "-O1", "-Wall", "-Wextra", "-Werror",
+    command = ["clang++", "-std=c++20", "-pthread", "-DDXMT_DEBUG", "-g", "-O1", "-Wall", "-Wextra", "-Werror",
                "-Wno-unused-parameter", "-I", str(build), "-I", str(source / "src/winemetal"),
                "-I", str(source / "src/util"), str(HERE / "presenter_regression.cpp"), "-o", str(binary)]
-    if args.debug:
-        command += ["-DDXMT_DEBUG"]
     if args.sanitizer != "none":
         command += [f"-fsanitize={args.sanitizer}", "-fno-omit-frame-pointer"]
     subprocess.run(command, check=True, timeout=120)
@@ -117,6 +179,8 @@ with tempfile.TemporaryDirectory(prefix="presenter-regression-") as directory:
         print(f"PASS regression_sensitivity {args.mutation}: {result.stderr.strip()}")
     else:
         subprocess.run([str(binary)], check=True, timeout=45)
-for path in [header, implementation, context, source / "src/winemetal/Metal.hpp", source / "src/winemetal/winemetal.h",
-             source / "src/winemetal/wave7_feedback.h"]:
+for path in [header, implementation, context, source / "src/dxmt/dxmt_context.hpp", source / "src/d3d11/d3d11_swapchain.cpp", source / "src/util/rc/util_rc.hpp",
+             source / "src/util/rc/util_rc_ptr.hpp", source / "src/util/com/com_object.hpp",
+             source / "src/winemetal/Metal.hpp", source / "src/winemetal/winemetal.h",
+             source / "src/winemetal/wave7_feedback.h", source / "src/winemetal/wave7_layer_apply.h"]:
     print(f"SOURCE_SHA256 {hashlib.sha256(path.read_bytes()).hexdigest()} {path.relative_to(source)}")

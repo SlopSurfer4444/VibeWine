@@ -1,0 +1,39 @@
+{
+  "artifact": "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/build/winemetal.so",
+  "installed": false,
+  "post_sign_sha256": "6b21c0c3157967053d5b942b080e9f91ffd7eb402ca3b0f09e5b2c4af0de1615",
+  "pre_sign_sha256": "64639c18a7306faf1b7eb3c080d28f1166917e51d862ea7e2e9cf3913abfab96",
+  "runtime_executed": false,
+  "signature_kind": "ad hoc",
+  "steps": [
+    {
+      "command": [
+        "/usr/bin/codesign",
+        "--force",
+        "--sign",
+        "-",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/build/winemetal.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "command": [
+        "/usr/bin/codesign",
+        "--verify",
+        "--strict",
+        "--verbose=4",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/build/winemetal.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "command": [
+        "/usr/bin/codesign",
+        "-d",
+        "--verbose=4",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/build/winemetal.so"
+      ],
+      "returncode": 0
+    }
+  ]
+}

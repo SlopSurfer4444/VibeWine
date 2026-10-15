@@ -98,7 +98,7 @@ static uint64_t w7fb_dispatch(struct W7FBRequest *r) {
   r->status = W7FB_BAD_REQUEST;
   BOOL supported = NO;
   if (@available(macOS 10.15.4, *)) supported = YES;
-  r->capabilities = supported ? W7FB_CAP_PRESENTED_HANDLER : 0;
+  r->capabilities = supported ? (W7FB_CAP_PRESENTED_HANDLER | W7FB_CAP_CLOSE_QUEUED_DISCARD) : 0;
   if (r->op == W7FB_QUERY) { r->status = supported ? W7FB_OK : W7FB_UNSUPPORTED; return W7FB_REPLY; }
   if (r->op == W7FB_CAPTURE_STATUS) {
     int (*query)(void) = (int (*)(void))dlsym(RTLD_DEFAULT, "macdrv_display_capture_cleanup_complete_v1");
@@ -128,8 +128,10 @@ static uint64_t w7fb_dispatch(struct W7FBRequest *r) {
   W7FBSession *s = w7fb_find(r->session);
   if (!s) { r->status = W7FB_NO_SESSION; return W7FB_REPLY; }
   pthread_mutex_lock(&s->lock);
+  uint64_t close_queued = 0;
   if (s->closed) r->status = W7FB_NO_SESSION;
   else if (r->op == W7FB_CLOSE) {
+    close_queued = s->count; /* CLOSE reports records discarded at its lock boundary. */
     s->closed = YES; s->count = 0;
     pthread_mutex_lock(&w7fb_registry_lock);
     for (unsigned i = 0; i < W7FB_SESSION_CAPACITY; ++i)
@@ -163,6 +165,7 @@ static uint64_t w7fb_dispatch(struct W7FBRequest *r) {
     if (r->status != W7FB_OK) ++s->counters.rejected;
   }
   w7fb_snapshot(s, r);
+  if (r->op == W7FB_CLOSE && r->status == W7FB_OK) r->stats.queued = close_queued;
   pthread_mutex_unlock(&s->lock);
   [s release];
   return W7FB_REPLY;

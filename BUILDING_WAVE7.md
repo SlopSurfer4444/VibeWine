@@ -29,3 +29,23 @@ excluded from offline defaults. Never use full build recipes as an install scrip
 Source notices and licenses are retained. Root LICENSE, upstream notices and the
 renderer component license govern their respective material. No license grant
 for proprietary donor binaries is implied; those binaries are not distributed.
+
+## Checked graphics successor
+
+Final sources replace the Wave7 production trees; Wave6 remains historical. The
+bridge recipe now requires BASELINE_NATIVE_DIR/winemac.so with the exact unsigned
+baseline-v6 hash in WAVE7_PROVENANCE.json; the selected runtime uses the mask-fixed
+driver. NATIVE_DEPENDENCY_DIR/ntdll.so retains the recorded donor hash. This
+preserves actual link inputs; it does not claim a mask-linked rebuild occurred.
+The native recipe compiles the full current tree, whereas the recorded private
+mask build reused 23 unchanged objects and recompiled two.
+
+Run new fixtures only in a disposable copy: renderer/wave7/presenter-tests/run.py,
+native/wave7/checked-tests/run.py, native/wave7/mask-tests/test_mask_coordinates.py,
+renderer/wave7/verify_consumer.py, and renderer/wave7/feedback-tests/{run_writer_tests.py,native-close/run.sh}.
+Presenter accepts --sanitizer address or thread and explicit --mutation controls.
+Mask tests use unittest; native/feedback fixture scripts generate local outputs.
+Historical aggregate scripts remain available; this export did not rerun them.
+Sanitized receipts are in evidence/checked-mask; original and derivative hashes
+are recorded in WAVE7_ADAPTATIONS.json. They are historical execution evidence,
+not a claim that public path adapters or clean-room builds were executed.

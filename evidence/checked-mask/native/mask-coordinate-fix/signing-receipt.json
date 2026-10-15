@@ -1,0 +1,11 @@
+{
+  "exportsIdenticalToUnsignedAndV6": true,
+  "installed": false,
+  "runtimeExecuted": false,
+  "signature": "ad-hoc; strict verification exit0",
+  "signedPath": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/signed/winemac.so",
+  "signedSha256": "c62ae85d35d2319ceb570597413308152050e2c5425f24754c31a1cc45059b21",
+  "state": "SIGNED_PRIVATE_CANDIDATE",
+  "unsignedReceiptSha256": "65334546ef35609e423cdb447086bada02994d26123d6b4419a6eb52aa192be8",
+  "unsignedSha256": "9ab78b738d72076f828eaed112830088cdb3bcf92b066e1443b04dbcabcf1341"
+}

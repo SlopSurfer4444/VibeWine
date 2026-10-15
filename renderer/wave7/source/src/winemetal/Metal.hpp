@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./winemetal.h"
+#include "wave7_layer_apply.h"
 #include <cstddef>
 #include <string>
 #include <cstring>
@@ -555,6 +556,35 @@ public:
   getProps(WMTLayerProps &props) {
     MetalLayer_getProps(handle, &props);
   };
+
+  static bool
+  supportsCheckedConfiguration() {
+    W7LARequest request{};
+    request.size = sizeof(request);
+    request.version = W7LA_VERSION;
+    request.op = W7LA_QUERY;
+    request.status = W7LA_UNSUPPORTED;
+    return MTLCommandBuffer_property(static_cast<obj_handle_t>(reinterpret_cast<uintptr_t>(&request)),
+        static_cast<WMTCommandBufferProperty>(W7LA_PROPERTY)) == W7LA_REPLY && request.status == W7LA_OK;
+  }
+
+  uint32_t
+  setConfigurationChecked(const WMTLayerProps &props, WMTColorSpace colorspace, uint64_t revision) {
+    W7LARequest request{};
+    request.size = sizeof(request);
+    request.version = W7LA_VERSION;
+    request.op = W7LA_APPLY;
+    request.status = W7LA_UNSUPPORTED;
+    request.layer = handle;
+    request.config_revision = revision;
+    request.configuration = {props.device, props.contents_scale, props.drawable_width, props.drawable_height,
+        props.opaque, props.display_sync_enabled, props.framebuffer_only, uint32_t(props.pixel_format),
+        uint32_t(colorspace), 0};
+    if (MTLCommandBuffer_property(static_cast<obj_handle_t>(reinterpret_cast<uintptr_t>(&request)),
+          static_cast<WMTCommandBufferProperty>(W7LA_PROPERTY)) != W7LA_REPLY)
+      return W7LA_UNSUPPORTED;
+    return request.status;
+  }
 
   bool
   setColorSpace(WMTColorSpace colorspace) {

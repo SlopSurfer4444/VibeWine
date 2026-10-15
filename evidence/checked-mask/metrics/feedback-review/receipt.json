@@ -1,0 +1,52 @@
+{
+  "candidate_sources_sha256": {
+    "consumer/analyze.py": "b23fc2fa38888d69a5e7c9a98606d100125798880d7f8a8744cb75eba1721fd4",
+    "consumer/probe_semantics.hpp": "a1cd12daadc1b44df9a67303209e7f2f3692eeff8255a0de4c337937974768ad",
+    "consumer/test_analyze.py": "eb6459f77d78accd83f3cf8a5a4b705b623fef3e8383d74704aed034309bb352",
+    "consumer/test_api_analyze.py": "d83f46285ecf93b6cfafa9b92b51c2a1b7fceae6e87bc167640eab822a9d6592",
+    "consumer/test_sync_analyze.py": "4f1f21bf47f6c7f6a401036ddca14962de5bd84b6e9964342940b97d8784756f",
+    "consumer/test_wave7_binary.py": "4ebe9009241513385d6695507957661df0e7d943e014c24a27fe0744e9b02e0f",
+    "consumer/tests_cli.py": "68a6a8f4525d5b8eaab426789ba71b078550ec39e8759c4ef027bd06292535f8",
+    "consumer/trace_controller.cpp": "439685d0e7ce99336454801fd2f25ab3c4df6f07dedb5e846a22df287662ede4",
+    "consumer/trace_core.hpp": "027b834fc96cc0af1ca5ca63aaf93b71b1f0b41d4ae5722411dededb854ea719",
+    "consumer/wave7_analysis.py": "60f2234193fffb23bb8e9632f26bbe98a182fd8f6d33ab21354c5c69b4d7666e",
+    "source/src/d3d11/cs2_trace_protocol.hpp": "c09680878717ca907a41f0c0807041dfd587c7fe627051289a6ad91a783f79d0"
+  },
+  "checks": [
+    {
+      "command": [
+        "clang++",
+        "-std=c++20",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/consumer/trace_controller.cpp",
+        "-o",
+        "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/consumer/cs2trace"
+      ],
+      "exit_code": 0,
+      "log": "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/compile-results.txt",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "name": "compile"
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/consumer",
+        "-p",
+        "test*.py",
+        "-v"
+      ],
+      "exit_code": 0,
+      "log": "${WORKSPACE}/outputs/wine-wave7/metrics-impl/feedback-review/tests-results.txt",
+      "log_sha256": "4584277b4d643ddbbdbd908beb21028e26e090b30db0e30681087601ccf93ad7",
+      "name": "tests"
+    }
+  ],
+  "controller_sha256": "ff1df08dddbbac767bdc84ed0e060ddc619cf9f05744f8660e1c1781e80e86d8",
+  "purpose": "offline consumer build and actual binary v2 fixture decoding; no live/installed acceptance"
+}

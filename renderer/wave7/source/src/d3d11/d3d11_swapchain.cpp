@@ -151,6 +151,11 @@ public:
     presenter = Rc(new Presenter(pDevice->GetMTLDevice(), layer_weak_,
                                  pDevice->GetDXMTDevice().queue().cmd_library,
                                  scale_factor, desc_.SampleDesc.Count, trace_serial_));
+    if (!presenter->supportsCheckedLayerConfiguration()) {
+      ERR("Native Metal bridge lacks checked synchronous layer configuration");
+      initialization_result_ = DXGI_ERROR_UNSUPPORTED;
+      return;
+    }
 
     frame_latency = kSwapchainLatency;
     present_semaphore_ = CreateSemaphore(nullptr, frame_latency,
@@ -982,6 +987,16 @@ public:
       RefreshDisplayTiming(timing_monitor);
     const double vsync_duration = PresentationDuration(SyncInterval);
 
+    if (target_) {
+      auto output = static_cast<MTLDXGIOutput *>(target_.ptr());
+      presenter->changeGammaRamp(output->GetGammaRamp());
+    }
+    // Pipeline preparation runs on this Present caller. Refuse a known failure
+    // before consuming a frame count, latency credit, or queue frame sequence.
+    const auto state = presenter->synchronizeLayerProperties();
+    if (!state.configuration)
+      return E_FAIL;
+
     auto &cmd_queue = device_->GetDXMTDevice().queue();
     if (auto gen = cs2trace::generation()) {
       auto t = cs2trace::now();
@@ -989,16 +1004,12 @@ public:
     }
     auto chunk = cmd_queue.CurrentChunk();
     chunk->signal_frame_latency_fence_ = cmd_queue.CurrentFrameSeq();
-    if (target_) {
-      auto output = static_cast<MTLDXGIOutput *>(target_.ptr());
-      presenter->changeGammaRamp(output->GetGammaRamp());
-    }
     if constexpr (EnableMetalFX) {
       chunk->emitcc([
         this, vsync_duration, backbuffer = backbuffer_->texture(),
         sync_state = SyncFrame(++presentation_count_),
         upscaled = upscaled_backbuffer_->texture(),
-        scaler = this->metalfx_scaler, state = presenter->synchronizeLayerProperties()
+        scaler = this->metalfx_scaler, state = state
       ](ArgumentEncodingContext &ctx) mutable {
         ScalerInfo scaler_info{};
         scaler_info.type = ScalerType::Spatial;
@@ -1014,7 +1025,7 @@ public:
       });
     } else {
       chunk->emitcc([
-        this, vsync_duration, state = presenter->synchronizeLayerProperties(),
+        this, vsync_duration, state = state,
         sync_state = SyncFrame(++presentation_count_),
         backbuffer = backbuffer_->texture()
       ](ArgumentEncodingContext &ctx) mutable {

@@ -13,6 +13,8 @@
 #define W7FB_SESSION_CAPACITY 16u
 #define W7FB_CAP_PRESENTED_HANDLER UINT64_C(1) /* extension + OS available;
  * REGISTER additionally checks the actual drawable selectors */
+#define W7FB_CAP_CLOSE_QUEUED_DISCARD UINT64_C(2) /* Successful CLOSE stats.queued
+ * counts records discarded at close only when this capability is advertised. */
 #define W7FB_CLOCK_CA_HOST_SECONDS 1u /* MTLDrawable.presentedTime, seconds;
  * CoreAnimation host-time domain. Never compare directly to PE QPC timestamps. */
 enum W7FBOp { W7FB_QUERY=1, W7FB_OPEN, W7FB_REGISTER, W7FB_POLL, W7FB_CLOSE, W7FB_STATUS, W7FB_CAPTURE_STATUS };

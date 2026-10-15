@@ -134,6 +134,20 @@ class Wave7Binary(tests_cli.CLITests):
         _,a=self.decode_events([event(99),event(71,1,bits(10.0),0x101,end=101)])
         self.assertFalse(a['wave7']['native_presented_frames']);self.assertEqual(a['rejections']['invalid_wave7_identity_or_noninstant'],1)
 
+    def test_checked_apply_and_close_discard_domains(self):
+        rows,a=self.decode_events([event(77,40,0,4),event(78,99,3,0,time=110),event(78,100,0,2,time=120)])
+        self.assertTrue(all(e['clock_domain']=='cpu_steady_ns' and e['duration_ns'] is None for e in rows[:-1]))
+        self.assertEqual(a['wave7']['native_configuration_apply_failures'][0]['status_name'],'FAILED')
+        self.assertEqual(a['wave7']['native_configuration_apply_failures'][0]['configuration_revision'],40)
+        counted,unknown=a['wave7']['native_close_queued_discard_accounting']
+        self.assertEqual(counted['queued_discarded'],3);self.assertTrue(counted['accounting_verified'])
+        self.assertIsNone(unknown['queued_discarded']);self.assertFalse(unknown['accounting_verified'])
+
+    def test_bad_close_accounting_identity_rejected(self):
+        _,a=self.decode_events([event(78,0,10,0)])
+        self.assertFalse(a['wave7']['native_close_queued_discard_accounting'])
+        self.assertEqual(a['rejections']['invalid_feedback_close_accounting_session'],1)
+
 def load_tests(loader,tests,pattern):
     # Legacy CLI tests run once in tests_cli; inherit helpers, not duplicate checks.
     return unittest.TestSuite(Wave7Binary(name) for name in sorted(Wave7Binary.__dict__) if name.startswith('test_'))

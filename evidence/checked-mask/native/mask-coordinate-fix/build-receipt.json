@@ -1,0 +1,298 @@
+{
+  "baselineBinarySha256": "5e40e741f4ba42d0005455e57e1b7ce91d1b3eeda7459a17379bdaca92114a01",
+  "baselineReceiptSha256": "8cb48708b7cf07915a8cde62d499aa9269912263901352efaa89783c364f1ca6",
+  "binary": {
+    "path": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/winemac.so",
+    "sha256": "9ab78b738d72076f828eaed112830088cdb3bcf92b066e1443b04dbcabcf1341",
+    "size": 617864
+  },
+  "dependencies": [
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/ntdll/ntdll.so",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/ntdll/ntdll.so",
+      "rebuilt": false,
+      "sha256": "2821162854bf0d3072333ec77cc6464fca15b2e1e9bfd195f15a1ab70df1ea49"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/win32u/win32u.so",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/win32u/win32u.so",
+      "rebuilt": false,
+      "sha256": "7bb7e4de97a77d148a58941b091af71c3d6516cf420e67bce720069b3d0cd694"
+    }
+  ],
+  "exportComparison": {
+    "count": 6,
+    "exactlyEqual": true
+  },
+  "installed": false,
+  "linkArguments": [
+    "/usr/bin/clang",
+    "-arch",
+    "x86_64",
+    "-m64",
+    "-o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/winemac.so",
+    "-dynamiclib",
+    "-install_name",
+    "@rpath/winemac.so",
+    "-Wl,-rpath,@loader_path/",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/clipboard.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_app.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_clipboard.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_cursorclipping.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_display.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_event.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_icon_utils.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_main.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_opengl.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_status_item.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_window.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/d3dmetal.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/d3dmetal_objc.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/display.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/event.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/gdi.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/image.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/keyboard.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/macdrv_main.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/mouse.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/opengl.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/surface.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/systray.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/vulkan.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/window.o",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/ntdll/ntdll.so",
+    "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/win32u/win32u.so",
+    "-framework",
+    "AppKit",
+    "-framework",
+    "Carbon",
+    "-framework",
+    "CoreVideo",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "IOKit",
+    "-framework",
+    "Metal",
+    "-framework",
+    "OpenGL",
+    "-framework",
+    "QuartzCore",
+    "-framework",
+    "Security"
+  ],
+  "linkExitCode": 0,
+  "nativeAbiChecks": {
+    "installedWin32uDriverTableSize": 1224,
+    "installedWin32uDriverVersion": 108,
+    "limit": "Static version/table-size/Unix-parameter-layout check; not all behavioral or callback ABI compatibility.",
+    "sourceCompileAssertions": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/native-abi-check.c"
+  },
+  "nativeAbiExitCode": 0,
+  "objects": [
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/clipboard.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/clipboard.o",
+      "rebuilt": false,
+      "sha256": "0dc1f20d520a14f86c8003810a0e07fabb06208092b57f4a0dd7c81c1a58c9f2"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_app.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_app.o",
+      "rebuilt": false,
+      "sha256": "162f2519b0fe8a01824cbc63b9b2c1ad975272ee649f709d684d8a7aa07a79aa"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_clipboard.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_clipboard.o",
+      "rebuilt": false,
+      "sha256": "a1bf85eedbe5e18c43d5199ad1a5573087f1c16f84e5ad02a54e531caacdd772"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_cursorclipping.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_cursorclipping.o",
+      "rebuilt": false,
+      "sha256": "0b505204af2b250004fe28c1018df1244a07aa1477ead96dfe2b3e017b4b9427"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_display.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_display.o",
+      "rebuilt": false,
+      "sha256": "a4e0813ce5fa4aebf3bee614e2da89eecb4493d80694149874c10ddcafe26dad"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_event.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_event.o",
+      "rebuilt": false,
+      "sha256": "06eb17dc08a26672523688b098895ef005cc183013dddee9bbe8355029b057e0"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_icon_utils.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_icon_utils.o",
+      "rebuilt": false,
+      "sha256": "c746750af875ede5528dae493c7b7dcb6bec9539eea03662015c84822633c650"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_main.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_main.o",
+      "rebuilt": false,
+      "sha256": "631e0a594f7ca3fdc303256e4f81b2a9a7ec894b2d0f02a84417255a722af33e"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_opengl.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_opengl.o",
+      "rebuilt": false,
+      "sha256": "31b45e844ca019fbde1cefa295f7adec8c1686aa2791c9924b19443237650e07"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_status_item.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_status_item.o",
+      "rebuilt": false,
+      "sha256": "7805646ae3ac06e1709e57cd00f2a11a8af7c823771fe35ebbb509beeb90c367"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/cocoa_window.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/cocoa_window.o",
+      "rebuilt": true,
+      "sha256": "9db116876750dcaaeaa2812f49d617716856a9a0a79880b1c746248a67d95a21"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/d3dmetal.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/d3dmetal.o",
+      "rebuilt": false,
+      "sha256": "54b72db0d66b629f3bc49bf37ebfe59ed86e105259ed4db709745447c5e385ca"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/d3dmetal_objc.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/d3dmetal_objc.o",
+      "rebuilt": false,
+      "sha256": "ff17e0759c2e5591215ca76427b5bbf8f632f89be9dc0be32e26dabccdddd2d6"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/display.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/display.o",
+      "rebuilt": false,
+      "sha256": "e6c66cec3899057cac5e5a30684a17b1436faea9928b8b202c9d85b18e148191"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/event.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/event.o",
+      "rebuilt": false,
+      "sha256": "8ee32909f01b1b1e3872b6085f821fae555046549b8e3868cc8973ce4a69d26a"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/gdi.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/gdi.o",
+      "rebuilt": false,
+      "sha256": "7730ba623ead6ea7eddc4e4f1b2d78fa24fe1f1226fdfcbd838d071f44325919"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/image.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/image.o",
+      "rebuilt": false,
+      "sha256": "15f172cf47776b8ae057828eca14cce504a82d075c1945853777429ceadb0d2c"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/keyboard.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/keyboard.o",
+      "rebuilt": false,
+      "sha256": "d776d3cbfd878d7dd58c575b4163d4c55d8afc557e178067965f360973b43511"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/macdrv_main.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/macdrv_main.o",
+      "rebuilt": false,
+      "sha256": "84b449ce5128045e5577c9d0e2f3fbff7db277ed19148427ec4e15b62999546f"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/mouse.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/mouse.o",
+      "rebuilt": false,
+      "sha256": "cfd8443103eca8804fb9f6dd3a285dd6b6213c6f1f8672290a74f2f845716033"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/opengl.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/opengl.o",
+      "rebuilt": false,
+      "sha256": "08cad94c075d1471ae77b6cc0e1273fddaf2d969fff40de0efd043884033e4b8"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/surface.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/surface.o",
+      "rebuilt": false,
+      "sha256": "33d4101bc4d53018d2305e452906bf57061a94dcd3faeb361b5cf242aeec845e"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/systray.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/systray.o",
+      "rebuilt": false,
+      "sha256": "2e710a12f38b321dfc371f3f51e0d150d70714635e23a4df2787834a4d340d9e"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/vulkan.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/vulkan.o",
+      "rebuilt": false,
+      "sha256": "63d11332c2866b790e460d573bca161ea369c617c2a0fd5f4c594a27c17026a1"
+    },
+    {
+      "baselinePath": "${WORKSPACE}/outputs/wine-wave7/native-impl/native-build-v6/dlls/winemac.drv/window.o",
+      "copy": "${WORKSPACE}/outputs/wine-wave7/wsi-query-impl/virtual-mode/mask-coordinate-fix/dlls/winemac.drv/window.o",
+      "rebuilt": true,
+      "sha256": "b51fa4570e1fd01b567e265a7e22c829bca6aeefca448445896161a0051363c9"
+    }
+  ],
+  "reviewSha256": "dab579f372db5957f9e7d983437040535874a9aa951fe9e2134ddb7dfc1b0b34",
+  "runtimeExecuted": false,
+  "sourceFilesSha256": {
+    ".gitattributes": "f82b99b04a647026fbb2fdb8501237ec9c1e3abb5647d9f690fbbe25f8139e77",
+    "Makefile.in": "8ccca0e204038a5e208681069952617fcfb23cb976b92d43c05fd1cbe84a077d",
+    "ax_application.inc": "596be4a945dc83ac128ea0bafbe48809379900eb9c70079430372e153583887b",
+    "ax_native.inc": "8aa926387620ab3c56925c732c5733c0616d2e83dc7e0521812417286ae97552",
+    "ax_protocol.h": "804caecef7d9c03cd927a28a6180d9cda666c080044c1322ffed789cb6246e70",
+    "ax_provider.inc": "8f2fd1f5f865cb0e2271dd98b45b6fcaca1fafe20b29382e8e3a63a5c861027c",
+    "ax_validation.h": "0499269832ec21419ce226da691b5844c2d1a64942740a713ca32c8f4570937c",
+    "clipboard.c": "00ccc294b01f809f983fd258ec34e51fd92d857f1e236b0d22a1e4e4e5120018",
+    "cocoa_app.h": "0469113ead868bb8c936198a653057954fdf3d19327dbfb28b37e98f9b3f1753",
+    "cocoa_app.m": "5a15a9203341190f54fced6c7d9758561cd83383972e3bf796ba26ccd996791b",
+    "cocoa_clipboard.m": "6ac9cf79857ef3f8ce5fb329033092254ed5a1097a34772c09b5c9754424ae49",
+    "cocoa_cursorclipping.h": "55305632801cded83ec9c464e340a931fd109088e2eed064f32297242192d0e2",
+    "cocoa_cursorclipping.m": "082d079412a955cf96c1e948a5a8c1921daba7cab21f92ecf2259a2688c4347d",
+    "cocoa_display.m": "9e08e154f14bd09fc6d478133d7245e1a4fa9f72491d8a8257ac0203c1c212e1",
+    "cocoa_event.h": "a55f0e8c6aa5c80ab2713b9c74b6ca5ed526582d10e380caea2168d99f9a8bc2",
+    "cocoa_event.m": "8a363b9db1dc14e5742ce9bedf32dd965200513c3434a99de7345a3ff35cfc2f",
+    "cocoa_icon_utils.h": "02e28cfa6044c8d556f62fbbf846c75eb70fe20f848451476e84991447c2dfa5",
+    "cocoa_icon_utils.m": "04edd067b4d42437b4fa028d438b2d54865e1ee60501bba692880692457ec568",
+    "cocoa_main.m": "4993bcb0bf7af9635626cc0f9f966b4f9b712dcc3e7d224b1c24b4d9e08afbcb",
+    "cocoa_opengl.h": "e3c7c3d0e371faa6e3ef29ff2350ffd42dea6caf1a0b65a6a085296790f5ff11",
+    "cocoa_opengl.m": "8e01a5804fa5e6655b5e6a3b36e6e29235d57c88ce5cb2c81e18e6a66188c9a1",
+    "cocoa_status_item.m": "ae3d0b54ba46785539d1ec7c61870fc01056475f9a0c39d44f5f69c01dab5bc0",
+    "cocoa_window.h": "8ae092be881770e36f5ca46a3d12cde545a2790fab4c7ffbe732e5cfd58f6286",
+    "cocoa_window.m": "597acfdf52ca0a1b4841a30e4a6c59b1144ecbce7fd81a2af2bec09250ac0fce",
+    "d3dmetal.c": "f4667b5c90b3c0e94befb0188de72de69cf5b5de16a6f5b1c7cecde51735fc32",
+    "d3dmetal_objc.h": "6eeb595910f4dd495786b3d206d54e6859edbcf234b267b4245849479639eb56",
+    "d3dmetal_objc.m": "6a2f914b8d1ece300170e388716bd6c26cf52d222aa9f32aac8a203e3b9f3976",
+    "display.c": "1e231cd5036f3139e09dd4a9e59bd4675dfb6d2faac35814b5c4ac3f39e3cfa8",
+    "dllmain.c": "20b56ace57f87d73f70803d049b00324577fe7bc4aa2a267cff83cb399bb8296",
+    "event.c": "cb8344a2d76db2263365d1913262dc8105ca8409b71f8f09f3eaa1e4e76f4329",
+    "gdi.c": "d96e80a17413a11fed94aee493756c6e3b8a277b29dabb463b726c91e667b92f",
+    "image.c": "ffeb126cf88eed076b961fcb5f387a276722d6a2d98bf919dae9cfd03015c8ec",
+    "keyboard.c": "5007b53ce6f2caf36dd0063aa1898624495c3442756ac8c396b126039b4f69de",
+    "macdrv.h": "b54bb9ee52afcc8684d6761471ce075c9cb2470a216a958b11027e3e76e86e0f",
+    "macdrv_cocoa.h": "63792e5b5acfc51b70c9147e5349af98ead37f3acd452f0ed1e3c49601ef845e",
+    "macdrv_main.c": "6661999f5843849ef5e3ba26a83b760ff5c6ffeb3fb500bc3fad599dd8bdcbc6",
+    "macdrv_res.h": "75809aefe47769005c61d274a2192a2553f3fc0442d9f1a5ce1e298908bef909",
+    "mouse.c": "29e6e3e3c3886178d1f1ac4974a2a793f121871932d81b2c21734a50e2b409a4",
+    "opengl.c": "91a56243f9e7c978bd340f438b7ed53d83b83190ff0a896ac5f36b2e8ba4fa2a",
+    "opengl_bcdec.h": "d781e6de37a4b3180ad61cd1067d37c380d57052e1abe99a35b7d5e6cfa4c608",
+    "surface.c": "f99c41502bb8d29c164283f0586bd4ec7e933148448904dadbe82e972fb7fb7a",
+    "systray.c": "a6e7144ef3d7ba40a235b72833a58c627ee9ed95c0cee711211c91b23ae16bd4",
+    "unixlib.h": "7ea99ee6d84a05793a5733d56f12fcb8b700dbb57270fb1c2887f18f73c09d44",
+    "vulkan.c": "80e8ef619ef5d3335f120c635560750e09284ff4fc3950968be811adaf35705c",
+    "wave7_display_edr.inc": "7bda0774837744b5809c78b666b77b377e40d12e68b2d003f4ea8edf07def3da",
+    "wave7_main_executor.inc": "5acf6562156681ca6766e14c759f63162140d860e5dc91367d628bc413772898",
+    "window.c": "0c666396464d7f80b9b88056f0ef452ab15d3a25b75e04a7c8ca546a28b74e13",
+    "winemac.rc": "aa2af15506e2b452381ee64f897d25143f665b49f559633f0dd686c04291751e"
+  },
+  "state": "LINKED_UNSIGNED_PRIVATE_CANDIDATE"
+}

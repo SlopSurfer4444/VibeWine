@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory(prefix='wine-wave7-public-') as d:
  py=sys.executable
  run(py,r/'resize-tests/run.py','--source',r/'source','--label','public')
  run(py,r/'presenter-tests/run.py','--source',r/'source','--sanitizer','address')
- run(py,r/'presenter-tests/run.py','--source',r/'source','--sanitizer','address','--debug')
+ run(py,r/'presenter-tests/run.py','--source',r/'source','--sanitizer','thread')
  run(py,r/'wsi-tests/run_fixture.py','--source',r/'source',*(['--mutation-check'] if a.mutation_check else []))
  run(py,r/'wsi-tests/query_concurrency.py','--source',r/'source')
  run(py,r/'verify_consumer.py')
@@ -27,5 +27,9 @@ with tempfile.TemporaryDirectory(prefix='wine-wave7-public-') as d:
  run(py,n/'edr-tests/check_init_failure.py')
  for folder in ('feedback-tests','listener-tests'):
   run('/bin/sh',n/folder/'run.sh')
+ run(py,n/'checked-tests/run.py')
+ run(py,n/'mask-tests/test_mask_coordinates.py')
+ run('/bin/sh',r/'feedback-tests/native-close/run.sh')
+ run(py,r/'feedback-tests/run_writer_tests.py')
  if a.include_history:run(py,work/'tests/run_wave6.py')
 print('Wave7 portable offline fixtures passed. No live game, input, resolution or FPS acceptance implied.')

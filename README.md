@@ -1,11 +1,7 @@
-# Wave7 candidate1 source checkpoint
+# Wave7 checked graphics source checkpoint
 
 Current source and portable fixtures are in `renderer/wave7`, `native/wave7`, and
-`ntdll/wave7`. Read [acceptance limits](WAVE7_ACCEPTANCE.md) first: live CUA
-keyboard fixtures passed, while DS3 keyboard and virtual resolution remain
-unconfirmed. Relaunch admission is unresolved; the replacement admission candidate
-is NOT INSTALLABLE until its ownership proof is reviewed. That candidate's code
-is excluded. No FPS gain is measured.
+`ntdll/wave7`. This is the checked graphics successor. Read [acceptance limits](WAVE7_ACCEPTANCE.md): private GPU fixtures passed; actual DS3 fullscreen, input, relaunch and FPS acceptance remain pending.
 
 Use [BUILDING_WAVE7.md](BUILDING_WAVE7.md) for offline checks and explicit build
 inputs. [WAVE7_PROVENANCE.json](WAVE7_PROVENANCE.json) identifies the frozen

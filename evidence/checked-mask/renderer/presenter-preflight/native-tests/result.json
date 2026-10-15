@@ -1,0 +1,35 @@
+{
+  "builds": [
+    "regular",
+    "address+undefined"
+  ],
+  "passed": true,
+  "scenarios": [
+    "validation",
+    "old-bridge",
+    "prepare-failure",
+    "executor-reject",
+    "success",
+    "exception-retry",
+    "reentry",
+    "worker",
+    "worker-copy",
+    "queued-shutdown",
+    "active-shutdown",
+    "colorspace-format-matrix"
+  ],
+  "scope": "Source-connected native bridge with mock layer; real Foundation Wine request source/executor; no GPU, installation, app, or live game.",
+  "source_sha256": {
+    "${WORKSPACE}/outputs/wine-wave7/native-impl/source/bridge/src/winemetal/unix/winemetal_ds3.c": "489a7958957b832d3ba4e3db57a23326958b38e1aae2cbaeabb8bbf5d3bc9b28",
+    "${WORKSPACE}/outputs/wine-wave7/native-impl/source/winemac.drv/cocoa_app.m": "5a15a9203341190f54fced6c7d9758561cd83383972e3bf796ba26ccd996791b",
+    "${WORKSPACE}/outputs/wine-wave7/native-impl/source/winemac.drv/wave7_main_executor.inc": "5acf6562156681ca6766e14c759f63162140d860e5dc91367d628bc413772898",
+    "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/native-source/bridge/src/winemetal/unix/wave7_layer_apply.inc": "6ce7ed0158a3483767e5257624b34dcae1d82711f48b64738999d12564d3fb61",
+    "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/native-source/bridge/src/winemetal/unix/winemetal_ds3.c": "0a330a79f2b07a5c6aa2ab9f98eac5e582a6e26089b11e5262e6aade4d1f4cb2",
+    "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/native-source/bridge/src/winemetal/winemetal.h": "09ae69990ecc1e10c600d224cfb0989b45ee9a353552f7ba9418dcb96dad50d0",
+    "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/native-source/bridge/src/winemetal/winemetal_thunks.h": "d0b5db5b041f057fef934b204c77b77b6094c027c2d9b88ef024357babfdd6e9",
+    "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/native-source/bridge/wave7_layer_apply.h": "25fc7fef48b1a6208f8f4f1a150bab08205de37f8d9f928315f3bf33529a1d34",
+    "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/native-tests/fixture_body.m": "d28a88ba40fff0833d81c41d25b1c90e4a47ef19b96b703247b12ca9ab06f606",
+    "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/native-tests/fixture_prefix.m": "5de6a33778c4b09003ef9a37a346c57f063f313c301ad04434da064c583be0f1",
+    "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/native-tests/run.py": "34d411c30a907ec2ddeb3bb1be51060d5b49f5aca93448ca6345027c20b82699"
+  }
+}

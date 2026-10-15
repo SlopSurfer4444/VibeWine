@@ -1,0 +1,83 @@
+{
+  "acceptance_scope": "Actual Present1 admission slice, real presenter/queue captures and PE CLOSE accounting with bounded fake native/queue/COM scaffolding; no full runtime claim",
+  "baseline_receipt": "preflight-baseline-results.json",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)\nTarget: arm64-apple-darwin27.0.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+  "fixture_sha256": {
+    "presenter_regression.cpp": "f46f8b6527de3976c53583f8d3a63dd79dfd585bcbab6f6a33b2d0ebe70bce9a",
+    "run.py": "7e70529b6f6dde00be6c2dc152f1868f1c9dac6f13a44153190e72c0c9193166"
+  },
+  "recorded_utc": "2026-10-15T17:32:51.221050+00:00",
+  "results": [
+    {
+      "command": [
+        "python3",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/tests/run.py"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/tests/run.py",
+        "--sanitizer",
+        "address"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/tests/run.py",
+        "--sanitizer",
+        "thread"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/tests/run.py",
+        "--mutation",
+        "preflight-count-failed-state"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/tests/run.py",
+        "--mutation",
+        "preflight-remove-null-guard"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/tests/run.py",
+        "--mutation",
+        "preflight-recapture"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/tests/run.py",
+        "--mutation",
+        "preflight-after-credit"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/tests/run.py",
+        "--mutation",
+        "feedback-ignore-close-capability"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "source_root": "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/source"
+}

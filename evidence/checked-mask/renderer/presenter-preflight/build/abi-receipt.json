@@ -1,0 +1,57 @@
+{
+  "all_changed_sources_match_manifest": true,
+  "exports": [
+    [
+      18,
+      "D3D11CoreCreateDevice"
+    ],
+    [
+      19,
+      ""
+    ],
+    [
+      20,
+      ""
+    ],
+    [
+      21,
+      ""
+    ],
+    [
+      22,
+      "D3D11CreateDevice"
+    ],
+    [
+      23,
+      "D3D11CreateDeviceAndSwapChain"
+    ],
+    [
+      24,
+      "D3D11On12CreateDevice"
+    ]
+  ],
+  "imports_added": {},
+  "imports_removed": {
+    "winemetal.dll": [
+      "MetalLayer_setColorSpace (0)",
+      "MetalLayer_setProps (0)"
+    ]
+  },
+  "legacy_thunk_files_unchanged": {
+    "src/winemetal/winemetal.h": true,
+    "src/winemetal/winemetal_thunks.c": true,
+    "src/winemetal/winemetal_thunks.h": true
+  },
+  "native_all81_sources_match_build_receipt": true,
+  "native_export_count": 65,
+  "native_exported_symbols_unchanged": true,
+  "native_unsigned_sha256": "64639c18a7306faf1b7eb3c080d28f1166917e51d862ea7e2e9cf3913abfab96",
+  "packet_headers_identical": true,
+  "renderer_export_ordinals_names_unchanged": true,
+  "renderer_sha256": "b032446544a63b502d783177448cd2a9183e131390be59d90d2c05d2fa3ad5d9",
+  "unix_function_tables_unchanged": true,
+  "unix_table_counts": [
+    119,
+    119
+  ]
+}

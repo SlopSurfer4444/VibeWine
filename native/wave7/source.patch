@@ -364,7 +364,17 @@
          [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
          [self setAutoresizesSubviews:YES];
          [self addSubview:view positioned:NSWindowBelow relativeTo:nil];
-@@ -4132,7 +4139,7 @@
+@@ -3872,7 +3879,8 @@
+     WineWindow* window = (WineWindow*)w;
+ 
+     OnMainThread(^{
+-        [window setMask:rect];
++        /* Convert the content-relative raw-pixel aperture to Cocoa points. */
++        [window setMask:cgrect_mac_from_win(rect)];
+     });
+ }
+ }
+@@ -4132,7 +4140,7 @@
  {
      id<MTLDevice> device = (id<MTLDevice>)d;
      WineContentView* view = (WineContentView*)v;
@@ -582,3 +592,23 @@
 +        return result;
 +    }
 +}
+--- a/window.c
++++ b/window.c
+@@ -1727,7 +1727,16 @@
+ 
+     if (fullscreen || fullscreen != data->fullscreen)
+     {
+-        CGRect rect = (fullscreen && !EqualRect(&data->rects.window, &data->rects.visible)) ? cgrect_from_rect(data->rects.window) : CGRectZero;
++        CGRect rect = CGRectZero;
++
++        if (fullscreen && !EqualRect(&data->rects.window, &data->rects.visible))
++        {
++            RECT mask_rect = data->rects.window;
++
++            /* The mask aperture is relative to the visible content, in raw pixels. */
++            OffsetRect(&mask_rect, -data->rects.visible.left, -data->rects.visible.top);
++            rect = cgrect_from_rect(mask_rect);
++        }
+         macdrv_set_window_mask(data->cocoa_window, rect);
+         data->fullscreen = fullscreen;
+     }

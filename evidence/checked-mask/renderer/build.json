@@ -1,0 +1,6 @@
+{
+  "compiler": "${WORKSPACE}/outputs/wine-build/toolchain/llvm-mingw-20260826-ucrt-macos-universal/bin/x86_64-w64-mingw32-clang++",
+  "dll": "${WORKSPACE}/outputs/wine-wave7/presenter-preflight/build/d3d11.dll",
+  "sha256": "b032446544a63b502d783177448cd2a9183e131390be59d90d2c05d2fa3ad5d9",
+  "source_files": 69
+}

@@ -1727,7 +1727,16 @@ void macdrv_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UINT
 
     if (fullscreen || fullscreen != data->fullscreen)
     {
-        CGRect rect = (fullscreen && !EqualRect(&data->rects.window, &data->rects.visible)) ? cgrect_from_rect(data->rects.window) : CGRectZero;
+        CGRect rect = CGRectZero;
+
+        if (fullscreen && !EqualRect(&data->rects.window, &data->rects.visible))
+        {
+            RECT mask_rect = data->rects.window;
+
+            /* The mask aperture is relative to the visible content, in raw pixels. */
+            OffsetRect(&mask_rect, -data->rects.visible.left, -data->rects.visible.top);
+            rect = cgrect_from_rect(mask_rect);
+        }
         macdrv_set_window_mask(data->cocoa_window, rect);
         data->fullscreen = fullscreen;
     }

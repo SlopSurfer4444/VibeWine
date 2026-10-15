@@ -3879,7 +3879,8 @@ void macdrv_set_window_mask(macdrv_window w, CGRect rect)
     WineWindow* window = (WineWindow*)w;
 
     OnMainThread(^{
-        [window setMask:rect];
+        /* Convert the content-relative raw-pixel aperture to Cocoa points. */
+        [window setMask:cgrect_mac_from_win(rect)];
     });
 }
 }

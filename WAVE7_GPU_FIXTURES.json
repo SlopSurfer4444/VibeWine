@@ -1,0 +1,18 @@
+{
+  "queued": {
+    "originalSha256": "37c55f768c35347e9c039bc6493d0ece3ae61a0025a02468e213defb6c65d9f3",
+    "publicPath": "renderer/wave7/smoke/fixture.cpp",
+    "publicSha256": "37c55f768c35347e9c039bc6493d0ece3ae61a0025a02468e213defb6c65d9f3",
+    "recordedBinarySha256": "df244e744780bd01d2fdcb971fde4795ac53f9635e3202bec49fa670b31a219a"
+  },
+  "scope": "Supplementary source-only guest and existing queued fixture; no runtime/profile data",
+  "virtual": {
+    "originalBuildReceiptSha256": "4798c97e617c9c37f2b97bd4dfc86172b58f006f4767bee6fafeb86e3f6ce545",
+    "originalSha256": "b6e1fbce7cdff414e161f894a96bee89d12bfd5f94a12b373aa2be55723000c3",
+    "publicBuildPath": "renderer/wave7/virtual-gpu/build.py",
+    "publicBuildSha256": "19630a26937f88410733fcb152a27226b407f48fd88bc6ac4d59e9ac443c5655",
+    "publicPath": "renderer/wave7/virtual-gpu/guest.cpp",
+    "publicSha256": "b6e1fbce7cdff414e161f894a96bee89d12bfd5f94a12b373aa2be55723000c3",
+    "recordedBinarySha256": "be01fb7e221825fc66d0306a5c1225b42507cf27fe8fc44edda58fe673362c95"
+  }
+}

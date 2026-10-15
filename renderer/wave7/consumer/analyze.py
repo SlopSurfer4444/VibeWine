@@ -84,7 +84,7 @@ def analyze(rows):
         for k in ['generation','type','thread','flags']:uint32(e[k])
         if e['generation']!=gen or e['index']>=CAPACITY or e['index'] in seen:raise ValueError('generation/index mismatch or duplicate')
         seen.add(e['index'])
-        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|{25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76} else 'unknown'
+        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|{25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76,77,78} else 'unknown'
         if e.get('clock_domain')!=expected:raise ValueError('clock domain mismatch')
     rejected=defaultdict(int); cadence=[]; presentations=defaultdict(list);intervals=defaultdict(list)
     for e in events:

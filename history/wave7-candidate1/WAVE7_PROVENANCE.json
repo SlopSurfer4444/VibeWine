@@ -1,0 +1,40 @@
+{
+  "candidate": "candidate1",
+  "d3d11Sha256": "f047e32d9d08aa8d4e88a471c14110b0ee3f18a1abc3830ed1741cf45144036f",
+  "generation": "wave7",
+  "nativeIdentityHashes": {
+    "engine/lib/wine/i386-windows/ntdll.dll": "ba0f4e2a534f9598d89d8b3d6488f6bcfeee6513fecec813cc8e564cf6ccf66c",
+    "engine/lib/wine/x86_64-windows/ntdll.dll": "2ca3e842cf641d254e651c56222491a582549429e360c7d8479de9ccf316b0a3"
+  },
+  "nativeRuntimeHashes": {
+    "engine/lib/wine/x86_64-unix/ntdll.so": "353502c7f7760fa30960a70ba2ebe26c3621140083a40fa36c66ceef1219e71e",
+    "engine/lib/wine/x86_64-unix/winemac.so": "1ca1231c38d2f991309a493dab5e1d978aa67533b38654ac5c6b6cff238b6d14",
+    "engine/lib/wine/x86_64-unix/winemetal.so": "b17d689a57e06c26a03d1674e6a51dc29d07fc04ef2ec370a202700cb661c4b5"
+  },
+  "observationStatus": "See WAVE7_ACCEPTANCE.md; source-only export does not update installed state",
+  "publicFileHashes": "FILE_MANIFEST.json",
+  "recordedNativeBuild": {
+    "abi": {
+      "installedWin32uDriverTableSize": 1224,
+      "installedWin32uDriverVersion": 108,
+      "limit": "Static version/table-size/Unix-parameter-layout check; not all behavioral or callback ABI compatibility."
+    },
+    "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "configHeaderSha256": "b2a0d7abe14507bda09ecc4cc86d9d79d1fae0f7e88533c43e4c5b84de95de3e",
+    "configuredMakefileSha256": "8cf89bdc3147cc948698955bc583d8dc1797f669e756f1a1102e6590dc4fa8ff",
+    "linkDonorHashes": {
+      "ntdll.so": "2821162854bf0d3072333ec77cc6464fca15b2e1e9bfd195f15a1ab70df1ea49",
+      "win32u.so": "7bb7e4de97a77d148a58941b091af71c3d6516cf420e67bce720069b3d0cd694"
+    }
+  },
+  "schema": 1,
+  "sourceArchiveSha256": "07271bfcea141888ad8f2635d32a06f812e70f15fa4df2102cd1745ba60be1b6",
+  "sourceMappings": "WAVE7_ADAPTATIONS.json",
+  "sourceState": "Frozen source exported; public recipe derivatives not clean-room rebuilt",
+  "unsignedBuildHashes": {
+    "ntdll.so": "681d58dac152a521b5222837656548f82b168aa85bfbd4c61886d9f8999fad0f",
+    "winemac.so": "5e40e741f4ba42d0005455e57e1b7ce91d1b3eeda7459a17379bdaca92114a01",
+    "winemetal.so": "4bf1d46041befbec2f945177fcf646f127583aae6f8cd95ce3ab4948ff52c017"
+  },
+  "wineBaseSourceArchiveSha256": "7be5819017b34f09670293f2be7ed9f4476734b8f42dab121a8b74e6619c92a8"
+}
