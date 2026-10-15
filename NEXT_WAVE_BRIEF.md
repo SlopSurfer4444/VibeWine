@@ -1,13 +1,19 @@
-# Next wave: native integration, performance, fullscreen and real resolution changes
+# Follow-up after frozen Wave7 candidate1
 
-The product goal is reusable Wine/macOS and DXMT improvements, with DS3 as the immediate acceptance workload. Existing DS3 executable-gated borderless behavior is a bounded compatibility workaround, not the long-term universal architecture.
+Review a replacement ownership proof for native identity admission before
+installing the admission candidate. The DOS-form process-name mismatch and the
+subsequent `lineage_before` failure expose invalid assumptions: Wine's double
+fork does not preserve the proposed Unix ancestry back to Steam. The original
+Steam launch hang's cause is not established by these observations.
 
-User reports smooth play with background apps closed. Treat resource contention as a leading hypothesis, not proof. Compare repeatable same-scene AB/BA runs with fixed graphics, render dimensions, cache warmth, power/thermal conditions and sparse CPU/memory observations. Measure the observer: tracing absent, configured-unarmed and briefly armed. Present CPU API cadence and GPU completion durations do not establish displayed FPS. Consider a minimal versioned native presented-feedback bridge with explicit clocks/lifetime/drop semantics before throughput claims. Avoid graphics downgrades or blanket timing/priority changes.
+Actual CUA window-message, Raw Input and DirectInput fixtures received Return,
+Down and Escape with key-down/key-up or corresponding state observations. DS3
+keyboard remains unconfirmed; a pointer offset remains a hypothesis. Preserve
+the observed DS3 menu mouse exit (native game process gone, Steam retained),
+and repeat it if the candidate changes.
 
-User reports increasing resolution in-game has no visible effect. Source-level lead: `d3d11_swapchain.cpp` borderless ResizeTarget branch ignores target dimensions and returns success; subsequent ResizeBuffers(0,0) retains previous render size via `ds3_borderless.hpp`. Explicit nonzero buffer resize is honored unless admission/allocation fails. Actual DS3 sequence unknown; compare chronological API44/45/46 request/result/thread with effective texture, drawable, client and monitor dimensions. Other leads: exclusive refusal aborts menu transition, non-owner thread rejected, or increased quality subtle at fixed output geometry. A repair must separate requested render size, committed texture size and native geometry; test reentry/failure/pending intent and partial-zero dimensions. Do not simply fake exclusive success or disable capture safeguards.
-
-For native integration, distinguish actual DS3 absent from app inventory from a routed fixture that was discoverable but timed out on attachment. Shallow AX getters passing does not prove deep tree or control. Bind real Steam child process birth/session/window identity; use bounded getter traversal and an observable action readback before claiming computer-use compatibility. Rendered game UI need not be fabricated into semantic AX controls; safe window/screenshot/input routing can still be useful.
-
-For fullscreen, design a truthful generalized windowed/borderless/exclusive state contract and reliable cleanup on normal exit, failure, focus loss and display changes. Previous black desktop and later CPU-active exit crash are separate incidents. Preserve current playable route while isolating experiments. No global exclusive test until safe recovery acceptance exists.
-
-Requested output from architectural review: independently check current changes and new regressions; propose concrete implementation seams, competing hypotheses and discriminating tests; rank universal optimization candidates by measured mechanism and likely value, with exact source references, dependencies and acceptance/recovery criteria. Separate confirmed bugs, source-supported hypotheses and unsupported claims. Produce a coherent implementation wave, not arbitrary parameter tuning.
+Actual DS3 virtual fullscreen/resolution acceptance is still pending. Trial
+configurations were restored. Measure comparable displayed/frame-time performance
+before making any gain claim. The tray candidate remains uninstalled. This export
+includes no new admission candidate code. See WAVE7_ACCEPTANCE.md; the historical
+brief is retained at history/WAVE6_NEXT_WAVE_BRIEF.md.

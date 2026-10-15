@@ -1,0 +1,52 @@
+{
+  "outputDirectory": "${OUTPUT}/bridge",
+  "commands": [
+    {
+      "cwd": "${WINE_CONFIGURED_BUILD}",
+      "argv": [
+        "/usr/bin/clang",
+        "-arch",
+        "x86_64",
+        "-O2",
+        "-DCacheReader=DS3MarshalCacheReader",
+        "-DCacheWriter=DS3MarshalCacheWriter",
+        "-fblocks",
+        "-x",
+        "objective-c",
+        "-shared",
+        "-I${PUBLIC_ROOT}/native/wave7/source/bridge",
+        "-I${PUBLIC_ROOT}/native/wave7/source/bridge/include",
+        "-I${PUBLIC_ROOT}/native/wave7/source/bridge/src/airconv",
+        "-I${PUBLIC_ROOT}/native/wave7/source/bridge/src/winemetal",
+        "${PUBLIC_ROOT}/native/wave7/source/bridge/src/winemetal/unix/winemetal_ds3.c",
+        "${PUBLIC_ROOT}/native/wave7/source/bridge/src/winemetal/unix/cache.c",
+        "-x",
+        "none",
+        "${OUTPUT}/native/dlls/winemac.drv/winemac.so",
+        "${NATIVE_DEPENDENCY_DIR}/ntdll.so",
+        "-Wl,-install_name,@rpath/winemetal.so",
+        "-Wl,-rpath,@loader_path",
+        "-Wl,-rpath,@loader_path/../../../../Frameworks",
+        "-lsqlite3",
+        "-framework",
+        "CoreFoundation",
+        "-framework",
+        "Metal",
+        "-framework",
+        "MetalFX",
+        "-framework",
+        "Foundation",
+        "-framework",
+        "CoreGraphics",
+        "-framework",
+        "QuartzCore",
+        "-framework",
+        "ColorSync",
+        "-framework",
+        "Cocoa",
+        "-o",
+        "${OUTPUT}/bridge/winemetal.so"
+      ]
+    }
+  ]
+}

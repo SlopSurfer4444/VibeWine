@@ -1,3 +1,25 @@
+# Wave7 candidate1 source checkpoint
+
+Current source and portable fixtures are in `renderer/wave7`, `native/wave7`, and
+`ntdll/wave7`. Read [acceptance limits](WAVE7_ACCEPTANCE.md) first: live CUA
+keyboard fixtures passed, while DS3 keyboard and virtual resolution remain
+unconfirmed. Relaunch admission is unresolved; the replacement admission candidate
+is NOT INSTALLABLE until its ownership proof is reviewed. That candidate's code
+is excluded. No FPS gain is measured.
+
+Use [BUILDING_WAVE7.md](BUILDING_WAVE7.md) for offline checks and explicit build
+inputs. [WAVE7_PROVENANCE.json](WAVE7_PROVENANCE.json) identifies the frozen
+combination; [WAVE7_ADAPTATIONS.json](WAVE7_ADAPTATIONS.json) maps original hashes
+to public hashes. Production source bytes are preserved. Only build/fixture path
+adapters and authored documentation differ. Two unused upstream PNG test assets
+are omitted under the retained text-only export policy.
+
+Historical Wave5/Wave6 trees, receipts and tests remain available. Their status
+and identities do not describe current Wave7. Source notices and licenses remain
+with their respective components. No game/runtime binary or owner data is shipped.
+
+## Historical material retained below
+
 # Wine macOS integration lab — Wave6 integrated audit snapshot
 
 Source-only Wine macOS driver and DXMT renderer research snapshot, succeeding public audit 421e6b0. This is not a complete Wine checkout, upstream release, or bundled game runtime.

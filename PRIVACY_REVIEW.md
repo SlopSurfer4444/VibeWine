@@ -1,3 +1,16 @@
+# Current Wave7 export scope
+
+Wave7 adds frozen production text, portable build/fixture adapters and authored
+status documentation. Original/public hashes are recorded in WAVE7_ADAPTATIONS.json;
+the complete frozen source-entry disposition is in WAVE7_ARCHIVE_INVENTORY.json.
+Private runtime configuration, raw logs, captures, audit conversations, owner
+paths and binary runtime artifacts are excluded. Upstream source attribution is
+retained. A bounded path/credential scan is required for this staged export;
+older scan and test claims below apply only to their named historical snapshots.
+Current acceptance limits are in WAVE7_ACCEPTANCE.md.
+
+## Historical material retained below
+
 # Bounded export review
 
 Allowlist: selected Wine source/baseline/patch and notices, exact DXMT guarded/diagnostic text source and licenses, source fixtures/controllers, newly written audit documents. No machine-management harness, private profiles, credentials, game source/data/saves, runtime binaries, screenshots, raw game logs or captures are included. Upstream public author credits remain intentionally intact.

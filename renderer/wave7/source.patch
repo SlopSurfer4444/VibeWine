@@ -1,0 +1,1641 @@
+--- a/src/d3d11/d3d11_context_imm.cpp
++++ b/src/d3d11/d3d11_context_imm.cpp
+@@ -271,14 +271,18 @@
+         // and the following calls are essentially no-op
+         Flush();
+         TRACE("staging map block");
++#ifdef DXMT_DEBUG
+         auto t0 = clock::now();
++#endif
+         { cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=30,.object=coherent_seq_id+uint64_t(result),.flags=(uint32_t)MapType,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
+           cmd_queue.WaitCPUFence(coherent_seq_id + uint64_t(result)); }
++#ifdef DXMT_DEBUG
+         auto t1 = clock::now();
+         cmd_queue.UpdateCurrentFrameStatistics([&](auto &statistics) {
+           statistics.sync_count++;
+           statistics.sync_interval += (t1 - t0);
+         });
++#endif
+         current_seq_id = cmd_queue.CurrentSeqId();
+         coherent_seq_id = cmd_queue.CoherentSeqId();
+       };
+@@ -414,6 +418,9 @@
+     if (DataSize && DataSize != pAsync->GetDataSize())
+       return E_INVALIDARG;
+ 
++    // Query state is shared with Begin/End. The device mutex is recursive,
++    // so the existing not-ready Flush below remains safe under protection.
++    std::lock_guard<d3d11_device_mutex> lock(mutex);
+     HRESULT hr = S_FALSE;
+ 
+     D3D11_QUERY_DESC desc;
+--- a/src/d3d11/d3d11_swapchain.cpp
++++ b/src/d3d11/d3d11_swapchain.cpp
+@@ -139,8 +139,9 @@
+     native_view_ = WMT::CreateMetalViewFromHWND((intptr_t)hWnd, pDevice->GetMTLDevice(), layer_weak_);
+ 
+     if (!native_view_) {
+-      ERR("Failed to create metal view, it seems like your Wine has no exported symbols needed by DXMT.");
+-      abort();
++      ERR("Failed to acquire native Metal view for swapchain");
++      initialization_result_ = DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++      return;
+     }
+ 
+     if constexpr (EnableMetalFX) {
+@@ -149,7 +150,7 @@
+ 
+     presenter = Rc(new Presenter(pDevice->GetMTLDevice(), layer_weak_,
+                                  pDevice->GetDXMTDevice().queue().cmd_library,
+-                                 scale_factor, desc_.SampleDesc.Count));
++                                 scale_factor, desc_.SampleDesc.Count, trace_serial_));
+ 
+     frame_latency = kSwapchainLatency;
+     present_semaphore_ = CreateSemaphore(nullptr, frame_latency,
+@@ -158,10 +159,6 @@
+     // without this flag, there is still a DXGIDevice level of frame latency control
+     if (desc_.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) {
+       frame_latency_fence_ = std::make_unique<CpuFence>();
+-    }
+-
+-    if (desc_.Width == 0 || desc_.Height == 0) {
+-      wsi::getWindowSize(hWnd, &desc_.Width, &desc_.Height);
+     }
+ 
+     if (pFullscreenDesc) {
+@@ -172,13 +169,7 @@
+ 
+     preferred_max_frame_rate =
+         Config::getInstance().getOption<int>("d3d11.preferredMaxFrameRate", 0);
+-    wsi::WsiMode current_mode;
+-    if (wsi::getCurrentDisplayMode(monitor_, &current_mode) &&
+-        current_mode.refreshRate.denominator != 0 &&
+-        current_mode.refreshRate.numerator != 0) {
+-      init_refresh_rate_ = (double)current_mode.refreshRate.numerator /
+-                           (double)current_mode.refreshRate.denominator;
+-    }
++    RefreshDisplayTiming(monitor_);
+ 
+     handle_alt_tab_ = Config::getInstance().getOption<bool>("dxgi.handleAltTab", false);
+ 
+@@ -205,8 +196,19 @@
+ 
+     initialization_result_ = ResizeBuffers(0, desc_.Width, desc_.Height, DXGI_FORMAT_UNKNOWN, desc_.Flags);
+     if (FAILED(initialization_result_)) return;
+-    if (!fullscreen_desc_.Windowed)
+-      EnterFullscreenMode(nullptr);
++    // Allocate first: failed construction must not leave a newly enlarged HWND.
++    auto borderless = wsi::applyDS3Borderless(hWnd, fullscreen_desc_.Windowed);
++    if (borderless != wsi::DS3BorderlessResult::Disabled &&
++        borderless != wsi::DS3BorderlessResult::Applied &&
++        borderless != wsi::DS3BorderlessResult::Unchanged) {
++      WARN("DS3 native borderless initialization failed ", static_cast<int>(borderless));
++      initialization_result_ = E_FAIL;
++      return;
++    }
++    if (!fullscreen_desc_.Windowed) {
++      fullscreen_desc_.Windowed = TRUE;
++      initialization_result_ = EnterFullscreenMode(nullptr);
++    }
+   };
+ 
+   HRESULT CleanupFullscreenForDestruction() {
+@@ -231,12 +233,14 @@
+   ~MTLD3D11SwapChain() {
+     cs2trace::ApiScope trace_teardown(48,trace_serial_);
+     trace_teardown.result=static_cast<uint32_t>(CleanupFullscreenForDestruction());
+-    device_context_->WaitUntilGPUIdle();
+-    { cs2trace::ApiScope trace_release(49,trace_serial_);
+-      WMT::ReleaseMetalView(native_view_);
+-      trace_release.result=0; }
+-    native_view_ = {};
+-    CloseHandle(present_semaphore_);
++    if (native_view_) {
++      device_context_->WaitUntilGPUIdle();
++      { cs2trace::ApiScope trace_release(49,trace_serial_);
++        WMT::ReleaseMetalView(native_view_);
++        trace_release.result=0; }
++      native_view_ = {};
++    }
++    if (present_semaphore_) CloseHandle(present_semaphore_);
+   };
+ 
+   HRESULT InitializationResult() const { return initialization_result_; }
+@@ -281,7 +285,11 @@
+   HRESULT
+   STDMETHODCALLTYPE
+   GetBuffer(UINT buffer_idx, REFIID riid, void **surface) final {
++    if (!surface) return E_POINTER;
++    *surface = nullptr;
++    std::lock_guard<dxmt::mutex> buffer_lock(buffer_mutex_);
+     if (buffer_idx == 0) {
++      if (!backbuffer_) return DXGI_ERROR_INVALID_CALL;
+       return backbuffer_->QueryInterface(riid, surface);
+     } else {
+       ERR("Non zero-index buffer is not supported");
+@@ -362,11 +370,13 @@
+     if (FAILED(output_hr))
+       return output_hr;
+ 
++    DXGI_SWAP_CHAIN_DESC1 buffer_desc;
++    { std::lock_guard<dxmt::mutex> buffer_lock(buffer_mutex_); buffer_desc = desc_; }
+     DXGI_MODE_DESC1 preferred_display_mode = {
+-        desc_.Width,
+-        desc_.Height,
++        buffer_desc.Width,
++        buffer_desc.Height,
+         fullscreen_desc_.RefreshRate,
+-        desc_.Format,
++        buffer_desc.Format,
+         DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED,
+         DXGI_MODE_SCALING_UNSPECIFIED
+     };
+@@ -445,8 +455,10 @@
+       preferred_mode.Height = 0;
+     }
+ 
+-    if (preferred_mode.Format == DXGI_FORMAT_UNKNOWN)
++    if (preferred_mode.Format == DXGI_FORMAT_UNKNOWN) {
++      std::lock_guard<dxmt::mutex> buffer_lock(buffer_mutex_);
+       preferred_mode.Format = desc_.Format;
++    }
+ 
+     HRESULT hr = pOutput->FindClosestMatchingMode1(&preferred_mode, &selected_mode, nullptr);
+ 
+@@ -490,7 +502,9 @@
+       return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+ 
+     *pDisplayMode = selected_mode;
+-    init_refresh_rate_ = double(selected_mode.RefreshRate.Numerator) / double(selected_mode.RefreshRate.Denominator);
++    // A selected mode can omit refresh. Query the applied mode rather than
++    // treating a zero/unknown rate as an unlimited scheduling duration.
++    RefreshDisplayTiming(output_desc.Monitor);
+     return S_OK;
+   }
+ 
+@@ -502,8 +516,44 @@
+     if (!wsi::restoreDisplayMode(deviceName))
+       return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+ 
+-    init_refresh_rate_ = DBL_MAX;
+-    return S_OK;
++    RefreshDisplayTiming(wsi::getWindowMonitor(hWnd));
++    return S_OK;
++  }
++
++  void RefreshDisplayTiming(HMONITOR monitor) {
++    uint64_t generation;
++    {
++      std::lock_guard<dxmt::mutex> lock(display_timing_mutex_);
++      generation = ++display_timing_generation_;
++    }
++    // Query outside the timing lock: Win32 callbacks can reenter the context.
++    wsi::WsiMode current_mode = {};
++    bool valid = wsi::getCurrentDisplayMode(monitor, &current_mode) &&
++        current_mode.refreshRate.numerator != 0 &&
++        current_mode.refreshRate.denominator != 0;
++    std::lock_guard<dxmt::mutex> lock(display_timing_mutex_);
++    if (generation != display_timing_generation_)
++      return; // A later transition owns the timing observation now.
++    display_timing_monitor_ = monitor;
++    display_timing_valid_ = valid;
++    if (valid)
++      display_refresh_rate_ = double(current_mode.refreshRate.numerator) /
++                              double(current_mode.refreshRate.denominator);
++    // Retain the last finite observation on transient query failure. Before
++    // any valid observation, use a finite nominal cadence for SyncInterval.
++  }
++
++  bool NeedsDisplayTimingRefresh(HMONITOR monitor) {
++    std::lock_guard<dxmt::mutex> lock(display_timing_mutex_);
++    return monitor != display_timing_monitor_ || !display_timing_valid_;
++  }
++
++  double PresentationDuration(UINT sync_interval) {
++    std::lock_guard<dxmt::mutex> lock(display_timing_mutex_);
++    const double rate = preferred_max_frame_rate > 0
++        ? preferred_max_frame_rate : display_refresh_rate_;
++    return std::max(sync_interval / rate,
++                    preferred_max_frame_rate > 0 ? 1.0 / rate : 0.0);
+   }
+ 
+   HRESULT
+@@ -529,6 +579,7 @@
+     if (!pDesc)
+       return E_INVALIDARG;
+ 
++    std::lock_guard<dxmt::mutex> buffer_lock(buffer_mutex_);
+     pDesc->BufferDesc.Width = desc_.Width;
+     pDesc->BufferDesc.Height = desc_.Height;
+     pDesc->BufferDesc.RefreshRate = fullscreen_desc_.RefreshRate;
+@@ -550,80 +601,88 @@
+   ResizeBuffers(UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT Format,
+                 UINT flags) final {
+     cs2trace::ApiScope api(44,trace_serial_,(uint64_t(Width)<<32)|Height,(uint64_t(BufferCount)<<32)|flags);
+-    return api.invoke([&]() -> HRESULT {
+-    /* BufferCount ignored. Capture requested render dimensions before any
+-     * owner-thread window repair. Reentrant repairs return before changing
+-     * buffer state, and no geometry call runs under the renderer mutex. */
++    TraceResizeState(api.gen, 44);
++    HRESULT result = api.invoke([&]() -> HRESULT {
++    // Lock ordering matches Present. No HWND mutation is made under either lock.
++    std::unique_lock<d3d11_device_mutex> device_lock(device_->mutex);
++    std::lock_guard<dxmt::mutex> buffer_lock(buffer_mutex_);
++    auto next_desc = desc_;
+     uint32_t render_width = Width, render_height = Height;
+-    auto borderless_result = wsi::prepareDS3Borderless(hWnd, fullscreen_desc_.Windowed, render_width, render_height, desc_.Width, desc_.Height);
+-    if (borderless_result == wsi::DS3BorderlessResult::Disabled && (Width == 0 || Height == 0))
+-      wsi::getWindowSize(hWnd, &render_width, &render_height);
+-    if (borderless_result != wsi::DS3BorderlessResult::Disabled &&
+-        borderless_result != wsi::DS3BorderlessResult::Applied &&
+-        borderless_result != wsi::DS3BorderlessResult::Unchanged) {
+-      WARN("DS3 native borderless buffer repair failed ", static_cast<int>(borderless_result));
+-      return E_FAIL;
+-    }
+-    desc_.Width = render_width;
+-    desc_.Height = render_height;
++    auto borderless = wsi::resolveDS3RenderSize(hWnd, fullscreen_desc_.Windowed,
++        render_width, render_height, desc_.Width, desc_.Height);
++    if (borderless == wsi::DS3BorderlessResult::Disabled && (!Width || !Height)) {
++      RECT client = {};
++      if (!GetClientRect(hWnd, &client) || client.right < client.left || client.bottom < client.top)
++        return DXGI_ERROR_INVALID_CALL;
++      if (!Width) render_width = client.right - client.left;
++      if (!Height) render_height = client.bottom - client.top;
++    } else if (borderless != wsi::DS3BorderlessResult::Disabled &&
++               borderless != wsi::DS3BorderlessResult::Unchanged) {
++      return DXGI_ERROR_INVALID_CALL;
++    }
++    next_desc.Width = render_width;
++    next_desc.Height = render_height;
+     if (Format != DXGI_FORMAT_UNKNOWN) {
+-      if (ConvertSwapChainFormat(Format) != WMTPixelFormatInvalid)
+-        desc_.Format = Format;
+-    }
+-
+-    backbuffer_ = nullptr;
+-    if (desc_.Width == 0 || desc_.Height == 0) {
+-      backbuffer_desc_.Width = 1;
+-      backbuffer_desc_.Height = 1;
+-    } else {
+-      backbuffer_desc_.Width = desc_.Width;
+-      backbuffer_desc_.Height = desc_.Height;
+-    }
+-
++      if (ConvertSwapChainFormat(Format) == WMTPixelFormatInvalid)
++        return DXGI_ERROR_INVALID_CALL;
++      next_desc.Format = Format;
++    }
++
++    auto next_buffer_desc = backbuffer_desc_;
++    next_buffer_desc.Width = std::max(1u, render_width);
++    next_buffer_desc.Height = std::max(1u, render_height);
++    next_buffer_desc.Format = next_desc.Format;
++    // All fallible resource preparation precedes publication. Public temporary
++    // references clean up failed candidates without dropping the committed set.
++    Com<D3D11ResourceCommon> next_public_buffer;
++    HRESULT hr = dxmt::CreateDeviceTexture2D(device_, &next_buffer_desc, nullptr,
++        reinterpret_cast<ID3D11Texture2D1 **>(&next_public_buffer));
++    if (FAILED(hr)) return hr;
++
++    if constexpr (EnableMetalFX) {
++      auto upscaled_desc = next_buffer_desc;
++      double scaled_width = double(next_buffer_desc.Width) * scale_factor;
++      double scaled_height = double(next_buffer_desc.Height) * scale_factor;
++      if (!(scaled_width >= 1 && scaled_width <= D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION &&
++            scaled_height >= 1 && scaled_height <= D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION))
++        return E_INVALIDARG;
++      upscaled_desc.Width = static_cast<UINT>(scaled_width);
++      upscaled_desc.Height = static_cast<UINT>(scaled_height);
++      Com<D3D11ResourceCommon> next_upscaled;
++      hr = dxmt::CreateDeviceTexture2D(device_, &upscaled_desc, nullptr,
++          reinterpret_cast<ID3D11Texture2D1 **>(&next_upscaled));
++      if (FAILED(hr)) return hr;
++      WMTFXSpatialScalerInfo info = {};
++      info.input_height = next_buffer_desc.Height;
++      info.input_width = next_buffer_desc.Width;
++      info.output_height = upscaled_desc.Height;
++      info.output_width = upscaled_desc.Width;
++      info.color_format = next_public_buffer->texture()->pixelFormat();
++      info.output_format = next_upscaled->texture()->pixelFormat();
++      Rc<SpatialScaler> next_scaler = new SpatialScaler(device_->GetMTLDevice(), info);
++      if (!next_scaler->scaler() || !next_scaler->fence()) return E_FAIL;
++      upscaled_backbuffer_ = std::move(next_upscaled);
++      metalfx_scaler = std::move(next_scaler);
++    }
++
++    backbuffer_ = next_public_buffer.prvRef();
++    backbuffer_desc_ = next_buffer_desc;
++    desc_ = next_desc;
+     ApplyLayerProps();
+ 
+-    backbuffer_desc_.Format = desc_.Format;
+-
+-    backbuffer_ = nullptr;
+-    if (FAILED(dxmt::CreateDeviceTexture2D(
+-            device_, &backbuffer_desc_, nullptr, reinterpret_cast<ID3D11Texture2D1 **>(&backbuffer_)
+-        )))
+-      return E_FAIL;
+-    // CreateDeviceTexture2D returns public reference, change to private one here
+-    backbuffer_->AddRefPrivate();
+-    backbuffer_->Release();
+-
+-    if constexpr (EnableMetalFX) {
+-      D3D11_TEXTURE2D_DESC1 upscaled_desc_ = backbuffer_desc_;
+-      upscaled_desc_.Height *= scale_factor;
+-      upscaled_desc_.Width *= scale_factor;
+-      upscaled_backbuffer_ = nullptr;
+-      if (FAILED(dxmt::CreateDeviceTexture2D(
+-              device_, &upscaled_desc_, nullptr, reinterpret_cast<ID3D11Texture2D1 **>(&upscaled_backbuffer_)
+-          )))
+-        return E_FAIL;
+-
+-      WMTFXSpatialScalerInfo info;
+-      info.input_height = desc_.Height;
+-      info.input_width = desc_.Width;
+-      info.output_height = desc_.Height * scale_factor;
+-      info.output_width = desc_.Width * scale_factor;
+-      info.color_format = backbuffer_->texture()->pixelFormat();
+-      info.output_format =upscaled_backbuffer_->texture()->pixelFormat();
+-      metalfx_scaler = new SpatialScaler(device_->GetMTLDevice(), info);
+-      D3D11_ASSERT(metalfx_scaler && "otherwise metalfx failed to initialize");
+-    }
+-
+     return S_OK;
+ 
+     });
++    TraceResizeState(api.gen, 44 | (1u << 16));
++    return result;
+   };
+ 
+   HRESULT
+   STDMETHODCALLTYPE
+   ResizeTarget(const DXGI_MODE_DESC *pDesc) final {
+     cs2trace::ApiScope api(45,trace_serial_,pDesc?(uint64_t(pDesc->Width)<<32)|pDesc->Height:0,pDesc?(uint64_t(pDesc->RefreshRate.Numerator)<<32)|pDesc->RefreshRate.Denominator:0);
+-    return api.invoke([&]() -> HRESULT {
++    TraceResizeState(api.gen, 45);
++    HRESULT result = api.invoke([&]() -> HRESULT {
+     if (!pDesc)
+       return DXGI_ERROR_INVALID_CALL;
+ 
+@@ -641,11 +700,17 @@
+     if (fullscreen_desc_.Windowed && wsi::ds3BorderlessEnabled()) {
+       if (pending_display_name_[0] || window_state_.captured)
+         return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+-      auto result = wsi::applyDS3Borderless(hWnd, true);
+-      if (result == wsi::DS3BorderlessResult::Applied || result == wsi::DS3BorderlessResult::Unchanged)
+-        return S_OK;
+-      WARN("DS3 native borderless target repair failed ", static_cast<int>(result));
+-      return E_FAIL;
++      // This fallback owns a monitor-sized client, not a virtual target-size
++      // surface. Accept only a target already satisfied by that real client.
++      // Retaining a speculative target for zero ResizeBuffers would invent an
++      // API semantic before the actual DS3 menu sequence has been captured.
++      RECT client = {};
++      if (!pDesc->Width || !pDesc->Height || !GetClientRect(hWnd, &client) ||
++          client.right < client.left || client.bottom < client.top)
++        return DXGI_ERROR_INVALID_CALL;
++      if (client.right - client.left != pDesc->Width || client.bottom - client.top != pDesc->Height)
++        return DXGI_ERROR_UNSUPPORTED;
++      return S_OK;
+     }
+ 
+     std::unique_lock<dxmt::mutex> lock(mutex_);
+@@ -664,8 +729,10 @@
+ 
+     // Commit descriptor fields only after the corresponding mode operation.
+     if (fullscreen_desc_.Windowed) {
+-      wsi::resizeWindow(hWnd, &window_state_, newDisplayMode.Width,
+-                        newDisplayMode.Height);
++      lock.unlock();
++      if (!wsi::resizeWindow(hWnd, &window_state_, newDisplayMode.Width, newDisplayMode.Height))
++        return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++      lock.lock();
+     } else {
+       HRESULT hr = ChangeDisplayMode(target_.ptr(), &newDisplayMode);
+       if (FAILED(hr))
+@@ -677,13 +744,40 @@
+     fullscreen_desc_.Scaling = newDisplayMode.Scaling;
+     if (!fullscreen_desc_.Windowed) {
+       lock = {};
+-      wsi::updateFullscreenWindow(monitor_, hWnd, false);
++      if (!wsi::updateFullscreenWindow(monitor_, hWnd, false))
++        return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+     }
+ 
+     return S_OK;
+ 
+     });
+-  };
++    TraceResizeState(api.gen, 45 | (1u << 16));
++    return result;
++  };
++
++  // Two bounded records per phase: committed GPU state and the Win32 client.
++  // No snapshot claims that native view/drawable geometry has been observed.
++  void TraceResizeState(uint32_t generation, uint32_t flags) {
++    if (!generation) return;
++    uint64_t dimensions, texture_dimensions = 0;
++    {
++      std::lock_guard<dxmt::mutex> lock(buffer_mutex_);
++      dimensions = (uint64_t(desc_.Width) << 32) | desc_.Height;
++      if (backbuffer_) {
++        auto texture = backbuffer_->texture();
++        texture_dimensions = (uint64_t(texture->width()) << 32) | texture->height();
++      }
++    }
++    auto t = cs2trace::now();
++    cs2trace::record(generation, 61, t, t, trace_serial_, flags, dimensions, texture_dimensions);
++    RECT client = {};
++    bool valid = GetClientRect(hWnd, &client);
++    DWORD owner = GetWindowThreadProcessId(hWnd, nullptr);
++    t = cs2trace::now();
++    cs2trace::record(generation, 62, t, t, trace_serial_, flags | (valid ? 0 : (1u << 17)),
++        (uint64_t(owner) << 32) | GetCurrentThreadId(),
++        (uint64_t(uint32_t(client.right - client.left)) << 32) | uint32_t(client.bottom - client.top));
++  }
+ 
+   void ApplyLayerProps() {
+     auto target_color_space =
+@@ -776,6 +870,7 @@
+     if (pDesc == NULL) {
+       return E_POINTER;
+     }
++    std::lock_guard<dxmt::mutex> buffer_lock(buffer_mutex_);
+     *pDesc = desc_;
+     return S_OK;
+   };
+@@ -852,9 +947,11 @@
+ 
+     HRESULT hr = S_OK;
+     bool window_minimized = wsi::isMinimized(hWnd);
+-    if ((window_minimized || desc_.Width == 0 || desc_.Height == 0)
++    DXGI_SWAP_CHAIN_DESC1 present_desc;
++    { std::lock_guard<dxmt::mutex> buffer_lock(buffer_mutex_); present_desc = desc_; }
++    if ((window_minimized || present_desc.Width == 0 || present_desc.Height == 0)
+         // MSDN: You will not receive DXGI_STATUS_OCCLUDED if you're using a flip model swap chain.
+-        && desc_.SwapEffect <= DXGI_SWAP_EFFECT_SEQUENTIAL)
++        && present_desc.SwapEffect <= DXGI_SWAP_EFFECT_SEQUENTIAL)
+       hr = DXGI_STATUS_OCCLUDED;
+     bool should_exit_fs = handle_alt_tab_ // At the moment this is still broken for certain games
+                           && !fullscreen_desc_.Windowed && !window_minimized && !wsi::isForeground(hWnd);
+@@ -870,6 +967,8 @@
+ 
+     std::unique_lock<d3d11_device_mutex> lock(device_->mutex, std::defer_lock);
+     { cs2trace::Scope trace{.type=6,.object=(uint64_t)this}; lock.lock(); }
++    std::unique_lock<dxmt::mutex> buffer_lock(buffer_mutex_);
++    if (!backbuffer_) return DXGI_ERROR_INVALID_CALL;
+ 
+     { cs2trace::Scope trace{.type=7,.object=(uint64_t)this}; device_context_->PrepareFlush(); }
+     if (hr == DXGI_STATUS_OCCLUDED) {
+@@ -878,11 +977,10 @@
+       return hr;
+     }
+ 
+-    double vsync_duration =
+-        std::max(SyncInterval * 1.0 /
+-                     (preferred_max_frame_rate ? preferred_max_frame_rate
+-                                               : init_refresh_rate_),
+-                 preferred_max_frame_rate ? 1.0 / preferred_max_frame_rate : 0);
++    HMONITOR timing_monitor = wsi::getWindowMonitor(hWnd);
++    if (NeedsDisplayTimingRefresh(timing_monitor))
++      RefreshDisplayTiming(timing_monitor);
++    const double vsync_duration = PresentationDuration(SyncInterval);
+ 
+     auto &cmd_queue = device_->GetDXMTDevice().queue();
+     if (auto gen = cs2trace::generation()) {
+@@ -910,7 +1008,7 @@
+         scaler_info.output_height = upscaled->height();
+         ctx.updateFrameStatistics([&](auto &statistics) { statistics.last_scaler_info = scaler_info; });
+         ctx.upscale(backbuffer, upscaled, scaler);
+-        ctx.present(upscaled, presenter, vsync_duration, state.metadata);
++        ctx.present(upscaled, presenter, vsync_duration, state);
+         ReleaseSemaphore(present_semaphore_, 1, nullptr);
+         this->UpdateStatistics(ctx.queue().statistics, ctx.currentFrameId());
+       });
+@@ -920,7 +1018,7 @@
+         sync_state = SyncFrame(++presentation_count_),
+         backbuffer = backbuffer_->texture()
+       ](ArgumentEncodingContext &ctx) mutable {
+-        ctx.present(backbuffer, presenter, vsync_duration, state.metadata);
++        ctx.present(backbuffer, presenter, vsync_duration, state);
+         ReleaseSemaphore(present_semaphore_, 1, nullptr);
+         this->UpdateStatistics(ctx.queue().statistics, ctx.currentFrameId());
+       });
+@@ -930,6 +1028,7 @@
+ 
+     const auto presented_frame = cmd_queue.AdvanceFrame();
+     const auto max_latency = cmd_queue.GetMaxLatency();
++    buffer_lock.unlock();
+     lock.unlock(); // since PresentBoundary() will and should only stall current thread
+ 
+     cmd_queue.PresentBoundary(presented_frame, max_latency);
+@@ -989,8 +1088,8 @@
+     ));
+     hud.printLine(std::format(
+         "Encode: {:4.1f}+{:4.1f}+{:4.1f}={:4.1f}", std::min(average.encode_prepare_interval.count() / 1000000.0, 99.9),
+-        std::min((average.encode_flush_interval - average.drawable_blocking_interval).count() / 1000000.0, 99.9),
+-        std::min(average.drawable_blocking_interval.count() / 1000000.0, 99.9),
++        std::min((average.encode_flush_interval - average.present_encode_interval).count() / 1000000.0, 99.9),
++        std::min(average.present_encode_interval.count() / 1000000.0, 99.9),
+         std::min((average.encode_prepare_interval + average.encode_flush_interval).count() / 1000000.0, 99.9)
+     ));
+     hud.printLine(std::format(
+@@ -1077,6 +1176,7 @@
+ 
+   HRESULT STDMETHODCALLTYPE
+   GetSourceSize(UINT *pWidth, UINT *pHeight) override {
++    std::lock_guard<dxmt::mutex> buffer_lock(buffer_mutex_);
+     if (pWidth)
+       *pWidth = desc_.Width;
+     if (pHeight)
+@@ -1195,11 +1295,11 @@
+   WMT::MetalLayer layer_weak_;
+   ULONG presentation_count_;
+   DXGI_SWAP_CHAIN_DESC1 desc_;
+-  DXGI_SWAP_CHAIN_FULLSCREEN_DESC fullscreen_desc_;
++  DXGI_SWAP_CHAIN_FULLSCREEN_DESC fullscreen_desc_ = {};
+   D3D11_TEXTURE2D_DESC1 backbuffer_desc_;
+   IMTLD3D11DeviceContext* device_context_;
+   Com<D3D11ResourceCommon, false> backbuffer_;
+-  HANDLE present_semaphore_;
++  HANDLE present_semaphore_ = nullptr;
+   std::unique_ptr<CpuFence> frame_latency_fence_;
+   HWND hWnd;
+   HMONITOR monitor_;
+@@ -1209,12 +1309,17 @@
+   wsi::DXMTWindowState window_state_;
+   uint32_t frame_latency;
+   DXGI_COLOR_SPACE_TYPE colorspace_ = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+-  double init_refresh_rate_ = DBL_MAX;
++  dxmt::mutex display_timing_mutex_;
++  double display_refresh_rate_ = 60.0;
++  bool display_timing_valid_ = false;
++  uint64_t display_timing_generation_ = 0;
++  HMONITOR display_timing_monitor_ = nullptr;
+   int preferred_max_frame_rate = 0;
+   HUDState hud;
+   Rc<Presenter> presenter;
+   ModeSetGuard modeset_guard_;
+   dxmt::mutex mutex_;
++  dxmt::mutex buffer_mutex_;
+ 
+   bool handle_alt_tab_;
+   HRESULT initialization_result_ = S_OK;
+@@ -1255,10 +1360,10 @@
+   }
+   DXGI_SWAP_CHAIN_DESC1 borderless_desc = *pDesc;
+   if ((!pFullscreenDesc || pFullscreenDesc->Windowed) && wsi::ds3BorderlessEnabled()) {
+-    // Snapshot zero-sized requests while the game still has its chosen client
+-    // dimensions. Never derive render resolution from the enlarged monitor.
+-    auto result = wsi::prepareDS3Borderless(hWnd, true, borderless_desc.Width, borderless_desc.Height);
+-    WARN("DS3 native borderless initialization result ", static_cast<int>(result),
++    // Snapshot initial size without geometry mutation. The constructor applies
++    // borderless geometry only after successful allocation.
++    auto result = wsi::resolveDS3RenderSize(hWnd, true, borderless_desc.Width, borderless_desc.Height);
++    WARN("DS3 native borderless initial size result ", static_cast<int>(result),
+          " render ", borderless_desc.Width, "x", borderless_desc.Height);
+     if (result != wsi::DS3BorderlessResult::Applied && result != wsi::DS3BorderlessResult::Unchanged)
+       return E_FAIL;
+--- a/src/dxmt/dxmt_command_queue.cpp
++++ b/src/dxmt/dxmt_command_queue.cpp
+@@ -91,12 +91,16 @@
+   ready_for_encode.fetch_add(1, std::memory_order_release);
+   ready_for_encode.notify_one();
+ 
++#ifdef DXMT_DEBUG
+   auto t0 = clock::now();
++#endif
+   { cs2trace::Scope trace{.type=16,.object=chunk_id};
+     chunk_ongoing.wait(kCommandChunkCount - 1, std::memory_order_acquire); }
+   chunk_ongoing.fetch_add(1, std::memory_order_relaxed);
++#ifdef DXMT_DEBUG
+   auto t1 = clock::now();
+   UpdateCurrentFrameStatistics([&](auto &statistics) { statistics.commit_interval += (t1 - t0); });
++#endif
+ 
+ #else
+   CommitChunkInternal(chunk, ready_for_encode.fetch_add(1, std::memory_order_relaxed));
+--- a/src/dxmt/dxmt_command_queue.hpp
++++ b/src/dxmt/dxmt_command_queue.hpp
+@@ -92,16 +92,24 @@
+       chunk_id,
+       frame_
+     );
++#ifdef DXMT_DEBUG
+     auto t0 = clock::now();
++#endif
+     list_enc.execute(enc);
+     attached_cmdbuf = cmdbuf;
++#ifdef DXMT_DEBUG
+     auto t1 = clock::now();
++#endif
+     readback = enc.flushCommands(cmdbuf, chunk_id, chunk_event_id);
++#ifdef DXMT_DEBUG
+     auto t2 = clock::now();
++#endif
++#ifdef DXMT_DEBUG
+     enc.updateFrameStatistics([&](auto &statistics) {
+       statistics.encode_prepare_interval += (t1 - t0);
+       statistics.encode_flush_interval += (t2 - t1);
+     });
++#endif
+     if (signal_frame_latency_fence_ != ~0ull)
+       enc.frameStatistics().encodingComplete(frame_);
+   };
+@@ -251,20 +259,28 @@
+   void
+   PresentBoundary(uint64_t presented_frame, uint32_t max_latency) {
+     const auto next_frame = presented_frame + 1;
++#ifdef DXMT_DEBUG
+     clock::duration wait_interval{};
++#endif
+     // After present N-th frame (N starts from 1), wait for (N - max_latency)-th frame.
+     if (likely(next_frame > max_latency)) {
++#ifdef DXMT_DEBUG
+       auto t0 = clock::now();
++#endif
+       { cs2trace::Scope trace{.type=11,.object=next_frame,.flags=max_latency};
+         frame_latency_fence_.wait(next_frame - max_latency); }
++#ifdef DXMT_DEBUG
+       wait_interval = clock::now() - t0;
++#endif
+     }
+     // Attribute this present's CPU wait to its own frame and close only after
+     // timing is recorded. Neither submission nor statistics locks span the wait.
++#ifdef DXMT_DEBUG
+     statistics.update(presented_frame, [&](auto &frame) {
+       frame.present_latency_interval += wait_interval;
+       frame.latency = max_latency;
+     });
++#endif
+     statistics.cpuComplete(presented_frame);
+   }
+ 
+--- a/src/dxmt/dxmt_context.cpp
++++ b/src/dxmt/dxmt_context.cpp
+@@ -462,7 +462,7 @@
+ };
+ 
+ void
+-ArgumentEncodingContext::present(Rc<Texture> &texture, Rc<Presenter> &presenter, double after, DXMTPresentMetadata metadata) {
++ArgumentEncodingContext::present(Rc<Texture> &texture, Rc<Presenter> &presenter, double after, const Presenter::PresentState &state) {
+   assert(!encoder_current);
+   auto encoder_info = allocate<PresentData>();
+   encoder_info->type = EncoderType::Present;
+@@ -471,7 +471,10 @@
+   encoder_info->fence_update = {encoder_info->id};
+   encoder_info->presenter = presenter;
+   encoder_info->after = after;
+-  encoder_info->metadata = metadata;
++  encoder_info->metadata = state.metadata;
++  encoder_info->configuration = state.configuration;
++  encoder_info->frame_id = state.frame_id;
++  encoder_info->trace_generation = state.trace_generation;
+ 
+   encoder_current = encoder_info;
+   encoder_info->backbuffer = access(texture, texture->fullView, ResourceAccess::Read).texture;
+@@ -1016,9 +1019,13 @@
+     }
+     case EncoderType::Present: {
+       auto data = static_cast<PresentData *>(current);
++#ifdef DXMT_DEBUG
+       auto t0 = clock::now();
+-      auto drawable = data->presenter->encodeCommands(
+-          cmdbuf, data->backbuffer, data->metadata,
++#endif
++      WMT::MetalDrawable drawable;
++      if (data->configuration)
++        drawable = data->presenter->encodeCommands(
++          cmdbuf, data->backbuffer, *data->configuration, data->metadata,
+           [&](WMT::RenderCommandEncoder encoder) {
+             data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id], WMTRenderStageFragment); });
+           },
+@@ -1026,12 +1033,25 @@
+             data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id], WMTRenderStageFragment); });
+           }
+       );
++#ifdef DXMT_DEBUG
+       auto t1 = clock::now();
+-      updateFrameStatistics([&](auto &statistics) { statistics.drawable_blocking_interval += (t1 - t0); });
+-      if (data->after > 0)
+-        cmdbuf.presentDrawableAfterMinimumDuration(drawable, data->after);
+-      else
+-        cmdbuf.presentDrawable(drawable);
++      updateFrameStatistics([&](auto &statistics) { statistics.present_encode_interval += (t1 - t0); });
++#endif
++      data->presenter->observePresentation(drawable, data->frame_id,
++          data->configuration ? data->configuration->revision : 0, data->trace_generation);
++      if (drawable) {
++        if (data->after > 0)
++          cmdbuf.presentDrawableAfterMinimumDuration(drawable, data->after);
++        else
++          cmdbuf.presentDrawable(drawable);
++      } else {
++        // Missing drawable / pipeline failure still completes this encoder's
++        // dependency edges. Later passes may wait on its fence in this buffer.
++        auto encoder = cmdbuf.blitCommandEncoder();
++        data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id]); });
++        data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id]); });
++        encoder.endEncoding();
++      }
+       data->~PresentData();
+       break;
+     }
+--- a/src/dxmt/dxmt_context.hpp
++++ b/src/dxmt/dxmt_context.hpp
+@@ -223,6 +223,9 @@
+   Rc<Presenter> presenter;
+   double after;
+   DXMTPresentMetadata metadata;
++  std::shared_ptr<const Presenter::PresentationConfiguration> configuration;
++  uint64_t frame_id;
++  uint32_t trace_generation;
+ };
+ 
+ struct SpatialUpscaleData : EncoderData {
+@@ -598,7 +601,7 @@
+     return (new (allocate_cpu_heap(sizeof(T), alignof(T))) T());
+   };
+ 
+-  void present(Rc<Texture> &texture, Rc<Presenter> &presenter, double after, DXMTPresentMetadata metadata);
++  void present(Rc<Texture> &texture, Rc<Presenter> &presenter, double after, const Presenter::PresentState &state);
+ 
+   void upscale(Rc<Texture> &texture, Rc<Texture> &upscaled, Rc<SpatialScaler> &scaler);
+ 
+--- a/src/dxmt/dxmt_presenter.cpp
++++ b/src/dxmt/dxmt_presenter.cpp
+@@ -1,5 +1,8 @@
+ 
+ #include <algorithm>
++#include <cmath>
++#include <cstring>
++#include "wave7_feedback.h"
+ #include "Metal.hpp"
+ #include "dxmt_format.hpp"
+ #include "dxmt_presenter.hpp"
+@@ -9,38 +12,29 @@
+ 
+ namespace dxmt {
+ 
+-Presenter::Presenter(WMT::Device device, WMT::MetalLayer layer, InternalCommandLibrary &lib, float scale_factor, uint8_t sample_count) :
++Presenter::Presenter(WMT::Device device, WMT::MetalLayer layer, InternalCommandLibrary &lib, float scale_factor, uint8_t sample_count, uint64_t swapchain_serial) :
+     device_(device),
+     layer_(layer),
+     lib_(lib),
+-    sample_count_(sample_count) {
++    sample_count_(sample_count),
++    swapchain_serial_(swapchain_serial) {
+   layer_.getProps(layer_props_);
+   layer_props_.device = device;
+   layer_props_.opaque = true;
+   layer_props_.display_sync_enabled = false;
+   layer_props_.framebuffer_only = false; // how strangely setting it true results in worse performance
+   layer_props_.contents_scale = layer_props_.contents_scale * scale_factor;
+-
+-  WMTTextureInfo texture_info;
+-  texture_info.type = WMTTextureType2D;
+-  texture_info.pixel_format = WMTPixelFormatRGBA32Float;
+-  texture_info.usage = WMTTextureUsageShaderRead;
+-  texture_info.options = WMTResourceStorageModeShared;
+-  texture_info.width = DXMT_GAMMA_CP_COUNT;
+-  texture_info.height = 1;
+-  texture_info.depth = 1;
+-  texture_info.mipmap_level_count = 1;
+-  texture_info.sample_count = 1;
+-  texture_info.array_length = 1;
+-  gamma_lut_texture_ = device.newTexture(texture_info);
+ }
+ 
+ bool
+ Presenter::changeLayerProperties(
+     WMTPixelFormat format, WMTColorSpace colorspace, double width, double height, uint8_t sample_count
+ ) {
++  std::lock_guard lock(configuration_mutex_);
+   bool should_invalidated = colorspace_ != colorspace;
+   should_invalidated |= source_format_ != format;
++  configuration_dirty_ |= should_invalidated || sample_count_ != sample_count ||
++      layer_props_.drawable_width != width || layer_props_.drawable_height != height;
+   source_format_ = format;
+   should_invalidated |= sample_count_ != sample_count;
+   sample_count_ = sample_count;
+@@ -49,62 +43,85 @@
+   layer_props_.drawable_width = width;
+   colorspace_ = colorspace;
+   if (should_invalidated)
+-    pso_valid.clear(); // defer changes
+-  else
+-    layer_.setProps(layer_props_);
++    pso_valid_ = false; // defer native changes to the captured frame
+   return should_invalidated;
+ }
+ 
+ bool
+ Presenter::changeLayerColorSpace(WMTColorSpace colorspace) {
++  std::lock_guard lock(configuration_mutex_);
+   bool should_invalidated = colorspace_ != colorspace;
+   colorspace_ = colorspace;
++  configuration_dirty_ |= should_invalidated;
+   if (should_invalidated)
+-    pso_valid.clear();
++    pso_valid_ = false;
+   return should_invalidated;
+ }
+ 
+ void
+ Presenter::changeHDRMetadata(const WMTHDRMetadata *metadata) {
++  std::lock_guard lock(configuration_mutex_);
++  configuration_dirty_ = true;
+   if (metadata) {
+     has_hdr_metadata_ = true;
+     hdr_metadata_ = *metadata;
+-    pso_valid.clear();
++    pso_valid_ = false;
+   } else {
+     if (has_hdr_metadata_) {
+       has_hdr_metadata_ = false;
+-      pso_valid.clear();
++      pso_valid_ = false;
+     }
+   }
+ }
+ 
+ void
+ Presenter::changeGammaRamp(const DXMTGammaRamp *gamma_ramp) {
++  std::lock_guard lock(configuration_mutex_);
+   if (!gamma_ramp && gamma_version_ != 0) {
+     gamma_version_ = 0;
+-    pso_valid.clear();
++    gamma_lut_texture_ = nullptr;
++    configuration_dirty_ = true;
++    pso_valid_ = false;
+     return;
+   }
+   if (gamma_ramp && gamma_version_ != gamma_ramp->version) {
++    // Never update a texture referenced by an already queued frame or GPU work.
++    WMTTextureInfo texture_info{};
++    texture_info.type = WMTTextureType2D;
++    texture_info.pixel_format = WMTPixelFormatRGBA32Float;
++    texture_info.usage = WMTTextureUsageShaderRead;
++    texture_info.options = WMTResourceStorageModeShared;
++    texture_info.width = DXMT_GAMMA_CP_COUNT;
++    texture_info.height = 1;
++    texture_info.depth = 1;
++    texture_info.mipmap_level_count = 1;
++    texture_info.sample_count = 1;
++    texture_info.array_length = 1;
++    auto candidate = device_.newTexture(texture_info);
++    if (!candidate)
++      return; // Keep the last complete gamma configuration; retry next Present.
+     gamma_version_ = gamma_ramp->version;
++    configuration_dirty_ = true;
+     for (uint32_t i = 0; i < DXMT_GAMMA_CP_COUNT; i++) {
+       gamma_lut_rgba_[i * 4 + 0] = std::clamp(gamma_ramp->red[i], 0.f, 1.f);
+       gamma_lut_rgba_[i * 4 + 1] = std::clamp(gamma_ramp->green[i], 0.f, 1.f);
+       gamma_lut_rgba_[i * 4 + 2] = std::clamp(gamma_ramp->blue[i], 0.f, 1.f);
+       gamma_lut_rgba_[i * 4 + 3] = 1.0f;
+     }
+-    gamma_lut_texture_.replaceRegion(
++    candidate.replaceRegion(
+           {0, 0, 0}, {DXMT_GAMMA_CP_COUNT, 1, 1}, 0, 0,
+           gamma_lut_rgba_.data(),
+           DXMT_GAMMA_CP_COUNT * sizeof(float) * 4,
+           0);
+-    pso_valid.clear();
++    gamma_lut_texture_ = std::move(candidate);
++    pso_valid_ = false;
+   }
+ }
+ 
+ Presenter::PresentState
+ Presenter::synchronizeLayerProperties() {
+   cs2trace::Scope trace{.type=9,.object=(uint64_t)this};
++  std::lock_guard lock(configuration_mutex_);
+   uint64_t display_setting_version = 0;
+ 
+   WMTQueryDisplaySettingForLayer(
+@@ -113,7 +130,8 @@
+ 
+   if (display_setting_version != display_setting_version_) {
+     display_setting_version_ = display_setting_version;
+-    pso_valid.clear();
++    configuration_dirty_ = true;
++    pso_valid_ = false;
+   }
+ 
+   auto final_colorspace = display_setting_version_ > 0 ? display_colorspace_ : colorspace_;
+@@ -121,11 +139,24 @@
+   auto hdr_metadata = display_setting_version_ > 0 ? &display_hdr_metadata_
+                       : has_hdr_metadata_          ? &hdr_metadata_
+                                                    : nullptr;
+-  if (unlikely(!pso_valid.test_and_set())) {
+-    frame_presented_.wait(frame_requested_);
+-    buildRenderPipelineState(final_colorspace == WMTColorSpaceHDR_PQ, is_hdr && hdr_metadata != nullptr, sample_count_ > 1, gamma_version_ != 0);
+-    layer_.setProps(layer_props_);
+-    layer_.setColorSpace(final_colorspace);
++  if (!pso_valid_) {
++    pso_valid_ = buildRenderPipelineState(
++        final_colorspace == WMTColorSpaceHDR_PQ, is_hdr && hdr_metadata != nullptr,
++        sample_count_ > 1, gamma_version_ != 0
++    );
++    configuration_dirty_ = true;
++  }
++  if (configuration_dirty_) {
++    // A failed pipeline build must not pair a new format with an old pipeline.
++    // The null configuration skips this presentation and retries on the next.
++    if (pso_valid_) {
++      configuration_ = std::make_shared<const PresentationConfiguration>(PresentationConfiguration{
++          ++configuration_revision_, layer_props_, final_colorspace,
++          gamma_lut_texture_, present_blit_, present_scale_});
++      configuration_dirty_ = false;
++    } else {
++      configuration_.reset();
++    }
+   }
+ 
+   DXMTPresentMetadata metadata;
+@@ -149,38 +180,196 @@
+   if (final_colorspace == WMTColorSpaceHDR_scRGB)
+     metadata.edr_scale *= 0.8;
+ 
+-  return {metadata, ++frame_requested_, this};
++  return {metadata, ++frame_requested_, cs2trace::generation(), configuration_};
++}
++
++namespace {
++W7FBRequest feedbackRequest(uint32_t op) {
++  W7FBRequest request{};
++  request.size = sizeof(request);
++  request.version = W7FB_VERSION;
++  request.op = op;
++  request.status = W7FB_UNSUPPORTED;
++  return request;
++}
++
++bool feedbackCall(W7FBRequest &request) {
++  // This existing thunk returns zero for unknown properties on the donor bridge.
++  // No new PE import or Unix-call ordinal is required for capability discovery.
++  return MTLCommandBuffer_property(
++      static_cast<obj_handle_t>(reinterpret_cast<uintptr_t>(&request)),
++      static_cast<WMTCommandBufferProperty>(W7FB_PROPERTY)) == W7FB_REPLY;
++}
++} // namespace
++
++Presenter::~Presenter() {
++  // Queued PresentData owns the presenter until encoding finishes. Native
++  // callbacks retain only their native session; close never waits for the GPU.
++  closePresentationFeedback();
++}
++
++void Presenter::drainPresentationFeedback() {
++  if (!feedback_session_)
++    return;
++  // Bound PE work even if callbacks continue arriving during the drain.
++  for (uint32_t i = 0; i < W7FB_RING_CAPACITY; ++i) {
++    auto request = feedbackRequest(W7FB_POLL);
++    request.session = feedback_session_;
++    if (!feedbackCall(request) || request.status != W7FB_OK)
++      break;
++    const auto &record = request.record;
++    if (record.generation != feedback_generation_ || record.swapchain_serial != swapchain_serial_)
++      continue;
++    const auto received = cs2trace::now();
++    uint64_t time_bits;
++    std::memcpy(&time_bits, &record.presented_seconds, sizeof(time_bits));
++    const uint32_t flags = record.clock_domain |
++        ((std::isfinite(record.presented_seconds) && record.presented_seconds > 0) ? 0x100u : 0u);
++    // start/end remain PE receipt time. Host timestamp is an explicitly tagged
++    // payload, never subtracted from QPC/steady_clock to invent display latency.
++    cs2trace::record(feedback_generation_, 71, received, received, swapchain_serial_, flags,
++                     record.frame_id, time_bits);
++    cs2trace::record(feedback_generation_, 72, received, received, swapchain_serial_, 0,
++                     record.frame_id, record.config_revision);
++    cs2trace::record(feedback_generation_, 73, received, received, swapchain_serial_, 0,
++                     record.frame_id, (uint64_t(record.drawable_width) << 32) | record.drawable_height);
++  }
++  auto status = feedbackRequest(W7FB_STATUS);
++  status.session = feedback_session_;
++  if (feedbackCall(status) && status.status == W7FB_OK) {
++    const auto t = cs2trace::now();
++    // Separate counters: native ring overflow, rejection, pending and close
++    // abandonment are not GPU-drop estimates. The PE trace has its own counters.
++    const uint64_t values[] = {status.stats.accepted, status.stats.completed,
++        status.stats.abandoned, status.stats.overflow, status.stats.rejected,
++        status.stats.pending, status.stats.queued};
++    for (uint32_t i = 0; i < std::size(values); ++i)
++      cs2trace::record(feedback_generation_, 74, t, t, swapchain_serial_, i,
++                       feedback_session_, values[i]);
++  }
++}
++
++void Presenter::closePresentationFeedback() {
++  if (!feedback_session_)
++    return;
++  drainPresentationFeedback();
++  auto request = feedbackRequest(W7FB_CLOSE);
++  request.session = feedback_session_;
++  const bool replied = feedbackCall(request);
++  const auto t = cs2trace::now();
++  cs2trace::record(feedback_generation_, 75, t, t, swapchain_serial_,
++                   replied ? request.status : uint32_t(W7FB_UNSUPPORTED),
++                   request.stats.pending, request.stats.abandoned);
++  feedback_session_ = 0;
++}
++
++void Presenter::observePresentation(WMT::MetalDrawable drawable, uint64_t frame_id,
++                                   uint64_t revision, uint32_t generation) {
++  const auto active_generation = cs2trace::generation();
++  if (feedback_session_ && feedback_generation_ != active_generation)
++    closePresentationFeedback();
++  if (!generation || generation != active_generation || !swapchain_serial_)
++    return;
++  if (!feedback_capability_checked_) {
++    auto request = feedbackRequest(W7FB_QUERY);
++    if (feedbackCall(request) && request.status == W7FB_OK)
++      feedback_capabilities_ = request.capabilities;
++    feedback_capability_checked_ = true;
++  }
++  if (feedback_generation_ != generation) {
++    feedback_generation_ = generation;
++    const auto t = cs2trace::now();
++    cs2trace::record(generation, 70, t, t, swapchain_serial_,
++                     (feedback_capabilities_ & W7FB_CAP_PRESENTED_HANDLER) ? W7FB_OK : W7FB_UNSUPPORTED,
++                     W7FB_VERSION, feedback_capabilities_);
++  }
++  if (!(feedback_capabilities_ & W7FB_CAP_PRESENTED_HANDLER))
++    return;
++  if (!feedback_session_) {
++    auto request = feedbackRequest(W7FB_OPEN);
++    request.record.generation = generation;
++    request.record.swapchain_serial = swapchain_serial_;
++    if (!feedbackCall(request) || request.status != W7FB_OK) {
++      const auto t = cs2trace::now();
++      cs2trace::record(generation, 76, t, t, swapchain_serial_, request.status, frame_id, 0);
++      return;
++    }
++    feedback_session_ = request.session;
++  }
++  drainPresentationFeedback();
++  if (!drawable)
++    return;
++  const auto texture = drawable.texture();
++  if (!texture)
++    return;
++  auto request = feedbackRequest(W7FB_REGISTER);
++  request.session = feedback_session_;
++  request.drawable = drawable;
++  request.record.generation = generation;
++  request.record.swapchain_serial = swapchain_serial_;
++  request.record.frame_id = frame_id;
++  request.record.config_revision = revision;
++  // The obtained texture, not the requested layer size, identifies the image.
++  auto actual_texture = texture;
++  request.record.drawable_width = uint32_t(actual_texture.width());
++  request.record.drawable_height = uint32_t(actual_texture.height());
++  if (!feedbackCall(request) || request.status != W7FB_OK) {
++    const auto t = cs2trace::now();
++    cs2trace::record(generation, 76, t, t, swapchain_serial_, request.status, frame_id, revision);
++    if (request.status == W7FB_UNSUPPORTED) {
++      closePresentationFeedback();
++      feedback_capabilities_ &= ~W7FB_CAP_PRESENTED_HANDLER;
++      cs2trace::record(generation, 70, t, t, swapchain_serial_, W7FB_UNSUPPORTED,
++                       W7FB_VERSION, feedback_capabilities_);
++    }
++  }
+ }
+ 
+ WMT::MetalDrawable
+ Presenter::encodeCommands(
+-    WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, DXMTPresentMetadata metadata,
++    WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, const PresentationConfiguration &configuration,
++    DXMTPresentMetadata metadata,
+     std::function<void(WMT::RenderCommandEncoder)> &&wait_fences,
+     std::function<void(WMT::RenderCommandEncoder)> &&update_fences
+ ) {
++  if (encoded_configuration_revision_ != configuration.revision) {
++    layer_.setProps(configuration.layer_props);
++    layer_.setColorSpace(configuration.colorspace);
++    encoded_configuration_revision_ = configuration.revision;
++  }
+   auto drawable = [&]() {
+     cs2trace::Scope trace{.type=12,.object=(uint64_t)this};
+     return layer_.nextDrawable();
+   }();
+ 
++  if (!drawable)
++    return {};
++  auto drawable_texture = drawable.texture();
++  if (!drawable_texture || drawable_texture.pixelFormat() != configuration.layer_props.pixel_format)
++    return {};
++  // A layer resize can be asynchronous. Geometry belongs to the acquired image.
++  const double width = drawable_texture.width();
++  const double height = drawable_texture.height();
++  if (width == 0 || height == 0)
++    return {};
++
+   WMTRenderPassInfo info;
+   WMT::InitializeRenderPassInfo(info);
+   info.colors[0].load_action = WMTLoadActionDontCare;
+   info.colors[0].store_action = WMTStoreActionStore;
+-  info.colors[0].texture = drawable.texture();
++  info.colors[0].texture = drawable_texture;
+   auto encoder = cmdbuf.renderCommandEncoder(info);
++  if (!encoder)
++    return {};
+   wait_fences(encoder);
+   encoder.setFragmentTexture(backbuffer, 0);
+-  encoder.setFragmentTexture(gamma_lut_texture_, 1);
+-
+-  double width = layer_props_.drawable_width;
+-  double height = layer_props_.drawable_height;
++  encoder.setFragmentTexture(configuration.gamma_lut_texture, 1);
+ 
+   encoder.setFragmentBytes(&metadata, sizeof(metadata), 0);
+   if (backbuffer.width() == (uint64_t)width && backbuffer.height() == (uint64_t)height) {
+-    encoder.setRenderPipelineState(present_blit_);
++    encoder.setRenderPipelineState(configuration.present_blit);
+   } else {
+-    encoder.setRenderPipelineState(present_scale_);
++    encoder.setRenderPipelineState(configuration.present_scale);
+   }
+   encoder.setViewport({0, 0, width, height, 0, 1});
+   encoder.drawPrimitives(WMTPrimitiveTypeTriangle, 0, 3);
+@@ -197,7 +386,7 @@
+ constexpr uint32_t kPresentFCIndex_BackbufferIsMS = 0x104;
+ constexpr uint32_t kPresentFCIndex_GammaEnabled = 0x105;
+ 
+-void
++bool
+ Presenter::buildRenderPipelineState(bool is_pq, bool with_hdr_metadata, bool is_ms, bool gamma_enable) {
+   auto pool = WMT::MakeAutoreleasePool();
+ 
+@@ -237,10 +426,15 @@
+     present_pipeline.colors[0].pixel_format = layer_props_.pixel_format;
+     present_pipeline.vertex_function = vs_present_quad;
+     present_pipeline.fragment_function = fs_present_quad;
+-    present_blit_ = device_.newRenderPipelineState(present_pipeline, error);
++    auto blit = device_.newRenderPipelineState(present_pipeline, error);
+     present_pipeline.fragment_function = fs_present_quad_scaled;
+-    present_scale_ = device_.newRenderPipelineState(present_pipeline, error);
+-  }
++    auto scale = device_.newRenderPipelineState(present_pipeline, error);
++    if (!blit || !scale)
++      return false;
++    present_blit_ = std::move(blit);
++    present_scale_ = std::move(scale);
++  }
++  return true;
+ }
+ 
+ } // namespace dxmt--- a/src/dxmt/dxmt_presenter.hpp
++++ b/src/dxmt/dxmt_presenter.hpp
+@@ -2,9 +2,9 @@
+ #include "Metal.hpp"
+ #include "dxmt_command.hpp"
+ #include "rc/util_rc.hpp"
+-#include "util_cpu_fence.hpp"
+ #include "winemetal.h"
+-#include <atomic>
++#include <memory>
++#include <mutex>
+ 
+ namespace dxmt {
+ 
+@@ -26,8 +26,11 @@
+ class Presenter : public RcObject {
+ public:
+   Presenter(
+-      WMT::Device device, WMT::MetalLayer layer, InternalCommandLibrary &lib, float scale_factor, uint8_t sample_count
++      WMT::Device device, WMT::MetalLayer layer, InternalCommandLibrary &lib, float scale_factor, uint8_t sample_count,
++      uint64_t swapchain_serial = 0
+   );
++
++  ~Presenter();
+ 
+   bool changeLayerProperties(
+       WMTPixelFormat format, WMTColorSpace colorspace, double width, double height, uint8_t sample_count
+@@ -39,43 +42,51 @@
+ 
+   void changeGammaRamp(const DXMTGammaRamp *gamma_ramp);
+ 
+-  class PresentState {
+-  public:
++  // Published once, retained by every queued frame that uses this revision.
++  // Native layer mutation is performed only by the ordered encoding stream.
++  struct PresentationConfiguration {
++    uint64_t revision;
++    WMTLayerProps layer_props;
++    WMTColorSpace colorspace;
++    WMT::Reference<WMT::Texture> gamma_lut_texture;
++    WMT::Reference<WMT::RenderPipelineState> present_blit;
++    WMT::Reference<WMT::RenderPipelineState> present_scale;
++  };
++
++  struct PresentState {
+     DXMTPresentMetadata metadata;
+     uint64_t frame_id;
+-    Presenter *presenter;
+-    PresentState(DXMTPresentMetadata metadata, uint64_t frame_id, Presenter *presenter) :
+-        metadata(metadata),
+-        frame_id(frame_id),
+-        presenter(presenter) {}
+-    PresentState(const PresentState &copy) = delete;
+-    PresentState(PresentState &&move)  {
+-      metadata = move.metadata;
+-      frame_id = move.frame_id;
+-      presenter = move.presenter;
+-      move.presenter = nullptr;
+-    };
+-    ~PresentState() {
+-      if (presenter) {
+-        presenter->frame_presented_.signal(frame_id);
+-        presenter = nullptr;
+-      }
+-    };
++    uint32_t trace_generation;
++    std::shared_ptr<const PresentationConfiguration> configuration;
+   };
+ 
+   PresentState synchronizeLayerProperties();
+ 
+   WMT::MetalDrawable encodeCommands(
+-      WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, DXMTPresentMetadata metadata,
++      WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, const PresentationConfiguration &configuration,
++      DXMTPresentMetadata metadata,
+       std::function<void(WMT::RenderCommandEncoder)> &&wait_fences,
+       std::function<void(WMT::RenderCommandEncoder)> &&update_fences
+   );
+ 
++  // Called only on the single encoding thread, before native present.
++  // The native callback owns its session; it never captures this object.
++  void observePresentation(WMT::MetalDrawable drawable, uint64_t frame_id,
++                           uint64_t revision, uint32_t generation);
++
+ private:
+-  void buildRenderPipelineState(bool is_pq, bool with_hdr_metadata, bool is_ms, bool gamma_enable);
++  void drainPresentationFeedback();
++  void closePresentationFeedback();
++  bool buildRenderPipelineState(bool is_pq, bool with_hdr_metadata, bool is_ms, bool gamma_enable);
+ 
+   WMT::Device device_;
+-  WMT::MetalLayer layer_;
++  WMT::Reference<WMT::MetalLayer> layer_;
++  std::mutex configuration_mutex_;
++  std::shared_ptr<const PresentationConfiguration> configuration_;
++  uint64_t configuration_revision_ = 0;
++  // Accessed only by the device queue's single encoding thread.
++  uint64_t encoded_configuration_revision_ = 0;
++  bool configuration_dirty_ = true;
+   InternalCommandLibrary &lib_;
+   WMTLayerProps layer_props_;
+   uint32_t sample_count_;
+@@ -92,8 +103,12 @@
+   WMT::Reference<WMT::Texture> gamma_lut_texture_;
+   WMT::Reference<WMT::RenderPipelineState> present_blit_;
+   WMT::Reference<WMT::RenderPipelineState> present_scale_;
+-  std::atomic_flag pso_valid = 0;
++  bool pso_valid_ = false;
+   uint64_t frame_requested_ = 0;
+-  CpuFence frame_presented_ = 0;
++  const uint64_t swapchain_serial_;
++  uint64_t feedback_session_ = 0;
++  uint32_t feedback_generation_ = 0;
++  bool feedback_capability_checked_ = false;
++  uint64_t feedback_capabilities_ = 0;
+ };
+ } // namespace dxmt--- a/src/dxmt/dxmt_statistics.hpp
++++ b/src/dxmt/dxmt_statistics.hpp
+@@ -59,7 +59,7 @@
+   uint32_t latency = 0;
+   clock::duration encode_prepare_interval{};
+   clock::duration encode_flush_interval{};
+-  clock::duration drawable_blocking_interval{};
++  clock::duration present_encode_interval{};
+   clock::duration present_latency_interval{};
+   ScalerInfo last_scaler_info{};
+ 
+@@ -81,7 +81,7 @@
+     latency = 0;
+     encode_prepare_interval = {};
+     encode_flush_interval = {};
+-    drawable_blocking_interval = {};
++    present_encode_interval = {};
+     present_latency_interval = {};
+     last_scaler_info = {};
+   };
+@@ -216,7 +216,7 @@
+     DXMT_AGGREGATE_DURATION(sync_interval);
+     DXMT_AGGREGATE_DURATION(encode_prepare_interval);
+     DXMT_AGGREGATE_DURATION(encode_flush_interval);
+-    DXMT_AGGREGATE_DURATION(drawable_blocking_interval);
++    DXMT_AGGREGATE_DURATION(present_encode_interval);
+     DXMT_AGGREGATE_DURATION(present_latency_interval);
+ #undef DXMT_AGGREGATE_DURATION
+     return result;
+--- a/src/util/ds3_borderless.hpp
++++ b/src/util/ds3_borderless.hpp
+@@ -90,24 +90,35 @@
+   return restored ? DS3BorderlessResult::Failed : DS3BorderlessResult::RollbackFailed;
+ }
+ 
+-/* Render dimensions are captured before SetWindowPos can dispatch WM_SIZE.
+- * The caller publishes buffer state only after a successful window request. */
++/* Compatibility size policy is deliberately limited to the opted-in DS3
++ * windowed route. Each zero axis retains its previous render size; at initial
++ * creation it uses the client size captured before enlarging the window.
++ * This operation never mutates a window and is safe on the render thread. */
++inline DS3BorderlessResult resolveDS3RenderSize(HWND window, bool windowed, uint32_t &width, uint32_t &height, uint32_t previous_width = 0, uint32_t previous_height = 0) {
++  if (!windowed || !ds3BorderlessEnabled()) return DS3BorderlessResult::Disabled;
++  uint32_t render_width = width ? width : previous_width;
++  uint32_t render_height = height ? height : previous_height;
++  if (!render_width || !render_height) {
++    RECT client = {};
++    if (!GetClientRect(window, &client) || client.right < client.left || client.bottom < client.top)
++      return DS3BorderlessResult::Refused;
++    if (!render_width) render_width = client.right - client.left;
++    if (!render_height) render_height = client.bottom - client.top;
++  }
++  width = render_width;
++  height = render_height;
++  return DS3BorderlessResult::Unchanged;
++}
++
++/* Retained owner-thread initialization helper. Buffer resize uses only the
++ * resolver above, so WM_SIZE callbacks and render-thread requests do not
++ * depend on permission to change window geometry. */
+ inline DS3BorderlessResult prepareDS3Borderless(HWND window, bool windowed, uint32_t &width, uint32_t &height, uint32_t previous_width = 0, uint32_t previous_height = 0) {
+-  if (!windowed || !ds3BorderlessEnabled()) return DS3BorderlessResult::Disabled;
+   uint32_t render_width = width, render_height = height;
+-  if (!width || !height) {
+-    if (windowed && ds3BorderlessEnabled() && previous_width && previous_height) {
+-      render_width = previous_width;
+-      render_height = previous_height;
+-    } else {
+-      RECT client = {};
+-      if (!GetClientRect(window, &client)) return DS3BorderlessResult::Refused;
+-      render_width = client.right - client.left;
+-      render_height = client.bottom - client.top;
+-    }
+-  }
+-  auto result = applyDS3Borderless(window, windowed);
+-  if (result == DS3BorderlessResult::Disabled || result == DS3BorderlessResult::Applied || result == DS3BorderlessResult::Unchanged) {
++  auto result = resolveDS3RenderSize(window, windowed, render_width, render_height, previous_width, previous_height);
++  if (result != DS3BorderlessResult::Unchanged) return result;
++  result = applyDS3Borderless(window, windowed);
++  if (result == DS3BorderlessResult::Applied || result == DS3BorderlessResult::Unchanged) {
+     width = render_width;
+     height = render_height;
+   }
+--- a/src/util/wsi_window.hpp
++++ b/src/util/wsi_window.hpp
+@@ -34,7 +34,7 @@
+  * \param [in] width The new width
+  * \param [in] height The new height
+  */
+-void resizeWindow(HWND hWindow, DXMTWindowState *pState, uint32_t width,
++bool resizeWindow(HWND hWindow, DXMTWindowState *pState, uint32_t width,
+                   uint32_t weight);
+ 
+ /**
+@@ -108,7 +108,7 @@
+  * \param [in] forceTopmost Whether to force the window to become topmost again
+  * (D3D9 behaviour)
+  */
+-void updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow, bool forceTopmost);
++bool updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow, bool forceTopmost);
+ 
+ bool isForeground(HWND hWindow);
+ 
+--- a/src/util/wsi_window_headless.cpp
++++ b/src/util/wsi_window_headless.cpp
+@@ -24,8 +24,9 @@
+     *pHeight = 1024;
+ }
+ 
+-void resizeWindow(HWND hWindow, DXMTWindowState *pState, uint32_t width,
++bool resizeWindow(HWND hWindow, DXMTWindowState *pState, uint32_t width,
+                   uint32_t height) {
++  return true;
+ }
+ 
+ bool setWindowMode(HMONITOR hMonitor, HWND hWindow, const WsiMode &mode) {
+@@ -53,8 +54,9 @@
+ 
+ bool isWindow(HWND hWindow) { return true; }
+ 
+-void updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow,
++bool updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow,
+                             bool forceTopmost) {
++  return true;
+ }
+ 
+ bool isForeground(HWND hWindow) { return true; }
+--- a/src/util/wsi_window_win32.cpp
++++ b/src/util/wsi_window_win32.cpp
+@@ -11,6 +11,8 @@
+ #include "util_d3dkmt.h"
+ #include "wsi_window.hpp"
+ #include "wsi_monitor.hpp"
++#include "winemetal.h"
++#include "wave7_feedback.h"
+ 
+ #include "util_string.hpp"
+ #include "log/log.hpp"
+@@ -82,21 +84,33 @@
+     *pHeight = rect.bottom - rect.top;
+ }
+ 
+-void resizeWindow(HWND hWindow, DXMTWindowState *pState, uint32_t width,
+-                  uint32_t height) {
+-  // Adjust window position and size
+-  RECT newRect = {0, 0, 0, 0};
+-  RECT oldRect = {0, 0, 0, 0};
+-
+-  ::GetWindowRect(hWindow, &oldRect);
+-  ::SetRect(&newRect, 0, 0, width, height);
+-  ::AdjustWindowRectEx(&newRect, ::GetWindowLongW(hWindow, GWL_STYLE), FALSE,
+-                       ::GetWindowLongW(hWindow, GWL_EXSTYLE));
+-  ::SetRect(&newRect, 0, 0, newRect.right - newRect.left,
+-            newRect.bottom - newRect.top);
+-  ::OffsetRect(&newRect, oldRect.left, oldRect.top);
+-  ::MoveWindow(hWindow, newRect.left, newRect.top, newRect.right - newRect.left,
+-               newRect.bottom - newRect.top, TRUE);
++static bool getWindowLongChecked(HWND window, int index, LONG *value) {
++  ::SetLastError(ERROR_SUCCESS);
++  *value = ::GetWindowLongW(window, index);
++  return *value != 0 || ::GetLastError() == ERROR_SUCCESS;
++}
++
++static bool setWindowLongChecked(HWND window, int index, LONG value) {
++  ::SetLastError(ERROR_SUCCESS);
++  LONG previous = ::SetWindowLongW(window, index, value);
++  return previous != 0 || ::GetLastError() == ERROR_SUCCESS;
++}
++
++bool resizeWindow(HWND hWindow, [[maybe_unused]] DXMTWindowState *pState,
++                  uint32_t width, uint32_t height) {
++  RECT oldRect = {}, newRect = {0, 0, LONG(width), LONG(height)};
++  LONG style = 0, exstyle = 0;
++  if (!::IsWindow(hWindow) || !::GetWindowRect(hWindow, &oldRect) ||
++      !getWindowLongChecked(hWindow, GWL_STYLE, &style) ||
++      !getWindowLongChecked(hWindow, GWL_EXSTYLE, &exstyle) ||
++      !::AdjustWindowRectEx(&newRect, style, FALSE, exstyle))
++    return false;
++  if (!::IsWindow(hWindow) ||
++      !::MoveWindow(hWindow, oldRect.left, oldRect.top,
++                    newRect.right - newRect.left, newRect.bottom - newRect.top, TRUE))
++    return false;
++  // MoveWindow may synchronously dispatch destruction of the HWND.
++  return ::IsWindow(hWindow);
+ }
+ 
+ bool setWindowMode(HMONITOR hMonitor, HWND hWindow, const WsiMode &mode) {
+@@ -131,17 +145,6 @@
+       ::GetPropW(window, fullscreenStateProperty) == reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(state));
+ }
+ 
+-static bool getWindowLongChecked(HWND window, int index, LONG *value) {
+-  ::SetLastError(ERROR_SUCCESS);
+-  *value = ::GetWindowLongW(window, index);
+-  return *value != 0 || ::GetLastError() == ERROR_SUCCESS;
+-}
+-
+-static bool setWindowLongChecked(HWND window, int index, LONG value) {
+-  ::SetLastError(ERROR_SUCCESS);
+-  LONG previous = ::SetWindowLongW(window, index, value);
+-  return previous != 0 || ::GetLastError() == ERROR_SUCCESS;
+-}
+ 
+ bool enterFullscreenMode(HMONITOR hMonitor, HWND hWindow,
+                          DXMTWindowState *pState,
+@@ -296,6 +299,21 @@
+       reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(pState));
+ }
+ 
++static bool displayCaptureCleanupComplete() {
++  W7FBRequest request = {};
++  request.size = sizeof(request);
++  request.version = W7FB_VERSION;
++  request.op = W7FB_CAPTURE_STATUS;
++  request.status = W7FB_UNSUPPORTED;
++  // This optional query uses an existing property call. An old bridge returns
++  // zero for this property without touching the request, so it cannot falsely
++  // discharge our pending native cleanup obligation.
++  uint64_t reply = MTLCommandBuffer_property(
++      reinterpret_cast<obj_handle_t>(&request),
++      static_cast<WMTCommandBufferProperty>(W7FB_PROPERTY));
++  return reply == W7FB_REPLY && request.status == W7FB_OK;
++}
++
+ bool restoreDisplayMode(HMONITOR hMonitor) {
+   WCHAR device_name[32] = {};
+   return getDisplayName(hMonitor, device_name) && restoreDisplayMode(device_name);
+@@ -321,10 +339,13 @@
+     if ((current_mode.dmFields & registry_mode.dmFields & DM_DISPLAYFREQUENCY) &&
+         current_mode.dmDisplayFrequency != registry_mode.dmDisplayFrequency)
+       break;
+-    return true;
++    if (displayCaptureCleanupComplete())
++      return true;
++    // The mode may already be restored while native capture release failed.
++    // A pending lease still requires a cleanup attempt and native receipt.
+   } while (0);
+   LONG ret = ChangeDisplaySettingsExW(device_name, NULL, NULL, 0, NULL);
+-  return ret == DISP_CHANGE_SUCCESSFUL;
++  return ret == DISP_CHANGE_SUCCESSFUL && displayCaptureCleanupComplete();
+ }
+ 
+ HMONITOR getWindowMonitor(HWND hWindow) {
+@@ -341,28 +362,29 @@
+ 
+ bool isWindow(HWND hWindow) { return ::IsWindow(hWindow); }
+ 
+-void updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow,
++bool updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow,
+                             bool forceTopmost) {
+   RECT bounds = {};
+-  wsi::getDesktopCoordinates(hMonitor, &bounds);
++  if (!::IsWindow(hWindow) || !wsi::getDesktopCoordinates(hMonitor, &bounds))
++    return false;
+ 
+   D3DKMT_ESCAPE escape = {};
+   escape.Type = D3DKMT_ESCAPE_SET_PRESENT_RECT_WINE;
+   escape.pPrivateDriverData = &bounds;
+   escape.PrivateDriverDataSize = sizeof(bounds);
+   escape.hContext = HandleToUlong(hWindow);
+-  D3DKMTEscape(&escape);
+-
+-  // In D3D9, changing display modes re-forces the window
+-  // to become top most, whereas in DXGI, it does not.
+-  if (forceTopmost) {
+-    ::SetWindowPos(hWindow, HWND_TOPMOST, bounds.left, bounds.top,
+-                   bounds.right - bounds.left, bounds.bottom - bounds.top,
+-                   SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+-  } else {
+-    ::MoveWindow(hWindow, bounds.left, bounds.top, bounds.right - bounds.left,
+-                 bounds.bottom - bounds.top, TRUE);
+-  }
++  if (D3DKMTEscape(&escape) != 0 || !::IsWindow(hWindow))
++    return false;
++
++  // The fullscreen capture retains position/present-rect cleanup after a
++  // partial update. Do not report success if the following window move fails.
++  bool positioned = forceTopmost
++      ? ::SetWindowPos(hWindow, HWND_TOPMOST, bounds.left, bounds.top,
++                       bounds.right - bounds.left, bounds.bottom - bounds.top,
++                       SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE)
++      : ::MoveWindow(hWindow, bounds.left, bounds.top, bounds.right - bounds.left,
++                     bounds.bottom - bounds.top, TRUE);
++  return positioned && ::IsWindow(hWindow);
+ }
+ 
+ bool isForeground(HWND hWindow) {
+--- /dev/null
++++ b/src/winemetal/wave7_feedback.h
+@@ -0,0 +1,46 @@
++#ifndef WAVE7_FEEDBACK_H
++#define WAVE7_FEEDBACK_H
++#include <stdint.h>
++/* Optional transport through existing MTLCommandBuffer_property(request address,
++ * (WMTCommandBufferProperty)W7FB_PROPERTY). Old donor's default returns zero.
++ * Caller MUST require W7FB_REPLY and status==OK; no new imports or ordinals.
++ * Same-process x64 ABI only. Request is synchronous; native never retains it.
++ */
++#define W7FB_PROPERTY UINT32_C(0x57374642)
++#define W7FB_REPLY UINT64_C(0x5737464200000001)
++#define W7FB_VERSION 1u
++#define W7FB_RING_CAPACITY 64u
++#define W7FB_SESSION_CAPACITY 16u
++#define W7FB_CAP_PRESENTED_HANDLER UINT64_C(1) /* extension + OS available;
++ * REGISTER additionally checks the actual drawable selectors */
++#define W7FB_CLOCK_CA_HOST_SECONDS 1u /* MTLDrawable.presentedTime, seconds;
++ * CoreAnimation host-time domain. Never compare directly to PE QPC timestamps. */
++enum W7FBOp { W7FB_QUERY=1, W7FB_OPEN, W7FB_REGISTER, W7FB_POLL, W7FB_CLOSE, W7FB_STATUS, W7FB_CAPTURE_STATUS };
++/* CAPTURE_STATUS requires no session: OK means native cleanup complete, PENDING
++ * means a lease/release obligation remains, UNSUPPORTED means unavailable. */
++enum W7FBStatus { W7FB_OK=0, W7FB_BAD_REQUEST=1, W7FB_UNSUPPORTED=2,
++  W7FB_NO_SESSION=3, W7FB_LIMIT=4, W7FB_EMPTY=5, W7FB_STALE=6, W7FB_PENDING=7 };
++#pragma pack(push, 8)
++struct W7FBRecord {
++  uint64_t generation, swapchain_serial, frame_id, config_revision;
++  uint32_t drawable_width, drawable_height, clock_domain, reserved;
++  double presented_seconds; /* zero/invalid time remains observable, not presented proof */
++};
++struct W7FBStats {
++  uint64_t accepted, completed, abandoned, overflow, rejected, pending, queued;
++};
++struct W7FBRequest {
++  uint32_t size, version, op, status;
++  uint64_t capabilities, session, drawable;
++  struct W7FBRecord record;
++  struct W7FBStats stats;
++};
++#pragma pack(pop)
++#if defined(__cplusplus)
++static_assert(sizeof(W7FBRecord)==56, "feedback record ABI");
++static_assert(sizeof(W7FBRequest)==152, "feedback request ABI");
++#else
++_Static_assert(sizeof(struct W7FBRecord)==56, "feedback record ABI");
++_Static_assert(sizeof(struct W7FBRequest)==152, "feedback request ABI");
++#endif
++#endif

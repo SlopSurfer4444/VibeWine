@@ -1,0 +1,584 @@
+--- a/cocoa_app.h
++++ b/cocoa_app.h
+@@ -21,6 +21,10 @@
+ #import <AppKit/AppKit.h>
+ 
+ #include "macdrv_cocoa.h"
++
++/* Internal lifecycle for the optional query-aware synchronous executor. */
++void macdrv_main_executor_start_v1(void);
++void macdrv_main_executor_stop_v1(void);
+ 
+ #define ERR(...) do { if (macdrv_err_on) LogError(__func__, __VA_ARGS__); } while (false)
+ 
+@@ -74,6 +78,11 @@
+     NSMutableDictionary* latentDisplayModes;
+     BOOL displaysCapturedForFullscreen;
+     BOOL displaysCaptured; /* Successful capture still requiring release, even without a mode. */
++    /* Main-thread, application-owned release obligation. The immutable token
++       distinguishes queued retries from a later capture/release lifetime. */
++    NSObject* displayCaptureReleaseToken;
++    BOOL displayCaptureReleaseRetryQueued;
++    BOOL displayCaptureTerminating;
+     BOOL displaysTemporarilyUncapturedForDialog;
+     BOOL temporarilyIgnoreResignEventsForDialog;
+ 
+--- a/cocoa_app.m
++++ b/cocoa_app.m
+@@ -27,6 +27,7 @@
+ #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
+ 
+ #include "ax_application.inc"
++#include "wave7_display_edr.inc"
+ 
+ 
+ static NSString* const WineAppWaitQueryResponseMode = @"WineAppWaitQueryResponseMode";
+@@ -122,6 +123,9 @@
+ 
+     - (void) setupObservations;
+     - (BOOL) releaseDisplayCaptureSavingModes:(BOOL)saveModes;
++    - (BOOL) beginDisplayCaptureRelease;
++    - (BOOL) retryDisplayCaptureRelease;
++    - (void) realizeLatentDisplayModes;
+     - (void) applicationDidBecomeActive:(NSNotification *)notification;
+     - (void) handleApplicationShouldTerminateReply:(BOOL)reply;  /* CW Hack 22310 */
+ 
+@@ -205,12 +209,20 @@
+                 return nil;
+             }
+ 
+-            [self setupObservations];
+-
+             keyboardType = LMGetKbdType();
+ 
+             if ([NSApp isActive])
+                 [self applicationDidBecomeActive:nil];
++
++            /* Finalize capabilities after activation callbacks. run_cocoa_app
++               cannot publish COCOA_APP_RUNNING success before this returns. */
++            if (!macdrv_refresh_display_edr_main())
++            {
++                [self release];
++                return nil;
++            }
++            /* Block observers retain self; install only after fallible startup. */
++            [self setupObservations];
+         }
+         return self;
+     }
+@@ -224,6 +236,7 @@
+         [clipCursorHandler release];
+         [cursorTimer release];
+         [cursorFrames release];
++        [displayCaptureReleaseToken release];
+         [latentDisplayModes release];
+         [originalDisplayModes release];
+         [keyWindows release];
+@@ -836,7 +849,10 @@
+     - (BOOL) releaseDisplayCaptureSavingModes:(BOOL)saveModes
+     {
+         if (!saveModes)
++        {
++            displayCaptureTerminating = TRUE;
+             [latentDisplayModes removeAllObjects];
++        }
+ 
+         if (![self areDisplaysCaptured])
+             return TRUE;
+@@ -860,22 +876,64 @@
+             }
+         }
+ 
+-        CGRestorePermanentDisplayConfiguration();
++        return [self beginDisplayCaptureRelease];
++    }
++
++    /* The application, rather than a departing swapchain/window, owns this
++       obligation. New acquisitions are refused until CG acknowledges release.
++       Retrying never replays a saved mode against a possibly changed topology. */
++    - (BOOL) beginDisplayCaptureRelease
++    {
++        if (!displayCaptureReleaseToken)
++        {
++            if (![self areDisplaysCaptured]) return TRUE;
++            displayCaptureReleaseToken = [[NSObject alloc] init];
++            CGRestorePermanentDisplayConfiguration();
++        }
++        return [self retryDisplayCaptureRelease];
++    }
++
++    - (BOOL) retryDisplayCaptureRelease
++    {
++        if (!displayCaptureReleaseToken) return TRUE;
++
+         CGError error = CGReleaseAllDisplays();
+         if (error != CGDisplayNoErr)
+         {
+-            ERR(@"failed to release displays: %d\n", error);
++            if (!displayCaptureReleaseRetryQueued)
++            {
++                NSObject* token = displayCaptureReleaseToken;
++                displayCaptureReleaseRetryQueued = TRUE;
++                ERR(@"failed to release displays: %d; native cleanup pending\n", error);
++                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
++                    /* The block retains token, so a later allocation cannot
++                       reuse this identity while an old callback is queued. */
++                    if (displayCaptureReleaseToken != token) return;
++                    displayCaptureReleaseRetryQueued = FALSE;
++                    if ([self retryDisplayCaptureRelease] && [NSApp isActive])
++                    {
++                        [self realizeLatentDisplayModes];
++                        [self updateFullscreenWindows];
++                        [self adjustWindowLevels];
++                    }
++                });
++            }
+             return FALSE;
+         }
+ 
+         [originalDisplayModes removeAllObjects];
+         displaysCapturedForFullscreen = FALSE;
+         displaysCaptured = FALSE;
++        [displayCaptureReleaseToken release];
++        displayCaptureReleaseToken = nil;
++        displayCaptureReleaseRetryQueued = FALSE;
+         return TRUE;
+     }
+ 
+     - (void) updateFullscreenWindows
+     {
++        if (displayCaptureReleaseToken || displayCaptureTerminating ||
++            displaysTemporarilyUncapturedForDialog) return;
+         if (capture_displays_for_fullscreen && [NSApp isActive])
+         {
+             BOOL anyFullscreen = FALSE;
+@@ -901,10 +959,10 @@
+             {
+                 if ([originalDisplayModes count])
+                     displaysCapturedForFullscreen = FALSE;
+-                else if (CGReleaseAllDisplays() == CGDisplayNoErr)
++                else
+                 {
+-                    displaysCaptured = FALSE;
+                     displaysCapturedForFullscreen = FALSE;
++                    [self beginDisplayCaptureRelease];
+                 }
+             }
+         }
+@@ -993,22 +1051,34 @@
+     - (BOOL) setMode:(CGDisplayModeRef)mode forDisplay:(CGDirectDisplayID)displayID
+     {
+         BOOL ret = FALSE;
++        if (displayCaptureTerminating) return FALSE;
+         NSNumber* displayIDKey = [NSNumber numberWithUnsignedInt:displayID];
+         CGDisplayModeRef originalMode;
+ 
++        if (displayCaptureReleaseToken)
++        {
++            /* An explicit restore cancels reactivation intent even when the
++               physical release still fails. No new capture may overtake it. */
++            originalMode = (CGDisplayModeRef)originalDisplayModes[displayIDKey];
++            if (originalMode && [self mode:mode matchesMode:originalMode])
++                [latentDisplayModes removeObjectForKey:displayIDKey];
++            if (![self retryDisplayCaptureRelease]) return FALSE;
++        }
+         originalMode = (CGDisplayModeRef)originalDisplayModes[displayIDKey];
+ 
+         if (originalMode && [self mode:mode matchesMode:originalMode])
+         {
+             if ([originalDisplayModes count] == 1) // If this is the last changed display, do a blanket reset
+             {
+-                CGRestorePermanentDisplayConfiguration();
+-                if (displaysCapturedForFullscreen || CGReleaseAllDisplays() == CGDisplayNoErr)
++                [latentDisplayModes removeObjectForKey:displayIDKey];
++                if (displaysCapturedForFullscreen)
+                 {
++                    CGRestorePermanentDisplayConfiguration();
+                     [originalDisplayModes removeAllObjects];
+-                    if (!displaysCapturedForFullscreen) displaysCaptured = FALSE;
+                     ret = TRUE;
+                 }
++                else
++                    ret = [self beginDisplayCaptureRelease];
+             }
+             else // ... otherwise, try to restore just the one display
+             {
+@@ -1093,12 +1163,12 @@
+                         [originalDisplayModes setObject:(id)originalMode forKey:displayIDKey];
+                     else if (![originalDisplayModes count])
+                     {
+-                        CGRestorePermanentDisplayConfiguration();
+-                        if (!displaysCapturedForFullscreen)
++                        if (displaysCapturedForFullscreen)
++                            CGRestorePermanentDisplayConfiguration();
++                        else if (![self beginDisplayCaptureRelease])
+                         {
+-                            if (CGReleaseAllDisplays() == CGDisplayNoErr)
+-                                displaysCaptured = FALSE;
+-                            else if (originalMode)
++                            ret = FALSE;
++                            if (originalMode)
+                                 [originalDisplayModes setObject:(id)originalMode forKey:displayIDKey];
+                         }
+                     }
+@@ -1124,7 +1194,8 @@
+ 
+     - (BOOL) areDisplaysCaptured
+     {
+-        return (displaysCaptured || [originalDisplayModes count] > 0 || displaysCapturedForFullscreen);
++        return (displayCaptureReleaseToken != nil || displaysCaptured ||
++                [originalDisplayModes count] > 0 || displaysCapturedForFullscreen);
+     }
+ 
+     - (void) updateCursor:(BOOL)force
+@@ -2176,9 +2247,8 @@
+                     usingBlock:^(NSNotification *note){
+             if (displaysTemporarilyUncapturedForDialog)
+             {
++                displaysTemporarilyUncapturedForDialog = FALSE;
+                 [self applicationDidBecomeActive:nil];
+-
+-                displaysTemporarilyUncapturedForDialog = FALSE;
+             }
+             temporarilyIgnoreResignEventsForDialog = FALSE;
+         }];
+@@ -2555,8 +2625,10 @@
+     /*
+      * ---------- NSApplicationDelegate methods ----------
+      */
+-    - (void)applicationDidBecomeActive:(NSNotification *)notification
+-    {
++    - (void) realizeLatentDisplayModes
++    {
++        if (displayCaptureReleaseToken || displayCaptureTerminating ||
++            displaysTemporarilyUncapturedForDialog) return;
+         NSNumber* displayID;
+         NSDictionary* modesToRealize = [latentDisplayModes autorelease];
+ 
+@@ -2572,6 +2644,12 @@
+             }
+         }
+ 
++    }
++
++    - (void)applicationDidBecomeActive:(NSNotification *)notification
++    {
++        macdrv_refresh_display_edr_main();
++        [self realizeLatentDisplayModes];
+         [self updateFullscreenWindows];
+         [self adjustWindowLevels:YES];
+ 
+@@ -2599,6 +2677,7 @@
+ 
+     - (void)applicationDidChangeScreenParameters:(NSNotification *)notification
+     {
++        macdrv_refresh_display_edr_main();
+         primaryScreenHeightValid = FALSE;
+         [self sendDisplaysChanged:FALSE];
+         [self adjustWindowLevels];
+@@ -2728,6 +2807,7 @@
+ 
+     - (void)applicationWillTerminate:(NSNotification *)notification
+     {
++        macdrv_main_executor_stop_v1();
+         [self stopClippingCursor];
+         [self releaseDisplayCaptureSavingModes:FALSE];
+     }
+@@ -2892,6 +2972,21 @@
+ 
+     OnMainThread(^{
+         ret = [[WineApplicationController sharedController] setMode:display_mode forDisplay:displayID];
++    });
++
++    return ret;
++}
++
++/* Optional, query-only acknowledgement for a cooperating native bridge.
++   This is process-global capture state, not a per-window/output lease. A live
++   fullscreen owner deliberately prevents acknowledgement of global release. */
++__attribute__((visibility("default")))
++int macdrv_display_capture_cleanup_complete_v1(void)
++{
++    __block int ret;
++
++    OnMainThread(^{
++        ret = ![[WineApplicationController sharedController] areDisplaysCaptured];
+     });
+ 
+     return ret;
+--- a/cocoa_event.m
++++ b/cocoa_event.m
+@@ -765,6 +765,8 @@
+ @end
+ 
+ 
++#include "wave7_main_executor.inc"
++
+ /***********************************************************************
+  *              macdrv_register_hot_key
+  */
+--- a/cocoa_main.m
++++ b/cocoa_main.m
+@@ -115,9 +115,13 @@
+         if ([NSApp respondsToSelector:@selector(setWineController:)])
+         {
+             WineApplicationController* controller = [WineApplicationController sharedController];
+-            [NSApp setWineController:controller];
+-            [controller computeEventTimeAdjustmentFromTicks:startup_info->tickcount uptime:startup_info->uptime_ns];
+-            success = TRUE;
++            if (controller)
++            {
++                [NSApp setWineController:controller];
++                [controller computeEventTimeAdjustmentFromTicks:startup_info->tickcount uptime:startup_info->uptime_ns];
++                macdrv_main_executor_start_v1();
++                success = TRUE;
++            }
+         }
+ 
+         [lock lock];
+@@ -135,6 +139,7 @@
+         {
+             /* Never returns */
+             [NSApp run];
++            macdrv_main_executor_stop_v1();
+         }
+     }
+ }
+--- a/cocoa_window.m
++++ b/cocoa_window.m
+@@ -737,9 +737,16 @@
+ 
+     - (WineMetalView*) newMetalViewWithDevice:(id<MTLDevice>)device
+     {
+-        if (_metalView) return _metalView;
++        /* A CAMetalLayer has mutable presentation state.  The legacy handle
++           ABI cannot express independent producers, so grant one exclusive
++           lease per content view.  Each successful acquisition allocates a
++           new native object; its owning reference pins that generation even
++           if the HWND is destroyed or its numeric value is reused. */
++        WineWindow* window = (WineWindow*)self.window;
++        if (_metalView || !device || !window || window.closing) return nil;
+ 
+         WineMetalView* view = [[WineMetalView alloc] initWithFrame:[self bounds] device:device];
++        if (!view) return nil;
+         [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+         [self setAutoresizesSubviews:YES];
+         [self addSubview:view positioned:NSWindowBelow relativeTo:nil];
+@@ -4132,7 +4139,7 @@
+ {
+     id<MTLDevice> device = (id<MTLDevice>)d;
+     WineContentView* view = (WineContentView*)v;
+-    __block WineMetalView *metalView;
++    __block WineMetalView *metalView = nil;
+ 
+     OnMainThread(^{
+         metalView = [view newMetalViewWithDevice:device];
+--- /dev/null
++++ b/wave7_display_edr.inc
+@@ -0,0 +1,69 @@
++/* Main-owned display capabilities, published before Cocoa startup acknowledgement.
++ * Readers copy native values without calling AppKit or dispatching to main. */
++struct macdrv_display_edr_record
++{
++    uint32_t display_id;
++    double values[3]; /* current, reference, potential */
++};
++static pthread_mutex_t macdrv_display_edr_mutex = PTHREAD_MUTEX_INITIALIZER;
++static struct macdrv_display_edr_record *macdrv_display_edr_records;
++static size_t macdrv_display_edr_count;
++
++static BOOL macdrv_refresh_display_edr_main(void)
++{
++    if (![NSThread isMainThread]) return FALSE;
++    NSArray *screens = [NSScreen screens];
++    size_t count = [screens count];
++    struct macdrv_display_edr_record *records = count ? calloc(count, sizeof(*records)) : NULL;
++    if (count && !records)
++    {
++        /* A failed topology refresh must not keep old physical-output data. */
++        pthread_mutex_lock(&macdrv_display_edr_mutex);
++        struct macdrv_display_edr_record *retired = macdrv_display_edr_records;
++        macdrv_display_edr_records = NULL;
++        macdrv_display_edr_count = 0;
++        pthread_mutex_unlock(&macdrv_display_edr_mutex);
++        free(retired);
++        return FALSE;
++    }
++    size_t i = 0;
++    for (NSScreen *screen in screens)
++    {
++        records[i].display_id = [[[screen deviceDescription] objectForKey:@"NSScreenNumber"] unsignedIntValue];
++        records[i].values[0] = screen.maximumExtendedDynamicRangeColorComponentValue;
++        records[i].values[1] = 0.0;
++        records[i].values[2] = records[i].values[0];
++        if (@available(macOS 10.15, *))
++        {
++            records[i].values[1] = screen.maximumReferenceExtendedDynamicRangeColorComponentValue;
++            records[i].values[2] = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
++        }
++        ++i;
++    }
++    pthread_mutex_lock(&macdrv_display_edr_mutex);
++    struct macdrv_display_edr_record *retired = macdrv_display_edr_records;
++    macdrv_display_edr_records = records;
++    macdrv_display_edr_count = count;
++    pthread_mutex_unlock(&macdrv_display_edr_mutex);
++    free(retired);
++    return TRUE;
++}
++
++/* Optional synchronous copy ABI. 1 = matching published display, 0 = unavailable.
++ * A missing display never overwrites caller memory with fabricated capabilities. */
++__attribute__((visibility("default")))
++int macdrv_copy_display_edr_v1(uint32_t display_id, double values[3])
++{
++    int found = 0;
++    if (!values) return 0;
++    pthread_mutex_lock(&macdrv_display_edr_mutex);
++    for (size_t i = 0; i < macdrv_display_edr_count; ++i)
++        if (macdrv_display_edr_records[i].display_id == display_id)
++        {
++            memcpy(values, macdrv_display_edr_records[i].values, sizeof(macdrv_display_edr_records[i].values));
++            found = 1;
++            break;
++        }
++    pthread_mutex_unlock(&macdrv_display_edr_mutex);
++    return found;
++}
+--- /dev/null
++++ b/wave7_main_executor.inc
+@@ -0,0 +1,134 @@
++/* Optional synchronous bridge executor using Wine's request source, including
++ * WineAppWaitQueryResponseMode. Never dispatches PE events on the caller.
++ * Start/stop are Cocoa-main lifecycle hooks. Stop cancels queued work; work
++ * already admitted on main finishes before its caller is released. */
++#include <pthread.h>
++
++@interface W7MainRequest : NSObject
++{
++@public
++    dispatch_block_t payload;
++    dispatch_semaphore_t completion;
++    W7MainRequest *next;
++    BOOL cancelled;
++    int result;
++}
++@end
++@implementation W7MainRequest
++- (void)dealloc
++{
++    [payload release];
++    if (completion) dispatch_release(completion);
++    [super dealloc];
++}
++@end
++
++static pthread_mutex_t w7me_lock = PTHREAD_MUTEX_INITIALIZER;
++static W7MainRequest *w7me_pending;
++static BOOL w7me_accepting, w7me_stopped;
++
++void macdrv_main_executor_start_v1(void)
++{
++    NSCAssert([NSThread isMainThread], @"executor startup requires Cocoa main");
++    pthread_mutex_lock(&w7me_lock);
++    if (!w7me_stopped) w7me_accepting = YES;
++    pthread_mutex_unlock(&w7me_lock);
++}
++
++void macdrv_main_executor_stop_v1(void)
++{
++    NSCAssert([NSThread isMainThread], @"executor shutdown requires Cocoa main");
++    pthread_mutex_lock(&w7me_lock);
++    w7me_accepting = NO;
++    w7me_stopped = YES;
++    W7MainRequest *pending = w7me_pending;
++    w7me_pending = nil;
++    for (W7MainRequest *r = pending; r; r = r->next) r->cancelled = YES;
++    pthread_mutex_unlock(&w7me_lock);
++    while (pending)
++    {
++        W7MainRequest *r = pending;
++        pending = r->next;
++        /* Queue and waiting worker both own r. Discard caller captures before
++         * waking it; the queued wrapper subsequently only observes cancelled. */
++        dispatch_block_t payload = r->payload;
++        r->payload = nil;
++        [payload release];
++        dispatch_semaphore_signal(r->completion);
++    }
++}
++
++__attribute__((visibility("default")))
++int macdrv_run_on_main_v1(dispatch_block_t block)
++{
++    if (!block) return 0;
++    if ([NSThread isMainThread])
++    {
++        pthread_mutex_lock(&w7me_lock);
++        BOOL accepting = w7me_accepting;
++        pthread_mutex_unlock(&w7me_lock);
++        if (!accepting) return 0;
++        @try { block(); return 1; }
++        @catch (id exception) { (void)exception; return 0; }
++    }
++    @autoreleasepool
++    {
++        W7MainRequest *request = [[W7MainRequest alloc] init];
++        if (!request) return 0;
++        request->completion = dispatch_semaphore_create(0);
++        request->payload = [block copy];
++        if (!request->completion || !request->payload) { [request release]; return 0; }
++        pthread_mutex_lock(&w7me_lock);
++        if (!w7me_accepting)
++        {
++            pthread_mutex_unlock(&w7me_lock);
++            [request release];
++            return 0;
++        }
++        request->next = w7me_pending;
++        w7me_pending = request;
++        /* Enqueue and shutdown admission are serialized. OnMainThreadAsync
++         * only appends to the request queue; it never waits for Cocoa main. */
++        @try
++        {
++        OnMainThreadAsync(^{
++            pthread_mutex_lock(&w7me_lock);
++            if (request->cancelled)
++            {
++                pthread_mutex_unlock(&w7me_lock);
++                return;
++            }
++            W7MainRequest **link = &w7me_pending;
++            while (*link && *link != request) link = &(*link)->next;
++            if (*link) *link = request->next;
++            dispatch_block_t payload = request->payload;
++            request->payload = nil;
++            pthread_mutex_unlock(&w7me_lock);
++            @try { payload(); request->result = 1; }
++            @catch (id exception) { (void)exception; request->result = 0; }
++            @finally
++            {
++                [payload release];
++                dispatch_semaphore_signal(request->completion);
++            }
++        });
++        }
++        @catch (id exception)
++        {
++            (void)exception;
++            w7me_pending = request->next;
++            request->cancelled = YES;
++            pthread_mutex_unlock(&w7me_lock);
++            dispatch_block_t payload = request->payload;
++            request->payload = nil;
++            [payload release];
++            [request release];
++            return 0;
++        }
++        pthread_mutex_unlock(&w7me_lock);
++        dispatch_semaphore_wait(request->completion, DISPATCH_TIME_FOREVER);
++        int result = request->result;
++        [request release];
++        return result;
++    }
++}

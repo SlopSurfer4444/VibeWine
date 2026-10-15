@@ -1,3 +1,17 @@
+# Current Wave7 entry points
+
+- `renderer/wave7/source/src/d3d11/d3d11_swapchain.cpp`: resize, fullscreen and present admission.
+- `renderer/wave7/source/src/dxmt/dxmt_presenter.cpp`: queued immutable presentation state and native layer use.
+- `renderer/wave7/source/src/util/wsi_window_win32.cpp`: display transitions and cleanup feedback.
+- `native/wave7/source/winemac.drv/wave7_main_executor.inc`: synchronous Wine query-mode-aware main execution.
+- `native/wave7/source/bridge/src/winemetal/unix/wave7_display_snapshot.inc`: cached display properties.
+- `native/wave7/source/bridge/src/winemetal/unix/wave7_feedback.inc`: optional capture feedback.
+- `ntdll/wave7/source/unix/loader.c`: bundled runtime paths.
+- `tests/run_wave7.py`: disposable offline checks.
+- `WAVE7_ACCEPTANCE.md`: observed and pending scenarios.
+
+## Historical material retained below
+
 # Current Wave6 entry points
 
 - `renderer/wave6/source/src/d3d11/d3d11_swapchain.cpp`: fullscreen, resolution, complete API trace.

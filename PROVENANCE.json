@@ -10,9 +10,11 @@
     "engine/lib/wine/x86_64-windows/oleacc.dll": "7bacf6f38c01bd8d5703197de9faebd76b27de87e06c746d60519e54c2b5ca87",
     "engine/lib/wine/x86_64-windows/winemac.drv": "e151e618b31555150e7fe7fd093e6f876f48ac2e5fa3838842ffdc0c5c83797c"
   },
-  "currentRendererGeneration": "wave6",
-  "currentRendererLiveObservation": "renderer/wave6/live-result.json",
-  "currentRendererProvenance": "renderer/wave6/provenance.json",
+  "currentNativeSource": "native/wave7/source",
+  "currentNtdllSource": "ntdll/wave7/source",
+  "currentRendererGeneration": "wave7",
+  "currentRendererLiveObservation": "WAVE7_ACCEPTANCE.md",
+  "currentRendererProvenance": "WAVE7_PROVENANCE.json",
   "driverSourceFilesMatched": 46,
   "driverSourceHashes": {
     ".gitattributes": "f82b99b04a647026fbb2fdb8501237ec9c1e3abb5647d9f690fbbe25f8139e77",
@@ -63,6 +65,7 @@
     "winemac.rc": "aa2af15506e2b452381ee64f897d25143f665b49f559633f0dd686c04291751e"
   },
   "exportType": "source-only successor audit",
+  "historicalFieldsNote": "Original Wave5/Wave6 fields retained; current Wave7 identities and scope are in WAVE7_PROVENANCE.json.",
   "installedAtCapture": {
     "ds3DiagnosticD3D11": "be8769bd7cbc63d129e36bad367a041a4cbdf76a5b74af04c3ba4b946efdbf8a",
     "wineNative": "edbd3011d9eabab2af21ee34e0498833b8159a835950290aced56fcea94dec85"

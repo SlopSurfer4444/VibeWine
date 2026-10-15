@@ -1,0 +1,119 @@
+#import <Foundation/Foundation.h>
+#include <assert.h>
+#define ERR(...) ((void)0)
+typedef unsigned CGDirectDisplayID;
+typedef NSNumber* CGDisplayModeRef;
+typedef int CGError;
+#define CGDisplayNoErr 0
+static int releaseFailures, releaseCalls, restoreCalls, captureCalls, setCalls;
+static NSMutableArray* callbacks;
+static NSMutableDictionary* physicalModes;
+static BOOL capture_displays_for_fullscreen = YES;
+static CGError CGReleaseAllDisplays(void) { releaseCalls++; if (releaseFailures) { releaseFailures--; return 1; } return 0; }
+static void CGRestorePermanentDisplayConfiguration(void) { restoreCalls++; physicalModes[@1]=@100; }
+static CGError CGCaptureAllDisplays(void) { captureCalls++; return 0; }
+static CGDisplayModeRef CGDisplayCopyDisplayMode(CGDirectDisplayID d) { return [physicalModes[@(d)] retain]; }
+static void CGDisplayModeRelease(CGDisplayModeRef m) { [m release]; }
+static CGDisplayModeRef CGDisplayModeRetain(CGDisplayModeRef m) { return [m retain]; }
+static CGError CGDisplaySetDisplayMode(CGDirectDisplayID d, CGDisplayModeRef m, void* unused) { setCalls++; physicalModes[@(d)]=m; return 0; }
+static void queue_after(dispatch_time_t when, dispatch_queue_t queue, dispatch_block_t callback) { id copied=[callback copy]; [callbacks addObject:copied]; [copied release]; }
+#define dispatch_after queue_after
+static NSMutableArray* windows;
+@interface WineWindow : NSObject
+@property BOOL fullscreen, closing, visible, miniaturized, onActiveSpace;
+@end
+@implementation WineWindow
+@synthesize fullscreen, closing, visible, miniaturized, onActiveSpace;
+- (BOOL)isVisible { return self.visible; }
+- (BOOL)isMiniaturized { return self.miniaturized; }
+- (BOOL)isOnActiveSpace { return self.onActiveSpace; }
+@end
+@interface NSWindow : NSObject
++ (NSArray*)windowNumbersWithOptions:(int)options;
+@end
+@implementation NSWindow
++ (NSArray*)windowNumbersWithOptions:(int)options { NSMutableArray* a=[NSMutableArray array]; for(NSUInteger i=0;i<windows.count;i++) [a addObject:@(i)]; return a; }
+@end
+@interface FakeApp : NSObject
+@property BOOL active;
+- (BOOL)isActive;
+- (id)windowWithWindowNumber:(NSInteger)i;
+@end
+@implementation FakeApp
+@synthesize active;
+- (BOOL)isActive { return active; }
+- (id)windowWithWindowNumber:(NSInteger)i { return windows[i]; }
+@end
+static FakeApp* NSApp;
+@class Harness;
+static Harness* queryController;
+@interface Harness : NSObject {
+@public
+NSMutableDictionary* originalDisplayModes;
+NSMutableDictionary* latentDisplayModes;
+BOOL displaysCapturedForFullscreen, displaysCaptured;
+NSObject* displayCaptureReleaseToken;
+BOOL displayCaptureReleaseRetryQueued;
+BOOL displayCaptureTerminating, displaysTemporarilyUncapturedForDialog;
+}
++ (id)sharedController;
+- (BOOL)areDisplaysCaptured;
+- (BOOL)retryDisplayCaptureRelease;
+- (BOOL)beginDisplayCaptureRelease;
+- (void)realizeLatentDisplayModes;
+- (void)updateFullscreenWindows;
+- (BOOL)setMode:(CGDisplayModeRef)m forDisplay:(CGDirectDisplayID)d;
+@end
+@implementation Harness
++ (id)sharedController { return queryController; }
+- (id)init { if((self=[super init])) { originalDisplayModes=[NSMutableDictionary new]; latentDisplayModes=[NSMutableDictionary new]; } return self; }
+- (BOOL)mode:(CGDisplayModeRef)a matchesMode:(CGDisplayModeRef)b { return a && b && [a isEqual:b]; }
+- (NSArray*)modesMatchingMode:(CGDisplayModeRef)m forDisplay:(CGDirectDisplayID)d { return physicalModes[@(d)] ? @[m] : @[]; }
+- (void)transformProcessToForeground:(BOOL)b {}
+- (void)adjustWindowLevels {}
+/* EXTRACTED METHODS */
+@end
+#define WineApplicationController Harness
+static void OnMainThread(dispatch_block_t b) { b(); }
+/* EXTRACTED QUERY */
+static void tick(void) { assert(callbacks.count); dispatch_block_t b=[callbacks[0] copy]; [callbacks removeObjectAtIndex:0]; b(); [b release]; }
+static Harness* fresh(void) { callbacks=[NSMutableArray new]; windows=[NSMutableArray new]; physicalModes=[@{@1:@200} mutableCopy]; NSApp=[FakeApp new]; NSApp.active=YES; releaseFailures=releaseCalls=restoreCalls=captureCalls=setCalls=0; Harness* h=[Harness new]; queryController=h; h->displaysCaptured=YES; h->originalDisplayModes[@1]=@100; return h; }
+int main(void) { @autoreleasepool {
+// Mode restored does not acknowledge release; retries live without any swapchain.
+Harness* h=fresh(); releaseFailures=2;
+assert(![h setMode:@100 forDisplay:1]); assert([physicalModes[@1] isEqual:@100]);
+assert(h->displayCaptureReleaseToken && [h areDisplaysCaptured]);
+assert(![h setMode:@300 forDisplay:1]); assert(setCalls==0 && captureCalls==0);
+assert(callbacks.count==1); tick(); assert(!h->displayCaptureReleaseToken && ![h areDisplaysCaptured]); assert(restoreCalls==1);
+// Old callback cannot release a newly acquired capture or clear its queued state.
+h=fresh(); releaseFailures=1; assert(![h setMode:@100 forDisplay:1]); assert([h setMode:@100 forDisplay:1]);
+assert([h setMode:@300 forDisplay:1]); int calls=releaseCalls; tick(); assert(releaseCalls==calls && h->displaysCaptured);
+// Separate release lifetime: old callback must not consume new pending retry.
+releaseFailures=1; assert(![h setMode:@100 forDisplay:1]); assert(callbacks.count==1); tick(); assert(!h->displayCaptureReleaseToken);
+// Active fullscreen owner retains global capture when the last mode is restored.
+h=fresh(); h->displaysCapturedForFullscreen=YES; assert([h setMode:@100 forDisplay:1]); assert(releaseCalls==0 && h->displaysCapturedForFullscreen);
+WineWindow* w=[WineWindow new]; w.fullscreen=w.visible=w.onActiveSpace=YES; [windows addObject:w]; [h updateFullscreenWindows]; assert(releaseCalls==0);
+w.closing=YES; releaseFailures=1; [h updateFullscreenWindows]; assert(releaseCalls==1 && h->displayCaptureReleaseToken); tick(); assert(![h areDisplaysCaptured]);
+// Deactivation/reactivation retains latent request until release acknowledgement.
+h=fresh(); NSApp.active=NO; releaseFailures=1; assert(![h releaseDisplayCaptureSavingModes:YES]);
+NSApp.active=YES; [h realizeLatentDisplayModes]; assert(setCalls==0); tick(); assert(setCalls==1 && [physicalModes[@1] isEqual:@200]);
+// Explicit restore cancels latent game mode despite another failed release.
+h=fresh(); NSApp.active=NO; releaseFailures=2; assert(![h releaseDisplayCaptureSavingModes:YES]); assert(![h setMode:@100 forDisplay:1]); NSApp.active=YES; tick(); assert(setCalls==0 && !h->latentDisplayModes.count);
+// Disappeared monitor must not cause a stale mode switch; release-only retry completes.
+h=fresh(); NSApp.active=NO; releaseFailures=1; assert(![h releaseDisplayCaptureSavingModes:YES]); [physicalModes removeAllObjects]; NSApp.active=YES; tick(); assert(setCalls==0 && !h->displayCaptureReleaseToken); assert(h->latentDisplayModes.count==1);
+// Accepted quit discards latent intent even while release remains pending.
+h=fresh(); releaseFailures=2; assert(![h releaseDisplayCaptureSavingModes:YES]); assert(![h releaseDisplayCaptureSavingModes:NO]); tick(); assert(!h->latentDisplayModes.count && !h->displayCaptureReleaseToken);
+// Pending token alone forbids acknowledging release, even if flags are inconsistent.
+h=fresh(); h->displaysCaptured=NO; [h->originalDisplayModes removeAllObjects]; h->displayCaptureReleaseToken=[NSObject new]; assert([h areDisplaysCaptured]);
+// Retry during a permission dialog does not reacquire fullscreen or a latent mode.
+h=fresh(); NSApp.active=NO; releaseFailures=1; assert(![h releaseDisplayCaptureSavingModes:YES]); NSApp.active=YES; h->displaysTemporarilyUncapturedForDialog=YES;
+w=[WineWindow new]; w.fullscreen=w.visible=w.onActiveSpace=YES; [windows addObject:w]; tick(); assert(![h areDisplaysCaptured] && !captureCalls && !setCalls);
+h->displaysTemporarilyUncapturedForDialog=NO; [h realizeLatentDisplayModes]; [h updateFullscreenWindows]; assert(captureCalls==1 && setCalls==1);
+// Accepted quit cannot reacquire for a still-visible fullscreen window.
+h=fresh(); releaseFailures=1; w=[WineWindow new]; w.fullscreen=w.visible=w.onActiveSpace=YES; [windows addObject:w]; assert(![h releaseDisplayCaptureSavingModes:NO]); tick(); assert(!captureCalls && ![h areDisplaysCaptured]); assert(![h setMode:@300 forDisplay:1]);
+// An obsolete callback must not disturb the next pending generation.
+h=fresh(); releaseFailures=1; assert(![h setMode:@100 forDisplay:1]); assert([h setMode:@100 forDisplay:1]); assert([h setMode:@300 forDisplay:1]); releaseFailures=1; assert(![h setMode:@100 forDisplay:1]); assert(callbacks.count==2); calls=releaseCalls; tick(); assert(releaseCalls==calls && h->displayCaptureReleaseRetryQueued); tick(); assert(!h->displayCaptureReleaseToken);
+// Query is conservative and has no display API side effects.
+h=fresh(); calls=releaseCalls; assert(!macdrv_display_capture_cleanup_complete_v1()); assert(releaseCalls==calls); releaseFailures=1; assert(![h setMode:@100 forDisplay:1]); calls=releaseCalls; assert(!macdrv_display_capture_cleanup_complete_v1()); assert(releaseCalls==calls); tick(); assert(macdrv_display_capture_cleanup_complete_v1());
+printf("PASS: 13 extracted native release/admission/lifecycle scenarios\n");
+} return 0; }
