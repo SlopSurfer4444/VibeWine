@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "file": "ntdll/harness_preamble.h",
+      "originalSha256": "9a79d51fa2db31e6b56c75138676a862e1993dcd2c99685222aca13db34c124e",
+      "exportSha256": "9a79d51fa2db31e6b56c75138676a862e1993dcd2c99685222aca13db34c124e",
+      "adaptation": "Unchanged fixture source"
+    },
+    {
+      "file": "ntdll/harness_suffix.c",
+      "originalSha256": "406b3b8b9faf690c314057f621d9f72d3a8cfeaea5dee3018918c7b956d2b046",
+      "exportSha256": "406b3b8b9faf690c314057f621d9f72d3a8cfeaea5dee3018918c7b956d2b046",
+      "adaptation": "Unchanged fixture source"
+    },
+    {
+      "file": "ntdll/test_ntquery_directory_object.py",
+      "originalSha256": "75e9ae3ce47e237e1696ac3b5c86f3dd5846b460a4a64b9fcc388095b47f6459",
+      "exportSha256": "e50f501bc4ebcae794de24b2ccc23d40325399d1afad59337ef1cfa534763fbb",
+      "adaptation": "Repository-relative candidate and baseline paths only"
+    },
+    {
+      "file": "client-extent/fixture.cpp",
+      "originalSha256": "21c1712b8ccdd75858c64dddadd7341669ed6746f896d4a43d0c75cb065eaa15",
+      "exportSha256": "21c1712b8ccdd75858c64dddadd7341669ed6746f896d4a43d0c75cb065eaa15",
+      "adaptation": "Unchanged fixture source"
+    },
+    {
+      "file": "client-extent/test_client_extent.py",
+      "originalSha256": "618696e7f34140fcb5111beb4e71574eac2ed25bdf68fba6c3b4c27ca269a5e2",
+      "exportSha256": "ebe06e6354bdda9a54fa97d4b1f1e06365d8a17dfa5e65f7a235dee6011d5282",
+      "adaptation": "Repository-relative candidate and baseline paths; flat exported winemac layout"
+    },
+    {
+      "file": "mode-limit/fixture.cpp",
+      "originalSha256": "730a66522574fd48121f179a616fba803465772739f8eff035d2fbb7e7e3bff3",
+      "exportSha256": "a28b2887856ed2666acbb49458eeecd9f1be63d70abb4baa36320ad31cf3cbc1",
+      "adaptation": "Explicit synthetic111 naming replaces private archive terminology; assertions unchanged"
+    },
+    {
+      "file": "mode-limit/test_modes.py",
+      "originalSha256": "00486427e178f51a2529e667a7597c3d0d78a21e42b5866801f1bf3708acdf34",
+      "exportSha256": "f648e0888a7ed90cfcfb68506ec1a1c4e421038ef68b40c95342b3c28fac5d9c",
+      "adaptation": "Repository-relative source; private mode archive replaced by deterministic 37 sizes x 3 bpp; source extraction and assertions retained"
+    }
+  ]
+}

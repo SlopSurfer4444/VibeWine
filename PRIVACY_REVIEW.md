@@ -1,3 +1,7 @@
+# Current post-Wave7 addition
+
+Only licensed production text, portable fixture adapters and authored summaries are added under current/. No runtime binaries, raw logs, profiles, credentials, screenshots, private harness source or owner paths are allowed. Source copyright notices are preserved. Current binary identities are hashes only. A UTF-8 and local-path/credential-marker scan passed on the added text. Independent public-suitability review is recorded separately before publication. Upstream whitespace is preserved intentionally.
+
 # Current Wave7 export scope
 
 Wave7 adds frozen production text, portable build/fixture adapters and authored

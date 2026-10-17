@@ -1,3 +1,9 @@
+# Current installed fixes and audit target
+
+Start at [current/README.md](current/README.md) and [current/PROVENANCE.json](current/PROVENANCE.json). This adds the installed ntdll BOOLEAN fix, top-level Retina client extent fix and separate DS3-scoped DXGI mode enumeration fix. Older Wave7 acceptance statements below are historical. No new controller patch or measured FPS gain is claimed.
+
+## Prior checkpoint
+
 # Wave7 reviewed graphics source checkpoint
 
 Current source and portable fixtures are in `renderer/wave7`, `native/wave7`, and

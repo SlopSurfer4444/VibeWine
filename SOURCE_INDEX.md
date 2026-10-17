@@ -1,3 +1,13 @@
+# Current post-Wave7 entry points
+
+- `current/ntdll/sync.c`: NtQueryDirectoryObject byte-argument correctness.
+- `current/winemac/window.c`: top-level raw client extent.
+- `current/dxgi-source/src/dxgi/dxgi_output.cpp` and `dxgi_mode_limit.hpp`: coherent mode enumeration.
+- `current/dxgi-source/src/util/config/config.cpp`: DS3-only profile.
+- `current/README.md`: installed versus observed scope and pending performance/network questions.
+
+## Prior index
+
 # Current Wave7 entry points
 
 - `renderer/wave7/source/src/d3d11/d3d11_swapchain.cpp`: resize, fullscreen and present admission.
