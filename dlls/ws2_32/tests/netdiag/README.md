@@ -148,3 +148,13 @@ login and save outcomes. Syscall duration is local attempt duration, not RTT.
 Record capacity, drop counters, deadline expiry and unknown fields must remain
 visible in analysis. No game overhead or root-cause claim follows from compile,
 native-seam tests, or a passing loopback fixture alone.
+
+The refusal scenario closes its reserved loopback port immediately before
+connecting, then still requires WSAECONNREFUSED and the expected FD_CONNECT
+observation for a pending attempt. Holding a bound but non-listening socket was
+not a valid refusal precondition on the tested macOS host: a native control
+remained pending under that setup, while the closed-port control returned
+ECONNREFUSED. No TCP reset or other system setting is changed by the fixture.
+If another process takes the port in the small close/connect interval, the
+existing refusal assertions fail; a successful connection is not accepted as
+the expected refusal.

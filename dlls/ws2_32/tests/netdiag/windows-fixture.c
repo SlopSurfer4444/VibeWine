@@ -133,12 +133,19 @@ static void tcp_connect(int refused)
     server = local_socket(SOCK_STREAM, &address);
     if (server == INVALID_SOCKET) goto done;
     if (!refused && !check_api(listen(server, 1) == 0)) goto done;
-    /* For refusal the bound, non-listening socket reserves an unused local port. */
+    /* Reserve a local port, then close it immediately before the refusal
+     * attempt. On macOS a bound but non-listening socket can silently drop SYN
+     * instead of refusing it (observed with tcp.blackhole=2). */
     client = WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
     if (!check_api(client != INVALID_SOCKET)) goto done;
     event = WSACreateEvent();
     if (!check_api(event != WSA_INVALID_EVENT)) goto done;
     if (!check_api(WSAEventSelect(client, event, FD_CONNECT) == 0)) goto done;
+    if (refused)
+    {
+        if (!check_api(closesocket(server) == 0)) goto done;
+        server = INVALID_SOCKET;
+    }
     ret = connect(client, (struct sockaddr *)&address, sizeof(address));
     error = ret == SOCKET_ERROR ? WSAGetLastError() : 0;
     printf("stage=%s connect_return=%d connect_error=%d\n", refused ? "tcp_refused" : "tcp_success", ret, error);
