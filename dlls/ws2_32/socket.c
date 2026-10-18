@@ -27,6 +27,7 @@
  */
 
 #include "ws2_32_private.h"
+#include "netdiag_pe.h"
 
 #define FILE_USE_FILE_POINTER_POSITION ((LONGLONG)-2)
 
@@ -827,6 +828,10 @@ SOCKET WINAPI accept( SOCKET s, struct sockaddr *addr, int *len )
         CloseHandle( SOCKET2HANDLE(ret) );
         return INVALID_SOCKET;
     }
+    {
+        struct wine_netdiag_event diag = netdiag_begin( ND_SOCKET, ret );
+        netdiag_result( &diag, ND_OPEN, 0, 0, ret );
+    }
     if (addr && len && getpeername( ret, addr, len ))
     {
         closesocket( ret );
@@ -1244,6 +1249,7 @@ int WINAPI bind( SOCKET s, const struct sockaddr *addr, int len )
  */
 int WINAPI closesocket( SOCKET s )
 {
+    struct wine_netdiag_event diag;
     TRACE( "%#Ix\n", s );
 
     if (!num_startup)
@@ -1258,7 +1264,11 @@ int WINAPI closesocket( SOCKET s )
         return -1;
     }
 
-    CloseHandle( (HANDLE)s );
+    diag = netdiag_begin( ND_CLOSE, s );
+    if (CloseHandle( (HANDLE)s ))
+        netdiag_result( &diag, ND_CLOSED, 0, 0, 0 );
+    else
+        netdiag_result( &diag, ND_OBSERVED, 0, GetLastError(), 0 );
     return 0;
 }
 
@@ -1268,6 +1278,7 @@ int WINAPI closesocket( SOCKET s )
  */
 int WINAPI connect( SOCKET s, const struct sockaddr *addr, int len )
 {
+    struct wine_netdiag_event diag = netdiag_begin( ND_CONNECT, s );
     struct afd_connect_params *params;
     IO_STATUS_BLOCK io;
     HANDLE sync_event;
@@ -1275,23 +1286,38 @@ int WINAPI connect( SOCKET s, const struct sockaddr *addr, int len )
 
     TRACE( "socket %#Ix, addr %s, len %d\n", s, debugstr_sockaddr(addr), len );
 
-    if (!(sync_event = get_sync_event())) return -1;
+    if (!(sync_event = get_sync_event()))
+    {
+        netdiag_result( &diag, ND_COMPLETE, 0, GetLastError(), -1 );
+        return -1;
+    }
 
     if (!(params = malloc( sizeof(*params) + len )))
     {
         SetLastError( ERROR_NOT_ENOUGH_MEMORY );
+        netdiag_result( &diag, ND_COMPLETE, 0, GetLastError(), -1 );
         return -1;
     }
     params->addr_len = len;
     params->synchronous = TRUE;
     memcpy( params + 1, addr, len );
+    if (diag.operation_id)
+    {
+        if (len > 0) netdiag_endpoint( &diag, (const struct sockaddr *)(params + 1), len );
+        netdiag_result( &diag, ND_ATTEMPT, 0, 0, 0 );
+    }
 
     status = NtDeviceIoControlFile( (HANDLE)s, sync_event, NULL, NULL, &io, IOCTL_AFD_WINE_CONNECT,
                                     params, sizeof(*params) + len, NULL, 0 );
     free( params );
     if (status == STATUS_PENDING)
     {
-        if (wait_event_alertable( sync_event ) == WAIT_FAILED) return -1;
+        netdiag_result( &diag, ND_PENDING, status, WSA_IO_PENDING, -1 );
+        if (wait_event_alertable( sync_event ) == WAIT_FAILED)
+        {
+            netdiag_result( &diag, ND_OBSERVED, status, GetLastError(), -1 );
+            return -1;
+        }
         status = io.Status;
     }
     if (status)
@@ -1299,8 +1325,12 @@ int WINAPI connect( SOCKET s, const struct sockaddr *addr, int len )
         /* NtStatusToWSAError() has no mapping for WSAEALREADY */
         SetLastError( status == STATUS_ADDRESS_ALREADY_ASSOCIATED ? WSAEALREADY : NtStatusToWSAError( status ) );
         TRACE( "failed, status %#lx.\n", status );
+        netdiag_result( &diag, GetLastError() == WSAEWOULDBLOCK || GetLastError() == WSAEINPROGRESS
+                        || GetLastError() == WSAEALREADY ? ND_PENDING : ND_COMPLETE,
+                        status, GetLastError(), -1 );
         return -1;
     }
+    netdiag_result( &diag, ND_COMPLETE, status, 0, 0 );
     return 0;
 }
 
@@ -1321,6 +1351,7 @@ int WINAPI WSAConnect( SOCKET s, const struct sockaddr *name, int namelen,
 static BOOL WINAPI WS2_ConnectEx( SOCKET s, const struct sockaddr *name, int namelen,
                                   void *send_buffer, DWORD send_len, DWORD *ret_len, OVERLAPPED *overlapped )
 {
+    struct wine_netdiag_event diag = netdiag_begin( ND_CONNECTEX, s );
     struct afd_connect_params *params;
     void *cvalue = NULL;
     NTSTATUS status;
@@ -1331,6 +1362,7 @@ static BOOL WINAPI WS2_ConnectEx( SOCKET s, const struct sockaddr *name, int nam
     if (!overlapped)
     {
         SetLastError( WSA_INVALID_PARAMETER );
+        netdiag_result( &diag, ND_COMPLETE, 0, GetLastError(), FALSE );
         return FALSE;
     }
 
@@ -1341,12 +1373,19 @@ static BOOL WINAPI WS2_ConnectEx( SOCKET s, const struct sockaddr *name, int nam
     if (!(params = malloc( sizeof(*params) + namelen + send_len )))
     {
         SetLastError( ERROR_NOT_ENOUGH_MEMORY );
+        netdiag_result( &diag, ND_COMPLETE, 0, GetLastError(), SOCKET_ERROR );
         return SOCKET_ERROR;
     }
     params->addr_len = namelen;
     params->synchronous = FALSE;
     memcpy( params + 1, name, namelen );
     memcpy( (char *)(params + 1) + namelen, send_buffer, send_len );
+    if (diag.operation_id)
+    {
+        diag.requested = send_len;
+        if (namelen > 0) netdiag_endpoint( &diag, (const struct sockaddr *)(params + 1), namelen );
+        netdiag_result( &diag, ND_ATTEMPT, 0, 0, 0 );
+    }
 
     status = NtDeviceIoControlFile( SOCKET2HANDLE(s), overlapped->hEvent, NULL, cvalue,
                                     (IO_STATUS_BLOCK *)overlapped, IOCTL_AFD_WINE_CONNECT,
@@ -1355,6 +1394,8 @@ static BOOL WINAPI WS2_ConnectEx( SOCKET s, const struct sockaddr *name, int nam
     if (ret_len) *ret_len = overlapped->InternalHigh;
     SetLastError( NtStatusToWSAError( status ) );
     TRACE( "status %#lx.\n", status );
+    netdiag_result( &diag, status == STATUS_PENDING ? ND_PENDING : ND_COMPLETE,
+                    status, GetLastError(), !status );
     return !status;
 }
 
@@ -1766,7 +1807,19 @@ int WINAPI getsockopt( SOCKET s, int level, int optname, char *optval, int *optl
             return 0;
 
         case SO_ERROR:
-            return server_getsockopt( s, IOCTL_AFD_WINE_GET_SO_ERROR, optval, optlen );
+        {
+            struct wine_netdiag_event diag = netdiag_begin( ND_NETWORK_EVENT, s );
+            int error;
+
+            ret = server_getsockopt( s, IOCTL_AFD_WINE_GET_SO_ERROR, optval, optlen );
+            if (diag.operation_id && !ret && *optlen >= sizeof(error))
+            {
+                memcpy( &error, optval, sizeof(error) );
+                diag.requested = SO_ERROR;
+                netdiag_result( &diag, ND_OBSERVED, 0, error, ret );
+            }
+            return ret;
+        }
 
         case SO_KEEPALIVE:
             if (*optlen < 1 || !optval)
@@ -3738,7 +3791,13 @@ int WINAPI WSAEnumNetworkEvents( SOCKET s, WSAEVENT event, WSANETWORKEVENTS *ret
             ret_events->iErrorCode[FD_ACCEPT_BIT] = NtStatusToWSAError( params.status[AFD_POLL_BIT_ACCEPT] );
 
         if (ret_events->lNetworkEvents & FD_CONNECT)
+        {
+            struct wine_netdiag_event diag = netdiag_begin( ND_NETWORK_EVENT, s );
             ret_events->iErrorCode[FD_CONNECT_BIT] = NtStatusToWSAError( params.status[AFD_POLL_BIT_CONNECT_ERR] );
+            diag.requested = FD_CONNECT;
+            netdiag_result( &diag, ND_OBSERVED, params.status[AFD_POLL_BIT_CONNECT_ERR],
+                            ret_events->iErrorCode[FD_CONNECT_BIT], 0 );
+        }
 
         if (ret_events->lNetworkEvents & FD_CLOSE)
         {
@@ -3807,6 +3866,7 @@ BOOL WINAPI WSAGetOverlappedResult( SOCKET s, LPWSAOVERLAPPED lpOverlapped,
                                     LPDWORD lpcbTransfer, BOOL fWait,
                                     LPDWORD lpdwFlags )
 {
+    struct wine_netdiag_event diag = netdiag_begin( ND_OVERLAPPED, s );
     NTSTATUS status;
 
     TRACE( "socket %#Ix, overlapped %p, transfer %p, wait %d, flags %p\n",
@@ -3816,12 +3876,14 @@ BOOL WINAPI WSAGetOverlappedResult( SOCKET s, LPWSAOVERLAPPED lpOverlapped,
     {
         ERR( "Invalid pointer\n" );
         SetLastError(WSA_INVALID_PARAMETER);
+        netdiag_result( &diag, ND_OBSERVED, 0, GetLastError(), FALSE );
         return FALSE;
     }
 
     if (!socket_list_find( s ))
     {
         SetLastError( WSAENOTSOCK );
+        netdiag_result( &diag, ND_OBSERVED, 0, GetLastError(), FALSE );
         return FALSE;
     }
 
@@ -3833,12 +3895,16 @@ BOOL WINAPI WSAGetOverlappedResult( SOCKET s, LPWSAOVERLAPPED lpOverlapped,
         if (!fWait)
         {
             SetLastError( WSA_IO_INCOMPLETE );
+            netdiag_result( &diag, ND_PENDING, status, WSA_IO_INCOMPLETE, FALSE );
             return FALSE;
         }
 
         if (WaitForSingleObject( lpOverlapped->hEvent ? lpOverlapped->hEvent : SOCKET2HANDLE(s),
                                  INFINITE ) == WAIT_FAILED)
+        {
+            netdiag_result( &diag, ND_OBSERVED, status, GetLastError(), FALSE );
             return FALSE;
+        }
         /* We don't need to give this load acquire semantics; the wait above
          * already guarantees that the IOSB and output buffer are filled. */
         status = lpOverlapped->Internal;
@@ -3852,6 +3918,9 @@ BOOL WINAPI WSAGetOverlappedResult( SOCKET s, LPWSAOVERLAPPED lpOverlapped,
 
     SetLastError( NtStatusToWSAError(status) );
     TRACE( "status %#lx.\n", status );
+    if (diag.operation_id) diag.requested = lpOverlapped->InternalHigh;
+    netdiag_result( &diag, status == STATUS_PENDING ? ND_PENDING : ND_OBSERVED,
+                    status, GetLastError(), NT_SUCCESS( status ) );
     return NT_SUCCESS( status );
 }
 
@@ -3971,6 +4040,10 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
             CloseHandle(SOCKET2HANDLE(ret));
             return INVALID_SOCKET;
         }
+        {
+            struct wine_netdiag_event diag = netdiag_begin( ND_SOCKET, ret );
+            netdiag_result( &diag, ND_OPEN, 0, 0, ret );
+        }
         return ret;
     }
 
@@ -4056,6 +4129,11 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
         return INVALID_SOCKET;
     }
     WSASetLastError(0);
+    {
+        struct wine_netdiag_event diag = netdiag_begin( ND_SOCKET, ret );
+        diag.family = af;
+        netdiag_result( &diag, ND_OPEN, 0, 0, ret );
+    }
     return ret;
 }
 

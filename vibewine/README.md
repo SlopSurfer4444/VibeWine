@@ -28,7 +28,7 @@ General native-window, accessibility, ABI and synchronization changes belong her
 
 A clean out-of-tree configure and compile of this integrated tree succeeded for x86_64 Unix `ntdll.so`, `winemac.so` (including the `win32u.so` dependency), and i386/x86_64 PE `oleacc.dll` and `winemac.drv`. The compile used the reduced dependency flags above (`--without-freetype --without-gnutls`). Bison 3.8.2 must be on PATH for both configure and make; the system Bison was too old in an initial invocation. This is a module build check, not a whole Wine distribution build or a live game/ABI/runtime acceptance. No produced binaries are tracked or installed.
 
-Run `python3 vibewine/verify_source.py` to check 11,109 source files against the archive manifest and ordered current overlays. Historical vendor whitespace and one existing extra blank line in `ax_window_identity.inc` are retained byte-for-byte rather than mixed into the integration delta.
+Run `python3 vibewine/verify_source.py` to check the integrated source files against the archive manifest and ordered current overlays. Historical vendor whitespace and one existing extra blank line in `ax_window_identity.inc` are retained byte-for-byte rather than mixed into the integration delta.
 
 Explicit native AX Raise requests use the application's instance activation
 method after the existing Windows focus request. This explicit action may
@@ -47,3 +47,10 @@ documented in [the fixture README](../dlls/xinput1_3/tests/process-local/README.
 It requires an explicit executable-bound session; it creates no host input events
 or global controller and does not change application focus. The native Raise
 path above is separate. No background-game acceptance is implied.
+
+An experimental, off-by-default network metadata recorder is documented in
+[the network fixture README](../dlls/ws2_32/tests/netdiag/README.md). A private
+session binds an exact executable and token, records for at most 45 seconds,
+and omits names and payloads. It requires a matched three-module private build
+and separate runtime acceptance. Its host and extracted native regression
+fixtures do not establish a game network diagnosis or production readiness.

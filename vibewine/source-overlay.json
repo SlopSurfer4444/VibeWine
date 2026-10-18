@@ -937,6 +937,96 @@
       "source": "component/wine: opt-in process-local XInput test backend",
       "destination": "dlls/xinput1_3/tests/process-local/fixture.c",
       "sha256": "b753c9ffccc7e03ca415cc27bc4b534a5dca74838b8be847b173a62256cbfa03"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ntdll/unix/socket.c",
+      "sha256": "ded310c7f2d690f56d865aecdf45925856e84db640d20b7686a5c331f7b741d0"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ntdll/unix/unix_private.h",
+      "sha256": "d2bff47019a82e481b52a98833732cc1b6e17963b718e2943dc7a5e1f460e788"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ntdll/unix/virtual.c",
+      "sha256": "7dabf172afab173a26610c04e0ed912f292279b1090b03f70827bc9ea597c745"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/async.c",
+      "sha256": "4a012bfae81e208a7df76ab51cb1a8c03cd045fcb3a691a3105c187dfabf297c"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/netdiag_pe.h",
+      "sha256": "00b48f0e76e57a0e41666e43c1a90fe843b44fd53517724c51283157e64a7b55"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/protocol.c",
+      "sha256": "1838f3fedaa20a3fabf93b45d27c18bb94ba553ad09ea0037be5009cf0c53194"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/socket.c",
+      "sha256": "80f7d593348baa2c709c5658c67b859b6c93cae789162e57e71fa1ef581aa4f9"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/README.md",
+      "sha256": "df8f64bc460d6ccfac4b72762d460a45ce0b9a44e1209349a220918c2f33bd51"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/logger-fixture.c",
+      "sha256": "f98ed06e16f308e8fd6c29379770d65a08cfe5349f6271edf52b3e91553a57f5"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/native-hook-fixture.c",
+      "sha256": "a009f9cb82d7c89cbf410f3667b767de4d509ac20b489185bf8d64c09cfb58c9"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/netdiag-tool.c",
+      "sha256": "68e139e7bc5606279299c0f9aad11e86bb078c97db2a77b21d745fff497304bb"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/run.py",
+      "sha256": "16faf9ec421a401a2a382b65b6c063f63585f2700c6b16dd5a353a15fb256420"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/run_native_hooks.py",
+      "sha256": "9d0307b988d2abf5916f290b38ec4bf9a80eb4e1b70f1d41287c7e621521ec0b"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/windows-fixture.c",
+      "sha256": "a18357ca690401015bcab350f9f87f6e27b66f618ed939a4d5aa269b6bbe6c64"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/unixlib.c",
+      "sha256": "68008ee696ab63737db973341fd7b6ce8906b637cafce71cc2fb92164696242a"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "dlls/ws2_32/ws2_32_private.h",
+      "sha256": "fc3667360430cc6a6d087fbf1c228b661cfe7d7b2bc4138391de5a5421b9d679"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "include/wine/netdiag.h",
+      "sha256": "5ee0d1f4c6dd5693a38648ca64ee1a2a82fbf8976c4bfd34b069e148831fcaa9"
+    },
+    {
+      "source": "component/wine: opt-in bounded process network metadata",
+      "destination": "include/wine/netdiag_unix.h",
+      "sha256": "433c86bc391ccd9060afae5a518bf316f659aa771377a28bdc6325fb63de5008"
     }
   ]
 }

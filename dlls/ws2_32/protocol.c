@@ -23,6 +23,7 @@
  */
 
 #include "ws2_32_private.h"
+#include "netdiag_pe.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(winsock);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
@@ -151,7 +152,7 @@ static int dns_only_query( const char *node, const struct addrinfo *hints, struc
 /***********************************************************************
  *      getaddrinfo   (ws2_32.@)
  */
-int WINAPI getaddrinfo( const char *node, const char *service,
+static int getaddrinfo_impl( const char *node, const char *service,
                         const struct addrinfo *hints, struct addrinfo **info )
 {
     char *nodev6 = NULL, *fqdn = NULL;
@@ -236,6 +237,17 @@ done:
     }
 
     SetLastError( ret );
+    return ret;
+}
+
+
+int WINAPI getaddrinfo( const char *node, const char *service,
+                        const struct addrinfo *hints, struct addrinfo **info )
+{
+    struct wine_netdiag_event diag = netdiag_begin( ND_DNS, INVALID_SOCKET );
+    int ret = getaddrinfo_impl( node, service, hints, info );
+
+    netdiag_dns_result( &diag, ret, ret ? NULL : *info );
     return ret;
 }
 
@@ -341,6 +353,7 @@ struct getaddrinfo_args
     char *nodename;
     char *servname;
     struct addrinfo *hints;
+    struct wine_netdiag_event netdiag;
 };
 
 static void WINAPI getaddrinfo_callback(TP_CALLBACK_INSTANCE *instance, void *context)
@@ -352,13 +365,16 @@ static void WINAPI getaddrinfo_callback(TP_CALLBACK_INSTANCE *instance, void *co
     struct addrinfo *res;
     int ret;
 
-    ret = getaddrinfo( args->nodename, args->servname, args->hints, &res );
+    ret = getaddrinfo_impl( args->nodename, args->servname, args->hints, &res );
     if (res)
     {
         *args->result = addrinfo_list_AtoW(res);
         overlapped->Pointer = args->result;
-        freeaddrinfo(res);
     }
+    /* Preserve the existing API result: a NULL conversion does not change ret.
+     * Observe after conversion, while the resolver's endpoints remain alive. */
+    netdiag_dns_result( &args->netdiag, ret, ret ? NULL : res );
+    if (res) freeaddrinfo(res);
 
     free( args->nodename );
     free( args->servname );
@@ -373,6 +389,7 @@ static int getaddrinfoW( const WCHAR *nodename, const WCHAR *servname,
                             const struct addrinfo *hints, ADDRINFOEXW **res, OVERLAPPED *overlapped,
                             LPLOOKUPSERVICE_COMPLETION_ROUTINE completion_routine )
 {
+    struct wine_netdiag_event diag = netdiag_begin( ND_DNS, INVALID_SOCKET );
     int ret = EAI_MEMORY, len, i;
     char *nodenameA = NULL, *servnameA = NULL;
     struct addrinfo *resA;
@@ -434,6 +451,7 @@ static int getaddrinfoW( const WCHAR *nodename, const WCHAR *servname,
         }
 
         if (!(args = malloc( sizeof(*args) + sizeof(*args->hints) ))) goto end;
+        args->netdiag = diag;
         args->overlapped = overlapped;
         args->completion_routine = completion_routine;
         args->result = res;
@@ -460,13 +478,19 @@ static int getaddrinfoW( const WCHAR *nodename, const WCHAR *servname,
         if (local_nodenameW != nodename)
             free( local_nodenameW );
         SetLastError( ERROR_IO_PENDING );
+        /* A fast worker may complete before this caller-return observation.
+         * Consumers must retain completion when records arrive in that order. */
+        netdiag_result( &diag, ND_PENDING, ERROR_IO_PENDING, ERROR_IO_PENDING, ERROR_IO_PENDING );
         return ERROR_IO_PENDING;
     }
 
-    ret = getaddrinfo( nodenameA, servnameA, hints, &resA );
+    ret = getaddrinfo_impl( nodenameA, servnameA, hints, &resA );
     if (!ret)
     {
         *res = addrinfo_list_AtoW( resA );
+        /* Conversion failure leaves ret unchanged in the existing API. */
+        netdiag_dns_result( &diag, ret, resA );
+        diag.operation_id = 0;
         freeaddrinfo( resA );
     }
 
@@ -475,6 +499,7 @@ end:
         free( local_nodenameW );
     free( nodenameA );
     free( servnameA );
+    netdiag_dns_result( &diag, ret, NULL );
     return ret;
 }
 

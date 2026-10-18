@@ -35,6 +35,7 @@
  */
 
 #include "ws2_32_private.h"
+#include "netdiag_pe.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(winsock);
 
@@ -47,6 +48,7 @@ struct async_query_header
     void  *sbuf;
     INT    sbuflen;
     HANDLE handle;
+    struct wine_netdiag_event netdiag;
 };
 
 struct async_query_gethostbyname
@@ -145,20 +147,54 @@ static LPARAM copy_he(void *base, int size, const struct hostent *he)
     return MAKELPARAM( needed, 0 );
 }
 
+/* Legacy async DNS uses anonymous operation IDs; request handles, names and
+ * callback/window pointers are deliberately absent from diagnostic records. */
+static void netdiag_host_result( struct wine_netdiag_event *diag, const struct hostent *he,
+                                 LPARAM result )
+{
+    struct wine_netdiag_event answer;
+    unsigned int count = 0;
+
+    if (!diag->operation_id) return;
+    if (he && he->h_addr_list)
+    {
+        while (he->h_addr_list[count])
+        {
+            if (count < 8 && ((he->h_addrtype == AF_INET && he->h_length == 4)
+                             || (he->h_addrtype == AF_INET6 && he->h_length == 16)))
+            {
+                answer = *diag;
+                answer.family = he->h_addrtype;
+                answer.flags &= ~ND_ENDPOINT_UNKNOWN;
+                memcpy( answer.address, he->h_addr_list[count], he->h_length );
+                netdiag_result( &answer, ND_DNS_ANSWER, 0, 0, 0 );
+            }
+            count++;
+        }
+    }
+    diag->requested = count;
+    diag->family = !count ? 0 : he->h_addrtype == AF_INET ? 1 : he->h_addrtype == AF_INET6 ? 2 : 4;
+    netdiag_result( diag, ND_COMPLETE, HIWORD(result), HIWORD(result), HIWORD(result) );
+}
+
 static LPARAM async_gethostbyname( struct async_query_header *query )
 {
     struct async_query_gethostbyname *aq = CONTAINING_RECORD( query, struct async_query_gethostbyname, query );
     struct hostent *he = gethostbyname( aq->host_name );
+    LPARAM result = copy_he( query->sbuf, query->sbuflen, he );
 
-    return copy_he( query->sbuf, query->sbuflen, he );
+    netdiag_host_result( &query->netdiag, he, result );
+    return result;
 }
 
 static LPARAM async_gethostbyaddr( struct async_query_header *query )
 {
     struct async_query_gethostbyaddr *aq = CONTAINING_RECORD( query, struct async_query_gethostbyaddr, query );
     struct hostent *he = gethostbyaddr( aq->host_addr, aq->host_len, aq->host_type );
+    LPARAM result = copy_he( query->sbuf, query->sbuflen, he );
 
-    return copy_he( query->sbuf, query->sbuflen, he );
+    netdiag_host_result( &query->netdiag, he, result );
+    return result;
 }
 
 /* ----- protoent */
@@ -261,6 +297,12 @@ static HANDLE run_query( HWND hWnd, UINT uMsg, LPARAM (*func)(struct async_query
 {
     static LONG next_handle = 0xdead;
     ULONG handle;
+    struct wine_netdiag_event diag = {0};
+
+    if (func == async_gethostbyname || func == async_gethostbyaddr)
+        diag = netdiag_begin( ND_LEGACY_DNS, INVALID_SOCKET );
+    query->netdiag = diag;
+    netdiag_result( &diag, ND_ATTEMPT, 0, 0, 0 );
     do
         handle = LOWORD( InterlockedIncrement( &next_handle ));
     while (!handle); /* avoid handle 0 */
@@ -275,9 +317,12 @@ static HANDLE run_query( HWND hWnd, UINT uMsg, LPARAM (*func)(struct async_query
     if (!TrySubmitThreadpoolCallback( async_worker, query, NULL ))
     {
         SetLastError( WSAEWOULDBLOCK );
+        netdiag_result( &diag, ND_COMPLETE, 0, WSAEWOULDBLOCK, 0 );
         free( query );
         return 0;
     }
+    /* Worker completion can precede this accepted-queue return observation. */
+    netdiag_result( &diag, ND_PENDING, 0, 0, 0 );
     return UlongToHandle( handle );
 }
 
