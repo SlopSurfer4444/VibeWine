@@ -16,6 +16,14 @@ first process. Do not run route experiments during online multiplayer.
 
 ## Visual checkpoints owned by the agent
 
+Use the game's bindings rather than generic dialog conventions. The official
+[Windows manual](https://www.fromsoftware.jp/manual/darksouls3/win/operation_appendix.html)
+lists **E / left click** for menu confirmation, **Q** for cancellation, and arrow
+keys for navigation. Return is not a default confirmation key; its non-response
+alone is not evidence of failed keyboard transport. Observe customized bindings
+if these defaults do not produce the expected visible result. Configure the
+generic helper with `createSession(gameApp, {additionalKeys: ['e', 'q']})`.
+
 1. Title: identify the title and any-key prompt. Raise the observed window and
    click only a visible safe location. Read the next screenshot.
 2. Notices: distinguish improper-exit notice, information screen, server error
@@ -61,6 +69,23 @@ not be used as proof of native input routing. Keep this routing defect separate
 from the earlier game crash; their relationship has not been established.
 
 No gameplay FPS, movement, clean exit or complete autonomous cycle is claimed.
+
+### Subsequent focus and mapping isolation
+
+In a later single live run, the window on the active Space acquired native
+application/key-window focus. Mouse clicks dismissed the title and warning;
+E confirmed a server retry, dismissed information and selected Continue. The
+menu displayed online status, but character-network initialization failed twice;
+world loading was not established. Retrying a visible completed network error
+must remain distinct from blind repeated input.
+
+Later in that same process, the window was off the active Space and coordinate
+input again returned `noWindowsAvailable`. The diagnostic showed Windows
+accepting the foreground transition and calling the native focus path with
+activation disabled; native application/key-window focus remained false. This
+narrows the observed routing failure to cross-Space/native activation in this
+scenario. It does not establish a universal Wine cause or validate a fix.
+Temporary focus instrumentation is not a production or FPS acceptance result.
 
 ## Capture discipline
 

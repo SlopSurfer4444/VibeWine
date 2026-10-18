@@ -32,6 +32,15 @@ The default keys cover navigation and WASD only, not item use/combat. An allowed
 key is not inherently safe in every game state. Keep game-specific visual
 checkpoints under `profiles/`; see the partial [DS3 scenario](../../profiles/ds3/AUTONOMOUS_TEST.md).
 
+For a verified game-specific menu mapping, opt in to extra letters at session
+creation: `createSession(gameApp, {additionalKeys: ['e', 'q']})`. The option accepts
+at most 52 single ASCII letters with exact case; it cannot enable chords, named
+keys, raw holds, or a longer duration. Letters can have gameplay effects outside
+menus, so inspect the screenshot before each action. Defaults remain unchanged,
+and every added key still consumes one fresh observation token and requires the
+next screenshot and full AX observation. Configuration is copied at creation;
+invalid options throw before the App is accessed.
+
 Run the mock contract tests with `node --test tools/gameplay/session.test.mjs`.
 These prove control-flow guards, not focus, key timing, movement, or gameplay.
 Live acceptance still requires loading the world, observing movement, a valid

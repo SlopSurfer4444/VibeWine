@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createSession } from './session.mjs';
 
 const bounds = { width: 640, height: 480 };
-function fixture(overrides = {}) {
+function fixture(overrides = {}, options) {
   const calls = [];
   const app = {
     async getAXState(options) { calls.push(['ax', options]); return { text: 'unclassified' }; },
@@ -13,7 +13,7 @@ function fixture(overrides = {}) {
     async performSecondaryAction(...args) { calls.push(['secondary', ...args]); },
     ...overrides,
   };
-  return { session: createSession(app), calls };
+  return { session: createSession(app, options), calls };
 }
 
 test('one action returns fresh AX and screenshot and consumes token', async () => {
@@ -95,4 +95,36 @@ test('post-input AX failure blocks all later input', async () => {
     ['screenshot', { emit: false }], ['ax', { disableDiffing: true }]]);
   await assert.rejects(session.act(first.token, { type: 'key', key: 'Up' }, bounds), /Session blocked/);
   assert.equal(calls.length, 5);
+});
+
+test('explicit menu letters require fresh tokens and retain bounded holds', async () => {
+  const additionalKeys = ['E', 'Q'];
+  const { session, calls } = fixture({}, { additionalKeys });
+  additionalKeys.push('R'); // Configuration is copied into the private allowlist.
+  let observation = await session.observe(bounds);
+  observation = await session.act(observation.token, { type: 'key', key: 'E' }, bounds);
+  observation = await session.act(observation.token, { type: 'key', key: 'Q', durationMs: 1000 }, bounds);
+  assert.deepEqual(calls[2], ['key', 'E', { durationMs: 100 }]);
+  assert.deepEqual(calls[5], ['key', 'Q', { durationMs: 1000 }]);
+  await assert.rejects(session.act(observation.token, { type: 'key', key: 'R' }, bounds));
+  assert.equal(calls.length, 8);
+  const other = fixture({}, { additionalKeys: ['E'] });
+  const first = await other.session.observe(bounds);
+  await assert.rejects(other.session.act(first.token, { type: 'key', key: 'E', durationMs: 1001 }, bounds));
+  assert.equal(other.calls.length, 2);
+});
+
+test('menu letters are opt-in and invalid configuration cannot reach App', async () => {
+  const { session, calls } = fixture();
+  const first = await session.observe(bounds);
+  await assert.rejects(session.act(first.token, { type: 'key', key: 'E' }, bounds));
+  assert.equal(calls.length, 2);
+  const app = new Proxy({}, { get() { throw Error('App must not be accessed'); } });
+  for (const options of [null, [], { typo: ['E'] }, { additionalKeys: 'E' },
+    { additionalKeys: ['Ctrl+Q'] }, { additionalKeys: ['Space'] },
+    { additionalKeys: [''] }, { additionalKeys: [1] },
+    { additionalKeys: ['é'] }, { additionalKeys: null },
+    { additionalKeys: Array(1) }, { additionalKeys: Array(53).fill('E') }]) {
+    assert.throws(() => createSession(app, options), /Invalid session options|additionalKeys/);
+  }
 });

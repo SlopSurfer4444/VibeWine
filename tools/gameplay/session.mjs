@@ -1,9 +1,18 @@
 // Agent-assisted observation/action loop, not a game-state or gameplay verifier.
 // Pass an already-bound CUA App. Recovery requires an explicit fresh binding
 // and a new session. This module never launches, reacquires, or retries an App.
-export function createSession(app) {
+export function createSession(app, options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options) ||
+      Object.keys(options).some(key => key !== 'additionalKeys')) {
+    throw new Error('Invalid session options');
+  }
+  const additionalKeys = options.additionalKeys === undefined ? [] : options.additionalKeys;
+  if (!Array.isArray(additionalKeys) || additionalKeys.length > 52 ||
+      Array.from(additionalKeys).some(key => typeof key !== 'string' || !/^[a-zA-Z]$/.test(key))) {
+    throw new Error('additionalKeys must be at most 52 single ASCII letters');
+  }
   const keys = new Set(['Up', 'Down', 'Left', 'Right',
-    'w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'Return', 'Escape', 'Tab']);
+    'w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'Return', 'Escape', 'Tab', ...additionalKeys]);
   let blocked = false, busy = false, current = null;
 
   function dimensions(value) {
