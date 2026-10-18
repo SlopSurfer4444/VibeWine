@@ -65,3 +65,5 @@ The `baseline` directory is the selected archived base, not the previously insta
 - `renderer/probes/trace_core.hpp`: controller mapping/session/record protocol; tests exercise synthetic cross-process publication.
 
 The `renderer/*/verification.json` files describe historical build-time status. Installed identities are captured separately in root PROVENANCE.json. New pending discovery/borderless/probe work is not silently folded into these source identities.
+
+Latest installed overlays: `current/winemac/mouse.c` (cursor reset) and `current/d3d11/dxmt_command.metal` (GS/TS task advancement). See `current/README.md` for exact base trees, licenses, build path and limits.

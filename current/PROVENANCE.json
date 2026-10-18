@@ -1,9 +1,11 @@
 {
   "date": "2026-10-18",
-  "deliveryCommit": "0264c2350c14f8bf2e5cd930a5a03a8a153ab6a9",
+  "deliveryCommit": "26d55c56caf1a6c819a9ac156b16e048d59ce08a",
   "deliveryCommits": [
     "83116b3a6ee2974e9ff64ef7585c6a26ccb6c1ae",
-    "0264c2350c14f8bf2e5cd930a5a03a8a153ab6a9"
+    "0264c2350c14f8bf2e5cd930a5a03a8a153ab6a9",
+    "12e314c1ecc5cfcaf84e18279b10289301d8b0ac",
+    "26d55c56caf1a6c819a9ac156b16e048d59ce08a"
   ],
   "followup": {
     "gameStarted": false,
@@ -20,10 +22,10 @@
     ]
   },
   "installedBinarySha256": {
-    "d3d11.dll": "54329c945747632e609b0df454aa21978c37067c8f1deb09af2e9dc1d43bd381",
+    "d3d11.dll": "2bfd33d34dfd56d0112e245cc9a177b7a6a9fddb2d1e1049b1c447792402ee5e",
     "dxgi.dll": "afa62e31f6551749523522dbc3410cd1383fa97c6b70e8ca21d5b36227be39a8",
     "ntdll.so": "8d6411e909f4d74ae641b829b37e8f09bd01988085e90d2fe51929bfd611405d",
-    "winemac.so": "1cdf040f50d52d8236921078486e95015057dfecd493bd5bbadca614fe8084b8",
+    "winemac.so": "dc8c34729d32465c4de81f718bc46ba2f3f618c3c6e995f66cacb7f0b1f9c01b",
     "winemetal.so": "32b4e0a67267d648e7ab976fb793c529869c3e55a1ce30e2263f8d959a5e8ca2"
   },
   "omittedNonTextUpstreamAssets": [
@@ -31,13 +33,16 @@
     "dxgi-source/tests/dx11/test.png"
   ],
   "patchSha256": {
+    "cursor-reset.patch": "b2a4c7effe0f4d9127c75c75723869ef799266aebc2ab720c0108160a62dc492",
     "dxgi-closest-mode.patch": "221d48600432299aa3851a33ae35cf0ab377bae284ac54f2cab96a85a768d1cf",
+    "dxmt-task-advance.patch": "15ef01fb475bdb223906f840b41af9b26d50c28c29620c5956d9c0b2ffc4b2cf",
     "surface-followup.patch": "de9e4cf52aa6d77b3c279b88db1a0b38b3857459f2628a065126466e0559e9ad",
     "wine-fixes.patch": "e7e50fcbcd2aa9631513635293163131559799d55dfcc69856b35c89b958e8a1"
   },
   "schema": 1,
   "scope": "Source-only installed post-Wave7 fixes; no private admission/lifecycle source",
   "sourceSha256": {
+    "d3d11/dxmt_command.metal": "c9ee9307593b8c6ab0ad97cb4a223f311da0e472298d937038025e47d2b99919",
     "dxgi-source/.clang-format": "c60808474468b7a10f38084f910236b840ca1b8086a7d0ff2fa9593108db587f",
     "dxgi-source/.clangd": "1e046b86d86aaaee9ac62b73f5fc41d9f34bf05e0b277b6a62329a766d3140e0",
     "dxgi-source/.github/ISSUE_TEMPLATE/bug-tracking.md": "97992bf2b82507afd0c8ee8163b8e2409dfba07800797131e2dd5dea3b07ab96",
@@ -375,6 +380,17 @@
     "winemac/d3dmetal.c": "ad50918b2feb432d2abcb04d1d54a9d58e0a599edb222a6ea4b028e02f7c84ba",
     "winemac/macdrv.h": "b54bb9ee52afcc8684d6761471ce075c9cb2470a216a958b11027e3e76e86e0f",
     "winemac/macdrv_cocoa.h": "63792e5b5acfc51b70c9147e5349af98ead37f3acd452f0ed1e3c49601ef845e",
+    "winemac/mouse.c": "496d65c2a40ba5560b0dfab586e33e51ed9558b8669e8923692597bcc7a08e59",
     "winemac/window.c": "9b6ecd3db0c625e440025bd43e3197b852fb16304ea8e77e7725813300c827be"
+  },
+  "upstreamFollowup": {
+    "dxmtTaskCommit": "aadf0fbbaa28c4260dcc14e69d8870c88fb05e97",
+    "fpsImprovementMeasured": false,
+    "gameplayVerified": false,
+    "helperSha256": "80e5124bd929546731272a42577f2ee2ab6aaa6844e527bf1590b203c8b116ea",
+    "installedReadback": "INSTALLED_HASHES_VERIFIED",
+    "nativeGpuComparisons": 20,
+    "previousDeliveryCommit": "0264c2350c14f8bf2e5cd930a5a03a8a153ab6a9",
+    "wineCursorCommit": "eefbbc07a838ffc9e71a963fa3aec14c9cb5a1a2"
   }
 }
