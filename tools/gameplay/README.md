@@ -52,3 +52,10 @@ The existing CUA path was chosen over another CGEvent injector: inspected prior
 PyAutoGUI backend findings showed that injection alone cannot prove Wine
 RawInput/DirectInput delivery or target focus. This helper changes neither Wine
 nor the installed game runtime.
+
+## Optional experimental controller protocol
+
+The separate [virtual-controller writer](VIRTUAL_CONTROLLER.md) prepares bounded
+process-local XInput states for an admitted experimental Wine producer. It does
+not use this CUA App or activate windows. Host mock tests do not establish actual
+background game control, producer expiry or preservation of the active Space.
