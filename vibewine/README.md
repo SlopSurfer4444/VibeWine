@@ -29,3 +29,14 @@ General native-window, accessibility, ABI and synchronization changes belong her
 A clean out-of-tree configure and compile of this integrated tree succeeded for x86_64 Unix `ntdll.so`, `winemac.so` (including the `win32u.so` dependency), and i386/x86_64 PE `oleacc.dll` and `winemac.drv`. The compile used the reduced dependency flags above (`--without-freetype --without-gnutls`). Bison 3.8.2 must be on PATH for both configure and make; the system Bison was too old in an initial invocation. This is a module build check, not a whole Wine distribution build or a live game/ABI/runtime acceptance. No produced binaries are tracked or installed.
 
 Run `python3 vibewine/verify_source.py` to check 11,105 source files against the archive manifest and ordered current overlays. Historical vendor whitespace and one existing extra blank line in `ax_window_identity.inc` are retained byte-for-byte rather than mixed into the integration delta.
+
+Explicit native AX Raise requests use the application's instance activation
+method after the existing Windows focus request. This explicit action may
+activate the application; accessibility reads remain passive. A successful
+action return means the request was submitted, not that asynchronous OS
+activation or Windows focus has completed.
+
+Run `python3 vibewine/tests/run_raise.py` on macOS to compile the shipping include
+against lifecycle seams. It checks request/refusal behavior, passive fallback,
+non-main-thread refusal, reentry and exception recovery. It does not launch Wine
+or establish OS activation, game input, or gameplay acceptance.

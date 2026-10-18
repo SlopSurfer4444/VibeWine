@@ -9,7 +9,8 @@ expected = {row["path"]: row["sha256"] for row in vendor["files"]}
 for row in overlay["overlaysInApplicationOrder"]:
     expected[row["destination"]] = row["sha256"]
 metadata = {"vibewine/README.md", "vibewine/vendor-manifest.json",
-            "vibewine/source-overlay.json", "vibewine/verify_source.py"}
+            "vibewine/source-overlay.json", "vibewine/verify_source.py",
+            "vibewine/tests/raise.m", "vibewine/tests/run_raise.py"}
 allowed = set(expected) | metadata
 errors = []
 for p in root.rglob("*"):

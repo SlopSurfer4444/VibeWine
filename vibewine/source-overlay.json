@@ -907,6 +907,11 @@
       "source": "current/ntdll/sync.c",
       "destination": "dlls/ntdll/unix/sync.c",
       "sha256": "6388ba964be344a17daceeb06b6597375090b6d08c4e689c0e3f11e0ef56872a"
+    },
+    {
+      "source": "component/wine: explicit AX Raise instance activation",
+      "destination": "dlls/winemac.drv/ax_window_identity.inc",
+      "sha256": "cd831472d21154c597c74e4fc3dd81078ef4440cc144191e774e94ec2e708f51"
     }
   ]
 }
