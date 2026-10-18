@@ -60,6 +60,9 @@ This is not a complete production-feature Wine runtime build.
 
 The pinned DXMT component passed compilation of 75 PE translation units and the
 Metal helper, focused display-mode fixtures, native sanitizer checks and syntax
-checks. Full native LLVM/Meson build and combined-runtime acceptance remain
-pending. Neither source checkpoint was installed into the working game runtime
-as part of this workspace migration. Performance improvement is not established.
+checks. The matched Meson build also compiled and linked the PE, native Metal
+and AIRCONV components; the built command-line tool passed its help invocation.
+These build checks do not establish a complete production-feature Wine runtime,
+combined-runtime acceptance, game behavior or performance improvement. Neither
+source checkpoint was installed into the working game runtime as part of this
+workspace migration.
