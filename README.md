@@ -1,70 +1,82 @@
-# Current installed fixes and audit target
+# VibeWine 🍷
 
-Start at [current/README.md](current/README.md) and [current/PROVENANCE.json](current/PROVENANCE.json). This adds the installed ntdll BOOLEAN fix, top-level Retina client extent fix and separate DS3-scoped DXGI mode enumeration fix. Older Wave7 acceptance statements below are historical. No new controller patch or measured FPS gain is claimed.
+**Vibe-code the fix. Prove it works. Share it.**
 
-## Prior checkpoint
+An AI-friendly home for improving Wine on macOS: native window behavior,
+Retina rendering, accessibility for automation, compatibility, and measurable
+performance work. Human-written and AI-assisted pull requests are welcome.
+Bring a reproduction, explain your change, and show what you checked.
 
-# Wave7 reviewed graphics source checkpoint
+**Early developer project:** this repository currently contains source snapshots,
+patches and regression fixtures. It is not a complete Wine checkout, a downloadable
+runtime, or a one-click replacement for CrossOver. The complete installed runtime
+is not yet reproducible from this repository alone.
 
-Current source and portable fixtures are in `renderer/wave7`, `native/wave7`, and
-`ntdll/wave7`. This successor includes R1, B1/B2, B3, event 77 repair and native AX root seams. Read [acceptance limits](WAVE7_ACCEPTANCE.md): actual game AX enumeration improved, but CUA clicks still fail; DS3 fullscreen, normal exit and FPS acceptance remain pending.
+[Contribute](CONTRIBUTING.md) · [Current source and evidence](current/README.md) ·
+[Roadmap](ROADMAP.md) · [Source map](SOURCE_INDEX.md) · [Build boundaries](BUILDING_WAVE7.md)
 
-Use [BUILDING_WAVE7.md](BUILDING_WAVE7.md) for offline checks and explicit build
-inputs. [WAVE7_PROVENANCE.json](WAVE7_PROVENANCE.json) identifies the frozen
-combination; [WAVE7_ADAPTATIONS.json](WAVE7_ADAPTATIONS.json) maps original hashes
-to public hashes. Production source bytes are preserved. Only build/fixture path
-adapters and authored documentation differ. Two unused upstream PNG test assets
-are omitted under the retained text-only export policy.
+## Fix classes of bugs, keep game workarounds separate
 
-Historical Wave5/Wave6 trees, receipts and tests remain available. Their status
-and identities do not describe current Wave7. Source notices and licenses remain
-with their respective components. No game/runtime binary or owner data is shipped.
+| Track | What belongs here | Default behavior |
+| --- | --- | --- |
+| Core | General Wine/macOS and graphics-layer corrections | Correct the demonstrated defect; preserve unrelated behavior |
+| Game profiles | Compatibility workarounds for a named title | Narrowly selected by an explicit application profile; no global override |
+| Experiments | Instrumentation and unproven alternatives | Off by default, bounded and removable |
 
-## Historical material retained below
+A bug found in Dark Souls III can lead to a general fix. A Dark Souls III
+workaround does not automatically belong in every application's code path.
+Keep the mechanism reusable and the exception in the profile. These tracks are
+contribution rules and source classifications, not a claim of a new plugin framework.
 
-# Wine macOS integration lab — Wave6 integrated audit snapshot
+## What is here today
 
-Source-only Wine macOS driver and DXMT renderer research snapshot, succeeding public audit 421e6b0. This is not a complete Wine checkout, upstream release, or bundled game runtime.
+- **General Wine fixes:** a BOOLEAN ABI correction affecting directory enumeration;
+  Retina client-surface sizing; child-surface coordinate correction; handling
+  failed surface creation and bridge allocations.
+- **General DXGI correction:** checked errors and actual counts when finding a
+  display mode, with bounded retries when the list changes.
+- **Title-specific compatibility:** DS3's distinct-resolution cap is enabled by
+  its executable profile, not imposed on all applications. See
+  [the current classification](current/README.md).
+- **Accessibility work:** macOS accessibility discovery and standard-control
+  fixtures. Reliable end-to-end computer use in real games remains unfinished;
+  a game-rendered UI does not automatically become a semantic accessibility tree.
+- **Performance research:** opt-in diagnostics and regression work. No controlled,
+  general FPS improvement is claimed yet.
 
-## Current generation: Wave6
+The latest generic fixes passed source fixtures and local build/installation
+checks. Those checks do not establish every game's compatibility. Earlier DS3
+sessions demonstrated resolution changes, fullscreen exit and repeat launch;
+latest-patch gameplay, Mission Control cursor release and sustained performance
+still need separate testing. See [current evidence](current/README.md).
 
-Start with `renderer/wave6/source`, `renderer/wave6/README.md`, `WAVE6_AUDIT_DISPOSITIONS.md`, and `NEXT_WAVE_BRIEF.md`. Wave6 supersedes the historical renderer trees described below; native Wine source remains Wave5. The exact installed renderer SHA256 is `ec522fc64a14f57c026f879414caa15aa4687a5294194dba2c35629ed61b9e22`. User confirmed full-display borderless DS3 and controller operation. Normal exit of this final build, actual exclusive fullscreen, real-game CUA and matched FPS gain remain unverified. New user observations: closing background apps removed perceived lag; increasing resolution in the game appeared to have no effect. Neither observation is a measured causal result.
+## Join in
 
-Run `python3 tests/run_wave6.py` for the combined disposable offline source suite. No Wine/game launch or live changes occur. Binary distribution and complete runtime reproduction remain excluded.
+Pick a reproducible bug, improve a fixture, test a second application, or help
+make the build reproducible. Small, understandable PRs are a great starting point.
+AI assistance is welcome; submitting a patch means taking responsibility for
+reviewing it, explaining its source and reporting honest validation.
 
-## Historical Wave5 snapshot (retained for comparison)
+Use [the contribution guide](CONTRIBUTING.md) and the PR/issue templates. We review
+behavior, maintainability, provenance and evidence. Generated code does not get
+a free pass, and an AI tool's confident explanation is not a test result.
 
-The following sections describe the earlier generation; references to installed be876 renderer or uninstalled synchronization probes are historical. Current Wave6 incorporates V2 trace/probe work and uses a new opt-in DS3 owner-thread borderless route, not the optional external helper. See current dispositions for remaining limits.
+## Build on the ecosystem
 
-## What is included
+VibeWine builds on the work of Wine, DXMT and their contributors. It is independent
+of those projects and is not an official Wine release. Useful general patches
+should remain reviewable and reusable by other projects; this is not an
+anti-upstream campaign.
 
-- `source/dlls`: exact Wave5 Wine driver and oleacc source; `source.patch` reproduces the selected source against `baseline/dlls`.
-- `fixtures`: startup lifetime, AX refresh/deadline/provider composition, display-link coalescing and monitor cleanup regressions. `tests` retains display, Retina and native AX fixtures.
-- `renderer/guarded/source`: DXMT fullscreen reentry guard plus preceding shader work.
-- `renderer/diagnostic/source`: guarded DXMT with opt-in bounded CPU/GPU trace instrumentation. Its PE hash matches the installed DS3 renderer at export capture. Normal launches keep tracing disabled.
-- `renderer/probes`: native trace controller and offline tests; no executable files.
-- `optional/xinput`: retained earlier experimental source, not installed or hardware-accepted.
+Related macOS projects include [Sikarugir](https://github.com/Sikarugir-App/Sikarugir),
+[the frankea Whisky fork](https://github.com/frankea/Whisky), and
+[Uncork](https://github.com/tonianev/uncork). Their scopes overlap with ours;
+we make no claim to be the first or only project working on these problems.
 
-Run `python3 tests/run_wave5.py` on macOS with Xcode Command Line Tools and Python 3. It runs in a disposable copy, compiles native source fixtures and synthetic trace producer tests, and never starts Wine or a game. Test doubles do not prove real COM, GPU timing, window discovery, controller hotplug or display ownership.
+Wine-derived code retains LGPL-2.1-or-later notices; DXMT trees retain their MIT
+and third-party notices. Read each component's license. No game binaries, saves,
+credentials or private machine-management code are included.
 
-## Current evidence and open failures
-
-Wave5 native and Windows drivers were built and installed; isolated CUA standard-control actions passed. The diagnostic DXMT PE was also installed for DS3. Installed byte identities are recorded in `PROVENANCE.json`; binaries, deployment state and private paths are excluded.
-
-Real-game computer-use discovery remains unresolved. An isolated AX fixture is not acceptance of Steam, Ubisoft or DS3. Borderless handling timed out during a real-game attempt, and a crash was observed after return to the desktop. Exclusive-fullscreen exit is NOT declared fixed: earlier attempts could leave a black desktop requiring forced restart. The source reentry guard fixes its bounded reproduced case, not every cause of display loss.
-
-No FPS boost is established. Frame API intervals are not displayed frame rate. GPU completion timestamps need explicit validity and clock-domain handling. A controlled same-scene/resolution/settings/cache before/after comparison remains required. Prince testing is deferred; authentication restrictions occurred on both compared Wine generations. No general compatibility claim is made for other games.
-
-## Licensing and reproducibility
-
-Wine-derived source/modifications retain LGPL-2.1-or-later notices, LICENSE and upstream attribution. DXMT source retains its own MIT license and embedded third-party notices. Two PNG test assets per DXMT tree are omitted to keep this text-only export; the exported PE build does not use those tests.
-
-Wine base archive SHA is retained, but verified upstream Git commit/download URL was not captured. Do not invent one. The archive itself and complete Wine build environment are not included. DXMT build scripts require an external LLVM-MinGW toolchain and exact release dependencies through `LLVM_MINGW` and `DXMT_RELEASE`; native Metal bridge and helper library are not redistributed here. This export supports source audit and offline fixtures, not an end-to-end reproducible installed runtime claim.
-
-Reviewed optional successors have separate uninstalled status; discovery source remains excluded. `PENDING_ACCEPTANCE.md` records these boundaries.
-
-## Reviewed optional successors
-
-`optional/borderless` adds a reviewed watchdog generation/phase helper candidate and its source fixture. `optional/sync-probes` adds reviewed wait/flush/commit-reason instrumentation plus matching consumer/analyzer tests. Both remain uninstalled; these are not evidence of an FPS improvement or fixed exclusive-fullscreen exit. Installed be876 renderer/source remains unchanged in `renderer/diagnostic`.
-
-Discovery remains an open failure even though a real CreateProcess target/helper were inventoried as distinct apps: the fixture supervisor bounded total lifetime to 180.82 seconds, while the getApp tool returned a timeout only after 667.9 seconds, after the fixture was already stopped. Control was not verified. A possible `_purecall` exit path is still a hypothesis; proprietary disassembly is excluded.
+Older checkpoints remain for comparison. Their historical status is not the
+current release status: start with `current/`, then consult
+[the retained history](history/PRE_VIBEWINE_README.md) when needed.

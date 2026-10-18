@@ -15,7 +15,7 @@ for label,tree in [('candidate',source),('baseline-negative-control',baseline)]:
  for marker,path,token in [('UPDATE','window.c','static void macdrv_client_surface_update('),('RECT_CONVERSION','macdrv.h','static inline CGRect cgrect_from_rect('),('RETINA_CONVERSION','macdrv_cocoa.h','static inline CGRect cgrect_mac_from_win(')]:
   fixture=fixture.replace('// '+marker,extract(tree/path,token))
  generated=root/(label+'.cpp');generated.write_text(fixture);exe=root/(label+'-test')
- command=['clang++','-std=c++20','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-DEXPECT_TOPLEVEL_NOQUERY='+('1' if label=='candidate' else '0'),'-fsanitize=address,undefined',str(generated),'-o',str(exe)]
+ command=['clang++','-std=c++20','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-DEXPECT_TOPLEVEL_NOQUERY='+('1' if label=='candidate' else '0'),'-DEXPECT_CHILD_PARENT_RELATIVE='+('1' if label=='candidate' else '0'),'-fsanitize=address,undefined',str(generated),'-o',str(exe)]
  c=subprocess.run(command,capture_output=True,text=True);(root/(label+'-build.log')).write_text(c.stdout+c.stderr)
  if c.returncode:print(c.stderr);raise SystemExit(c.returncode)
  r=subprocess.run([str(exe)],capture_output=True,text=True,timeout=15)

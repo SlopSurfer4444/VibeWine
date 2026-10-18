@@ -1,0 +1,54 @@
+--- a/src/dxgi/dxgi_output.cpp
++++ b/src/dxgi/dxgi_output.cpp
+@@ -502,18 +502,39 @@
+       defaultMode.RefreshRate.Denominator = activeMode.RefreshRate.Denominator;
+     }
+ 
+-    UINT modeCount = 0;
+-    GetDisplayModeList1(targetFormat, DXGI_ENUM_MODES_SCALING, &modeCount,
+-                        nullptr);
+-
+-    if (modeCount == 0) {
+-      ERR("No modes found");
+-      return DXGI_ERROR_NOT_FOUND;
+-    }
+-
+-    std::vector<DXGI_MODE_DESC1> modes(modeCount);
+-    GetDisplayModeList1(targetFormat, DXGI_ENUM_MODES_SCALING, &modeCount,
+-                        modes.data());
++    // The display topology can change between the count and fill calls. Never
++    // search a partial list or the value-initialized tail of a shrinking list.
++    // Bound retries so a continuously changing topology cannot stall the caller.
++    constexpr UINT maxModeListAttempts = 3;
++    std::vector<DXGI_MODE_DESC1> modes;
++    for (UINT attempt = 0; attempt < maxModeListAttempts; attempt++) {
++      UINT modeCount = 0;
++      HRESULT hr = GetDisplayModeList1(targetFormat, DXGI_ENUM_MODES_SCALING,
++                                      &modeCount, nullptr);
++      if (FAILED(hr))
++        return hr;
++      if (modeCount == 0) {
++        ERR("No modes found");
++        return DXGI_ERROR_NOT_FOUND;
++      }
++
++      modes.resize(modeCount);
++      hr = GetDisplayModeList1(targetFormat, DXGI_ENUM_MODES_SCALING,
++                               &modeCount, modes.data());
++      if (hr == DXGI_ERROR_MORE_DATA) {
++        if (attempt + 1 == maxModeListAttempts)
++          return hr;
++        continue;
++      }
++      if (FAILED(hr))
++        return hr;
++
++      // Defend against a provider reporting success beyond supplied capacity.
++      if (modeCount > modes.size())
++        return DXGI_ERROR_MORE_DATA;
++      modes.resize(modeCount);
++      break;
++    }
+ 
+     FilterModesByDesc(modes, *pModeToMatch);
+     FilterModesByDesc(modes, defaultMode);

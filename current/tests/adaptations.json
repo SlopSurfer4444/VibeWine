@@ -22,14 +22,14 @@
     {
       "file": "client-extent/fixture.cpp",
       "originalSha256": "21c1712b8ccdd75858c64dddadd7341669ed6746f896d4a43d0c75cb065eaa15",
-      "exportSha256": "21c1712b8ccdd75858c64dddadd7341669ed6746f896d4a43d0c75cb065eaa15",
-      "adaptation": "Unchanged fixture source"
+      "exportSha256": "27e84d84c3bc0ff4e89cf3deddf4bd6c658bc39719248391d01f6c143ee51694",
+      "adaptation": "Candidate child coordinates relative to existing client-view parent; historical baseline behavior retained; Retina/non-Retina no-parent coverage added (15 to 17 cases)"
     },
     {
       "file": "client-extent/test_client_extent.py",
       "originalSha256": "618696e7f34140fcb5111beb4e71574eac2ed25bdf68fba6c3b4c27ca269a5e2",
-      "exportSha256": "ebe06e6354bdda9a54fa97d4b1f1e06365d8a17dfa5e65f7a235dee6011d5282",
-      "adaptation": "Repository-relative candidate and baseline paths; flat exported winemac layout"
+      "exportSha256": "f3d70f9be9a1791005cd0d853e6b06941c8921cfdbc8a98657c0667e65e83209",
+      "adaptation": "Repository-relative candidate/baseline paths and flat winemac layout; separate candidate child-parent-relative expectation"
     },
     {
       "file": "mode-limit/fixture.cpp",
@@ -42,6 +42,21 @@
       "originalSha256": "00486427e178f51a2529e667a7597c3d0d78a21e42b5866801f1bf3708acdf34",
       "exportSha256": "f648e0888a7ed90cfcfb68506ec1a1c4e421038ef68b40c95342b3c28fac5d9c",
       "adaptation": "Repository-relative source; private mode archive replaced by deterministic 37 sizes x 3 bpp; source extraction and assertions retained"
+    },
+    {
+      "file": "closest-mode/run.py",
+      "originalSha256": "9a59b8b7163bf67c843bffa86ac02c54f3ca1b3805fc3257c1c83caf8fb08d1c",
+      "exportSha256": "26664df2e39b30db92ad2a757e64fd460a596932492aac7124d4d3b5c90f21d1",
+      "adaptation": "Repository-relative source, temporary default outputs, optional exact reverse-patch predecessor control"
+    },
+    {
+      "file": "closest-mode/fixture.cpp",
+      "originalSha256": "d6d0fa65e61b5ff86e38f6c717f260e96997534840b45c6cef7346d1f9db89e5",
+      "exportSha256": "d6d0fa65e61b5ff86e38f6c717f260e96997534840b45c6cef7346d1f9db89e5",
+      "adaptation": "Unchanged production-method fixture with synthetic catalogs"
     }
+  ],
+  "additionalMetadata": [
+    "surface/adaptations.json"
   ]
 }

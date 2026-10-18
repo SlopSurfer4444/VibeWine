@@ -1195,7 +1195,8 @@ static void macdrv_client_surface_update(struct client_surface *client)
         rect = data->rects.client;
         OffsetRect(&rect, -data->rects.visible.left, -data->rects.visible.top);
     }
-    else
+    else if (!data->client_view)
+        /* A client-view parent already contributes the client-to-visible offset. */
         OffsetRect(&rect, data->rects.client.left - data->rects.visible.left, data->rects.client.top - data->rects.visible.top);
     macdrv_set_view_frame(surface->cocoa_view, cgrect_from_rect(rect));
     macdrv_set_view_superview(surface->cocoa_view, toplevel == hwnd ? NULL : data->client_view, data->cocoa_window, NULL, NULL);
@@ -1236,15 +1237,17 @@ struct macdrv_client_surface *macdrv_client_surface_create(HWND hwnd)
     NtUserGetClientRect(hwnd, &rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
     NtUserMapWindowPoints(hwnd, toplevel, (POINT *)&rect, 2, NtUserGetWinMonitorDpi(toplevel, MDT_RAW_DPI));
 
-    surface = client_surface_create(sizeof(*surface), &macdrv_client_surface_funcs, hwnd);
-    surface->cocoa_view = macdrv_create_view(cgrect_from_rect(rect));
+    if (!(surface = client_surface_create(sizeof(*surface), &macdrv_client_surface_funcs, hwnd)))
+        return NULL;
+    if (!(surface->cocoa_view = macdrv_create_view(cgrect_from_rect(rect))))
+    {
+        client_surface_release(&surface->client);
+        return NULL;
+    }
     macdrv_set_view_hidden(surface->cocoa_view, TRUE);
 
-    if (surface)
-    {
-        macdrv_client_surface_update(&surface->client);
-        macdrv_client_surface_present(&surface->client, 0);
-    }
+    macdrv_client_surface_update(&surface->client);
+    macdrv_client_surface_present(&surface->client, 0);
 
     return surface;
 }

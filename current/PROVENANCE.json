@@ -1,17 +1,40 @@
 {
   "date": "2026-10-18",
-  "deliveryCommit": "cb1bf619dbcba969703a17ed63f17ea7ea9246fd",
+  "deliveryCommit": "0264c2350c14f8bf2e5cd930a5a03a8a153ab6a9",
+  "deliveryCommits": [
+    "83116b3a6ee2974e9ff64ef7585c6a26ccb6c1ae",
+    "0264c2350c14f8bf2e5cd930a5a03a8a153ab6a9"
+  ],
+  "followup": {
+    "gameStarted": false,
+    "gameplayVerified": false,
+    "generalDxgiFix": "FindClosestMatchingMode1 count/fill HRESULTs, actual count and bounded retries; profile cap unchanged",
+    "generalSurfaceFix": "allocation/native creation failure cleanup and child parent-coordinate composition",
+    "installedReadback": "INSTALLED_HASHES_VERIFIED",
+    "publicPredecessorCommit": "d33a4f3ca32cd86b3a80c5b39867f4475a6973f6",
+    "sourceRelation": "Exact production text from the offline-built and privately packaged component sources; no private delivery implementation included",
+    "unchangedComponents": [
+      "ntdll.so",
+      "d3d11.dll",
+      "winemetal.so"
+    ]
+  },
   "installedBinarySha256": {
     "d3d11.dll": "54329c945747632e609b0df454aa21978c37067c8f1deb09af2e9dc1d43bd381",
-    "dxgi.dll": "de7abfd21175767e1d61dc7574c889f2f134aa32f8089d8888d5303f1330f936",
+    "dxgi.dll": "afa62e31f6551749523522dbc3410cd1383fa97c6b70e8ca21d5b36227be39a8",
     "ntdll.so": "8d6411e909f4d74ae641b829b37e8f09bd01988085e90d2fe51929bfd611405d",
-    "winemac.so": "a2a6e971df8b30096278e3f5cd47c62bd9900e6495c64f9c10037c3a10c06894",
+    "winemac.so": "1cdf040f50d52d8236921078486e95015057dfecd493bd5bbadca614fe8084b8",
     "winemetal.so": "32b4e0a67267d648e7ab976fb793c529869c3e55a1ce30e2263f8d959a5e8ca2"
   },
   "omittedNonTextUpstreamAssets": [
     "dxgi-source/tests/dx11/testTexture.png",
     "dxgi-source/tests/dx11/test.png"
   ],
+  "patchSha256": {
+    "dxgi-closest-mode.patch": "221d48600432299aa3851a33ae35cf0ab377bae284ac54f2cab96a85a768d1cf",
+    "surface-followup.patch": "de9e4cf52aa6d77b3c279b88db1a0b38b3857459f2628a065126466e0559e9ad",
+    "wine-fixes.patch": "e7e50fcbcd2aa9631513635293163131559799d55dfcc69856b35c89b958e8a1"
+  },
   "schema": 1,
   "scope": "Source-only installed post-Wave7 fixes; no private admission/lifecycle source",
   "sourceSha256": {
@@ -186,7 +209,7 @@
     "dxgi-source/src/dxgi/dxgi_object.hpp": "31d2289bfd008bd329ed70e0b6cbfdd4ad78cee147345bcfde18d95961c86634",
     "dxgi-source/src/dxgi/dxgi_options.cpp": "80d321fac3021158054ce9e4616b79458b694a33bca42ffdf2ad5858f0b3d83f",
     "dxgi-source/src/dxgi/dxgi_options.hpp": "b82a078b97556f603accf1b2e3ad31eb3eeadfdac672eda7e58d9dd940fa2a40",
-    "dxgi-source/src/dxgi/dxgi_output.cpp": "ce98aeb452952a73be5f78b272c9c2a754c238eaa3d3e0a2267a33093adba7f2",
+    "dxgi-source/src/dxgi/dxgi_output.cpp": "8f1cea993cfc1208d4cf8c9d7075f82c2639587ba2fbdf73080998bc9a6fcf3e",
     "dxgi-source/src/dxgi/dxgi_output.hpp": "92db6e325ad89b3d79b718d847047eda6a4ac75ac54e5e595515904c1e73ac1a",
     "dxgi-source/src/dxgi/dxgi_resource.hpp": "84b82a1da1bf457b8968155de4fc38b1ce542a1b3a02ecd54dbb538b17caf4c3",
     "dxgi-source/src/dxgi/meson.build": "9494a8a9e0752ae8e885f177cbb33e38ef7217cb20cd2ca85c626888650457cf",
@@ -348,8 +371,10 @@
     "dxgi-source/tests/meson.build": "5cea2b44bac8a7e12710832c76fa7e388cb730e2f5c80afc957dbcf060beb01b",
     "dxgi-source/version.h.in": "7df6667ca57b57a2d4301c7c781a45c8b5431e0c024479d1cc69545367c34bd4",
     "ntdll/sync.c": "6388ba964be344a17daceeb06b6597375090b6d08c4e689c0e3f11e0ef56872a",
+    "winemac/cocoa_window.m": "0155888fb32b4d8524010fd8a1b67b9ae3aad668dea91f9839acf640b0e8e861",
+    "winemac/d3dmetal.c": "ad50918b2feb432d2abcb04d1d54a9d58e0a599edb222a6ea4b028e02f7c84ba",
     "winemac/macdrv.h": "b54bb9ee52afcc8684d6761471ce075c9cb2470a216a958b11027e3e76e86e0f",
     "winemac/macdrv_cocoa.h": "63792e5b5acfc51b70c9147e5349af98ead37f3acd452f0ed1e3c49601ef845e",
-    "winemac/window.c": "89d453c1c46d59e40cd96ab370c44ec5f9d0647a1413f2d959fb68fadce420c8"
+    "winemac/window.c": "9b6ecd3db0c625e440025bd43e3197b852fb16304ea8e77e7725813300c827be"
   }
 }

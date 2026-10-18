@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "scope": "Portable source-fixture adapters and minimal LGPL production context only; no runtime acceptance is claimed.",
+  "context": [
+    {
+      "file": "context/win32u_client_surface.c",
+      "origin": "Wine dlls/win32u/window.c",
+      "originalSourceSha256": "48a94f172ff56ca96e45f94d96a9f23656a1c4f8909e27defa7f17c996da7ed5",
+      "exportSha256": "e59adb1ed944123ec65756a8a22eee98db09fa1dd06da52139f0a56f298a5522",
+      "adaptation": "Exact client_surface_create and client_surface_release definitions with original source license header; all unrelated production code omitted."
+    },
+    {
+      "file": "context/wine/list.h",
+      "origin": "Wine include/wine/list.h",
+      "originalSourceSha256": "0a26ad30970b147c06f2068e6e419f88b638db03414aed653fc4df594ef73ae7",
+      "exportSha256": "0a26ad30970b147c06f2068e6e419f88b638db03414aed653fc4df594ef73ae7",
+      "adaptation": "Unchanged upstream linked-list header, copyright and LGPL notice retained."
+    }
+  ],
+  "fixtures": [
+    {
+      "file": "fixture.mm",
+      "originalSha256": "0863ffe25fb5225a374eba2fe37e1a3f7b2400bd7c1e9cda3fb61410feb6a301",
+      "exportSha256": "0863ffe25fb5225a374eba2fe37e1a3f7b2400bd7c1e9cda3fb61410feb6a301",
+      "adaptation": "Unchanged Objective-C++ surface fixture with 23 candidate cases and original allocation, lifetime and child-composition controls."
+    },
+    {
+      "file": "run.py",
+      "originalSha256": "4503a0163f420712aef349fbd4142cabddea5a8a282f42ecb9ec321fe862e11e",
+      "exportSha256": "5d0d94be36772c312e65d9e67e0685c1945f6caa11e97d67472fe1f7843b2115",
+      "adaptation": "Repository-relative flat source layout; exact core definitions and linked-list header supplied in public context; predecessor reconstructed by reversing current/surface-followup.patch in a temporary copy; generated files automatically removed. Existing source extraction substitutions and all eight isolated fault/composition controls retained."
+    }
+  ]
+}
