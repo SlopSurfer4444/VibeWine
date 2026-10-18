@@ -976,7 +976,7 @@
     {
       "source": "component/wine: opt-in bounded process network metadata",
       "destination": "dlls/ws2_32/tests/netdiag/README.md",
-      "sha256": "df8f64bc460d6ccfac4b72762d460a45ce0b9a44e1209349a220918c2f33bd51"
+      "sha256": "701b974d33909b2201fc1b0a30ef77322b0a04e6fd21bbb5bef9ea51d64a0e64"
     },
     {
       "source": "component/wine: opt-in bounded process network metadata",
@@ -1006,7 +1006,7 @@
     {
       "source": "component/wine: opt-in bounded process network metadata",
       "destination": "dlls/ws2_32/tests/netdiag/windows-fixture.c",
-      "sha256": "a18357ca690401015bcab350f9f87f6e27b66f618ed939a4d5aa269b6bbe6c64"
+      "sha256": "b6b4c07e7bc10d25cdc6fbb402db90d8fe85f101afeefecd49937b4f8325615c"
     },
     {
       "source": "component/wine: opt-in bounded process network metadata",

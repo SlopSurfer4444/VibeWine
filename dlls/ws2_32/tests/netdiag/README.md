@@ -106,7 +106,7 @@ appear in the capture or JSON. API assertions print only counts and error codes.
 Run it first without opt-in against the intended private runtime, then with a
 fresh exact-executable-bound session. The optional `--wait-arm` mode first
 creates and closes a socket to claim the prepared file, prints readiness, and
-waits three seconds for the separate host controller to arm. The scenario's
+waits thirty seconds for the separate host controller to arm. The scenario's
 bounded wait budget starts afterward. Missing recording is an integration
 failure even if the API fixture passes.
 

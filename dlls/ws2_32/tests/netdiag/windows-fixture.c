@@ -259,7 +259,7 @@ int main(int argc, char **argv)
             closesocket(claim);
             printf("ready=1 windows_pid=%lu\n", (unsigned long)GetCurrentProcessId());
             fflush(stdout);
-            Sleep(3000);
+            Sleep(30000);
             started = GetTickCount();
         }
         numeric_dns();
