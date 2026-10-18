@@ -46,11 +46,17 @@ Rejected records do not advance the last accepted sequence.
 ARM and RELEASE require a completely neutral gamepad. ARM makes the backend
 ready; STATE requires a live ARM. RELEASE unarms and returns neutral. Once an ARM
 has been accepted, all later records including ARM require that Windows PID.
-The lease uses `GetTickCount64()` at first observation of a new accepted sequence;
+The lease uses a fresh `GetTickCount64()` value after command file I/O and
+validation when a new sequence is accepted;
 repeated reads never refresh it. A command may be observed after the writer has
 stopped, so each hold is limited to at most its lease **after receipt**, not after
 host publication. Read operations are rate limited to once per 4 ms; expiry is
-checked on every query. Expiry, malformed/missing input, replay, release, or
+checked on every query, again after command I/O before accepting a new sequence,
+and after receipt/diagnostic I/O immediately before the state copy or keystroke
+processing. An expired ARM cannot authorize a held STATE that was being read.
+A fresh neutral ARM accepted after slow I/O receives its lease from the fresh
+acceptance clock. There is no bound on scheduling after the final handoff.
+Expiry, malformed/missing input, replay, release, or
 `XInputEnable(FALSE)` returns neutral and requires a new neutral ARM before held
 STATE. Enabling never replays a held state. Repeating Enable(TRUE) is harmless.
 A disabled backend continues returning a connected, neutral controller.
@@ -80,8 +86,11 @@ GetKeystroke may update the backend but cannot publish a poll receipt; the next 
 Enable transitions do not publish receipts; re-enabling reports INVALID until a
 fresh ARM.
 Consumers must validate token, PID, requested accepted sequence/status, and a
-poll count higher than their pre-command baseline. A receipt proves DLL polling
-and a returned controller state, not game simulation, screen changes, or gameplay.
+poll count higher than their pre-command baseline. A receipt proves an actual
+DLL state poll and acceptance of the reported sequence at the ACK boundary, not game simulation, screen changes, or gameplay. ACK file
+I/O can itself cross a lease: the final handoff then returns neutral even if the
+earlier ACK says STATE. An ACK is therefore not proof that a held value reached
+the caller or that the caller subsequently resumed execution.
 
 Each XInput DLL compiled from this source owns independent backend state. When
 multiple versions are loaded in one process, each must see ARM, and their shared
@@ -90,6 +99,78 @@ attribution only when the process uses one proven provider. It does not claim
 cross-module synchronization or combined poll counts. xinput9_1_0 delegates to
 xinput1_4 and therefore uses that module's state. Native overrides/hot patches can
 bypass this builtin path and must be verified separately.
+
+## Optional diagnostic snapshot
+
+`VIBEWINE_XINPUT_TEST_DIAGNOSTICS=1` additionally enables observations only after
+all ordinary path/token/executable opt-in checks pass. Other values or an absent
+flag create no diagnostic output. It adds no input transport, timer, worker,
+foreground request, or synthetic GetState poll. Use a fresh private session for
+each run; an old sidecar does not establish current activity.
+
+Actual valid slot-zero state, keystroke, or enable calls may atomically replace
+`<input file>.diag` via `<input file>.diag.tmp.<WindowsPID>`. It is a single JSON
+object with LF, version1, below2048bytes; write attempts start at most once per
+100ms. This bounds storage/frequency, **not synchronous filesystem latency**.
+Compare paired diagnostics-off/on behavior before attributing a timing change to
+the game. Diagnostic I/O runs before the final expiry guard and preserves the
+underlying LastError. It cannot extend a lease.
+
+The schema contains:
+
+- `token`, `pid`, `module`: session token, Windows PID and sanitized DLL basename,
+  never a filesystem path. Same sole-provider admission as the ACK is required.
+- `snapshot_tick`, `sequence`, `status`, `enabled`, `armed`, `deadline`: captured
+  backend state before that snapshot's own I/O and final handoff. It may already
+  be stale when read. Tick/deadline fields are process GetTickCount64 milliseconds,
+  not wall time or host monotonic-clock values.
+- `accepted_sequence`, `accepted_via`, `accepted_tick`: last newly accepted
+  command; via1 means GetState/GetStateEx, via2 means GetKeystroke,0 means none.
+  Key-only consumption never advances ACK GetState pollcount or writes an ACK.
+- `state_entries/exits`, `key_entries/exits`, `enable_entries/exits`, each with
+  `*_enter_tick`, `*_exit_tick`, and `*_thread`: atomic call counts/timestamps
+  and last-entry **Windows** thread ID after opt-in and argument validation.
+  Entries are recorded before acquiring the backend lock. Exits denote the
+  final pre-copy/pre-keystroke-processing/pre-return handoff while holding that
+  lock; they do not prove caller resumption. The current call's exit appears
+  only in a subsequent snapshot. Counter/timestamp/thread fields are sampled
+  separately: this is not an atomic multi-field sample. Timestamps are bounded
+  best-effort atomic maxima and may omit an update under repeated contention;
+  thread IDs are not paired atomically with ticks and are not native Mach IDs.
+- `handoff_tick`, `handoff_sequence`, `handoff_api`, `handoff_status`: last final
+  expiry-checked handoff retained in memory. API1=state,2=key,3=enable;0/NONE means
+  no prior handoff. A later snapshot exposes the previous handoff, not its own.
+- `enable_transitions`, `enable_tick`: actual boolean transitions, including
+  disable; repeated Enable(TRUE) does not count as a transition or rearm.
+- `io_entries/exits/failures`, `io_stage`, `io_enter_tick`, `io_exit_tick`,
+  `io_error_stage`, `io_error`, `io_error_tick`: command/ACK operation boundaries
+  and cumulative failures with the last failure's Windows error. Stages1..8 are
+  command open/type/read/close and ACK open/write/close/rename. A short successful
+  ACK write records synthetic ERROR_WRITE_FAULT; failed Win32 calls retain their
+  immediate error. The cleanup DeleteFile calls are not separately instrumented.
+- `snapshot_failures`, `snapshot_error`: optional sidecar failures, visible only
+  if a subsequent snapshot succeeds. Successful partial snapshot writes are
+  likewise ERROR_WRITE_FAULT. These fields exclude ordinary command validation
+  failures, which are represented by backend INVALID status.
+
+Missing output, unchanged mtime, no new counter, or a difference between entries
+and exits cannot independently prove whether no API was called, initialization
+or lock acquisition blocked, synchronous I/O blocked, the game paused, or the
+snapshot writer failed. Memory entry/I/O boundaries cannot publish themselves
+while the same call is blocked. Use the retained Windows thread IDs as a clue
+with an independently identity-bound OS stack sample, rather than treating the
+sidecar as a live watchdog. It does not observe Metal nextDrawable, native Space
+membership, Windows activation messages, or game simulation.
+
+Run `python3 dlls/xinput1_3/tests/process-local/run_native_expiry.py` for native
+fault injection using the entire unchanged shipping header and Win32 clock/I/O
+mocks. The pinned predecessor must fail the new expiry-crossing cases and the
+candidate must pass. This executes no Wine and proves no real filesystem timing
+or background-game behavior. The executable fixture additionally supports mode
+`diagnostics` (same arguments as `enabled`) for the full DLL API regression plus
+bounded JSON binding, key-only acceptance, and unchanged ACK checks. Root must
+run actual default/enabled/diagnostics console modes in the private quarantine
+before any game candidate is admitted.
 
 ## Build and executable regression fixture
 
@@ -166,3 +247,24 @@ and inspected, not executed in that regression. No production provider was
 installed, and background DS3 behavior or FPS was not tested by these checks.
 The implementation and fixtures were AI-assisted; source review, compile logs,
 PE metadata, real exported-API results, and the staged source diff were checked.
+
+## Expiry/diagnostic candidate verification (2026-10-19)
+
+The entire shipping header passes31 deterministic native cases. The pinned
+10557ac predecessor fails all15 deadline-crossing faults and passes2 ordinary
+controls. Native diagnostics cover blocking I/O at each snapshot handoff,
+100ms throttling, separate key consumption, prior-handoff observations, short
+writes and LastError preservation; worst-value serialized JSON is1480bytes.
+These are single-thread mocks, not filesystem or game scheduling evidence.
+
+The private build-v4 compiled full x64 xinput1_3/xinput1_4 sources, uniquely named
+fixture DLLs and the console executable using the existing configured Wine
+build. All15 compile/link/inspection commands passed, and export tables matched
+the prior fixture build. No installed module was replaced. Root then ran the
+unique xinput1_3 DLL in a fresh isolated Wine prefix with networking denied:
+enabled419/default11/wrongprocess11/diagnostics483 assertions, all0 failures;
+scoped wineserver cleanup exited0. The diagnostics mode checked actual JSON
+binding and GetKeystroke acceptance without a GetState ACK. Retained private
+evidence is background-xinput-expiry-live-v4/result.json. This clears only the
+console candidate; inactive/offscreen DS3 progress, cursor behavior, Space
+handling and renderer behavior still require separate evidence.

@@ -15,6 +15,7 @@ static void (WINAPI *enable)(BOOL);
 static char path[MAX_PATH], token[] = "0123456789abcdef0123456789abcdef";
 static unsigned failures, assertions;
 static uint64_t sequence;
+static BOOL diagnostics;
 
 #define CHECK(x) do { ++assertions; if (!(x)) { printf("FAIL line %u: %s\n", __LINE__, #x); ++failures; } } while (0)
 
@@ -145,6 +146,49 @@ static void check_ack(const char *expected)
     check_ack_record(expected, sequence);
 }
 
+static unsigned long long diagnostic_number(const char *data, const char *name)
+{
+    char field[64];
+    const char *value;
+    unsigned long long number = ~(uint64_t)0;
+
+    snprintf(field, sizeof(field), "\"%s\":", name);
+    value = strstr(data, field);
+    CHECK(value != NULL);
+    if (value) CHECK(sscanf(value + strlen(field), "%llu", &number) == 1);
+    return number;
+}
+
+static void check_diagnostic(uint64_t accepted, unsigned via)
+{
+    char diagnostic_path[MAX_PATH + 8], data[2048], binding[64];
+    HANDLE file;
+    DWORD length = 0;
+
+    if (!diagnostics) return;
+    snprintf(diagnostic_path, sizeof(diagnostic_path), "%s.diag", path);
+    file = CreateFileA(diagnostic_path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                       NULL, OPEN_EXISTING, 0, NULL);
+    CHECK(file != INVALID_HANDLE_VALUE);
+    if (file == INVALID_HANDLE_VALUE) return;
+    CHECK(GetFileSize(file, NULL) < sizeof(data));
+    CHECK(ReadFile(file, data, sizeof(data) - 1, &length, NULL));
+    CloseHandle(file);
+    data[length] = 0;
+    CHECK(length && data[0] == '{' && data[length - 1] == '\n');
+    CHECK(diagnostic_number(data, "version") == 1);
+    CHECK(diagnostic_number(data, "pid") == GetCurrentProcessId());
+    snprintf(binding, sizeof(binding), "\"token\":\"%s\"", token);
+    CHECK(strstr(data, binding) != NULL);
+    CHECK(strstr(data, "\"module\":\"vibewine_test_xinput1_") != NULL);
+    CHECK(diagnostic_number(data, "accepted_sequence") == accepted);
+    CHECK(diagnostic_number(data, "accepted_via") == via);
+    CHECK(diagnostic_number(data, "state_entries") > 0);
+    CHECK(diagnostic_number(data, "state_exits") > 0);
+    CHECK(diagnostic_number(data, "io_entries") >= diagnostic_number(data, "io_exits"));
+    CHECK(diagnostic_number(data, "snapshot_failures") == 0);
+}
+
 int main(int argc, char **argv)
 {
     HMODULE module;
@@ -166,12 +210,17 @@ int main(int argc, char **argv)
         duration = strtoul(argv[3], NULL, 10);
         if (!duration || duration > 45000) return 97;
     }
-    optin = !strcmp(argv[1], "enabled");
+    diagnostics = !strcmp(argv[1], "diagnostics");
+    optin = !strcmp(argv[1], "enabled") || diagnostics;
     if (!listening)
     {
         snprintf(path, sizeof(path), "%s", argv[3]);
         snprintf(ack_path, sizeof(ack_path), "%s.ack", path);
         DeleteFileA(ack_path);
+        snprintf(ack_path, sizeof(ack_path), "%s.diag", path);
+        DeleteFileA(ack_path);
+        snprintf(ack_path, sizeof(ack_path), "%s.ack", path);
+        SetEnvironmentVariableA("VIBEWINE_XINPUT_TEST_DIAGNOSTICS", diagnostics ? "1" : NULL);
     }
     GetModuleFileNameA(NULL, exe, sizeof(exe));
     if (listening) { /* Preserve the companion-provided environment. */ }
@@ -286,6 +335,13 @@ int main(int argc, char **argv)
     CHECK(GetTickCount() - started >= 4);
     get_key(0, 0, &key);
     CHECK(ack_sequence() == sequence - 1); /* GetKeystroke cannot ACK delivery */
+    if (diagnostics)
+    {
+        Sleep(110);
+        get_key(0, 0, &key);
+        CHECK(ack_sequence() == sequence - 1);
+        check_diagnostic(sequence, 2); /* independently identifies key acceptance */
+    }
     enable(FALSE); enable(TRUE);
     CHECK(neutral(poll_neutral()));
     check_ack("INVALID");
@@ -296,6 +352,7 @@ int main(int argc, char **argv)
     publish(XINPUT_GAMEPAD_B, 0, 1000, GetCurrentProcessId(), TRUE);
     CHECK(neutral(poll_neutral()));
     check_ack_record("INVALID", sequence - 1);
+    if (diagnostics) check_diagnostic(sequence - 1, 1);
     arm();
     saved_sequence = sequence;
     sequence += 10000;

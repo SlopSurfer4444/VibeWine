@@ -937,6 +937,36 @@
       "source": "component/wine: opt-in process-local XInput test backend",
       "destination": "dlls/xinput1_3/tests/process-local/fixture.c",
       "sha256": "b753c9ffccc7e03ca415cc27bc4b534a5dca74838b8be847b173a62256cbfa03"
+    },
+    {
+      "source": "component/wine: process-local XInput expiry and optional observations",
+      "destination": "dlls/xinput1_3/main.c",
+      "sha256": "0098fd1239c8037e9cbb193f865ec58d08bf65a6c16ba4d5a72a2e9b2eb097de"
+    },
+    {
+      "source": "component/wine: process-local XInput expiry and optional observations",
+      "destination": "dlls/xinput1_3/test_backend.h",
+      "sha256": "4608cb72f79d6b81a2b21249020d0621be3b88edc6a4eeb1dec64d627eb03908"
+    },
+    {
+      "source": "component/wine: process-local XInput expiry and optional observations",
+      "destination": "dlls/xinput1_3/tests/process-local/README.md",
+      "sha256": "42b6b2cbabfe5888bec59eb2e3024abdcf66f2a9576f2f840f5355312193a74e"
+    },
+    {
+      "source": "component/wine: process-local XInput expiry and optional observations",
+      "destination": "dlls/xinput1_3/tests/process-local/fixture.c",
+      "sha256": "06718b03f5e3c1db16399e475cc33113af0291af0e85ed56b59a96ae2c537b8a"
+    },
+    {
+      "source": "component/wine: process-local XInput expiry and optional observations",
+      "destination": "dlls/xinput1_3/tests/process-local/native-expiry-fixture.c",
+      "sha256": "63034d91432466eb90012079620960b89802a6caa25f49ae20c7520b688275d0"
+    },
+    {
+      "source": "component/wine: process-local XInput expiry and optional observations",
+      "destination": "dlls/xinput1_3/tests/process-local/run_native_expiry.py",
+      "sha256": "9c79cab9fc076032de96ede335fe3aaeb4bc087c4f2f073ac181107c343a7af8"
     }
   ]
 }

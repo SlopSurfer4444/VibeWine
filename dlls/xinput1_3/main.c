@@ -119,9 +119,9 @@ static struct xinput_controller controllers[XUSER_MAX_COUNT] =
     {{ &controller_critsect_debug[3], -1, 0, 0, 0, 0 }},
 };
 
-#include "test_backend.h"
-
 static HMODULE xinput_instance;
+
+#include "test_backend.h"
 static HANDLE start_event;
 static HANDLE update_event;
 
@@ -1104,8 +1104,11 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetKeystroke(DWORD index, DWORD reserved, P
         DWORD ret;
         if (!keystroke) return ERROR_BAD_ARGUMENTS;
         if (index && index != XUSER_INDEX_ANY) return ERROR_DEVICE_NOT_CONNECTED;
+        test_diagnostics_enter(TEST_KEY);
         EnterCriticalSection(&test_backend_cs);
         test_backend_poll(FALSE);
+        test_diagnostics_snapshot();
+        test_diagnostics_exit(TEST_KEY, test_backend_expire());
         ret = check_gamepad_keystroke(0, keystroke, &test_backend.state.Gamepad, &test_backend.last_keystroke);
         LeaveCriticalSection(&test_backend_cs);
         return ret;
