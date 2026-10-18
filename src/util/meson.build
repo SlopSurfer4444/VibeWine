@@ -39,7 +39,7 @@ else
 endif
 
 util_lib = static_library('util', util_src,
-  include_directories : [ dxmt_include_path ],
+  include_directories : [ dxmt_include_path, include_directories('../winemetal') ],
 )
 
 util_dep = declare_dependency(

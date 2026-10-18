@@ -35,3 +35,9 @@ A complete runtime build additionally needs LLVM 15.0.7 native x86_64 developmen
 Source and fixture results do not establish FPS gains. Full matched linking, native/GPU integration, fullscreen recovery, dynamic-resolution behavior, and repeated game launch remain distinct acceptance stages. The inherited upstream release workflow is reference infrastructure; this component branch does not claim automatic PR/release validation from that workflow.
 
 Known follow-ups: GS/TS marshal products and zero-dimension handling still need dedicated overflow/zero-input verification against this exact helper; this port does not claim to fix inherited arithmetic edge cases. A failed missing-drawable fallback blit-encoder allocation also needs end-to-end command-buffer failure propagation rather than silently skipping dependent fence updates.
+
+## Full build verification (2026-10-18)
+
+The standard Meson cross build completed with LLVM 15.0.7 static x86_64 libraries, LLVM-MinGW 20260826, Xcode 27.1/Metal, and matching source-built Wine dependencies. It linked D3D11, DXGI, D3D10Core, the PE Wine-Metal bridge, native Wine-Metal/AIRCONV, and the AIRCONV command-line tool. The tool's `--help` smoke invocation completed successfully. A missing target-private Wine-Metal header path in the WSI utility build was corrected.
+
+This establishes compilation and linking of the coordinated candidate, not installed runtime acceptance. The build uses the current host SDK; deployment compatibility with older macOS releases is not established. Shader conversion, GPU rendering, real AppKit window transitions and game performance still require their own tests. No game installation was changed.
