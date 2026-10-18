@@ -204,3 +204,33 @@ These runs establish the transport and consumer API behavior, including
 independent expiry. They do not establish DS3 background polling, visible game
 actions, unchanged Spaces, or performance overhead. Production DS3 was not
 modified by these fixture runs; a separately bound game trial is still required.
+
+### DS3 background-menu trial, 2026-10-18
+
+A separate temporary runtime using Wine source commit
+`10557ac06d458d48cc874799adc655050108e5a1` loaded the patched XInput 1.3 DLL.
+Process text mappings identified that exact private DLL; the stricter native
+region scanner exhausted its region budget, so its result was not counted as
+positive evidence. No second patched XInput provider was installed.
+
+Actual game images confirmed virtual A/B and D-pad actions: title-screen
+confirmation, warning/news dismissal, main-menu selection changes and Continue.
+A native observer recorded the same other foreground application before and
+after a confirmation action, with DS3 inactive. A separate public WindowServer
+observer found the exact DS3 window in the complete window list but absent from
+both onscreen samples. These observations establish inactive/offscreen menu
+control; they do not identify a specific macOS Space.
+
+The game continued polling, acknowledged state and release packets, and reported
+EXPIRED after a bounded neutral ARM lease. Separate CLI invocations initially
+failed acknowledgment, consistent with ARM-lease expiry between processes;
+the single-process `pulse` command avoids that inter-process timing gap
+and was exercised against the live game. Its 28 host tests also passed.
+
+Character loading repeatedly encountered DS3-server or Steam-connection errors.
+No world movement, combat, FPS gain, background-rendering equivalence or
+continuous unattended gameplay is claimed. The game was closed through the
+native application menu (not the in-game normal-exit path), its owned Steam was
+shut down, and the exact ordinary launch settings were restored and verified.
+The game may consequently show its improper-exit notice on the next start.
+This remains an opt-in experiment, not a production replacement.
