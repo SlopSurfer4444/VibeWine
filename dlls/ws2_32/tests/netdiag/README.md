@@ -158,3 +158,34 @@ ECONNREFUSED. No TCP reset or other system setting is changed by the fixture.
 If another process takes the port in the small close/connect interval, the
 existing refusal assertions fail; a successful connection is not accepted as
 the expected refusal.
+
+## Narrow runtime acceptance, 2026-10-18
+
+A separately owned private x64 Wine console run of the corrected closed-port
+fixture passed58assertions with recording absent, then59assertions with the
+executable-bound recorder enabled. Both fresh-prefix sessions settled cleanup.
+The enabled run proved actual executable mappings for all three pinned modules,
+with one retained native PID/birth and the expected Windows PID. No production
+runtime, game prefix, account or network setting was changed for these probes.
+
+Independent read-only audits found62 committed raw/JSON records, contiguous
+sequences and zero drops. Observed coverage was numeric DNS answers, the
+expected invalid-query error and asynchronous completion; nonblocking TCP
+pending, successful/refused FD_CONNECT and SO_ERROR observations; native UDP
+send/receive42-byte attempts and completion; overlapped incomplete/successful
+observations; and seven matched OPEN/CLOSED lifetimes including reused socket
+values with distinct lifetime IDs. The fixture's payload sentinel was absent
+from the raw mapping, JSON and console output. The token is intentionally in
+the private raw header and absent from dumped records/text.
+
+The queued receive waited for data before its native attempt, so this run did
+not exercise native EAGAIN or another failing syscall attempt. Those paths,
+expiry, malformed sessions and overflow retain native-fixture evidence only.
+ConnectEx, IOCP-only completion and legacy DNS are not accepted by this console
+scenario. This is a bounded metadata candidate, not a game network diagnosis,
+whole-runtime release, performance result or gameplay acceptance.
+
+The local test sandbox uses explicit deny/allow rules for machine-local
+endpoints and Unix IPC. macOS SBPL `localhost` includes the machine's interface
+addresses; it is not strict127.0.0.1/::1 isolation or remote-peer inbound
+isolation. The fixture itself uses literal127.0.0.1 and numeric DNS only.
