@@ -18,6 +18,14 @@ namespace dxmt::wsi {
  * \brief Impl-dependent state
  */
 struct DXMTWindowState {
+  // A window property binds this snapshot to this HWND generation. Destroying
+  // a window removes its properties, so handle reuse cannot consume old state.
+  HWND owner = nullptr;
+  bool captured = false;
+  bool style_pending = false;
+  bool exstyle_pending = false;
+  bool present_rect_pending = false;
+  bool position_pending = false;
   LONG style = 0;
   LONG exstyle = 0;
   RECT rect = {0, 0, 0, 0};

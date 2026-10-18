@@ -482,7 +482,7 @@ ArgumentEncodingContext::clearColor(Rc<Texture> &&texture, uint64_t viewId, unsi
 
   encoder_info->attachment = access(texture, viewId, ResourceAccess::Write);
 
-  currentFrameStatistics().clear_pass_count++;
+  updateFrameStatistics([](auto &statistics) { statistics.clear_pass_count++; });
 
   endPass();
 }
@@ -506,8 +506,8 @@ ArgumentEncodingContext::clearDepthStencil(
 
   encoder_info->attachment = access(texture, viewId, ResourceAccess::Write);
 
-  currentFrameStatistics().clear_pass_count++;
-  
+  updateFrameStatistics([](auto &statistics) { statistics.clear_pass_count++; });
+
   endPass();
 }
 
@@ -530,7 +530,7 @@ ArgumentEncodingContext::resolveTexture(
 };
 
 void
-ArgumentEncodingContext::present(Rc<Texture> &texture, Rc<Presenter> &presenter, double after, DXMTPresentMetadata metadata) {
+ArgumentEncodingContext::present(Rc<Texture> &texture, Rc<Presenter> &presenter, double after, const Presenter::PresentState &state) {
   assert(!encoder_current);
   auto encoder_info = allocate<PresentData>();
   encoder_info->type = EncoderType::Present;
@@ -539,7 +539,10 @@ ArgumentEncodingContext::present(Rc<Texture> &texture, Rc<Presenter> &presenter,
   encoder_info->fence_update = {encoder_info->id};
   encoder_info->presenter = presenter;
   encoder_info->after = after;
-  encoder_info->metadata = metadata;
+  encoder_info->metadata = state.metadata;
+  encoder_info->configuration = state.configuration;
+  encoder_info->frame_id = state.frame_id;
+  encoder_info->trace_generation = state.trace_generation;
 
   encoder_current = encoder_info;
   encoder_info->backbuffer = access(texture, texture->fullView, ResourceAccess::Read).texture;
@@ -651,7 +654,7 @@ ArgumentEncodingContext::startRenderPass(
   encoder_info->allocated_argbuf_mapping = gpu_buffer_contents;
   encoder_current = encoder_info;
 
-  currentFrameStatistics().render_pass_count++;
+  updateFrameStatistics([](auto &statistics) { statistics.render_pass_count++; });
 
   vro_state_.beginEncoder();
 
@@ -675,7 +678,7 @@ ArgumentEncodingContext::startComputePass(uint64_t encoder_argbuf_size) {
   encoder_info->allocated_argbuf_mapping = gpu_buffer_contents;
   encoder_current = encoder_info;
 
-  currentFrameStatistics().compute_pass_count++;
+  updateFrameStatistics([](auto &statistics) { statistics.compute_pass_count++; });
 
   return encoder_info;
 }
@@ -693,7 +696,7 @@ ArgumentEncodingContext::startBlitPass() {
   encoder_info->cmd_tail = (wmtcmd_base *)&encoder_info->cmd_head;
   encoder_current = encoder_info;
 
-  currentFrameStatistics().blit_pass_count++;
+  updateFrameStatistics([](auto &statistics) { statistics.blit_pass_count++; });
 
   return encoder_info;
 }
@@ -775,9 +778,9 @@ ArgumentEncodingContext::bumpVisibilityResultOffset() {
   }
 }
 
-FrameStatistics&
-ArgumentEncodingContext::currentFrameStatistics() {
-  return queue_.statistics.at(frame_id_);
+FrameStatisticsContainer &
+ArgumentEncodingContext::frameStatistics() {
+  return queue_.statistics;
 }
 
 void
@@ -1086,9 +1089,13 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
     }
     case EncoderType::Present: {
       auto data = static_cast<PresentData *>(current);
+#ifdef DXMT_DEBUG
       auto t0 = clock::now();
-      auto drawable = data->presenter->encodeCommands(
-          cmdbuf, data->backbuffer, data->metadata,
+#endif
+      WMT::MetalDrawable drawable;
+      if (data->configuration)
+        drawable = data->presenter->encodeCommands(
+          cmdbuf, data->backbuffer, *data->configuration, data->metadata, data->trace_generation,
           [&](WMT::RenderCommandEncoder encoder) {
             data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id], WMTRenderStageFragment); });
           },
@@ -1096,12 +1103,25 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
             data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id], WMTRenderStageFragment); });
           }
       );
+#ifdef DXMT_DEBUG
       auto t1 = clock::now();
-      currentFrameStatistics().drawable_blocking_interval += (t1 - t0);
-      if (data->after > 0)
-        cmdbuf.presentDrawableAfterMinimumDuration(drawable, data->after);
-      else
-        cmdbuf.presentDrawable(drawable);
+      updateFrameStatistics([&](auto &statistics) { statistics.present_encode_interval += (t1 - t0); });
+#endif
+      data->presenter->observePresentation(drawable, data->frame_id,
+          data->configuration ? data->configuration->revision : 0, data->trace_generation);
+      if (drawable) {
+        if (data->after > 0)
+          cmdbuf.presentDrawableAfterMinimumDuration(drawable, data->after);
+        else
+          cmdbuf.presentDrawable(drawable);
+      } else {
+        // Missing drawable / pipeline failure still completes this encoder's
+        // dependency edges. Later passes may wait on its fence in this buffer.
+        auto encoder = cmdbuf.blitCommandEncoder();
+        data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id]); });
+        data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id]); });
+        encoder.endEncoding();
+      }
       data->~PresentData();
       break;
     }
@@ -1233,7 +1253,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
         {
           /**
           `sampleBufferAttachments` does not work when the blit encoder is empty, just do something
-          FIXME: potential perf overhead? 
+          FIXME: potential perf overhead?
           */
           struct wmtcmd_blit_fillbuffer fill;
           fill.next.set(nullptr);
@@ -1319,7 +1339,7 @@ ArgumentEncodingContext::checkEncoderRelation(EncoderData *former, EncoderData *
           render->fence_update.merge(clear->fence_update);
           render->fence_wait.merge(clear->fence_wait);
           render->fence_wait.subtract(clear->fence_update);
-          currentFrameStatistics().clear_pass_optimized++;
+          updateFrameStatistics([](auto &statistics) { statistics.clear_pass_optimized++; });
           clear->~ClearEncoderData();
           clear->next = nullptr;
           clear->type = EncoderType::Null;
@@ -1334,7 +1354,7 @@ ArgumentEncodingContext::checkEncoderRelation(EncoderData *former, EncoderData *
           render->fence_update.merge(clear->fence_update);
           render->fence_wait.merge(clear->fence_wait);
           render->fence_wait.subtract(clear->fence_update);
-          currentFrameStatistics().clear_pass_optimized++;
+          updateFrameStatistics([](auto &statistics) { statistics.clear_pass_optimized++; });
           clear->~ClearEncoderData();
           clear->next = nullptr;
           clear->type = EncoderType::Null;
@@ -1365,7 +1385,7 @@ ArgumentEncodingContext::checkEncoderRelation(EncoderData *former, EncoderData *
         render->fence_wait.merge(resolve->fence_wait);
         render->fence_wait.subtract(resolve->fence_update);
 
-        currentFrameStatistics().resolve_pass_optimized++;
+        updateFrameStatistics([](auto &statistics) { statistics.resolve_pass_optimized++; });
         resolve->~ResolveEncoderData();
         resolve->next = nullptr;
         resolve->type = EncoderType::Null;
@@ -1428,12 +1448,12 @@ ArgumentEncodingContext::checkEncoderRelation(EncoderData *former, EncoderData *
 
       // just in case
       r1->fence_wait.subtract(r0->fence_update_vertex);
-      /* 
+      /*
       r1->fence_wait_vertex.subtract(r0->fence_update);
       does not make sense
       */
 
-      currentFrameStatistics().render_pass_optimized++;
+      updateFrameStatistics([](auto &statistics) { statistics.render_pass_optimized++; });
       r0->~RenderEncoderData();
       r0->next = nullptr;
       r0->type = EncoderType::Null;

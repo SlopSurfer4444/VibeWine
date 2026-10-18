@@ -2,6 +2,7 @@
 #include "Metal.hpp"
 #include "thread.hpp"
 #include "airconv_public.h"
+#include <utility>
 
 namespace dxmt {
 
@@ -24,7 +25,10 @@ public:
     }
     T object;
     LockProtected(const LockProtected &copy) = delete;
-    LockProtected(LockProtected &&move) = default;
+    LockProtected(LockProtected &&move)
+        : object(std::move(move.object)), mutex_(std::exchange(move.mutex_, nullptr)) {
+      move.object = {};
+    }
 
     operator bool() const {
       return mutex_ != nullptr;

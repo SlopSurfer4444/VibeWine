@@ -6,6 +6,7 @@
 #include "dxgi_interfaces.h"
 #include "dxgi_output.hpp"
 #include "dxgi_options.hpp"
+#include "dxgi_mode_limit.hpp"
 #include "dxmt_format.hpp"
 #include "dxmt_presenter.hpp"
 #include "log/log.hpp"
@@ -395,7 +396,7 @@ public:
       if (devMode.bitsPerPixel != GetMonitorFormatBpp(EnumFormat))
         continue;
 
-      if (pDesc != nullptr) {
+      if (pDesc != nullptr || options_.limitDisplayModeResolutions) {
         DXGI_MODE_DESC1 mode = ConvertDisplayMode(devMode);
         // Fix up the DXGI_FORMAT to match what we were enumerating.
         mode.Format = EnumFormat;
@@ -423,6 +424,16 @@ public:
                 return (a.RefreshRate.Numerator / a.RefreshRate.Denominator) <
                        (b.RefreshRate.Numerator / b.RefreshRate.Denominator);
               });
+
+    if (options_.limitDisplayModeResolutions) {
+      wsi::WsiMode current = {}, desktop = {};
+      // Reuse existing read-only WSI queries; failure is only a missing hint.
+      wsi::getCurrentDisplayMode(monitor_, &current);
+      wsi::getDesktopDisplayMode(monitor_, &desktop);
+      LimitDisplayModeResolutions(modeList, {current.width, current.height},
+                                  {desktop.width, desktop.height});
+      dstModeId = static_cast<uint32_t>(modeList.size());
+    }
 
     // If requested, write out the first set of display
     // modes to the destination array.
@@ -491,18 +502,39 @@ public:
       defaultMode.RefreshRate.Denominator = activeMode.RefreshRate.Denominator;
     }
 
-    UINT modeCount = 0;
-    GetDisplayModeList1(targetFormat, DXGI_ENUM_MODES_SCALING, &modeCount,
-                        nullptr);
+    // The display topology can change between the count and fill calls. Never
+    // search a partial list or the value-initialized tail of a shrinking list.
+    // Bound retries so a continuously changing topology cannot stall the caller.
+    constexpr UINT maxModeListAttempts = 3;
+    std::vector<DXGI_MODE_DESC1> modes;
+    for (UINT attempt = 0; attempt < maxModeListAttempts; attempt++) {
+      UINT modeCount = 0;
+      HRESULT hr = GetDisplayModeList1(targetFormat, DXGI_ENUM_MODES_SCALING,
+                                      &modeCount, nullptr);
+      if (FAILED(hr))
+        return hr;
+      if (modeCount == 0) {
+        ERR("No modes found");
+        return DXGI_ERROR_NOT_FOUND;
+      }
 
-    if (modeCount == 0) {
-      ERR("No modes found");
-      return DXGI_ERROR_NOT_FOUND;
+      modes.resize(modeCount);
+      hr = GetDisplayModeList1(targetFormat, DXGI_ENUM_MODES_SCALING,
+                               &modeCount, modes.data());
+      if (hr == DXGI_ERROR_MORE_DATA) {
+        if (attempt + 1 == maxModeListAttempts)
+          return hr;
+        continue;
+      }
+      if (FAILED(hr))
+        return hr;
+
+      // Defend against a provider reporting success beyond supplied capacity.
+      if (modeCount > modes.size())
+        return DXGI_ERROR_MORE_DATA;
+      modes.resize(modeCount);
+      break;
     }
-
-    std::vector<DXGI_MODE_DESC1> modes(modeCount);
-    GetDisplayModeList1(targetFormat, DXGI_ENUM_MODES_SCALING, &modeCount,
-                        modes.data());
 
     FilterModesByDesc(modes, *pModeToMatch);
     FilterModesByDesc(modes, defaultMode);

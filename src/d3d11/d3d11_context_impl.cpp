@@ -251,7 +251,7 @@ get_gs_vertex_count(D3D11_PRIMITIVE_TOPOLOGY primitive) {
   case D3D_PRIMITIVE_TOPOLOGY_31_CONTROL_POINT_PATCHLIST:
   case D3D_PRIMITIVE_TOPOLOGY_32_CONTROL_POINT_PATCHLIST:
     return {
-      uint32_t(primitive) - uint32_t(D3D_PRIMITIVE_TOPOLOGY_1_CONTROL_POINT_PATCHLIST) + 1, 
+      uint32_t(primitive) - uint32_t(D3D_PRIMITIVE_TOPOLOGY_1_CONTROL_POINT_PATCHLIST) + 1,
       uint32_t(primitive) - uint32_t(D3D_PRIMITIVE_TOPOLOGY_1_CONTROL_POINT_PATCHLIST) + 1
     };
   default:
@@ -870,7 +870,7 @@ public:
           enc.clear_rt_cmd.clear(rect_offset_x, rect_offset_y, rect_width, rect_height, array_length, color);
         });
       }
-      EmitST([](ArgumentEncodingContext &enc) { 
+      EmitST([](ArgumentEncodingContext &enc) {
         enc.clear_rt_cmd.end();
       });
       return;
@@ -911,7 +911,7 @@ public:
           enc.clear_rt_cmd.clear(rect_offset_x, rect_offset_y, rect_width, rect_height, depth, 0);
         });
       }
-      EmitST([](ArgumentEncodingContext &enc) { 
+      EmitST([](ArgumentEncodingContext &enc) {
         enc.clear_rt_cmd.end();
       });
       return;
@@ -1696,7 +1696,7 @@ public:
         auto dispatch_arg = enc.allocateTempBuffer1(sizeof(DXMT_DISPATCH_ARGUMENTS), 4);
 
         auto [vertex_per_warp, vertex_increment_per_wrap] = get_gs_vertex_count(topo);
-  
+
         enc.bumpVisibilityResultOffset();
         enc.encodeGSDispatchArgumentsMarshal(
           buffer->buffer(), buffer->gpuAddress() + buffer_offset, AlignedByteOffsetForArgs, vertex_increment_per_wrap,
@@ -1731,7 +1731,7 @@ public:
 
         auto [vertex_per_warp, vertex_increment_per_wrap] = get_gs_vertex_count(topo);
         auto [index_buffer, index_sub_offset] = enc.currentIndexBuffer();
-  
+
         enc.bumpVisibilityResultOffset();
         enc.encodeGSDispatchArgumentsMarshal(
           buffer->buffer(), buffer->gpuAddress() + buffer_offset, AlignedByteOffsetForArgs, vertex_increment_per_wrap,
@@ -1766,7 +1766,7 @@ public:
 
         auto PatchPerGroup = 32 / enc.tess_threads_per_patch;
         auto ThreadsPerPatch = enc.tess_threads_per_patch;
-  
+
         enc.bumpVisibilityResultOffset();
         enc.encodeTSDispatchArgumentsMarshal(
             buffer->buffer(), buffer->gpuAddress() + buffer_offset,
@@ -1804,7 +1804,7 @@ public:
         auto PatchPerGroup = 32 / enc.tess_threads_per_patch;
         auto ThreadsPerPatch = enc.tess_threads_per_patch;
         auto [index_buffer, index_sub_offset] = enc.currentIndexBuffer();
-  
+
         enc.bumpVisibilityResultOffset();
         enc.encodeTSDispatchArgumentsMarshal(
             buffer->buffer(), buffer->gpuAddress() + buffer_offset,
@@ -4067,7 +4067,7 @@ public:
             cmd_cpbuf.offset = offset;
             cmd_cpbuf.bytes_per_row = bytes_per_row;
             cmd_cpbuf.bytes_per_image = bytes_per_image;
-  
+
             auto &cmd_cptex = enc.encodeBlitCommand<wmtcmd_blit_copy_from_buffer_to_texture>();
             cmd_cptex.type = WMTBlitCommandCopyFromBufferToTexture;
             cmd_cptex.src = buffer;
@@ -4341,7 +4341,12 @@ public:
 
     cmdbuf_state = CommandBufferState::Idle;
     if (promote_flush && !defer_commit) {
-      Commit();
+      if constexpr (requires { ctx_state.cmd_queue; }) {
+        cs2trace::ReasonScope reason(cs2trace::CommitReason::PassPromotion,ctx_state.cmd_queue.traceSerial(),true);
+        Commit();
+      } else {
+        Commit();
+      }
       return true;
     }
 
@@ -5350,7 +5355,7 @@ public:
            .miplevelCount = 1,
            .firstArraySlice = 0,
            .arraySize = 1});
-      auto &scaler_info = enc.currentFrameStatistics().last_scaler_info;
+      ScalerInfo scaler_info{};
       scaler_info.type = ScalerType::Temporal;
       scaler_info.auto_exposure = exposure == nullptr;
       scaler_info.input_width = props.input_content_width;
@@ -5359,6 +5364,7 @@ public:
       scaler_info.output_height = output->height();
 
       scaler_info.motion_vector_highres = mv_downscaled != nullptr;
+      enc.updateFrameStatistics([&](auto &statistics) { statistics.last_scaler_info = scaler_info; });
 
       if (scaler_info.motion_vector_highres) {
         enc.mv_scale_cmd.dispatch(
@@ -5552,7 +5558,7 @@ private:
   CommandList<ArgumentEncodingContext> list;
 
   RingBumpState<StagingBufferBlockAllocator, kStagingBlockSizeForDeferredContext> staging_allocator;
-  RingBumpState<HostBufferBlockAllocator, kStagingBlockSizeForDeferredContext, dxmt::null_mutex> cpu_command_allocator; 
+  RingBumpState<HostBufferBlockAllocator, kStagingBlockSizeForDeferredContext, dxmt::null_mutex> cpu_command_allocator;
 
 };
 

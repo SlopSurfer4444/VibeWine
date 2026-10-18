@@ -16,14 +16,31 @@
 typedef int NTSTATUS;
 #define STATUS_SUCCESS 0
 #define STATUS_UNSUCCESSFUL 0xC0000001
+#include "wave7_feedback.inc"
+#include "wave7_display_snapshot.inc"
 
+/* The native Wine request source is serviced in its nested query-wait mode.
+ * Raw main GCD dispatch is retained only for older native compatibility. */
+static bool
+execute_on_main_checked(dispatch_block_t block) {
+  static int (*run_on_wine_main)(dispatch_block_t);
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    run_on_wine_main = dlsym(RTLD_DEFAULT, "macdrv_run_on_main_v1");
+  });
+  if (run_on_wine_main)
+    return run_on_wine_main(block) != 0;
+  if ([NSThread isMainThread])
+    block();
+  else
+    dispatch_sync(dispatch_get_main_queue(), block);
+  return true;
+}
+
+/* Preserve the donor's exported void helper ABI. Internal paths check failure. */
 void
 execute_on_main(dispatch_block_t block) {
-  if ([NSThread isMainThread]) {
-    block();
-  } else {
-    dispatch_sync(dispatch_get_main_queue(), block);
-  }
+  (void)execute_on_main_checked(block);
 }
 
 static NTSTATUS
@@ -1625,7 +1642,7 @@ _MetalLayer_setProps(void *obj) {
   struct unixcall_generic_obj_constptr_noret *params = obj;
   CAMetalLayer *layer = (CAMetalLayer *)params->handle;
   const struct WMTLayerProps *props = params->arg.ptr;
-  execute_on_main(^{
+  bool applied = execute_on_main_checked(^{
     layer.device = (id<MTLDevice>)props->device;
     layer.opaque = props->opaque;
     layer.framebufferOnly = props->framebuffer_only;
@@ -1633,25 +1650,12 @@ _MetalLayer_setProps(void *obj) {
     layer.displaySyncEnabled = props->display_sync_enabled;
     layer.drawableSize = CGSizeMake(props->drawable_width, props->drawable_height);
     layer.pixelFormat = to_metal_pixel_format(props->pixel_format);
+    w7ds_refresh_layer_main(layer);
   });
-  return STATUS_SUCCESS;
+  return applied ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
-static NTSTATUS
-_MetalLayer_getProps(void *obj) {
-  struct unixcall_generic_obj_ptr_noret *params = obj;
-  CAMetalLayer *layer = (CAMetalLayer *)params->handle;
-  struct WMTLayerProps *props = params->arg.ptr;
-  props->device = (obj_handle_t)layer.device;
-  props->opaque = layer.opaque;
-  props->framebuffer_only = layer.framebufferOnly;
-  props->contents_scale = layer.contentsScale;
-  props->display_sync_enabled = layer.displaySyncEnabled;
-  props->drawable_height = layer.drawableSize.height;
-  props->drawable_width = layer.drawableSize.width;
-  props->pixel_format = layer.pixelFormat;
-  return STATUS_SUCCESS;
-}
+
 
 typedef struct macdrv_opaque_metal_device *macdrv_metal_device;
 typedef struct macdrv_opaque_metal_view *macdrv_metal_view;
@@ -1684,33 +1688,54 @@ struct macdrv_functions_t {
 static NTSTATUS
 _CreateMetalViewFromHWND(void *obj) {
   struct unixcall_create_metal_view_from_hwnd *params = obj;
+  /* Outputs are an all-or-nothing lease; failure must never expose stale
+     handles left in a reused call structure. */
+  params->ret_view = 0;
+  params->ret_layer = 0;
 
   struct macdrv_win_data *(*pfn_get_win_data)(HWND hwnd) = NULL;
   void (*pfn_release_win_data)(struct macdrv_win_data *data) = NULL;
   macdrv_metal_view (*pfn_macdrv_view_create_metal_view)(macdrv_view v, macdrv_metal_device d) = NULL;
   macdrv_metal_layer (*pfn_macdrv_view_get_metal_layer)(macdrv_metal_view v) = NULL;
 
+  void (*pfn_macdrv_view_release_metal_view)(macdrv_metal_view v) = NULL;
   struct macdrv_functions_t *macdrv_functions;
   if ((macdrv_functions = dlsym(RTLD_DEFAULT, "macdrv_functions"))) {
     pfn_get_win_data = macdrv_functions->get_win_data;
     pfn_release_win_data = macdrv_functions->release_win_data;
     pfn_macdrv_view_create_metal_view = macdrv_functions->macdrv_view_create_metal_view;
     pfn_macdrv_view_get_metal_layer = macdrv_functions->macdrv_view_get_metal_layer;
+    pfn_macdrv_view_release_metal_view = macdrv_functions->macdrv_view_release_metal_view;
   } else {
     pfn_get_win_data = dlsym(RTLD_DEFAULT, "get_win_data");
     pfn_release_win_data = dlsym(RTLD_DEFAULT, "release_win_data");
     pfn_macdrv_view_create_metal_view = dlsym(RTLD_DEFAULT, "macdrv_view_create_metal_view");
     pfn_macdrv_view_get_metal_layer = dlsym(RTLD_DEFAULT, "macdrv_view_get_metal_layer");
+    pfn_macdrv_view_release_metal_view = dlsym(RTLD_DEFAULT, "macdrv_view_release_metal_view");
   }
 
   if (pfn_get_win_data && pfn_release_win_data && pfn_macdrv_view_create_metal_view &&
-      pfn_macdrv_view_get_metal_layer) {
+      pfn_macdrv_view_get_metal_layer && pfn_macdrv_view_release_metal_view) {
     struct macdrv_win_data *win_data = pfn_get_win_data((HWND)params->hwnd);
-    macdrv_metal_view view =
-        pfn_macdrv_view_create_metal_view(win_data->client_cocoa_view, (macdrv_metal_device)params->device);
-    params->ret_view = (obj_handle_t)view;
+    if (!win_data)
+      return STATUS_SUCCESS;
+
+    macdrv_metal_view view = win_data->client_cocoa_view ?
+        pfn_macdrv_view_create_metal_view(win_data->client_cocoa_view, (macdrv_metal_device)params->device) : NULL;
     if (view) {
-      params->ret_layer = (obj_handle_t)pfn_macdrv_view_get_metal_layer(view);
+      /* Native getter marshals through Wine OnMainThread itself. Never call
+       * it from inside a main block: that dispatcher has no inline guard. */
+      __block macdrv_metal_layer layer = pfn_macdrv_view_get_metal_layer(view);
+      if (!execute_on_main_checked(^{
+        if (layer && !w7ds_prime_layer_main((CAMetalLayer *)layer))
+          layer = NULL;
+      })) layer = NULL;
+      if (layer) {
+        params->ret_view = (obj_handle_t)view;
+        params->ret_layer = (obj_handle_t)layer;
+      } else {
+        pfn_macdrv_view_release_metal_view(view);
+      }
     }
     pfn_release_win_data(win_data);
   }
@@ -2274,14 +2299,18 @@ _MetalLayer_setColorSpace(void *obj) {
   CGColorSpaceRef ref = CGColorSpaceCreateWithName(name);
   if (!ref)
     return STATUS_SUCCESS;
-  execute_on_main(^{
+  bool applied = execute_on_main_checked(^{
     layer.colorspace = ref;
     layer.wantsExtendedDynamicRangeContent = WMT_COLORSPACE_IS_HDR(colorspace);
-    CGColorSpaceRelease(ref);
+    w7ds_refresh_layer_main(layer);
   });
+  CGColorSpaceRelease(ref);
+  if (!applied) return STATUS_UNSUCCESSFUL;
   params->ret = true;
   return STATUS_SUCCESS;
 }
+
+#include "wave7_layer_apply.inc"
 
 static NTSTATUS
 _WMTGetPrimaryDisplayId(void *obj) {
@@ -2371,63 +2400,11 @@ GetNSScreenForDisplayID(CGDirectDisplayID display_id) {
   return nil;
 }
 
-static NTSTATUS
-_WMTGetDisplayDescription(void *obj) {
-  struct unixcall_generic_obj_ptr_noret *params = obj;
-  CGDirectDisplayID display_id = params->handle;
-  struct WMTDisplayDescription *desc_out = params->arg.ptr;
-  ColorSyncProfileRef profile = ColorSyncProfileCreateWithDisplayID(display_id);
-  if (!profile || !GetDisplayColorGamut(profile, desc_out))
-    GetDisplayColorGamut(ColorSyncProfileCreateWithName(kColorSyncGenericRGBProfile), desc_out);
-  NSScreen *screen = GetNSScreenForDisplayID(display_id);
-  if (screen) {
-    desc_out->maximum_edr_color_component_value = [screen maximumExtendedDynamicRangeColorComponentValue];
-    desc_out->maximum_reference_edr_color_component_value =
-        [screen maximumReferenceExtendedDynamicRangeColorComponentValue];
-    desc_out->maximum_potential_edr_color_component_value =
-        [screen maximumPotentialExtendedDynamicRangeColorComponentValue];
-  } else {
-    desc_out->maximum_edr_color_component_value = 1.0;
-    desc_out->maximum_reference_edr_color_component_value = 0.0;
-    desc_out->maximum_potential_edr_color_component_value = 1.0;
-  }
-  return STATUS_SUCCESS;
-}
 
-struct DisplaySetting {
-  uint64_t version;
-  enum WMTColorSpace colorspace;
-  struct WMTHDRMetadata hdr_metadata;
-};
 
-struct DisplaySetting g_display_settings[2] = {{0, 0, {}}, {0, 0, {}}};
 
-static NTSTATUS
-_MetalLayer_getEDRValue(void *obj) {
-  struct unixcall_generic_obj_ptr_noret *params = obj;
-  CAMetalLayer *layer = (CAMetalLayer *)params->handle;
-  struct WMTEDRValue *value = params->arg.ptr;
-  value->maximum_edr_color_component_value = 1.0;
-  value->maximum_potential_edr_color_component_value = 1.0;
 
-  if (![layer.delegate isKindOfClass:NSView.class])
-    return STATUS_SUCCESS;
 
-  NSView *view = (NSView *)layer.delegate;
-  if (!view.window)
-    return STATUS_SUCCESS;
-
-  if (!view.window.screen)
-    return STATUS_SUCCESS;
-
-  NSScreen *screen = view.window.screen;
-
-  value->maximum_edr_color_component_value =
-      layer.wantsExtendedDynamicRangeContent ? screen.maximumExtendedDynamicRangeColorComponentValue : 1.0;
-  value->maximum_potential_edr_color_component_value = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
-
-  return STATUS_SUCCESS;
-}
 
 static NTSTATUS
 _MTLLibrary_newFunctionWithConstants(void *obj) {
@@ -2447,68 +2424,11 @@ _MTLLibrary_newFunctionWithConstants(void *obj) {
   return STATUS_SUCCESS;
 }
 
-static NTSTATUS
-_WMTQueryDisplaySetting(void *obj) {
-  struct unixcall_query_display_setting *params = obj;
-  CGDirectDisplayID display_id = params->display_id;
-  struct WMTHDRMetadata *value = params->hdr_metadata.ptr;
-  params->ret = false;
-  struct DisplaySetting *setting = &g_display_settings[display_id == CGMainDisplayID()];
-  if (setting->version) {
-    *value = setting->hdr_metadata;
-    params->colorspace = setting->colorspace;
-    params->ret = true;
-  }
-  return STATUS_SUCCESS;
-}
 
-static NTSTATUS
-_WMTUpdateDisplaySetting(void *obj) {
-  struct unixcall_update_display_setting *params = obj;
-  CGDirectDisplayID display_id = params->display_id;
-  const struct WMTHDRMetadata *value = params->hdr_metadata.ptr;
-  struct DisplaySetting *setting = &g_display_settings[display_id == CGMainDisplayID()];
-  if (value) {
-    setting->hdr_metadata = *value;
-    setting->colorspace = params->colorspace;
-    setting->version++;
-  } else {
-    setting->version = 0;
-  }
-  return STATUS_SUCCESS;
-}
 
-static NTSTATUS
-_WMTQueryDisplaySettingForLayer(void *obj) {
-  struct unixcall_query_display_setting_for_layer *params = obj;
-  CAMetalLayer *layer = (CAMetalLayer *)params->layer;
-  struct WMTHDRMetadata *hdr_metadata_out = params->hdr_metadata.ptr;
 
-  params->version = 0;
-  if (![layer.delegate isKindOfClass:NSView.class])
-    return STATUS_SUCCESS;
 
-  NSView *view = (NSView *)layer.delegate;
-  if (!view.window)
-    return STATUS_SUCCESS;
 
-  if (!view.window.screen)
-    return STATUS_SUCCESS;
-
-  NSScreen *screen = view.window.screen;
-  CGDirectDisplayID id = [[[screen deviceDescription] objectForKey:@"NSScreenNumber"] unsignedIntValue];
-
-  struct DisplaySetting *setting = &g_display_settings[id == CGMainDisplayID()];
-  *hdr_metadata_out = setting->hdr_metadata;
-  params->version = setting->version;
-  params->colorspace = setting->colorspace;
-  params->edr_value.maximum_edr_color_component_value =
-      layer.wantsExtendedDynamicRangeContent ? screen.maximumExtendedDynamicRangeColorComponentValue : 1.0;
-  params->edr_value.maximum_potential_edr_color_component_value =
-      screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
-
-  return STATUS_SUCCESS;
-}
 
 static NTSTATUS
 _MTLCommandBuffer_encodeWaitForEvent(void *obj) {
@@ -2525,79 +2445,7 @@ _MTLSharedEvent_signalValue(void *obj) {
 }
 
 #ifndef DXMT_NATIVE
-
-typedef struct {
-  _Atomic(CFRunLoopRef) runloop_ref;
-  MTLSharedEventListener *shared_listener;
-} *shared_event_listener_t;
-
-extern NTSTATUS NtSetEvent(void *handle, void *prev_state);
-
-static NTSTATUS
-_MTLSharedEvent_setWin32EventAtValue(void *obj) {
-  struct unixcall_mtlsharedevent_setevent *params = obj;
-  void *nt_event_handle = (shared_event_listener_t)params->event_handle;
-  shared_event_listener_t q = (shared_event_listener_t)params->shared_event_listener;
-  [(id<MTLSharedEvent>)params->shared_event
-      notifyListener:q->shared_listener
-             atValue:params->value
-               block:^(id<MTLSharedEvent> _e, uint64_t _v) {
-                 // NOTE: must ensure no more notification comes after listener been destroyed.
-                 while (!atomic_load_explicit(&q->runloop_ref, memory_order_acquire)) {
-#if defined(__x86_64__)
-                   _mm_pause();
-#elif defined(__aarch64__)
-          __asm__ __volatile__("yield");
-#endif
-                 }
-                 CFRunLoopPerformBlock(q->runloop_ref, kCFRunLoopCommonModes, ^{
-                   NtSetEvent(nt_event_handle, NULL);
-                 });
-                 CFRunLoopWakeUp(q->runloop_ref);
-               }];
-  return STATUS_SUCCESS;
-}
-
-static NTSTATUS
-_SharedEventListener_start(void *obj) {
-  struct unixcall_generic_obj_noret *params = obj;
-  shared_event_listener_t q = (shared_event_listener_t)params->handle;
-  CFRunLoopRef uninited = NULL;
-  if (q && atomic_compare_exchange_strong(&q->runloop_ref, &uninited, CFRunLoopGetCurrent())) {
-    /* Add a dummy source so the runloop stays running */
-    CFRunLoopSourceContext source_context = {0};
-    CFRunLoopSourceRef source = CFRunLoopSourceCreate(NULL, 0, &source_context);
-    CFRunLoopAddSource(q->runloop_ref, source, kCFRunLoopCommonModes);
-    CFRunLoopRun();
-  }
-  return STATUS_SUCCESS;
-}
-
-static NTSTATUS
-_SharedEventListener_create(void *obj) {
-  struct unixcall_generic_obj_ret *params = obj;
-  shared_event_listener_t q = malloc(sizeof(*q));
-  if (q) {
-    q->runloop_ref = NULL;
-    q->shared_listener = [[MTLSharedEventListener alloc] init];
-  }
-  params->ret = (obj_handle_t)q;
-  return STATUS_SUCCESS;
-}
-
-static NTSTATUS
-_SharedEventListener_destroy(void *obj) {
-  struct unixcall_generic_obj_noret *params = obj;
-  shared_event_listener_t q = (shared_event_listener_t)params->handle;
-  if (q && q->runloop_ref) {
-    CFRunLoopStop(q->runloop_ref);
-    q->runloop_ref = NULL;
-    [q->shared_listener release];
-    q->shared_listener = nil;
-    free(q);
-  }
-  return STATUS_SUCCESS;
-}
+#include "wave7_shared_listener.inc"
 
 #else
 static NTSTATUS
@@ -2879,6 +2727,12 @@ _MTLCommandBuffer_property(void *obj) {
   id<MTLCommandBuffer> cmdbuf = (id<MTLCommandBuffer>)params->handle;
   double ns = 1000000000;
   switch (params->arg) {
+  case W7FB_PROPERTY:
+    params->ret = w7fb_dispatch((struct W7FBRequest *)(uintptr_t)params->handle);
+    break;
+  case W7LA_PROPERTY:
+    params->ret = w7la_dispatch((struct W7LARequest *)(uintptr_t)params->handle);
+    break;
   case WMTCommandBufferPropertyKernelStartTime:
     params->ret = (uint64_t)([cmdbuf kernelStartTime] * ns);
     break;

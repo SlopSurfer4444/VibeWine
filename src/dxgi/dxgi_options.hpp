@@ -20,6 +20,8 @@ struct DxgiOptions {
   int32_t customDeviceId;
   std::string customDeviceDesc;
   bool forceSDR;
+  // Compatibility for games with a fixed 32-entry resolution menu.
+  bool limitDisplayModeResolutions;
 };
 
 } // namespace dxmt

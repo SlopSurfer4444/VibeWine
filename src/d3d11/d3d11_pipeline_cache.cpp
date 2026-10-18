@@ -10,6 +10,7 @@
 #include "../d3d10/d3d10_shader.hpp"
 #include "../d3d10/d3d10_input_layout.hpp"
 #include <cstring>
+#include "cs2_compile_lab.hpp"
 #include <shared_mutex>
 
 namespace dxmt {
@@ -63,6 +64,9 @@ template <> struct task_trait<ThreadpoolWork *> {
   }
   bool get_done(ThreadpoolWork *task) { return task->GetIsDone(); }
   void set_done(ThreadpoolWork *task) { task->SetIsDone(true); }
+  std::function<void()> take_post_completion(ThreadpoolWork *task) {
+    return task->TakePostCompletionWork();
+  }
 };
 
 class PipelineCache : public MTLD3D11PipelineCacheBase {
@@ -74,6 +78,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
     MTL_SHADER_REFLECTION reflection_;
     MTL_SM50_SHADER_ARGUMENT *arguments_info_buffer;
     std::unordered_map<ShaderVariant, std::unique_ptr<CompiledShader>> variants;
+    dxmt::mutex variants_mutex;
 
   public:
     CachedSM50Shader(PipelineCache *cache, sm50_shader_t shader_transferred,
@@ -113,6 +118,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
       return arguments_info_buffer + reflection_.NumConstantBuffers;
     };
     virtual CompiledShader *get_shader(ShaderVariant variant) {
+      std::lock_guard<dxmt::mutex> lock(variants_mutex);
       auto c = variants.insert({variant, nullptr});
       if (c.second) {
         c.first->second = std::visit(
@@ -190,7 +196,6 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
 
   ShaderCache& scache_;
 
-  task_scheduler<ThreadpoolWork *> scheduler_;
 
   MTLD3D11Device *device;
   StateObjectCache<D3D11_BLEND_DESC1, IMTLD3D11BlendState> blend_states;
@@ -216,6 +221,9 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
 
   std::unordered_map<ManagedShader, std::unique_ptr<MTLCompiledComputePipeline>> pipelines_cs_;
   dxmt::mutex mutex_cs_;
+
+  // Destroy and join workers before their shader/pipeline dependencies.
+  task_scheduler<ThreadpoolWork *> scheduler_;
 
   CachedSM50Shader *CreateShader(const void *pBytecode,
                                  uint32_t BytecodeLength) {
@@ -269,6 +277,13 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
     if (!managed_shader) {
       return E_FAIL;
     }
+    if (cs2lab::earlyCompile()) {
+      // Speculate only four common variants. Exact draw-state variants still
+      // follow the normal path; no draw is skipped or uses a substitute shader.
+      for (uint32_t unorm_mask : {0u, 1u})
+        for (bool no_depth : {false, true})
+          managed_shader->get_shader(ShaderVariantPixel{0xffffffffu, false, no_depth, unorm_mask});
+    }
     *ppShader = ref(new TShaderBase<ID3D11PixelShader, MTLD3D10PixelShader>(device, managed_shader));
     return S_OK;
   }
@@ -313,6 +328,12 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
     auto managed_shader = CreateShader(pBytecode, BytecodeLength);
     if (!managed_shader) {
       return E_FAIL;
+    }
+    if (cs2lab::earlyCompile()) {
+      MTL_COMPUTE_PIPELINE_DESC desc{};
+      desc.ComputeShader = managed_shader;
+      MTLCompiledComputePipeline *pipeline;
+      GetComputePipeline(&desc, &pipeline);
     }
     *ppShader =
         ref(new TShaderBase<ID3D11ComputeShader>(device, managed_shader));
@@ -452,7 +473,10 @@ public:
       scache_(ShaderCache::getInstance(pDevice->GetDXMTDevice().metalVersion())),
       device(pDevice),
       blend_states(pDevice),
-      so_layouts(pDevice) {};
+      so_layouts(pDevice) {
+    if (cs2lab::enabled())
+      Logger::info(str::format("CS2LAB build=early-compile-v1 early_compile=", cs2lab::earlyCompile()));
+  };
 };
 
 std::unique_ptr<MTLD3D11PipelineCacheBase>

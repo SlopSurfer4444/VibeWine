@@ -18,6 +18,7 @@
  */
 
 #pragma once
+#include "../d3d11/cs2_trace.hpp"
 
 #include "Metal.hpp"
 #include "dxmt_allocation.hpp"
@@ -111,17 +112,29 @@ public:
       chunk_id,
       frame_
     );
-    auto& statistics = enc.currentFrameStatistics();
+#ifdef DXMT_DEBUG
     auto t0 = clock::now();
+#endif
     list_enc.execute(enc);
     attached_cmdbuf = cmdbuf;
+#ifdef DXMT_DEBUG
     auto t1 = clock::now();
+#endif
     readback = enc.flushCommands(cmdbuf, chunk_id, chunk_event_id);
+#ifdef DXMT_DEBUG
     auto t2 = clock::now();
-    statistics.encode_prepare_interval += (t1 - t0);
-    statistics.encode_flush_interval += (t2 - t1);
+#endif
+#ifdef DXMT_DEBUG
+    enc.updateFrameStatistics([&](auto &statistics) {
+      statistics.encode_prepare_interval += (t1 - t0);
+      statistics.encode_flush_interval += (t2 - t1);
+    });
+#endif
+    if (signal_frame_latency_fence_ != ~0ull)
+      enc.frameStatistics().encodingComplete(frame_);
   };
 
+  uint32_t trace_generation = 0;
   uint64_t chunk_id;
   uint64_t chunk_event_id;
   uint64_t frame_;
@@ -132,7 +145,7 @@ public:
 private:
   CommandQueue *queue;
   WMT::Reference<WMT::CommandBuffer> attached_cmdbuf;
-  
+
   CommandList<ArgumentEncodingContext> list_enc;
   AllocationRefTracking ref_tracker;
 
@@ -152,6 +165,7 @@ public:
 };
 
 class CommandQueue {
+  const uint64_t trace_serial_=cs2trace::newSerial();
 
 private:
   void CommitChunkInternal(CommandChunk &chunk, uint64_t seq);
@@ -170,7 +184,7 @@ private:
   std::array<CommandChunk, kCommandChunkCount> chunks;
   uint64_t encoder_seq = 1;
   uint64_t frame_count = 0;
-  uint32_t max_latency_ = 3;
+  std::atomic_uint32_t max_latency_ = 3;
 
   dxmt::thread encodeThread;
   dxmt::thread finishThread;
@@ -194,6 +208,7 @@ private:
   CaptureState capture_state;
 
 public:
+  uint64_t traceSerial() const {return trace_serial_;}
   InternalCommandLibrary cmd_library;
   ArgumentEncodingContext argument_encoding_ctx;
   WMT::Reference<WMT::SharedEvent> event;
@@ -253,28 +268,46 @@ public:
     return frame_count + 1;
   }
 
-  FrameStatistics& CurrentFrameStatistics() {
-    return statistics.at(frame_count);
+  template <typename F>
+  void UpdateCurrentFrameStatistics(F &&mutate) {
+    statistics.update(frame_count, std::forward<F>(mutate));
   }
+
+  // Called under the device/context submission lock immediately after the
+  // present chunk commit: subsequent CPU submissions belong to the next frame.
+  uint64_t AdvanceFrame() { return frame_count++; }
 
   void
-  PresentBoundary() {
-    statistics.compute(frame_count);
-    frame_count++;
-    statistics.at(frame_count).reset();
-    // After present N-th frame (N starts from 1), wait for (N - max_latency)-th frame to finish rendering 
-    if (likely(frame_count > max_latency_)) {
+  PresentBoundary(uint64_t presented_frame, uint32_t max_latency) {
+    const auto next_frame = presented_frame + 1;
+#ifdef DXMT_DEBUG
+    clock::duration wait_interval{};
+#endif
+    // After present N-th frame (N starts from 1), wait for (N - max_latency)-th frame.
+    if (likely(next_frame > max_latency)) {
+#ifdef DXMT_DEBUG
       auto t0 = clock::now();
-      frame_latency_fence_.wait(frame_count - max_latency_);
-      auto t1 = clock::now();
-      statistics.at(frame_count).present_latency_interval += (t1 - t0);
+#endif
+      { cs2trace::Scope trace{.type=11,.object=next_frame,.flags=max_latency};
+        frame_latency_fence_.wait(next_frame - max_latency); }
+#ifdef DXMT_DEBUG
+      wait_interval = clock::now() - t0;
+#endif
     }
-    statistics.at(frame_count).latency = max_latency_;
+    // Attribute this present's CPU wait to its own frame and close only after
+    // timing is recorded. Neither submission nor statistics locks span the wait.
+#ifdef DXMT_DEBUG
+    statistics.update(presented_frame, [&](auto &frame) {
+      frame.present_latency_interval += wait_interval;
+      frame.latency = max_latency;
+    });
+#endif
+    statistics.cpuComplete(presented_frame);
   }
 
-  uint32_t GetMaxLatency() { return max_latency_; }
+  uint32_t GetMaxLatency() { return max_latency_.load(std::memory_order_relaxed); }
 
-  void SetMaxLatency(uint32_t value) { max_latency_ = value; };
+  void SetMaxLatency(uint32_t value) { max_latency_.store(value, std::memory_order_relaxed); };
 
   void
   WaitCPUFence(uint64_t seq) {

@@ -251,6 +251,9 @@ struct PresentData : EncoderData {
   Rc<Presenter> presenter;
   double after;
   DXMTPresentMetadata metadata;
+  std::shared_ptr<const Presenter::PresentationConfiguration> configuration;
+  uint64_t frame_id;
+  uint32_t trace_generation;
 };
 
 struct SpatialUpscaleData : EncoderData {
@@ -665,7 +668,7 @@ public:
     return (new (allocate_cpu_heap(sizeof(T), alignof(T))) T());
   };
 
-  void present(Rc<Texture> &texture, Rc<Presenter> &presenter, double after, DXMTPresentMetadata metadata);
+  void present(Rc<Texture> &texture, Rc<Presenter> &presenter, double after, const Presenter::PresentState &state);
 
   void upscale(Rc<Texture> &texture, Rc<Texture> &upscaled, Rc<SpatialScaler> &scaler);
 
@@ -766,7 +769,7 @@ public:
   }
 
   std::pair<WMT::Buffer , size_t> allocateTempBuffer(size_t size, size_t alignment);
-  
+
   AllocatedTempBufferSlice allocateTempBuffer1(size_t size, size_t alignment);
 
   QueryReadbacks flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId, uint64_t event_seq_id);
@@ -810,12 +813,17 @@ public:
 
   void resolveRenderPassBarrier();
 
-  FrameStatistics&
-  currentFrameStatistics();
+  FrameStatisticsContainer &
+  frameStatistics();
+
+  template <typename F>
+  void updateFrameStatistics(F &&mutate) {
+    frameStatistics().update(frame_id_, std::forward<F>(mutate));
+  }
 
   void
   setCompatibilityFlag(FeatureCompatibility flag) {
-    currentFrameStatistics().compatibility_flags.set(flag);
+    updateFrameStatistics([&](auto &statistics) { statistics.compatibility_flags.set(flag); });
   }
 
   void
@@ -882,7 +890,7 @@ private:
   EncoderData *encoder_last = &encoder_head;
   EncoderData *encoder_current = nullptr;
   unsigned encoder_count_ = 0;
-  
+
   uint64_t encoder_id_ = kParityLane; // actually important to not start from 0
   std::array<WMT::Reference<WMT::Fence>, kParityLane> fence_pool_;
   FenceLocalityCheck fence_locality_;

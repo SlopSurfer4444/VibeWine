@@ -52,6 +52,10 @@ namespace dxmt {
     { R"(\\OMORI\.exe$)", {{
       { "dxgi.forceSDR",   "True" },
     }} },
+    // DS3 stores distinct resolution pairs in a fixed 32-entry menu.
+    { R"(\\DarkSoulsIII\.exe$)", {{
+      { "dxgi.limitDisplayModeResolutions", "True" },
+    }} },
     /** Outcast: A New Beginning */
     { R"(\\O2-Win64-Shipping\.exe$)", {{
       { "d3d11.sampleNaNToZero",   "True" },

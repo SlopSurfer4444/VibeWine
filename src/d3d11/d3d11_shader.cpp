@@ -5,6 +5,7 @@
 #include "d3d11_input_layout.hpp"
 #include "sha1/sha1_util.hpp"
 #include <mutex>
+#include "cs2_compile_lab.hpp"
 
 namespace dxmt {
 
@@ -40,13 +41,17 @@ public:
   bool GetShader(MTL_COMPILED_SHADER *pShaderData) final {
     bool ret = false;
     if ((ret = ready_.load(std::memory_order_acquire))) {
-      *pShaderData = {function_};
+      Sha1HashState key; key.update(shader_->sha1()); key.update(variant_digest_); key.update(sm50_common.flags); key.update(sm50_common.metal_version);
+      *pShaderData = {function_, key.final(), {}};
+      auto &ingredient=pShaderData->ingredient;ingredient.source=shader_->sha1();ingredient.variant=variant_digest_;ingredient.cache_key=pShaderData->CacheKey;ingredient.metal_version=sm50_common.metal_version;
+      std::strncpy(ingredient.function,func_name.c_str(),sizeof(ingredient.function)-1);
     }
     return ret;
   }
 
   ThreadpoolWork *
   RunThreadpoolWork() {
+    cs2lab::CompileTimer timer{.kind="shader", .name=func_name.c_str()};
     auto pool = WMT::MakeAutoreleasePool();
     WMT::Reference<WMT::Error> err;
     WMT::Reference<WMT::DispatchData> lib_data = shader_->find_cached_variant(variant_digest_);
@@ -70,6 +75,7 @@ public:
       break;
     }
 
+    timer.cache_hit = lib_data != nullptr;
     if (!lib_data) {
       SM50_COMPILED_BITCODE bitcode;
       sm50_bitcode_t compile_result = proc(func_name.c_str(), &sm50_common);
@@ -84,6 +90,7 @@ public:
       if (err) {
         ERR("Failed to create MTLLibrary: ", err.description().getUTF8String());
         shader_->dump();
+        SM50DestroyBitcode(compile_result);
         return this;
       }
 
@@ -258,7 +265,7 @@ CreateVariantShader(MTLD3D11Device *pDevice, ManagedShader shader,
     sm50_bitcode_t compile_result = nullptr;
     sm50_error_t sm50_err = nullptr;
     if (SM50CompileTessellationPipelineHull(
-            variant.vertex_shader_handle->handle(), shader->handle(), 
+            variant.vertex_shader_handle->handle(), shader->handle(),
             (SM50_SHADER_COMPILATION_ARGUMENT_DATA *)&ia_layout, func_name,
             &compile_result, &sm50_err)) {
       ERR("Failed to compile shader: ", SM50GetErrorMessageString(sm50_err));
@@ -277,6 +284,10 @@ CreateVariantShader(MTLD3D11Device *pDevice, ManagedShader shader,
                     ShaderVariantTessellationDomain variant) {
   Sha1HashState h;
   h.update(getGlobalShaderFlag());
+  // Isolate corrected domain variants from cached results compiled with an
+  // uninitialized argument discriminator. Other shader cache keys are unchanged.
+  constexpr uint32_t domain_argument_version = 1;
+  h.update(domain_argument_version);
   h.update(variant.hull_shader_handle->sha1());
   h.update(variant.gs_passthrough);
   h.update(variant.rasterization_disabled);
@@ -284,8 +295,8 @@ CreateVariantShader(MTLD3D11Device *pDevice, ManagedShader shader,
   auto variant_digest = h.final();
   std::string func_name = "ds_" + shader->sha1().string().substr(0, 8) + "_" + variant_digest.string();
   auto proc = [=](const char *func_name, SM50_SHADER_COMMON_DATA *common) -> sm50_bitcode_t  {
-    SM50_SHADER_GS_PASS_THROUGH_DATA gs_passthrough;
-    SM50_SHADER_PSO_TESSELLATOR_DATA pso_tess;
+    SM50_SHADER_GS_PASS_THROUGH_DATA gs_passthrough{};
+    SM50_SHADER_PSO_TESSELLATOR_DATA pso_tess{};
     gs_passthrough.type = SM50_SHADER_GS_PASS_THROUGH;
     gs_passthrough.DataEncoded = variant.gs_passthrough;
     gs_passthrough.RasterizationDisabled = variant.rasterization_disabled;

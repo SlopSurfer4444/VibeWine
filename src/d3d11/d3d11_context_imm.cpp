@@ -137,6 +137,8 @@ public:
   STDMETHODCALLTYPE
   Map(ID3D11Resource *pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags,
       D3D11_MAPPED_SUBRESOURCE *pMappedResource) override {
+    cs2trace::ApiScope api(42,cmd_queue.traceSerial(),(uint64_t)pResource,(uint64_t(MapType)<<32)|MapFlags);
+    return api.invoke([&]() -> HRESULT {
     std::lock_guard<d3d11_device_mutex> lock(mutex);
 
     if (unlikely(!pResource))
@@ -241,6 +243,7 @@ public:
       if (!pMappedResource)
         return E_INVALIDARG;
 
+      cs2trace::ReasonScope reason(cs2trace::CommitReason::StagingMap,cmd_queue.traceSerial());
       if (MapType > 3 || MapType == 0)
         return E_INVALIDARG;
 
@@ -257,7 +260,7 @@ public:
           // can't guarantee a full overwrite
           std::memcpy(staging->mappedMemory(next_name), staging->mappedImmediateMemory(), staging->length);
           staging->updateImmediateName(current_seq_id, next_name);
-          EmitST([staging, next_name](ArgumentEncodingContext &enc) mutable { 
+          EmitST([staging, next_name](ArgumentEncodingContext &enc) mutable {
             auto _ = staging->buffer()->rename(staging->allocation(next_name));
           });
           result = StagingMapResult::Mappable;
@@ -277,12 +280,18 @@ public:
         // and the following calls are essentially no-op
         Flush();
         TRACE("staging map block");
-        auto& statistics = cmd_queue.CurrentFrameStatistics();
+#ifdef DXMT_DEBUG
         auto t0 = clock::now();
-        cmd_queue.WaitCPUFence(coherent_seq_id + uint64_t(result));
+#endif
+        { cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=30,.object=coherent_seq_id+uint64_t(result),.flags=(uint32_t)MapType,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
+          cmd_queue.WaitCPUFence(coherent_seq_id + uint64_t(result)); }
+#ifdef DXMT_DEBUG
         auto t1 = clock::now();
-        statistics.sync_count++;
-        statistics.sync_interval += (t1 - t0);
+        cmd_queue.UpdateCurrentFrameStatistics([&](auto &statistics) {
+          statistics.sync_count++;
+          statistics.sync_interval += (t1 - t0);
+        });
+#endif
         current_seq_id = cmd_queue.CurrentSeqId();
         coherent_seq_id = cmd_queue.CoherentSeqId();
       };
@@ -291,6 +300,8 @@ public:
       UNIMPLEMENTED("map-on-default: map");
     }
     return E_INVALIDARG;
+
+    });
   }
 
   void
@@ -407,6 +418,8 @@ public:
   HRESULT
   STDMETHODCALLTYPE
   GetData(ID3D11Asynchronous *pAsync, void *pData, UINT DataSize, UINT GetDataFlags) override {
+    cs2trace::ApiScope api(41,cmd_queue.traceSerial(),(uint64_t)pAsync,(uint64_t(DataSize)<<32)|GetDataFlags);
+    return api.invoke([&]() -> HRESULT {
     if (!pAsync || (DataSize && !pData))
       return E_INVALIDARG;
 
@@ -414,6 +427,9 @@ public:
     if (DataSize && DataSize != pAsync->GetDataSize())
       return E_INVALIDARG;
 
+    // Query state is shared with Begin/End. The device mutex is recursive,
+    // so the existing not-ready Flush below remains safe under protection.
+    std::lock_guard<d3d11_device_mutex> lock(mutex);
     HRESULT hr = S_FALSE;
 
     D3D11_QUERY_DESC desc;
@@ -479,10 +495,14 @@ public:
       return E_FAIL;
     }
     if (hr == S_FALSE && (GetDataFlags & D3D11_ASYNC_GETDATA_DONOTFLUSH) == 0) {
-      cmd_queue.CurrentFrameStatistics().event_stall++;
+      cmd_queue.UpdateCurrentFrameStatistics([](auto &statistics) { statistics.event_stall++; });
+      cs2trace::ReasonScope reason(cs2trace::CommitReason::GetDataNotReady,cmd_queue.traceSerial());
+      cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=31,.object=(uint64_t)pAsync,.flags=(uint32_t)desc.Query,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
       Flush();
     }
     return hr;
+
+    });
   }
 
   void
@@ -494,9 +514,13 @@ public:
   void
   STDMETHODCALLTYPE
   Flush1(D3D11_CONTEXT_TYPE Type, HANDLE hEvent) override {
+    cs2trace::ApiScope api(43,cmd_queue.traceSerial(),uint64_t(Type),(uint64_t)hEvent);
     std::lock_guard<d3d11_device_mutex> lock(mutex);
+    cs2trace::ReasonScope reason(cs2trace::CommitReason::ExplicitFlush,cmd_queue.traceSerial(),true);
 
+    api.result=0; // no submission unless Commit below actually runs
     if (ctx_state.has_dirty_op_since_last_event || promote_flush) {
+      api.result=1;
       InvalidateCurrentPass(true);
       Commit();
     }
@@ -587,10 +611,12 @@ public:
 
   virtual void
   WaitUntilGPUIdle() override {
+    cs2trace::ReasonScope reason(cs2trace::CommitReason::GPUIdle,cmd_queue.traceSerial());
     uint64_t seq = cmd_queue.CurrentSeqId();
     if(!InvalidateCurrentPass())
       Commit();
-    cmd_queue.WaitCPUFence(seq);
+    { cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=32,.object=seq,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
+      cmd_queue.WaitCPUFence(seq); }
   };
 
   void
@@ -603,6 +629,7 @@ public:
 
   HRESULT STDMETHODCALLTYPE Signal(ID3D11Fence *pFence, UINT64 Value) override {
     std::lock_guard<d3d11_device_mutex> lock(mutex);
+    cs2trace::ReasonScope reason(cs2trace::CommitReason::FenceSignal,cmd_queue.traceSerial());
     auto fence = static_cast<MTLD3D11Fence *>(pFence);
 
     InvalidateCurrentPass();
@@ -616,6 +643,7 @@ public:
 
   HRESULT STDMETHODCALLTYPE Wait(ID3D11Fence *pFence, UINT64 Value) override {
     std::lock_guard<d3d11_device_mutex> lock(mutex);
+    cs2trace::ReasonScope reason(cs2trace::CommitReason::FenceWait,cmd_queue.traceSerial());
     auto fence = static_cast<MTLD3D11Fence *>(pFence);
 
     Flush();

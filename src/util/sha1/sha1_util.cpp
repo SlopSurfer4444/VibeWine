@@ -1,3 +1,4 @@
+#include <functional>
 /*
  * This file is part of DXMT, Copyright (c) 2023 Feifan He
  *

@@ -34,7 +34,7 @@ void getWindowSize(HWND hWindow, uint32_t *pWidth, uint32_t *pWeight);
  * \param [in] width The new width
  * \param [in] height The new height
  */
-void resizeWindow(HWND hWindow, DXMTWindowState *pState, uint32_t width,
+bool resizeWindow(HWND hWindow, DXMTWindowState *pState, uint32_t width,
                   uint32_t weight);
 
 /**
@@ -70,12 +70,19 @@ bool enterFullscreenMode(HMONITOR hMonitor, HWND hWindow,
 bool leaveFullscreenMode(HWND hWindow, DXMTWindowState *pState,
                          bool restoreCoordinates);
 
+// Terminal ownership detach before pState is destroyed. This does not restore
+// window mutations or discharge physical cleanup flags. Do not resume using it.
+bool detachFullscreenState(HWND hWindow, const DXMTWindowState *pState);
+
 /**
  * \brief Restores the display mode if necessary
  *
  * \returns \c true on success, \c false on failure
  */
 bool restoreDisplayMode(HMONITOR hMonitor);
+
+// Retry by the captured device name, never by a newly selected window monitor.
+bool restoreDisplayMode(const WCHAR *deviceName);
 
 /**
  * \brief The monitor a window is on
@@ -101,7 +108,7 @@ bool isWindow(HWND hWindow);
  * \param [in] forceTopmost Whether to force the window to become topmost again
  * (D3D9 behaviour)
  */
-void updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow, bool forceTopmost);
+bool updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow, bool forceTopmost);
 
 bool isForeground(HWND hWindow);
 

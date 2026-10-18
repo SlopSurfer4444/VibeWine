@@ -3,6 +3,7 @@
 #include "thread.hpp"
 #include "util_win32_compat.h"
 #include <atomic>
+#include <functional>
 #include <queue>
 #include <unordered_map>
 
@@ -12,6 +13,7 @@ template <typename Task> struct task_trait {
   Task run_task(Task task);
   bool get_done(Task task);
   void set_done(Task task);
+  std::function<void()> take_post_completion(Task task);
 };
 
 template <typename Task> class task_scheduler {
@@ -56,7 +58,12 @@ template <typename Task> task_scheduler<Task>::task_scheduler() {
 }
 
 template <typename Task> task_scheduler<Task>::~task_scheduler() {
-  destroyed.store(true);
+  // Publish the wait predicate under the same mutex used by the waiter.
+  // An atomic flag alone does not prevent notify_all from preceding wait.
+  {
+    std::unique_lock<dxmt::mutex> lock(worker_mutex_);
+    destroyed.store(true);
+  }
   worker_cond_.notify_all();
 
   for (auto &worker : workers_) {
@@ -84,6 +91,9 @@ task_scheduler<Task>::worker_func() {
         });
       }
 
+      if (destroyed.load())
+        break;
+
       if (!task_continuation_queue_.empty()) {
         task = task_continuation_queue_.front();
         task_continuation_queue_.pop();
@@ -98,6 +108,9 @@ task_scheduler<Task>::worker_func() {
     while (true) {
       Task continuation = task_trait.run_task(task);
       if (continuation == task) {
+        // Detach ownership before ready publication can let consumers retire
+        // the task. The returned work must never retain a raw task pointer.
+        auto post_completion = task_trait.take_post_completion(task);
         {
           std::unique_lock<dxmt::mutex> lock(deps_mutex_);
           auto range = task_continuation_.equal_range(continuation);
@@ -115,6 +128,10 @@ task_scheduler<Task>::worker_func() {
         }
         worker_cond_.notify_all();
         continuation_buffer.clear();
+        // Persistence may block this worker, but not the dependency graph or
+        // runnable queue. Worker join also joins this owned completion work.
+        if (post_completion)
+          post_completion();
       } else {
         std::unique_lock<dxmt::mutex> lock(deps_mutex_);
         // spurious dependency
@@ -133,6 +150,10 @@ template <typename Task>
 void
 task_scheduler<Task>::submit(Task task) {
   std::unique_lock<dxmt::mutex> lock(worker_mutex_);
+  // Shutdown cancels queued work; it only joins tasks already executing.
+  // Callers must still keep the scheduler alive for the duration of submit.
+  if (destroyed.load())
+    return;
   task_queue_.push(task);
 
   if (running.load(std::memory_order_relaxed) == threads && threads < max_threads) {

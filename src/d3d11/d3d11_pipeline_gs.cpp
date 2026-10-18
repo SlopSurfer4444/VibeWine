@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "cs2_compile_lab.hpp"
 #include "Metal.hpp"
 #include "airconv_public.h"
 #include "d3d11_device.hpp"
@@ -63,7 +64,7 @@ public:
   }
 
   void GetPipeline(MTL_COMPILED_GRAPHICS_PIPELINE *pPipeline) final {
-    ready_.wait(false, std::memory_order_acquire);
+    cs2lab::wait(ready_, "geometry");
     *pPipeline = {state_mesh_};
   }
 

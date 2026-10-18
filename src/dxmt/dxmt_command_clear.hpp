@@ -18,6 +18,9 @@
 
 #pragma once
 
+#include <chrono>
+#include "log/log.hpp"
+
 #include "dxmt_command_constants.hpp"
 #include "dxmt_command_context.hpp"
 #include "dxmt_format.hpp"
@@ -408,6 +411,13 @@ public:
     key.format = format;
 
     if (!pso_cache_.contains(key.u64)) {
+      // Keep failed creations out of the PSO cache. Retry transient failures,
+      // but at most once per second per key and log only the first failure
+      // until a successful creation resets the failure state.
+      const auto now = std::chrono::steady_clock::now();
+      auto failure = pso_retry_after_.find(key.u64);
+      if (failure != pso_retry_after_.end() && now < failure->second)
+        return;
       WMTRenderPipelineInfo pipeline_info;
       WMT::InitializeRenderPipelineInfo(pipeline_info);
       pipeline_info.raster_sample_count = texture->sampleCount();
@@ -430,6 +440,15 @@ public:
       pipeline_info.rasterization_enabled = true;
       pipeline_info.input_primitive_topology = WMTPrimitiveTopologyClassTriangle;
       auto pso = device_.newRenderPipelineState(pipeline_info, err);
+      if (!pso) {
+        if (failure == pso_retry_after_.end())
+          ERR("Failed to create clear PSO: format=", format, ", samples=", texture->sampleCount(),
+              ", depth/stencil=", dsv_flag, ": ",
+              err ? err.description().getUTF8String() : "no error description");
+        pso_retry_after_[key.u64] = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+        return;
+      }
+      pso_retry_after_.erase(key.u64);
       pso_cache_.emplace(key.u64, std::move(pso));
     }
 
@@ -514,6 +533,7 @@ public:
   WMT::Reference<WMT::DepthStencilState> stencil_write_state_;
   WMT::Reference<WMT::DepthStencilState> depth_readonly_state_;
   std::unordered_map<uint64_t, WMT::Reference<WMT::RenderPipelineState>> pso_cache_;
+  std::unordered_map<uint64_t, std::chrono::steady_clock::time_point> pso_retry_after_;
   Rc<Texture> clearing_texture_;
   TextureViewKey clearing_texture_view_;
 };

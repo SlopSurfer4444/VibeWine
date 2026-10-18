@@ -73,6 +73,8 @@ CommandQueue::CommandQueue(WMT::Device device) :
 }
 
 CommandQueue::~CommandQueue() {
+  cs2trace::ApiScope trace_shutdown(47,traceSerial());
+  trace_shutdown.result=0;
   TRACE("Destructing command queue");
   stopped.store(true);
   ready_for_encode++;
@@ -97,18 +99,28 @@ CommandQueue::CommitCurrentChunk() {
   chunk.chunk_id = chunk_id;
   chunk.chunk_event_id = GetNextEventSeqId();
   chunk.frame_ = frame_count;
+  chunk.trace_generation = cs2trace::generation();
   chunk.resource_initializer_event_id = initializer.flushToWait();
-  auto& statistics = CurrentFrameStatistics();
-  statistics.command_buffer_count++;
+  UpdateCurrentFrameStatistics([](auto &statistics) { statistics.command_buffer_count++; });
 #if ASYNC_ENCODING
+  if (chunk.trace_generation) {
+    auto t = cs2trace::now();
+    cs2trace::record(chunk.trace_generation,20,t,t,traceSerial(),0,chunk_id,chunk.frame_);
+    cs2trace::commitReason(chunk.trace_generation,traceSerial(),chunk_id,chunk.frame_);
+  }
   ready_for_encode.fetch_add(1, std::memory_order_release);
   ready_for_encode.notify_one();
 
+#ifdef DXMT_DEBUG
   auto t0 = clock::now();
-  chunk_ongoing.wait(kCommandChunkCount - 1, std::memory_order_acquire);
+#endif
+  { cs2trace::Scope trace{.type=16,.object=chunk_id};
+    chunk_ongoing.wait(kCommandChunkCount - 1, std::memory_order_acquire); }
   chunk_ongoing.fetch_add(1, std::memory_order_relaxed);
+#ifdef DXMT_DEBUG
   auto t1 = clock::now();
-  statistics.commit_interval += (t1 - t0);
+  UpdateCurrentFrameStatistics([&](auto &statistics) { statistics.commit_interval += (t1 - t0); });
+#endif
 
 #else
   CommitChunkInternal(chunk, ready_for_encode.fetch_add(1, std::memory_order_relaxed));
@@ -120,6 +132,10 @@ CommandQueue::CommitCurrentChunk() {
 void
 CommandQueue::CommitChunkInternal(CommandChunk &chunk, uint64_t seq) {
 
+  if (chunk.trace_generation) {
+    auto t = cs2trace::now();
+    cs2trace::record(chunk.trace_generation,21,t,t,traceSerial(),0,seq,chunk.frame_);
+  }
   auto pool = WMT::MakeAutoreleasePool();
 
   switch (capture_state.getNextAction(chunk.frame_)) {
@@ -157,9 +173,14 @@ CommandQueue::CommitChunkInternal(CommandChunk &chunk, uint64_t seq) {
   if (chunk.resource_initializer_event_id) {
     cmdbuf.encodeWaitForEvent(initializer.event(), chunk.resource_initializer_event_id);
   }
-  chunk.encode(chunk.attached_cmdbuf, this->argument_encoding_ctx);
-  cmdbuf.commit();
+  { cs2trace::Scope trace{.type=14,.object=seq};
+    chunk.encode(chunk.attached_cmdbuf, this->argument_encoding_ctx); }
+  { cs2trace::Scope trace{.type=15,.object=seq}; cmdbuf.commit(); }
 
+  if (chunk.trace_generation) {
+    auto t = cs2trace::now();
+    cs2trace::record(chunk.trace_generation,22,t,t,traceSerial(),0,seq,chunk.frame_);
+  }
   ready_for_commit.fetch_add(1, std::memory_order_release);
   ready_for_commit.notify_one();
 }
@@ -195,7 +216,20 @@ CommandQueue::WaitForFinishThread() {
       break;
     auto &chunk = chunks[internal_seq % kCommandChunkCount];
     if (chunk.attached_cmdbuf.status() <= WMTCommandBufferStatusScheduled) {
+      cs2trace::Scope trace{.type=13,.object=internal_seq};
       chunk.attached_cmdbuf.waitUntilCompleted();
+    }
+    if (chunk.trace_generation && chunk.trace_generation == cs2trace::generation()) {
+      auto t = cs2trace::now();
+      auto status = chunk.attached_cmdbuf.status();
+      cs2trace::record(chunk.trace_generation,23,t,t,traceSerial(),status,internal_seq,chunk.frame_);
+      // Completed command-buffer properties only; no new wait or counter buffer.
+      if (status == WMTCommandBufferStatusCompleted) {
+        auto gpu_start = chunk.attached_cmdbuf.gpuStartTime();
+        auto gpu_end = chunk.attached_cmdbuf.gpuEndTime();
+        if (gpu_start && gpu_end >= gpu_start)
+          cs2trace::record(chunk.trace_generation,24,gpu_start,gpu_end,traceSerial(),status,internal_seq,chunk.frame_);
+      }
     }
     if (chunk.attached_cmdbuf.status() == WMTCommandBufferStatusError) {
       ERR("Device error at frame ", chunk.frame_, ": ", chunk.attached_cmdbuf.error().description().getUTF8String());

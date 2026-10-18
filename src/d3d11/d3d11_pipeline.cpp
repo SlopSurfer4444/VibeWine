@@ -1,3 +1,5 @@
+#include "cs2_compile_lab.hpp"
+#include "cs2_pipeline_archive.hpp"
 #include "Metal.hpp"
 #include "d3d11_private.h"
 #include "d3d11_pipeline.hpp"
@@ -47,7 +49,7 @@ public:
   }
 
   void GetPipeline(MTL_COMPILED_GRAPHICS_PIPELINE *pPipeline) final {
-    ready_.wait(false, std::memory_order_acquire);
+    cs2lab::wait(ready_, "graphics");
     *pPipeline = {state_};
   }
 
@@ -56,7 +58,7 @@ public:
     TRACE("Start compiling 1 PSO");
 
     WMT::Reference<WMT::Error> err;
-    MTL_COMPILED_SHADER vs, ps;
+    MTL_COMPILED_SHADER vs{}, ps{};
     if (!VertexShader->GetShader(&vs)) {
       return VertexShader;
     }
@@ -65,6 +67,7 @@ public:
     }
 
     WMTRenderPipelineInfo info;
+    std::memset(&info,0,sizeof(info));
     WMT::InitializeRenderPipelineInfo(info);
 
     info.vertex_function = vs.Function;
@@ -96,7 +99,10 @@ public:
     info.immutable_vertex_buffers = (1 << 16) | (1 << 29) | (1 << 30);
     info.immutable_fragment_buffers = (1 << 29) | (1 << 30);
 
-    state_ = device_->GetMTLDevice().newRenderPipelineState(info, err);
+    recipe_=cs2recipe::make(info,vs.ingredient,ps.ingredient);
+    { cs2trace::Scope trace_pso{.type=5, .object=(uint64_t)this};
+    state_ = cs2archive::create(device_->GetMTLDevice(), info, vs.CacheKey, ps.CacheKey, err, archive_pending_, (uint64_t)this);
+    }
 
     if (state_ == nullptr) {
       ERR("Failed to create PSO: ", err.description().getUTF8String());
@@ -115,7 +121,20 @@ public:
     ready_.notify_all();
   }
 
+  std::function<void()> TakePostCompletionWork() override {
+    if (!archive_pending_.archive && !cs2recipe::enabled(recipe_))
+      return {};
+    // The worker may publish ready and run continuations before this executes.
+    // Keep the archive reference, path and recipe independent of this object.
+    return [pending = std::move(archive_pending_), recipe = recipe_]() mutable {
+      pending.save();
+      cs2recipe::save(recipe);
+    };
+  }
+
 private:
+  cs2archive::Pending archive_pending_;
+  cs2recipe::Recipe recipe_{};
   UINT num_rtvs;
   UINT ps_valid_render_targets;
   WMTPixelFormat rtv_formats[8];
@@ -151,7 +170,7 @@ public:
   }
 
   void GetPipeline(MTL_COMPILED_COMPUTE_PIPELINE *pPipeline) final {
-    ready_.wait(false, std::memory_order_acquire);
+    cs2lab::wait(ready_, "compute");
     *pPipeline = {state_};
   }
 
@@ -172,7 +191,9 @@ public:
     info.tgsize_is_multiple_of_sgwidth = tgsize_is_multiple_of_sgwidth;
     info.immutable_buffers = (1 << 29) | (1 << 30);
 
+    { cs2trace::Scope trace_pso{.type=5, .object=(uint64_t)this};
     state_ = device_->GetMTLDevice().newComputePipelineState(info, err);
+    }
 
     if (!state_) {
       ERR("Failed to create compute PSO: ", err.description().getUTF8String());

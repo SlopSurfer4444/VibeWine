@@ -1,7 +1,14 @@
 #pragma once
 
 #include "util_flags.hpp"
+#include <algorithm>
 #include <array>
+#include <cstdint>
+#ifdef DXMT_DEBUG
+#include <map>
+#include <mutex>
+#endif
+#include <utility>
 #include <chrono>
 
 namespace dxmt {
@@ -52,7 +59,7 @@ struct FrameStatistics {
   uint32_t latency = 0;
   clock::duration encode_prepare_interval{};
   clock::duration encode_flush_interval{};
-  clock::duration drawable_blocking_interval{};
+  clock::duration present_encode_interval{};
   clock::duration present_latency_interval{};
   ScalerInfo last_scaler_info{};
 
@@ -74,96 +81,155 @@ struct FrameStatistics {
     latency = 0;
     encode_prepare_interval = {};
     encode_flush_interval = {};
-    drawable_blocking_interval = {};
+    present_encode_interval = {};
     present_latency_interval = {};
-    last_scaler_info.type = {};
+    last_scaler_info = {};
   };
 };
 
 constexpr size_t kFrameStatisticsCount = 16;
 
+// A HUD snapshot owns its data. No references to mutable producer state escape.
+struct FrameStatisticsSnapshot {
+  FrameStatistics frame{};
+  FrameStatistics min{};
+  FrameStatistics max{};
+  FrameStatistics average{};
+  size_t sample_count = 0;
+};
+
 class FrameStatisticsContainer {
-  std::array<FrameStatistics, kFrameStatisticsCount> frames_;
-  FrameStatistics min_;
-  FrameStatistics max_;
-  FrameStatistics average_;
-
-public:
-  FrameStatistics &
-  at(uint64_t frame) {
-    return frames_[frame % kFrameStatisticsCount];
-  }
-  const FrameStatistics &
-  at(uint64_t frame) const {
-    return frames_.at(frame % kFrameStatisticsCount);
-  }
-
-  const FrameStatistics &
-  min() const {
-    return min_;
-  }
-
-  const FrameStatistics &
-  max() const {
-    return max_;
-  }
-
-  const FrameStatistics &
-  average() const {
-    return average_;
-  }
+#ifdef DXMT_DEBUG
+  struct PendingFrame {
+    FrameStatistics data{};
+    bool cpu_complete = false;
+    bool encoding_complete = false;
+  };
+  struct CompletedFrame {
+    FrameStatistics data{};
+    uint64_t id = 0;
+    bool valid = false;
+  };
+  mutable std::mutex mutex_;
+  // In-flight frames cannot alias when the CPU laps the completed-sample ring.
+  std::map<uint64_t, PendingFrame> pending_;
+  std::array<CompletedFrame, kFrameStatisticsCount> completed_{};
+  uint64_t latest_completed_ = 0;
+  bool has_completed_ = false;
 
   void
-  compute(uint64_t current_frame) {
-    min_.reset();
-    max_.reset();
-    average_.reset();
-    current_frame = current_frame % kFrameStatisticsCount;
-    for(unsigned i = 0; i < kFrameStatisticsCount; i++) {
-      if (i == current_frame)
-        continue; // deliberately exclude current frame since it
-      min_.command_buffer_count = std::min(min_.command_buffer_count, frames_[i].command_buffer_count);
-      min_.sync_count = std::min(min_.sync_count, frames_[i].sync_count);
-      min_.event_stall = std::min(min_.sync_count, frames_[i].event_stall);
-      min_.commit_interval = std::min(min_.commit_interval, frames_[i].commit_interval);
-      min_.sync_interval = std::min(min_.sync_interval, frames_[i].sync_interval);
-      min_.encode_prepare_interval = std::min(min_.encode_prepare_interval, frames_[i].encode_prepare_interval);
-      min_.encode_flush_interval = std::min(min_.encode_flush_interval, frames_[i].encode_flush_interval);
-      min_.drawable_blocking_interval =
-          std::min(min_.drawable_blocking_interval, frames_[i].drawable_blocking_interval);
-      min_.present_latency_interval = std::min(min_.present_latency_interval, frames_[i].present_latency_interval);
-
-      max_.command_buffer_count = std::max(max_.command_buffer_count, frames_[i].command_buffer_count);
-      max_.sync_count = std::max(max_.sync_count, frames_[i].sync_count);
-      max_.event_stall = std::max(max_.event_stall, frames_[i].event_stall);
-      max_.commit_interval = std::max(max_.commit_interval, frames_[i].commit_interval);
-      max_.sync_interval = std::max(max_.sync_interval, frames_[i].sync_interval);
-      max_.encode_prepare_interval = std::max(max_.encode_prepare_interval, frames_[i].encode_prepare_interval);
-      max_.encode_flush_interval = std::max(max_.encode_flush_interval, frames_[i].encode_flush_interval);
-      max_.drawable_blocking_interval =
-          std::max(max_.drawable_blocking_interval, frames_[i].drawable_blocking_interval);
-      max_.present_latency_interval = std::max(max_.present_latency_interval, frames_[i].present_latency_interval);
-
-      average_.command_buffer_count += frames_[i].command_buffer_count;
-      average_.sync_count += frames_[i].sync_count;
-      average_.event_stall += frames_[i].event_stall;
-      average_.commit_interval += frames_[i].commit_interval;
-      average_.sync_interval += frames_[i].sync_interval;
-      average_.encode_prepare_interval += frames_[i].encode_prepare_interval;
-      average_.encode_flush_interval += frames_[i].encode_flush_interval;
-      average_.drawable_blocking_interval += frames_[i].drawable_blocking_interval;
-      average_.present_latency_interval += frames_[i].present_latency_interval;
+  complete(uint64_t frame, bool cpu) {
+    std::lock_guard lock(mutex_);
+    auto found = pending_.find(frame);
+    if (found == pending_.end() && has_completed_ && frame <= latest_completed_)
+      return; // duplicate completion cannot recreate an already published frame
+    auto &pending = pending_[frame];
+    (cpu ? pending.cpu_complete : pending.encoding_complete) = true;
+    if (pending.cpu_complete && pending.encoding_complete) {
+      auto slot = std::min_element(completed_.begin(), completed_.end(), [](const auto &a, const auto &b) {
+        if (a.valid != b.valid)
+          return !a.valid;
+        return a.id < b.id;
+      });
+      if (!slot->valid || slot->id < frame)
+        *slot = {pending.data, frame, true};
+      latest_completed_ = has_completed_ ? std::max(latest_completed_, frame) : frame;
+      has_completed_ = true;
+      pending_.erase(frame);
     }
-    average_.command_buffer_count /= (kFrameStatisticsCount - 1);
-    average_.sync_count /= (kFrameStatisticsCount - 1);
-    average_.event_stall /= (kFrameStatisticsCount - 1);
-    average_.commit_interval /= (kFrameStatisticsCount - 1);
-    average_.sync_interval /= (kFrameStatisticsCount - 1);
-    average_.encode_prepare_interval /= (kFrameStatisticsCount - 1);
-    average_.encode_flush_interval /= (kFrameStatisticsCount - 1);
-    average_.drawable_blocking_interval /= (kFrameStatisticsCount - 1);
-    average_.present_latency_interval /= (kFrameStatisticsCount - 1);
-  };
+  }
+
+public:
+  // Callbacks only mutate/copy statistics. Never call native APIs, wait, format,
+  // or reenter the container while holding this lock.
+  template <typename F>
+  void
+  update(uint64_t frame, F &&mutate) {
+    std::lock_guard lock(mutex_);
+    auto found = pending_.find(frame);
+    if (found == pending_.end() && has_completed_ && frame <= latest_completed_)
+      return; // late updates cannot corrupt a finalized sample
+    std::forward<F>(mutate)(pending_[frame].data);
+  }
+
+  void cpuComplete(uint64_t frame) { complete(frame, true); }
+  // Encoding completion means all statistics writes, including flush timing,
+  // have finished; it does not claim GPU execution has completed.
+  void encodingComplete(uint64_t frame) { complete(frame, false); }
+
+  FrameStatisticsSnapshot
+  snapshot(uint64_t before_frame) const {
+    std::array<CompletedFrame, kFrameStatisticsCount> samples;
+    {
+      std::lock_guard lock(mutex_);
+      samples = completed_;
+    }
+    std::sort(samples.begin(), samples.end(), [](const auto &a, const auto &b) { return a.id > b.id; });
+    FrameStatisticsSnapshot result;
+    std::array<FrameStatistics, kFrameStatisticsCount - 1> frames{};
+    for (const auto &sample : samples) {
+      if (!sample.valid || sample.id >= before_frame)
+        continue;
+      frames[result.sample_count++] = sample.data;
+      if (result.sample_count == frames.size())
+        break;
+    }
+    if (!result.sample_count)
+      return result;
+    result.frame = result.min = result.max = frames[0];
+    const auto count = result.sample_count;
+    // Widen integer totals so a full ring of uint32_t counters cannot wrap.
+#define DXMT_AGGREGATE_COUNTER(member) do { \
+    uint64_t total = 0; \
+    for (size_t i = 0; i < count; ++i) { \
+      result.min.member = std::min(result.min.member, frames[i].member); \
+      result.max.member = std::max(result.max.member, frames[i].member); \
+      total += frames[i].member; \
+    } \
+    result.average.member = total / count; \
+  } while (false)
+    DXMT_AGGREGATE_COUNTER(command_buffer_count);
+    DXMT_AGGREGATE_COUNTER(sync_count);
+    DXMT_AGGREGATE_COUNTER(render_pass_count);
+    DXMT_AGGREGATE_COUNTER(render_pass_optimized);
+    DXMT_AGGREGATE_COUNTER(clear_pass_count);
+    DXMT_AGGREGATE_COUNTER(clear_pass_optimized);
+    DXMT_AGGREGATE_COUNTER(resolve_pass_optimized);
+    DXMT_AGGREGATE_COUNTER(compute_pass_count);
+    DXMT_AGGREGATE_COUNTER(blit_pass_count);
+    DXMT_AGGREGATE_COUNTER(event_stall);
+    DXMT_AGGREGATE_COUNTER(latency);
+#undef DXMT_AGGREGATE_COUNTER
+    // Divide before summing to avoid overflow even for very long durations.
+#define DXMT_AGGREGATE_DURATION(member) do { \
+    clock::duration::rep quotient = 0, remainder = 0; \
+    const auto divisor = static_cast<clock::duration::rep>(count); \
+    for (size_t i = 0; i < count; ++i) { \
+      result.min.member = std::min(result.min.member, frames[i].member); \
+      result.max.member = std::max(result.max.member, frames[i].member); \
+      quotient += frames[i].member.count() / divisor; \
+      remainder += frames[i].member.count() % divisor; \
+    } \
+    result.average.member = clock::duration(quotient + remainder / divisor); \
+  } while (false)
+    DXMT_AGGREGATE_DURATION(commit_interval);
+    DXMT_AGGREGATE_DURATION(sync_interval);
+    DXMT_AGGREGATE_DURATION(encode_prepare_interval);
+    DXMT_AGGREGATE_DURATION(encode_flush_interval);
+    DXMT_AGGREGATE_DURATION(present_encode_interval);
+    DXMT_AGGREGATE_DURATION(present_latency_interval);
+#undef DXMT_AGGREGATE_DURATION
+    return result;
+  }
+#else
+public:
+  // Statistics feed only the DXMT_DEBUG HUD. Release builds keep no producer
+  // state and do not invoke mutation callbacks or allocate pending records.
+  template <typename F> void update(uint64_t, F &&) {}
+  void cpuComplete(uint64_t) {}
+  void encodingComplete(uint64_t) {}
+  FrameStatisticsSnapshot snapshot(uint64_t) const { return {}; }
+#endif
 };
 
 } // namespace dxmt

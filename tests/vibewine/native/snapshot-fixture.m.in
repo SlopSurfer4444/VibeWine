@@ -1,0 +1,215 @@
+#import <Foundation/Foundation.h>
+#include <pthread.h>
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdatomic.h>
+#include <signal.h>
+#include <unistd.h>
+#include <dlfcn.h>
+static _Thread_local BOOL simulated_main;
+static pthread_mutex_t main_lock=PTHREAD_MUTEX_INITIALIZER;
+static unsigned dispatches;
+static pthread_mutex_t async_lock=PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t w7ds_lock;
+static _Thread_local unsigned snapshot_lock_depth;
+static int tracked_lock(pthread_mutex_t* mutex) { int ret=pthread_mutex_lock(mutex); if(!ret && mutex==&w7ds_lock) ++snapshot_lock_depth; return ret; }
+static int tracked_unlock(pthread_mutex_t* mutex) { if(mutex==&w7ds_lock) { assert(snapshot_lock_depth==1); --snapshot_lock_depth; } return pthread_mutex_unlock(mutex); }
+#define pthread_mutex_lock tracked_lock
+#define pthread_mutex_unlock tracked_unlock
+#define CAMetalLayer W7TestMetalLayer
+#define NSScreen W7TestScreen
+#define NSWindow W7TestWindow
+#define NSView W7TestView
+static NSMutableArray* async_blocks;
+static _Atomic unsigned async_count, layer_destroyed, appkit_reads;
+static void fake_async(dispatch_queue_t q,dispatch_block_t block) { id copy=[block copy]; pthread_mutex_lock(&async_lock); [async_blocks addObject:copy]; atomic_fetch_add(&async_count,1); pthread_mutex_unlock(&async_lock); [copy release]; }
+
+@interface FakeThread : NSObject
++ (BOOL)isMainThread;
+@end
+@implementation FakeThread
++ (BOOL)isMainThread { return simulated_main; }
+@end
+static void fake_sync(dispatch_queue_t queue,dispatch_block_t block) { assert(!simulated_main); pthread_mutex_lock(&main_lock); ++dispatches; simulated_main=YES; block(); simulated_main=NO; pthread_mutex_unlock(&main_lock); }
+#define NSThread FakeThread
+#define dispatch_sync fake_sync
+#define dispatch_async fake_async
+#define CHECK_MAIN() do { assert(simulated_main); assert(!snapshot_lock_depth); atomic_fetch_add(&appkit_reads,1); } while(0)
+static void execute_on_main(dispatch_block_t block) { if([FakeThread isMainThread]) block(); else fake_sync(NULL,block); }
+static void drain_async(void) { for(;;) { pthread_mutex_lock(&async_lock); if(!async_blocks.count) { pthread_mutex_unlock(&async_lock); break; } dispatch_block_t block=[async_blocks[0] copy]; [async_blocks removeObjectAtIndex:0]; pthread_mutex_unlock(&async_lock); execute_on_main(block); [block release]; } }
+#define NSApplicationDidChangeScreenParametersNotification @"screen-parameters"
+#define NSApplicationDidBecomeActiveNotification @"activation"
+#define NSWindowDidChangeScreenNotification @"window-screen"
+#define NSWindowDidChangeBackingPropertiesNotification @"backing"
+#define NSWindowDidResizeNotification @"resize"
+#define NSWindowWillCloseNotification @"close"
+
+typedef int NTSTATUS;
+#define STATUS_SUCCESS 0
+#define STATUS_UNSUCCESSFUL ((int)0xc0000001)
+typedef uintptr_t obj_handle_t;
+typedef unsigned CGDirectDisplayID;
+static CGDirectDisplayID CGMainDisplayID(void) { CHECK_MAIN(); return 1; }
+enum WMTPixelFormat { FakeFormat=1 };
+enum WMTColorSpace { FakeSpace=1 };
+struct WMTMemoryPointer { void *ptr; };
+struct WMTConstMemoryPointer { const void *ptr; };
+struct unixcall_generic_obj_ptr_noret { obj_handle_t handle; struct WMTMemoryPointer arg; };
+struct unixcall_generic_obj_constptr_noret { obj_handle_t handle; struct WMTConstMemoryPointer arg; };
+/* TYPES */
+@protocol MTLDevice <NSObject> @end
+#define CGSizeMake NSMakeSize
+typedef NSSize CGSize;
+#define kCAGravityResizeAspect @"aspect"
+#define kCGColorBlack 0
+static id CGColorGetConstantColor(int c) { return nil; }
+static int ds3_process_gate(void) { return 0; }
+static enum WMTPixelFormat to_metal_pixel_format(enum WMTPixelFormat f) { return f; }
+static NSArray* fake_screens;
+@interface NSScreen : NSObject { @public unsigned fakeID; double current,reference,potential; }
++ (NSArray*)screens;
+- (NSDictionary*)deviceDescription;
+- (double)maximumExtendedDynamicRangeColorComponentValue;
+- (double)maximumPotentialExtendedDynamicRangeColorComponentValue;
+- (double)maximumReferenceExtendedDynamicRangeColorComponentValue;
+@end
+@implementation NSScreen
++ (NSArray*)screens { CHECK_MAIN(); return fake_screens; }
+- (NSDictionary*)deviceDescription { CHECK_MAIN(); return @{@"NSScreenNumber":@(fakeID)}; }
+- (double)maximumExtendedDynamicRangeColorComponentValue { CHECK_MAIN(); return current; }
+- (double)maximumPotentialExtendedDynamicRangeColorComponentValue { CHECK_MAIN(); return potential; }
+- (double)maximumReferenceExtendedDynamicRangeColorComponentValue { CHECK_MAIN(); return reference; }
+@end
+@interface NSWindow : NSObject { @public NSScreen* fakeScreen; }
+@property(readonly) NSScreen* screen;
+@end
+@implementation NSWindow
+- (NSScreen*)screen { CHECK_MAIN(); return fakeScreen; }
+@end
+@interface NSView : NSObject { @public NSWindow* fakeWindow; }
+@property(readonly) NSWindow* window;
+@end
+@implementation NSView
+- (NSWindow*)window { CHECK_MAIN(); return fakeWindow; }
+@end
+@interface CAMetalLayer : NSObject {
+ id _device, _delegate;
+ BOOL _opaque, _framebufferOnly, _displaySyncEnabled, _wantsExtendedDynamicRangeContent;
+ double _contentsScale;
+ NSSize _drawableSize;
+ enum WMTPixelFormat _pixelFormat;
+}
+@property(assign) id<MTLDevice> device;
+@property(assign) id delegate;
+@property BOOL opaque, framebufferOnly, displaySyncEnabled, wantsExtendedDynamicRangeContent;
+@property double contentsScale;
+@property NSSize drawableSize;
+@property enum WMTPixelFormat pixelFormat;
+@property(assign) id contentsGravity, backgroundColor;
+@end
+#define ACCESS(type,name,setter) - (type)name { CHECK_MAIN(); return _##name; } - (void)setter:(type)v { CHECK_MAIN(); _##name=v; }
+@implementation CAMetalLayer
+- (void)dealloc { atomic_fetch_add(&layer_destroyed,1); [super dealloc]; }
+ACCESS(id<MTLDevice>,device,setDevice)
+ACCESS(id,delegate,setDelegate)
+ACCESS(BOOL,opaque,setOpaque)
+ACCESS(BOOL,framebufferOnly,setFramebufferOnly)
+ACCESS(BOOL,displaySyncEnabled,setDisplaySyncEnabled)
+ACCESS(BOOL,wantsExtendedDynamicRangeContent,setWantsExtendedDynamicRangeContent)
+ACCESS(double,contentsScale,setContentsScale)
+ACCESS(NSSize,drawableSize,setDrawableSize)
+ACCESS(enum WMTPixelFormat,pixelFormat,setPixelFormat)
+@synthesize contentsGravity,backgroundColor;
+@end
+
+typedef CFTypeRef ColorSyncProfileRef;
+#define kColorSyncGenericRGBProfile CFSTR("generic")
+static _Atomic unsigned gamut_generation=1;
+static ColorSyncProfileRef ColorSyncProfileCreateWithDisplayID(CGDirectDisplayID d) { return d ? (CFTypeRef)[@(d) retain] : NULL; }
+static ColorSyncProfileRef ColorSyncProfileCreateWithName(CFStringRef name) { return (CFTypeRef)[@1 retain]; }
+bool GetDisplayColorGamut(ColorSyncProfileRef profile, struct WMTDisplayDescription *desc) { desc->red_primaries[0]=atomic_load(&gamut_generation)/10.0f; return true; }
+NSScreen *GetNSScreenForDisplayID(CGDirectDisplayID d) { CHECK_MAIN(); for(NSScreen* screen in fake_screens) if(screen->fakeID==d) return screen; return nil; }
+static _Atomic BOOL native_symbol=YES,native_available=YES;
+static int fake_copy_edr(uint32_t id,double values[3]) { if(!atomic_load(&native_available) || id<1 || id>2) return 0; values[0]=id==1?2.0:3.0; values[1]=id==1?1.0:2.0; values[2]=id==1?4.0:8.0; return 1; }
+static void *fake_dlsym(void *scope,const char *name) { return atomic_load(&native_symbol) && !strcmp(name,"macdrv_copy_display_edr_v1") ? fake_copy_edr : NULL; }
+#define dlsym fake_dlsym
+#include "wave7_display_snapshot.inc"
+static CAMetalLayer* layer;
+static void set_metadata(unsigned id,unsigned value) {
+ struct WMTHDRMetadata m; memset(&m,(int)value,sizeof(m));
+ struct unixcall_update_display_setting u={id,(enum WMTColorSpace)value,{&m}};
+ assert(_WMTUpdateDisplaySetting(&u)==0);
+}
+static void verify_metadata(struct WMTHDRMetadata* m,unsigned value) { unsigned char* bytes=(void*)m; for(unsigned i=0;i<sizeof(*m);i++) assert(bytes[i]==value); }
+static void *writer(void* unused) { @autoreleasepool { for(unsigned i=0;i<10000;i++) set_metadata(1,(i%200)+1); } return NULL; }
+static void *reader(void* unused) { @autoreleasepool { for(unsigned i=0;i<10000;i++) {
+ struct WMTHDRMetadata m={0}; struct unixcall_query_display_setting q={1,0,{&m},false};
+ assert(!_WMTQueryDisplaySetting(&q)); assert(q.ret); verify_metadata(&m,q.colorspace);
+ struct unixcall_query_display_setting_for_layer l={(obj_handle_t)layer,0,0,{&m},{0,0}};
+ assert(!_WMTQueryDisplaySettingForLayer(&l)); assert(l.version); verify_metadata(&m,l.colorspace); assert(l.edr_value.maximum_edr_color_component_value==2.0);
+ } } return NULL; }
+static pthread_mutex_t device_lock=PTHREAD_MUTEX_INITIALIZER;
+static dispatch_semaphore_t main_blocked;
+static void *blocked_main(void* unused) { pthread_mutex_lock(&main_lock); simulated_main=YES; dispatch_semaphore_signal(main_blocked); pthread_mutex_lock(&device_lock); pthread_mutex_unlock(&device_lock); simulated_main=NO; pthread_mutex_unlock(&main_lock); return NULL; }
+static void *cold_reader(void* object) { @autoreleasepool { struct WMTLayerProps p; struct unixcall_generic_obj_ptr_noret q={(obj_handle_t)object,{&p}}; for(unsigned i=0;i<100;i++) { _MetalLayer_getProps(&q); assert(p.contents_scale==1.0); } } return NULL; }
+
+struct PropertyContext { NSWindow* window; NSScreen* first; NSScreen* second; };
+static void *property_writer(void* pointer) { struct PropertyContext* c=pointer; @autoreleasepool {
+ for(unsigned i=1;i<=2000;i++) execute_on_main(^{ layer.contentsScale=i*3; layer.drawableSize=NSMakeSize(i,i*2); c->window->fakeScreen=i%2?c->first:c->second; w7ds_refresh_layer_main(layer); });
+ } return NULL; }
+static void *property_reader(void* unused) { @autoreleasepool {
+ for(unsigned i=0;i<10000;i++) {
+  struct WMTLayerProps p; struct unixcall_generic_obj_ptr_noret get={(obj_handle_t)layer,{&p}}; _MetalLayer_getProps(&get); assert(p.contents_scale==p.drawable_width*3 && p.drawable_height==p.drawable_width*2);
+  struct WMTHDRMetadata m; struct unixcall_query_display_setting_for_layer q={(obj_handle_t)layer,0,0,{&m},{0,0}}; _WMTQueryDisplaySettingForLayer(&q); assert(q.version); assert(q.colorspace==11 || q.colorspace==22); verify_metadata(&m,q.colorspace); assert(q.edr_value.maximum_edr_color_component_value==(q.colorspace==11?2:3));
+ }
+ } return NULL; }
+
+int main(void) { @autoreleasepool {
+ async_blocks=[NSMutableArray new];
+ NSScreen* screen=[NSScreen new]; screen->fakeID=1; screen->current=2; screen->reference=1; screen->potential=4;
+ NSScreen* second=[NSScreen new]; second->fakeID=2; second->current=3; second->reference=2; second->potential=8;
+ fake_screens=@[screen,second];
+ // Cold output constructor before any layer: exact native startup EDR, no AppKit.
+ struct WMTDisplayDescription desc; struct unixcall_generic_obj_ptr_noret description={1,{&desc}};
+ unsigned reads=atomic_load(&appkit_reads); assert(!_WMTGetDisplayDescription(&description)); assert(desc.maximum_edr_color_component_value==2 && desc.maximum_potential_edr_color_component_value==4 && desc.red_primaries[0]==0.1f); assert(atomic_load(&appkit_reads)==reads); assert(atomic_load(&async_count)==1);
+ assert(!_WMTGetDisplayDescription(&description)); assert(atomic_load(&async_count)==1); drain_async();
+ layer=[CAMetalLayer new]; NSView* view=[NSView new]; NSWindow* window=[NSWindow new];
+ execute_on_main(^{ layer.delegate=view; layer.wantsExtendedDynamicRangeContent=YES; layer.contentsScale=2; layer.drawableSize=NSMakeSize(1234,567); layer.opaque=YES; layer.framebufferOnly=YES; view->fakeWindow=window; window->fakeScreen=screen; assert(w7ds_prime_layer_main(layer)); });
+ struct WMTLayerProps out={0}; struct unixcall_generic_obj_ptr_noret get={(obj_handle_t)layer,{&out}};
+ assert(!_MetalLayer_getProps(&get)); assert(out.contents_scale==2 && out.drawable_width==1234 && out.drawable_height==567);
+ // Main is waiting for the renderer lock. Worker owns it and must still query.
+ unsigned requests=atomic_load(&async_count); pthread_mutex_lock(&device_lock); main_blocked=dispatch_semaphore_create(0); pthread_t blocked; assert(!pthread_create(&blocked,NULL,blocked_main,NULL)); assert(!dispatch_semaphore_wait(main_blocked,dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC)));
+ alarm(3); assert(!_MetalLayer_getProps(&get));
+ struct WMTEDRValue edr; struct unixcall_generic_obj_ptr_noret eq={(obj_handle_t)layer,{&edr}}; assert(!_MetalLayer_getEDRValue(&eq)); assert(edr.maximum_potential_edr_color_component_value==4);
+ set_metadata(1,1); struct WMTHDRMetadata m; struct unixcall_query_display_setting_for_layer query={(obj_handle_t)layer,0,0,{&m},{0,0}}; assert(!_WMTQueryDisplaySettingForLayer(&query)); assert(query.version); assert(!_WMTGetDisplayDescription(&description));
+ alarm(0); pthread_mutex_unlock(&device_lock); pthread_join(blocked,NULL); dispatch_release(main_blocked); assert(atomic_load(&async_count)==requests);
+ uint64_t old_version=query.version; struct unixcall_update_display_setting clear={1,0,{NULL}}; _WMTUpdateDisplaySetting(&clear); set_metadata(1,1); _WMTQueryDisplaySettingForLayer(&query); assert(query.version>old_version);
+ pthread_t threads[4]; assert(!pthread_create(&threads[0],NULL,writer,NULL)); assert(!pthread_create(&threads[1],NULL,writer,NULL)); assert(!pthread_create(&threads[2],NULL,reader,NULL)); assert(!pthread_create(&threads[3],NULL,reader,NULL)); for(unsigned i=0;i<4;i++) pthread_join(threads[i],NULL); assert(atomic_load(&async_count)==requests);
+ // Explicit setter hook and native notifications refresh without worker hops.
+ execute_on_main(^{ layer.contentsScale=3; layer.drawableSize=NSMakeSize(2000,1000); w7ds_refresh_layer_main(layer); }); _MetalLayer_getProps(&get); assert(out.contents_scale==3 && out.drawable_width==2000);
+ set_metadata(1,11); set_metadata(2,22);
+ execute_on_main(^{ window->fakeScreen=second; [[NSNotificationCenter defaultCenter] postNotificationName:NSWindowDidChangeScreenNotification object:window]; }); _WMTQueryDisplaySettingForLayer(&query); assert(query.colorspace==22 && query.edr_value.maximum_edr_color_component_value==3); verify_metadata(&m,22);
+ // Close invalidates display binding even before AppKit detaches the old view.
+ execute_on_main(^{ [[NSNotificationCenter defaultCenter] postNotificationName:NSWindowWillCloseNotification object:window]; }); _WMTQueryDisplaySettingForLayer(&query); assert(!query.version && query.edr_value.maximum_edr_color_component_value==1);
+ // Detached/missing hierarchy publishes stable defaults, not repeated requests.
+ execute_on_main(^{ layer.delegate=nil; w7ds_refresh_layer_main(layer); }); requests=atomic_load(&async_count); for(unsigned i=0;i<100;i++) _WMTQueryDisplaySettingForLayer(&query); assert(!query.version && atomic_load(&async_count)==requests);
+ // Main-owned layer/property transactions racing workers remain whole snapshots.
+ NSWindow* new_window=[NSWindow new]; struct PropertyContext context={new_window,screen,second};
+ execute_on_main(^{ layer.delegate=view; view->fakeWindow=new_window; new_window->fakeScreen=screen; layer.contentsScale=3; layer.drawableSize=NSMakeSize(1,2); assert(w7ds_prime_layer_main(layer)); });
+ assert(!pthread_create(&threads[0],NULL,property_writer,&context)); assert(!pthread_create(&threads[1],NULL,property_reader,NULL)); pthread_join(threads[0],NULL); pthread_join(threads[1],NULL);
+ // Missing window and missing screen remain stable default states.
+ execute_on_main(^{ view->fakeWindow=nil; w7ds_refresh_layer_main(layer); }); _WMTQueryDisplaySettingForLayer(&query); assert(!query.version && query.edr_value.maximum_potential_edr_color_component_value==1);
+ execute_on_main(^{ view->fakeWindow=new_window; new_window->fakeScreen=nil; w7ds_refresh_layer_main(layer); }); _WMTQueryDisplaySettingForLayer(&query); assert(!query.version && query.edr_value.maximum_potential_edr_color_component_value==1);
+ // Concurrent first misses coalesce and retain a layer only until refresh runs.
+ unsigned destroyed=atomic_load(&layer_destroyed); CAMetalLayer* cold=[CAMetalLayer new]; requests=atomic_load(&async_count);
+ for(unsigned i=0;i<4;i++) assert(!pthread_create(&threads[i],NULL,cold_reader,cold)); for(unsigned i=0;i<4;i++) pthread_join(threads[i],NULL); assert(atomic_load(&async_count)==requests+1);
+ [cold release]; assert(atomic_load(&layer_destroyed)==destroyed); drain_async(); assert(atomic_load(&layer_destroyed)==destroyed+1);
+ // Profile/topology notifications invalidate cached gamut; removed output is unknown.
+ atomic_store(&gamut_generation,2); execute_on_main(^{ [[NSNotificationCenter defaultCenter] postNotificationName:NSApplicationDidChangeScreenParametersNotification object:nil]; }); assert(!_WMTGetDisplayDescription(&description)); assert(desc.red_primaries[0]==0.2f);
+ atomic_store(&native_available,NO); assert(_WMTGetDisplayDescription(&description)==STATUS_UNSUCCESSFUL); assert(desc.maximum_potential_edr_color_component_value==1); atomic_store(&native_available,YES); atomic_store(&native_symbol,NO); assert(_WMTGetDisplayDescription(&description)==STATUS_UNSUCCESSFUL); atomic_store(&native_symbol,YES);
+ // Secondary/nonprimary settings remain isolated by ID.
+ struct unixcall_query_display_setting direct={2,0,{&m},false}; _WMTQueryDisplaySetting(&direct); assert(direct.ret && direct.colorspace==22); verify_metadata(&m,22);
+ [layer release]; [view release]; [window release]; [new_window release]; [screen release]; [second release]; [async_blocks release];
+ puts("PASS: cold exact EDR before layer, eager Retina prime, main/device inversion, lock-only warm getters, 20k concurrent metadata writes/40k queries, 2k layer publications/20k snapshot reads, monotonic versions, display-ID isolation, notification/close refresh, cold coalescing, weak layer disposal, missing native capability");
+} return 0; }
