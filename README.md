@@ -19,6 +19,7 @@ python3 scripts/workspace.py check
 | [Wine source](https://github.com/SlopSurfer4444/VibeWine/tree/component/wine) (`components/wine`) | Complete Wine source and component history | `component/wine` branch |
 | [DXMT source](https://github.com/SlopSurfer4444/VibeWine/tree/component/dxmt) (`components/dxmt`) | Complete DXMT source and component history | `component/dxmt` branch |
 | [profiles](profiles/README.md) | Explicit title-specific compatibility | Opt-in, separate from core |
+| [Telemetry tools](tools/telemetry/README.md) | Offline collector/analyzer and measurement protocol | `main` branch |
 | [experiments](experiments/README.md) | Instrumentation and exploratory work | Off by default |
 
 The components are pinned Git submodules hosted as separate branches in this

@@ -21,3 +21,14 @@ jobs:
       - run: python3 scripts/workspace.py check --metadata-only
       - run: python3 scripts/workspace.py init
       - run: python3 scripts/workspace.py check
+  telemetry:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: git submodule update --init components/dxmt
+      - run: python3 tools/telemetry/check.py
