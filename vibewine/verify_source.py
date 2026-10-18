@@ -8,7 +8,16 @@ overlay = json.loads((root / "vibewine/source-overlay.json").read_text())
 expected = {row["path"]: row["sha256"] for row in vendor["files"]}
 for row in overlay["overlaysInApplicationOrder"]:
     expected[row["destination"]] = row["sha256"]
+metadata = {"vibewine/README.md", "vibewine/vendor-manifest.json",
+            "vibewine/source-overlay.json", "vibewine/verify_source.py"}
+allowed = set(expected) | metadata
 errors = []
+for p in root.rglob("*"):
+    rel = p.relative_to(root)
+    if rel.parts[0] == ".git":
+        continue
+    if p.is_symlink() or (p.is_file() and rel.as_posix() not in allowed):
+        errors.append("unexpected: " + rel.as_posix())
 for name, digest in expected.items():
     p = root / name
     if not p.is_file() or hashlib.sha256(p.read_bytes()).hexdigest() != digest:
