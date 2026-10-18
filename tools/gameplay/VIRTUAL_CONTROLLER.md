@@ -123,8 +123,11 @@ the same user with access to the session directory.
 
 ## Reuse choice and verification
 
-The existing Wine XInput source in `optional/xinput/main.c` (LGPL-2.1-or-later)
-provides the relevant controller API seam. [InputFusion](https://github.com/xan105/InputFusion)
+Wine's `dlls/xinput1_3/main.c` (LGPL-2.1-or-later) provides the controller API
+seam. The producer experiment is component commit
+`10557ac06d458d48cc874799adc655050108e5a1`, on
+`experiment/process-local-xinput-20261018`; it is not enabled by installing this
+host script. [InputFusion](https://github.com/xan105/InputFusion)
 was checked as an alternative: its LGPL-3.0 SDL3/Detours implementation translates
 controller APIs but adds dependencies and lacks this bounded host protocol.
 [SoulsGym's input module](https://github.com/amacati/SoulsGym/blob/main/soulsgym/core/game_input.py)
@@ -152,3 +155,22 @@ requires verifying that one admitted XInput provider owns this session in the
 game process. Independently loaded XInput DLL variants must not share a session:
 their poll counters and backend states are independent and their receipts could
 otherwise be confused. The host cannot establish that prerequisite itself.
+
+### Isolated execution evidence, 2026-10-18
+
+The built x64 XInput 1.3 producer was executed in a separate Wine prefix:
+415 enabled-mode assertions, 11 default-mode assertions, and 11 wrong-process
+assertions passed. The fixture checked the loaded module path. Its DLL also used
+a unique internal PE export name: merely renaming a Wine builtin DLL can still
+resolve to the original builtin and is insufficient candidate binding.
+
+A second, 20-second console fixture exercised this host writer against the real
+DLL. The consumer observed A plus left-stick X=12000, neutral state after a
+250-ms lease expired, B, and explicit neutral release. The consumer made 3,948
+polls and exited successfully; the isolated Wine server settled successfully.
+No native keyboard/mouse events or focus actions were used for this exchange.
+
+These runs establish the transport and consumer API behavior, including
+independent expiry. They do not establish DS3 background polling, visible game
+actions, unchanged Spaces, or performance overhead. Production DS3 was not
+modified by these fixture runs; a separately bound game trial is still required.
