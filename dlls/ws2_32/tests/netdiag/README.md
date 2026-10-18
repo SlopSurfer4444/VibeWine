@@ -102,7 +102,10 @@ Both programs are LGPL-2.1-or-later, as are the shared logger headers.
 uses numeric loopback DNS only, a nonblocking loopback TCP connection and
 refusal, and an overlapped UDP receive followed by a loopback send. It creates
 no window. Its payload sentinel is checked inside the fixture and must never
-appear in the capture or JSON. API assertions print only counts and error codes.
+appear in the capture or JSON. API assertions print counts, error codes, operation labels and source lines.
+TCP diagnostic output also records connect return/error and, after a failed wait
+only, event and SO_ERROR observations. A timed-out expected event still fails;
+these observations do not replace or weaken the assertions.
 Run it first without opt-in against the intended private runtime, then with a
 fresh exact-executable-bound session. The optional `--wait-arm` mode first
 creates and closes a socket to claim the prepared file, prints readiness, and

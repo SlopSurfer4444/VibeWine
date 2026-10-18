@@ -18,22 +18,25 @@ INT WSAAPI GetAddrInfoExOverlappedResult(LPOVERLAPPED);
 static unsigned int assertions, failures;
 static DWORD started;
 
-static int check(int condition, int error)
+static int check_at(int condition, int error, const char *stage, unsigned int line)
 {
     ++assertions;
     if (!condition)
     {
         ++failures;
-        printf("assertion=%u error=%d\n", assertions, error);
+        printf("assertion=%u error=%d stage=%s line=%u\n", assertions, error, stage, line);
     }
     return condition;
 }
 
+#define check(condition, error) check_at((condition), (error), __func__, __LINE__)
+
 /* Capture after the API expression, independent of C argument order. */
-static int check_api(int condition)
+static int check_api_at(int condition, const char *stage, unsigned int line)
 {
-    return check(condition, WSAGetLastError());
+    return check_at(condition, WSAGetLastError(), stage, line);
 }
+#define check_api(condition) check_api_at((condition), __func__, __LINE__)
 
 static DWORD wait_limit(void)
 {
@@ -42,10 +45,10 @@ static DWORD wait_limit(void)
     return 9000 - elapsed < 2000 ? 9000 - elapsed : 2000;
 }
 
-static int wait_event(WSAEVENT event)
+static int wait_event(WSAEVENT event, const char *label)
 {
     DWORD ret = WaitForSingleObject(event, wait_limit());
-    return check(ret == WAIT_OBJECT_0, ret == WAIT_FAILED ? GetLastError() : (int)ret);
+    return check_at(ret == WAIT_OBJECT_0, ret == WAIT_FAILED ? GetLastError() : (int)ret, label, __LINE__);
 }
 
 static SOCKET local_socket(int type, struct sockaddr_in *address)
@@ -102,7 +105,7 @@ static void numeric_dns(void)
     {
         if (ret == WSA_IO_PENDING)
         {
-            if (!wait_event(event))
+            if (!wait_event(event, "numeric_dns_async"))
             {
                 /* A still-active resolver owns these stack outputs. Exit the
                  * process immediately rather than returning and invalidating them. */
@@ -138,13 +141,31 @@ static void tcp_connect(int refused)
     if (!check_api(WSAEventSelect(client, event, FD_CONNECT) == 0)) goto done;
     ret = connect(client, (struct sockaddr *)&address, sizeof(address));
     error = ret == SOCKET_ERROR ? WSAGetLastError() : 0;
+    printf("stage=%s connect_return=%d connect_error=%d\n", refused ? "tcp_refused" : "tcp_success", ret, error);
     if (!check(ret == 0 || (ret == SOCKET_ERROR && (error == WSAEWOULDBLOCK
                || error == WSAEINPROGRESS || (refused && error == WSAECONNREFUSED))), error)) goto done;
     if (ret == SOCKET_ERROR && error == WSAECONNREFUSED)
         check(refused, error);
     else
     {
-        if (!wait_event(event)) goto done;
+        if (!wait_event(event, refused ? "tcp_refused_fd_connect" : "tcp_success_fd_connect"))
+        {
+            /* Keep the failed wait as a failure. Observe this socket only after
+             * failure to distinguish missing event delivery from pending/error. */
+            memset(&events, 0, sizeof(events));
+            ret = WSAEnumNetworkEvents(client, event, &events);
+            error = ret == SOCKET_ERROR ? WSAGetLastError() : 0;
+            printf("stage=%s after_timeout_enum_return=%d enum_error=%d events=%ld fd_connect_error=%d\n",
+                   refused ? "tcp_refused" : "tcp_success", ret, error,
+                   events.lNetworkEvents, events.iErrorCode[FD_CONNECT_BIT]);
+            socket_error = -1;
+            len = sizeof(socket_error);
+            ret = getsockopt(client, SOL_SOCKET, SO_ERROR, (char *)&socket_error, &len);
+            error = ret == SOCKET_ERROR ? WSAGetLastError() : 0;
+            printf("stage=%s after_timeout_so_error_return=%d api_error=%d socket_error=%d\n",
+                   refused ? "tcp_refused" : "tcp_success", ret, error, socket_error);
+            goto done;
+        }
         memset(&events, 0, sizeof(events));
         if (!check_api(WSAEnumNetworkEvents(client, event, &events) == 0)) goto done;
         check((events.lNetworkEvents & FD_CONNECT) != 0, 0);
@@ -204,7 +225,7 @@ static void udp_overlapped(void)
     ret = sendto(sender, sentinel, sizeof(sentinel), 0,
                  (struct sockaddr *)&receiver_address, sizeof(receiver_address));
     if (!check(ret == (int)sizeof(sentinel), ret == SOCKET_ERROR ? WSAGetLastError() : ret)) goto done;
-    if (!wait_event(event)) goto done;
+    if (!wait_event(event, "udp_receive_completion")) goto done;
     ret = WSAGetOverlappedResult(receiver, &overlapped, &bytes, FALSE, &flags);
     if (!check_api(ret)) goto done;
     pending = FALSE;
@@ -220,7 +241,7 @@ done:
          * Closing a socket cancels the receive; wait remains strictly bounded. */
         closesocket(receiver);
         receiver = INVALID_SOCKET;
-        if (!wait_event(event))
+        if (!wait_event(event, "udp_cancel_completion"))
         {
             printf("assertions=%u failures=%u error=%d\n", assertions, failures, WSAETIMEDOUT);
             ExitProcess(1);
