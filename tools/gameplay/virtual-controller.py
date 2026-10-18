@@ -267,53 +267,135 @@ def publish(directory, manifest, flags, lease_ms=500, **gamepad):
     return seq
 
 
+def _command_locked(directory, manifest, flags, lease_ms=500, timeout_ms=1500,
+                    *, not_after=None, fresh_lease=False, cleanup_on_failure=True, **gamepad):
+    if flags == STATE and not manifest["armed"]:
+        raise ControllerError("a fresh acknowledged neutral ARM is required")
+    if flags == RELEASE and not manifest["pid"]:
+        raise ControllerError("no acknowledged Windows PID is bound")
+    baseline = manifest["polls"]
+    # A timed-out first ARM may have bound the producer after our deadline.
+    # Recover only its identity from a receipt for exactly our last sequence;
+    # a new command still requires a newer sequence and an advancing poll.
+    if flags == ARM and not manifest["pid"] and manifest["seq"]:
+        try:
+            previous_arm = receipt_for(directory, manifest, seq=manifest["seq"])
+        except (ControllerError, OSError):
+            pass
+        else:
+            manifest["pid"] = previous_arm["pid"]
+            baseline = max(baseline, previous_arm["polls"])
+    # Receipt count can advance between CLI invocations; observe its latest value.
+    try:
+        previous = receipt_for(directory, manifest)
+        baseline = max(baseline, previous["polls"])
+    except (ControllerError, OSError):
+        pass
+    started = time.monotonic()
+    if not_after is not None and started >= not_after:
+        raise ControllerError("command deadline elapsed before publication")
+    seq = publish(directory, manifest, flags, lease_ms, **gamepad)
+    deadline = started + timeout_ms / 1000
+    if not_after is not None:
+        deadline = min(deadline, not_after)
+    if fresh_lease:
+        deadline = min(deadline, started + lease_ms / 1000)
+    expected = {ARM: "READY", STATE: "STATE", RELEASE: "RELEASE"}[flags]
+    error = "no matching poll receipt"
+    while time.monotonic() < deadline:
+        try:
+            ack = receipt_for(directory, manifest, seq, baseline)
+            if ack["status"] != expected or (flags != RELEASE and not ack["enabled"]):
+                error = f"game poll reported {ack['status']} (enabled={ack['enabled']})"
+                break
+            if time.monotonic() >= deadline:
+                error = "matching receipt arrived after the command deadline"
+                break
+            manifest.update(pid=ack["pid"], polls=ack["polls"], armed=(flags != RELEASE))
+            save_manifest(directory, manifest)
+            return (dict(receipt=ack, lease_ms=lease_ms,
+                         note="Poll receipt only; inspect the game image to establish an action."), started)
+        except (ControllerError, OSError) as exc:
+            error = str(exc)
+        time.sleep(min(0.01, max(0, deadline - time.monotonic())))
+    # Neutral ARM itself is safe. Failed active/release commands get a newer
+    # neutral RELEASE when bound; independent producer expiry remains mandatory.
+    if cleanup_on_failure and flags != ARM and manifest["pid"]:
+        publish(directory, manifest, RELEASE, lease_ms=1)
+    raise ControllerError(f"command unacknowledged: {error}; session disarmed, neutral ARM required")
+
+
 def command(path, flags, lease_ms=500, timeout_ms=1500, **gamepad):
     integer(timeout_ms, 1, 5000, "timeout_ms")
     with locked_session(path) as (directory, manifest):
-        if flags == STATE and not manifest["armed"]:
-            raise ControllerError("a fresh acknowledged neutral ARM is required")
-        if flags == RELEASE and not manifest["pid"]:
-            raise ControllerError("no acknowledged Windows PID is bound")
-        baseline = manifest["polls"]
-        # A timed-out first ARM may have bound the producer after our deadline.
-        # Recover only its identity from a receipt for exactly our last sequence;
-        # a new command still requires a newer sequence and an advancing poll.
-        if flags == ARM and not manifest["pid"] and manifest["seq"]:
-            try:
-                previous_arm = receipt_for(directory, manifest, seq=manifest["seq"])
-            except (ControllerError, OSError):
-                pass
-            else:
-                manifest["pid"] = previous_arm["pid"]
-                baseline = max(baseline, previous_arm["polls"])
-        # Receipt count can advance between CLI invocations; observe its latest value.
+        result, _ = _command_locked(directory, manifest, flags, lease_ms, timeout_ms, **gamepad)
+        return result
+
+
+def pulse(path, hold_ms=120, timeout_ms=2000, **gamepad):
+    """ARM, one bounded state, then neutral RELEASE under one writer lock.
+
+    The active state lease is the hold budget itself, capped at 500 ms. The
+    budget starts before publishing, so receipt latency never adds a full hold
+    interval. The reader must independently expire input if this writer dies.
+    """
+    integer(hold_ms, 1, 500, "hold_ms")
+    integer(timeout_ms, 1, 5000, "timeout_ms")
+    # Reject invalid control arguments before even publishing a neutral ARM.
+    encode_snapshot("0" * 32, 1, hold_ms, pid=1, flags=STATE, **gamepad)
+    deadline = time.monotonic() + timeout_ms / 1000
+    receipts = {}
+    failure = release_failure = None
+    with locked_session(path) as (directory, manifest):
+        if manifest["seq"] > MAX_SEQ - 4:
+            raise ControllerError("insufficient sequences for pulse and neutral cleanup; initialize a new session")
         try:
-            previous = receipt_for(directory, manifest)
-            baseline = max(baseline, previous["polls"])
-        except (ControllerError, OSError):
-            pass
-        seq = publish(directory, manifest, flags, lease_ms, **gamepad)
-        deadline = time.monotonic() + timeout_ms / 1000
-        expected = {ARM: "READY", STATE: "STATE", RELEASE: "RELEASE"}[flags]
-        error = "no matching poll receipt"
-        while time.monotonic() < deadline:
-            try:
-                ack = receipt_for(directory, manifest, seq, baseline)
-                if ack["status"] != expected or (flags != RELEASE and not ack["enabled"]):
-                    error = f"game poll reported {ack['status']} (enabled={ack['enabled']})"
-                    break
-                manifest.update(pid=ack["pid"], polls=ack["polls"], armed=(flags != RELEASE))
-                save_manifest(directory, manifest)
-                return dict(receipt=ack, lease_ms=lease_ms,
-                            note="Poll receipt only; inspect the game image to establish an action.")
-            except (ControllerError, OSError) as exc:
-                error = str(exc)
-            time.sleep(min(0.01, max(0, deadline - time.monotonic())))
-        # Neutral ARM itself is safe. Failed active/release commands get a newer
-        # neutral RELEASE when bound; independent producer expiry remains mandatory.
-        if flags != ARM and manifest["pid"]:
-            publish(directory, manifest, RELEASE, lease_ms=1)
-        raise ControllerError(f"command unacknowledged: {error}; session disarmed, neutral ARM required")
+            receipts["arm"], arm_started = _command_locked(
+                directory, manifest, ARM, 1000, 500,
+                not_after=deadline, fresh_lease=True, cleanup_on_failure=False)
+            if time.monotonic() >= arm_started + 0.9:
+                raise ControllerError("ARM lease guard elapsed before active state")
+            if time.monotonic() + hold_ms / 1000 + 0.05 >= deadline:
+                raise ControllerError("insufficient pulse deadline for state hold and release receipt")
+            receipts["state"], state_started = _command_locked(
+                directory, manifest, STATE, hold_ms, hold_ms,
+                not_after=min(deadline, arm_started + 0.9), fresh_lease=True,
+                cleanup_on_failure=False, **gamepad)
+            hold_until = min(state_started + hold_ms / 1000, deadline)
+            remaining = hold_until - time.monotonic()
+            if remaining <= 0:
+                raise ControllerError("state hold budget elapsed before its receipt completed")
+            time.sleep(remaining)
+        except BaseException as exc:
+            failure = exc
+        finally:
+            if manifest["pid"]:
+                try:
+                    if time.monotonic() >= deadline:
+                        # Even after the wait budget expires, publish one neutral
+                        # release. Never report it as acknowledged without a poll.
+                        publish(directory, manifest, RELEASE, lease_ms=1)
+                        raise ControllerError("deadline elapsed; neutral RELEASE published without waiting for receipt")
+                    receipts["release"], _ = _command_locked(
+                        directory, manifest, RELEASE, 1, 500,
+                        not_after=deadline, cleanup_on_failure=True)
+                except BaseException as exc:
+                    release_failure = exc
+            else:
+                release_failure = ControllerError("no acknowledged PID for RELEASE; ARM was neutral")
+    if failure is not None:
+        if not isinstance(failure, (ControllerError, OSError)):
+            raise failure
+        detail = f"pulse failed: {failure}"
+        if release_failure is not None:
+            detail += f"; release unacknowledged: {release_failure}"
+        raise ControllerError(detail) from failure
+    if release_failure is not None:
+        if not isinstance(release_failure, (ControllerError, OSError)):
+            raise release_failure
+        raise ControllerError(f"pulse release unacknowledged: {release_failure}") from release_failure
+    return dict(receipts=receipts, hold_ms=hold_ms,
+                note="Poll receipts only; inspect the game image to establish an action.")
 
 
 def status(path):
@@ -341,11 +423,15 @@ def main(argv=None):
     init.add_argument("--exe", required=True, help="exact absolute Windows executable path")
     init.add_argument("--wine-file", required=True, help="absolute Win32 path to this session's state.bin")
     sub.add_parser("status", help="read identity-bound historical receipt; sends no input")
-    for name in ("arm", "state", "release"):
+    for name in ("arm", "state", "release", "pulse"):
         child = sub.add_parser(name)
-        child.add_argument("--lease-ms", type=int, default=500)
-        child.add_argument("--timeout-ms", type=int, default=1500)
-        if name == "state":
+        if name == "pulse":
+            child.add_argument("--hold-ms", type=int, default=120, help="active state lease/hold budget, 1..500 ms")
+            child.add_argument("--timeout-ms", type=int, default=2000, help="whole pulse wait budget, 1..5000 ms")
+        else:
+            child.add_argument("--lease-ms", type=int, default=500)
+            child.add_argument("--timeout-ms", type=int, default=1500)
+        if name in ("state", "pulse"):
             child.add_argument("--buttons", type=lambda value: int(value, 0), default=0)
             for axis in ("lt", "rt", "lx", "ly", "rx", "ry"):
                 child.add_argument("--" + axis, type=int, default=0)
@@ -356,6 +442,8 @@ def main(argv=None):
             result = initialize(directory, **args)
         elif action == "status":
             result = status(directory)
+        elif action == "pulse":
+            result = pulse(directory, **args)
         else:
             result = command(directory, {"arm": ARM, "state": STATE, "release": RELEASE}[action], **args)
         print(json.dumps(result, sort_keys=True))

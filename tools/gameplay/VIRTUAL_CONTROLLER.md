@@ -48,6 +48,34 @@ python3 tools/gameplay/virtual-controller.py --directory /private/tmp/vxinput-se
 python3 tools/gameplay/virtual-controller.py --directory /private/tmp/vxinput-session status
 ```
 
+For one visually chosen short action, `pulse` keeps ARM, STATE, a bounded hold,
+and RELEASE inside one process and one session lock. This avoids expiring ARM
+while an automation client makes separate command/tool round trips:
+
+```sh
+python3 tools/gameplay/virtual-controller.py --directory /private/tmp/vxinput-session pulse \
+  --buttons 0x0002 --hold-ms 120 --timeout-ms 2000
+```
+
+`--hold-ms` is 1..500 ms, default 120. The STATE lease equals that budget, and the
+budget starts before state publication: receipt latency consumes the budget
+rather than adding another full hold interval. ARM has a 1000 ms lease; the
+writer rejects a late active state and reserves time for release. `--timeout-ms`
+is the whole pulse wait budget, 1..5000 ms (default 2000), rather than a timeout
+repeated independently for each phase. Invalid controls are rejected before ARM.
+There is no automatic repeat or renewal.
+
+A pulse succeeds only after the expected ARM, STATE and RELEASE poll receipts.
+Failure or an interrupt during the state/hold phase still attempts neutral
+RELEASE in `finally`; the original failure is preserved, and a release timeout
+is reported as unacknowledged. If the whole wait budget is exhausted, the writer
+still publishes neutral RELEASE when a PID is bound, but does not call it
+acknowledged. Before the first PID receipt, ARM is neutral and release cannot be
+addressed to an unknown PID. Reader-side expiry remains the independent fallback
+if the writer is killed. Pulse receipts do not prove a game action or preservation
+of the active macOS Space. This convenience command has only host mock coverage
+in this change; admit its exact source separately before any live trial.
+
 `0x0002` is XInput D-pad Down, not a guarantee of a safe action in the current
 game state. The state command also supports `--lt`, `--rt` (0..255) and
 `--lx`, `--ly`, `--rx`, `--ry` (-32768..32767). Unspecified controls are neutral.
@@ -145,7 +173,9 @@ python3 -m unittest discover -s tools/gameplay -p 'test_virtual_controller.py' -
 
 The fake polling peer covers serialization bounds, token/PID/sequence/poll
 identity, release on acknowledgment failure, disabled-state rejection, private
-atomic files, link rejection and concurrent-writer rejection. Host tests do not
+atomic files, link rejection and concurrent-writer rejection. Pulse checks also
+exercise state rejection/timeout, release timeout, interruption during hold,
+ARM-lease and whole-deadline guards, and one lock across the whole pulse. Host tests do not
 exercise Wine, prove independent producer expiry, prove input release in a game,
 or demonstrate macOS Space preservation. Live acceptance additionally requires
 actual game poll receipts, visible menu movement, neutral release/expiry and

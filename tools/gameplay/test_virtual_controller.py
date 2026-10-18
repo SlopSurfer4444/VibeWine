@@ -237,6 +237,127 @@ class HostTests(unittest.TestCase):
                 vc.atomic_write(directory, vc.STATE_FILE, replacement)
         self.assertEqual(list(self.path.glob(".write-*")), [])
 
+    def pulse_peers(self, state_status="STATE", release_status="RELEASE"):
+        self.fake_peer(vc.ARM, "READY", polls=1)
+        self.fake_peer(vc.STATE, state_status, polls=2)
+        self.fake_peer(vc.RELEASE, release_status, polls=3)
+
+    def test_pulse_single_lock_arm_state_hold_release(self):
+        self.pulse_peers()
+        original_publish = vc.publish
+        observed = []
+        def publish(directory, manifest, flags, *args, **kwargs):
+            if flags == vc.STATE:
+                with self.assertRaisesRegex(vc.ControllerError, "another command"):
+                    vc.command(self.path, vc.ARM, timeout_ms=1)
+            seq = original_publish(directory, manifest, flags, *args, **kwargs)
+            observed.append(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes()))
+            return seq
+        with mock.patch.object(vc, "publish", side_effect=publish):
+            result = vc.pulse(self.path, hold_ms=60, buttons=2)
+        self.assertEqual([packet[-1] for packet in observed], [vc.ARM, vc.STATE, vc.RELEASE])
+        self.assertEqual([packet[2] for packet in observed], [1, 2, 3])
+        self.assertEqual(observed[0][3], 1000)
+        self.assertEqual(observed[1][3], 60)
+        self.assertEqual(observed[1][4], 2)
+        self.assertEqual(observed[2][4:11], (0, 0, 0, 0, 0, 0, 0))
+        self.assertEqual(set(result["receipts"]), {"arm", "state", "release"})
+        self.assertFalse(vc.status(self.path)["last_command_acknowledged"])
+
+    def test_pulse_invalid_arguments_do_not_publish_arm(self):
+        for values in ({"hold_ms": 0}, {"hold_ms": 501}, {"buttons": 0x0800},
+                       {"lx": 32768}, {"timeout_ms": 0}, {"timeout_ms": 5001}):
+            with self.subTest(values=values), self.assertRaises(vc.ControllerError):
+                vc.pulse(self.path, **values)
+        self.assertFalse((self.path / vc.STATE_FILE).exists())
+        self.assertEqual(vc.status(self.path)["sequence"], 0)
+
+    def test_pulse_reserves_cleanup_sequences_before_arm(self):
+        with vc.locked_session(self.path) as (directory, manifest):
+            manifest["seq"] = vc.MAX_SEQ - 3
+            vc.save_manifest(directory, manifest)
+        with self.assertRaisesRegex(vc.ControllerError, "insufficient sequences"):
+            vc.pulse(self.path, buttons=2)
+        self.assertFalse((self.path / vc.STATE_FILE).exists())
+
+    def test_pulse_state_rejection_still_releases_and_reports_failure(self):
+        self.pulse_peers(state_status="INVALID")
+        with self.assertRaisesRegex(vc.ControllerError, "pulse failed.*INVALID"):
+            vc.pulse(self.path, hold_ms=60, lx=20000)
+        packet = vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())
+        self.assertEqual(packet[-1], vc.RELEASE)
+        self.assertEqual(packet[4:11], (0, 0, 0, 0, 0, 0, 0))
+        self.assertFalse(vc.status(self.path)["last_command_acknowledged"])
+
+    def test_pulse_state_timeout_still_releases(self):
+        self.fake_peer(vc.ARM, "READY", polls=1)
+        self.fake_peer(vc.RELEASE, "RELEASE", polls=3)
+        with self.assertRaisesRegex(vc.ControllerError, "pulse failed"):
+            vc.pulse(self.path, hold_ms=30, buttons=2)
+        self.assertEqual(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())[-1], vc.RELEASE)
+
+    def test_pulse_publication_error_after_state_write_still_releases(self):
+        self.fake_peer(vc.ARM, "READY", polls=1)
+        self.fake_peer(vc.RELEASE, "RELEASE", polls=2)
+        original_write = vc.atomic_write
+        def fail_after_write(directory, name, raw):
+            original_write(directory, name, raw)
+            if name == vc.STATE_FILE and vc.SNAPSHOT.unpack(raw)[-1] == vc.STATE:
+                raise OSError("state publication failed after replace")
+        with mock.patch.object(vc, "atomic_write", side_effect=fail_after_write):
+            with self.assertRaisesRegex(vc.ControllerError, "state publication failed after replace"):
+                vc.pulse(self.path, hold_ms=120, buttons=2)
+        self.assertEqual(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())[-1], vc.RELEASE)
+        self.assertFalse(vc.status(self.path)["last_command_acknowledged"])
+
+    def test_pulse_reports_primary_and_release_failures(self):
+        self.pulse_peers(state_status="INVALID", release_status="INVALID")
+        with self.assertRaisesRegex(vc.ControllerError, "pulse failed:.*INVALID.*release unacknowledged"):
+            vc.pulse(self.path, hold_ms=60, buttons=2)
+        self.assertEqual(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())[-1], vc.RELEASE)
+
+    def test_pulse_release_timeout_is_not_success(self):
+        self.fake_peer(vc.ARM, "READY", polls=1)
+        self.fake_peer(vc.STATE, "STATE", polls=2)
+        with self.assertRaisesRegex(vc.ControllerError, "release unacknowledged"):
+            vc.pulse(self.path, hold_ms=30, timeout_ms=250, buttons=2)
+        self.assertEqual(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())[-1], vc.RELEASE)
+
+    def test_pulse_interrupt_during_hold_releases_without_hiding_interrupt(self):
+        self.pulse_peers()
+        original_sleep = time.sleep
+        def interrupted_hold(seconds):
+            if seconds > 0.02:
+                raise KeyboardInterrupt("test interruption")
+            original_sleep(seconds)
+        with mock.patch.object(vc.time, "sleep", side_effect=interrupted_hold):
+            with self.assertRaisesRegex(KeyboardInterrupt, "test interruption"):
+                vc.pulse(self.path, hold_ms=120, buttons=2)
+        self.assertEqual(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())[-1], vc.RELEASE)
+        self.assertFalse(vc.status(self.path)["last_command_acknowledged"])
+
+    def test_pulse_arm_lease_guard_prevents_late_active_state(self):
+        self.fake_peer(vc.ARM, "READY", polls=1)
+        self.fake_peer(vc.RELEASE, "RELEASE", polls=2)
+        original_command = vc._command_locked
+        def delayed_arm(*args, **kwargs):
+            result, started = original_command(*args, **kwargs)
+            if args[2] == vc.ARM:
+                started = time.monotonic() - 1
+            return result, started
+        with mock.patch.object(vc, "_command_locked", side_effect=delayed_arm):
+            with self.assertRaisesRegex(vc.ControllerError, "ARM lease guard"):
+                vc.pulse(self.path, hold_ms=60, buttons=2)
+        self.assertEqual(vc.status(self.path)["sequence"], 2)
+        self.assertEqual(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())[-1], vc.RELEASE)
+
+    def test_pulse_short_whole_deadline_prevents_active_state(self):
+        self.fake_peer(vc.ARM, "READY", polls=1)
+        self.fake_peer(vc.RELEASE, "RELEASE", polls=2)
+        with self.assertRaisesRegex(vc.ControllerError, "insufficient pulse deadline"):
+            vc.pulse(self.path, hold_ms=120, timeout_ms=150, buttons=2)
+        self.assertEqual(vc.status(self.path)["sequence"], 2)
+
     def test_invalid_receipt_formats(self):
         valid = f"VXIA0001 {TOKEN} 1 1 1 1 STATE".encode()
         self.assertEqual(vc.parse_ack(valid)["status"], "STATE")
