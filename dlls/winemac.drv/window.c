@@ -1180,11 +1180,24 @@ static void macdrv_client_surface_update(struct client_surface *client)
 
     TRACE("%s\n", debugstr_client_surface(client));
 
-    NtUserGetClientRect(hwnd, &rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
-    NtUserMapWindowPoints(hwnd, toplevel, (POINT *)&rect, 2, NtUserGetWinMonitorDpi(toplevel, MDT_RAW_DPI));
+    if (hwnd != toplevel)
+    {
+        NtUserGetClientRect(hwnd, &rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
+        NtUserMapWindowPoints(hwnd, toplevel, (POINT *)&rect, 2, NtUserGetWinMonitorDpi(toplevel, MDT_RAW_DPI));
+    }
 
     if (!(data = get_win_data(toplevel))) return;
-    OffsetRect(&rect, data->rects.client.left - data->rects.visible.left, data->rects.client.top - data->rects.visible.top);
+    if (hwnd == toplevel)
+    {
+        /* Wine has already projected the top-level client into raw monitor
+         * coordinates.  Recomputing its size from the integer raw DPI loses
+         * pixels when an emulated display mode has a fractional scale. */
+        rect = data->rects.client;
+        OffsetRect(&rect, -data->rects.visible.left, -data->rects.visible.top);
+    }
+    else if (!data->client_view)
+        /* A client-view parent already contributes the client-to-visible offset. */
+        OffsetRect(&rect, data->rects.client.left - data->rects.visible.left, data->rects.client.top - data->rects.visible.top);
     macdrv_set_view_frame(surface->cocoa_view, cgrect_from_rect(rect));
     macdrv_set_view_superview(surface->cocoa_view, toplevel == hwnd ? NULL : data->client_view, data->cocoa_window, NULL, NULL);
     release_win_data(data);
@@ -1224,15 +1237,17 @@ struct macdrv_client_surface *macdrv_client_surface_create(HWND hwnd)
     NtUserGetClientRect(hwnd, &rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
     NtUserMapWindowPoints(hwnd, toplevel, (POINT *)&rect, 2, NtUserGetWinMonitorDpi(toplevel, MDT_RAW_DPI));
 
-    surface = client_surface_create(sizeof(*surface), &macdrv_client_surface_funcs, hwnd);
-    surface->cocoa_view = macdrv_create_view(cgrect_from_rect(rect));
+    if (!(surface = client_surface_create(sizeof(*surface), &macdrv_client_surface_funcs, hwnd)))
+        return NULL;
+    if (!(surface->cocoa_view = macdrv_create_view(cgrect_from_rect(rect))))
+    {
+        client_surface_release(&surface->client);
+        return NULL;
+    }
     macdrv_set_view_hidden(surface->cocoa_view, TRUE);
 
-    if (surface)
-    {
-        macdrv_client_surface_update(&surface->client);
-        macdrv_client_surface_present(&surface->client, 0);
-    }
+    macdrv_client_surface_update(&surface->client);
+    macdrv_client_surface_present(&surface->client, 0);
 
     return surface;
 }
@@ -1654,7 +1669,7 @@ BOOL macdrv_GetWindowStyleMasks(HWND hwnd, UINT style, UINT ex_style, UINT *styl
     /* CW HACK 16933: No Cocoa window decorations for the Quicken main window. */
     if (is_main_quicken_window(hwnd)) return FALSE;
 
-    *style_mask = ex_style = 0;
+    *style_mask = *ex_style_mask = 0;
     if (wf.title_bar)
     {
         *style_mask |= WS_CAPTION;
@@ -1727,7 +1742,16 @@ void macdrv_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UINT
 
     if (fullscreen || fullscreen != data->fullscreen)
     {
-        CGRect rect = (fullscreen && !EqualRect(&data->rects.window, &data->rects.visible)) ? cgrect_from_rect(data->rects.window) : CGRectZero;
+        CGRect rect = CGRectZero;
+
+        if (fullscreen && !EqualRect(&data->rects.window, &data->rects.visible))
+        {
+            RECT mask_rect = data->rects.window;
+
+            /* The mask aperture is relative to the visible content, in raw pixels. */
+            OffsetRect(&mask_rect, -data->rects.visible.left, -data->rects.visible.top);
+            rect = cgrect_from_rect(mask_rect);
+        }
         macdrv_set_window_mask(data->cocoa_window, rect);
         data->fullscreen = fullscreen;
     }

@@ -48,3 +48,7 @@
 #define IDS_STATE_ALERT_HIGH        0x101d
 #define IDS_STATE_PROTECTED         0x101e
 #define IDS_STATE_HASPOPUP          0x101f
+
+#define IDS_ACTION_PRESS            0x2000
+#define IDS_ACTION_CHECK            0x2001
+#define IDS_ACTION_UNCHECK          0x2002

@@ -2081,7 +2081,10 @@ NTSTATUS WINAPI NtQueryDirectoryObject( HANDLE handle, DIRECTORY_BASIC_INFORMATI
                                         ULONG *context, ULONG *ret_size )
 {
     unsigned int status, i, count, total_len, pos, used_size, used_count, strpool_head;
-    ULONG index = restart ? 0 : *context;
+    /* Windows BOOLEAN slots have unspecified upper padding.  Preserve the byte
+     * before the Unix ABI can treat its upper register bits as zero-extended. */
+    volatile BOOLEAN restart_byte = restart;
+    ULONG index = restart_byte ? 0 : *context;
     struct directory_entry *entries;
 
     if (!(entries = malloc( size ))) return STATUS_NO_MEMORY;

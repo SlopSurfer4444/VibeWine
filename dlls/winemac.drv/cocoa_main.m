@@ -19,6 +19,7 @@
  */
 
 #import <AppKit/AppKit.h>
+#include <stdlib.h>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 
@@ -38,11 +39,34 @@ enum {
 
 
 struct cocoa_app_startup_info {
+    unsigned int        refs;
     NSConditionLock*    lock;
     unsigned long long  tickcount;
     uint64_t            uptime_ns;
     BOOL                success;
+    BOOL                cancelled;
 };
+
+
+/* The waiter, run loop source, and active callback each own a reference.
+   In particular, timeout must not leave the source pointing into the waiter's
+   stack, and completion must not release state still used by the callback. */
+static const void* retain_startup_info(const void* info)
+{
+    struct cocoa_app_startup_info* startup_info = (void*)info;
+    __sync_add_and_fetch(&startup_info->refs, 1);
+    return info;
+}
+
+static void release_startup_info(const void* info)
+{
+    struct cocoa_app_startup_info* startup_info = (void*)info;
+    if (!__sync_sub_and_fetch(&startup_info->refs, 1))
+    {
+        [startup_info->lock release];
+        free(startup_info);
+    }
+}
 
 
 /***********************************************************************
@@ -57,14 +81,23 @@ struct cocoa_app_startup_info {
  * it has successfully started the application by changing the condition
  * of a shared NSConditionLock, passed in via the info parameter.
  *
- * This function never returns.  It's the new permanent home of the
- * main thread.
+ * If it starts a new application successfully, this function becomes
+ * the permanent home of the main thread. Otherwise it returns.
  */
 static void run_cocoa_app(void* info)
 {
-    struct cocoa_app_startup_info* startup_info = info;
+    struct cocoa_app_startup_info* startup_info = (void*)retain_startup_info(info);
     NSConditionLock* lock = startup_info->lock;
-    BOOL created_app = FALSE;
+    BOOL created_app = FALSE, success = FALSE;
+
+    [lock lock];
+    if (startup_info->cancelled)
+    {
+        [lock unlock];
+        release_startup_info(startup_info);
+        return;
+    }
+    [lock unlock];
 
     @autoreleasepool
     {
@@ -82,25 +115,31 @@ static void run_cocoa_app(void* info)
         if ([NSApp respondsToSelector:@selector(setWineController:)])
         {
             WineApplicationController* controller = [WineApplicationController sharedController];
-            [NSApp setWineController:controller];
-            [controller computeEventTimeAdjustmentFromTicks:startup_info->tickcount uptime:startup_info->uptime_ns];
-            startup_info->success = TRUE;
+            if (controller)
+            {
+                [NSApp setWineController:controller];
+                [controller computeEventTimeAdjustmentFromTicks:startup_info->tickcount uptime:startup_info->uptime_ns];
+                macdrv_main_executor_start_v1();
+                success = TRUE;
+            }
         }
 
-        /* Retain the lock while we're using it, so macdrv_start_cocoa_app()
-           doesn't deallocate it in the middle of us unlocking it. */
-        [lock retain];
         [lock lock];
+        startup_info->success = success;
         [lock unlockWithCondition:COCOA_APP_RUNNING];
-        [lock release];
     }
 
-    if (created_app && startup_info->success)
+    /* No shared startup state may be accessed after releasing our reference.
+       An already-started callback may finish after the caller times out. */
+    release_startup_info(startup_info);
+
+    if (created_app && success)
     {
         @autoreleasepool
         {
             /* Never returns */
             [NSApp run];
+            macdrv_main_executor_stop_v1();
         }
     }
 }
@@ -119,7 +158,7 @@ int macdrv_start_cocoa_app(unsigned long long tickcount)
 {
     int ret = -1;
     CFRunLoopSourceRef source;
-    struct cocoa_app_startup_info startup_info;
+    struct cocoa_app_startup_info* startup_info;
     uint64_t uptime_mach = mach_absolute_time();
     mach_timebase_info_data_t mach_timebase;
     NSDate* timeLimit;
@@ -131,35 +170,47 @@ int macdrv_start_cocoa_app(unsigned long long tickcount)
                              toTarget:[NSThread class]
                            withObject:nil];
 
-    startup_info.lock = [[NSConditionLock alloc] initWithCondition:COCOA_APP_NOT_RUNNING];
-    startup_info.tickcount = tickcount;
-    startup_info.success = FALSE;
+    if (!(startup_info = calloc(1, sizeof(*startup_info)))) return -1;
+    startup_info->refs = 1;
+    startup_info->lock = [[NSConditionLock alloc] initWithCondition:COCOA_APP_NOT_RUNNING];
+    startup_info->tickcount = tickcount;
+    startup_info->success = FALSE;
 
     mach_timebase_info(&mach_timebase);
-    startup_info.uptime_ns = uptime_mach * mach_timebase.numer / mach_timebase.denom;
+    startup_info->uptime_ns = uptime_mach * mach_timebase.numer / mach_timebase.denom;
 
     timeLimit = [NSDate dateWithTimeIntervalSinceNow:5];
 
-    source_context.info = &startup_info;
+    source_context.info = startup_info;
+    source_context.retain = retain_startup_info;
+    source_context.release = release_startup_info;
     source_context.perform = run_cocoa_app;
     source = CFRunLoopSourceCreate(NULL, 0, &source_context);
 
-    if (source && startup_info.lock && timeLimit)
+    if (source && startup_info->lock && timeLimit)
     {
         CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
         CFRunLoopSourceSignal(source);
         CFRunLoopWakeUp(CFRunLoopGetMain());
 
-        if ([startup_info.lock lockWhenCondition:COCOA_APP_RUNNING beforeDate:timeLimit])
+        if ([startup_info->lock lockWhenCondition:COCOA_APP_RUNNING beforeDate:timeLimit])
         {
-            [startup_info.lock unlock];
-            ret = !startup_info.success;
+            ret = !startup_info->success;
+            [startup_info->lock unlock];
         }
     }
 
+    /* Prevent a source whose waiter timed out from starting Cocoa later.
+       If its callback already began, its own reference permits it to finish. */
+    [startup_info->lock lock];
+    startup_info->cancelled = TRUE;
+    [startup_info->lock unlock];
     if (source)
+    {
+        CFRunLoopSourceInvalidate(source);
         CFRelease(source);
-    [startup_info.lock release];
+    }
+    release_startup_info(startup_info);
     return ret;
 }
 }

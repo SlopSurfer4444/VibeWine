@@ -30,6 +30,7 @@
 
 #include "macdrv_cocoa.h"
 #import "cocoa_app.h"
+#include "ax_window_root_policy.h"
 #import "cocoa_event.h"
 #import "cocoa_opengl.h"
 #import "d3dmetal_objc.h" /* CW HACK 22435 */
@@ -186,6 +187,7 @@ static inline BOOL stage_manager_enabled(void)
     NSTimeInterval _nominalRefreshPeriod;
 
     NSTimeInterval _lastDisplayTime;
+    BOOL _displayPending; /* Protected by @synchronized(self), including delivery. */
 }
 
     - (id) initWithDisplayID:(CGDirectDisplayID)displayID;
@@ -262,28 +264,46 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (void) fire
     {
-        NSSet* windows;
         @synchronized(self) {
-            windows = [_windows copy];
+            if (_displayPending)
+                return;
+            _displayPending = TRUE;
         }
         dispatch_async(dispatch_get_main_queue(), ^{
-            BOOL anyDisplayed = FALSE;
-            for (WineWindow* window in windows)
+            NSSet* windows;
+            /* Sample membership when delivery begins, not on the display-link
+             * thread. A stalled main queue must not retain removed windows. */
+            @synchronized(self) {
+                windows = [_windows copy];
+            }
+            @try
             {
-                if ([window viewsNeedDisplay])
+                BOOL anyDisplayed = FALSE;
+                for (WineWindow* window in windows)
                 {
-                    [window displayIfNeeded];
-                    anyDisplayed = YES;
+                    if (!window.closing && [window viewsNeedDisplay])
+                    {
+                        [window displayIfNeeded];
+                        anyDisplayed = YES;
+                    }
+                }
+
+                NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+                if (anyDisplayed)
+                    _lastDisplayTime = now;
+                else if (_lastDisplayTime + 2.0 < now)
+                    CVDisplayLinkStop(_link);
+            }
+            @finally
+            {
+                [windows release];
+                /* Keep the gate closed during callbacks and stop: a reentrant
+                 * fire or a late tick must not build another delivery backlog. */
+                @synchronized(self) {
+                    _displayPending = FALSE;
                 }
             }
-
-            NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
-            if (anyDisplayed)
-                _lastDisplayTime = now;
-            else if (_lastDisplayTime + 2.0 < now)
-                CVDisplayLinkStop(_link);
         });
-        [windows release];
     }
 
     - (NSTimeInterval) refreshPeriod
@@ -431,6 +451,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 @end
 
 
+#include "ax_native.inc"
+
 @implementation WineBaseView
 
     - (void) setRetinaMode:(BOOL)mode
@@ -480,6 +502,33 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 @implementation WineContentView
 
 @synthesize everHadGLContext = _everHadGLContext;
+
+    - (BOOL) isAccessibilityElement
+    {
+        if ([ax_children_for_view(self) count]) return YES;
+        return [super isAccessibilityElement];
+    }
+
+    - (NSString*) accessibilityRole
+    {
+        if ([ax_children_for_view(self) count]) return NSAccessibilityGroupRole;
+        return [super accessibilityRole];
+    }
+
+    - (id) accessibilityParent
+    {
+        if ([ax_children_for_view(self) count]) return [self window];
+        return [super accessibilityParent];
+    }
+
+
+    - (NSArray*) accessibilityChildren
+    {
+        NSArray *nativeChildren = [super accessibilityChildren];
+        NSArray *providerChildren = ax_children_for_view(self);
+        if (![providerChildren count]) return nativeChildren;
+        return nativeChildren ? [nativeChildren arrayByAddingObjectsFromArray:providerChildren] : providerChildren;
+    }
 
     - (instancetype) initWithFrame:(NSRect)frame
     {
@@ -689,9 +738,16 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (WineMetalView*) newMetalViewWithDevice:(id<MTLDevice>)device
     {
-        if (_metalView) return _metalView;
+        /* A CAMetalLayer has mutable presentation state.  The legacy handle
+           ABI cannot express independent producers, so grant one exclusive
+           lease per content view.  Each successful acquisition allocates a
+           new native object; its owning reference pins that generation even
+           if the HWND is destroyed or its numeric value is reused. */
+        WineWindow* window = (WineWindow*)self.window;
+        if (_metalView || !device || !window || window.closing) return nil;
 
         WineMetalView* view = [[WineMetalView alloc] initWithFrame:[self bounds] device:device];
+        if (!view) return nil;
         [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
         [self setAutoresizesSubviews:YES];
         [self addSubview:view positioned:NSWindowBelow relativeTo:nil];
@@ -1009,6 +1065,21 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     @synthesize usePerPixelAlpha;
     @synthesize himc, commandDone;
     @synthesize contentViewMaskLayer;
+
+#include "ax_window_identity.inc"
+
+    - (NSArray*) accessibilityChildren
+    {
+        NSArray *children = [super accessibilityChildren];
+        if (macdrv_ax_bridge_enabled() && hwnd)
+        {
+            if (self.closing) return @[];
+            WineContentView *view = [self contentView];
+            if ([ax_children_for_view(view) count] && ![children containsObject:view])
+                return children ? [children arrayByAddingObject:view] : @[view];
+        }
+        return children;
+    }
 
     + (WineWindow*) createWindowWithFeatures:(const struct macdrv_window_features*)wf
                                  windowFrame:(NSRect)window_frame
@@ -2267,7 +2338,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     - (void) checkWineDisplayLink
     {
         NSScreen* screen = self.screen;
-        if (![self isVisible] || ![self isOnActiveSpace] || [self isMiniaturized] || [self isEmptyShaped])
+        if (closing || ![self isVisible] || ![self isOnActiveSpace] || [self isMiniaturized] || [self isEmptyShaped])
             screen = nil;
         if (!(self.occlusionState & NSWindowOcclusionStateVisible))
             screen = nil;
@@ -3473,6 +3544,7 @@ macdrv_window macdrv_create_cocoa_window(const struct macdrv_window_features* wf
                                            windowFrame:NSRectFromCGRect(cgrect_mac_from_win(frame))
                                                   hwnd:hwnd
                                                  queue:(WineEventQueue*)queue] retain];
+        ax_register_window(window, hwnd);
     });
 
     return (macdrv_window)window;
@@ -3490,9 +3562,15 @@ void macdrv_destroy_cocoa_window(macdrv_window w)
     WineWindow* window = (WineWindow*)w;
 
     OnMainThread(^{
+        ax_unregister_window(window);
         window.closing = TRUE;
         [window doOrderOut];
         [window close];
+        [window checkWineDisplayLink];
+        /* doOrderOut may defer during a native fullscreen transition.  The
+           destroyed window must cease owning geometric fullscreen capture now. */
+        [[WineApplicationController sharedController] updateFullscreenWindows];
+        [[WineApplicationController sharedController] adjustWindowLevels];
     });
     [window.queue discardEventsMatchingMask:-1 forWindow:window];
     [window release];
@@ -3777,7 +3855,8 @@ void macdrv_set_window_mask(macdrv_window w, CGRect rect)
     WineWindow* window = (WineWindow*)w;
 
     OnMainThread(^{
-        [window setMask:rect];
+        /* Convert the content-relative raw-pixel aperture to Cocoa points. */
+        [window setMask:cgrect_mac_from_win(rect)];
     });
 }
 }
@@ -3831,6 +3910,7 @@ macdrv_view macdrv_create_view(CGRect rect)
         NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
 
         view = [[WineContentView alloc] initWithFrame:NSRectFromCGRect(cgrect_mac_from_win(rect))];
+        if (!view) return;
         [view setAutoresizingMask:NSViewNotSizable];
         [view setHidden:YES];
 #pragma clang diagnostic push
@@ -4037,7 +4117,7 @@ macdrv_metal_view macdrv_view_create_metal_view(macdrv_view v, macdrv_metal_devi
 {
     id<MTLDevice> device = (id<MTLDevice>)d;
     WineContentView* view = (WineContentView*)v;
-    __block WineMetalView *metalView;
+    __block WineMetalView *metalView = nil;
 
     OnMainThread(^{
         metalView = [view newMetalViewWithDevice:device];

@@ -93,6 +93,10 @@ STRINGTABLE
     ROLE_SYSTEM_IPADDRESS    "IP address"
     ROLE_SYSTEM_OUTLINEBUTTON "outline button"
 
+    IDS_ACTION_PRESS            "Press"
+    IDS_ACTION_CHECK            "Check"
+    IDS_ACTION_UNCHECK          "Uncheck"
+
     IDS_STATE_NORMAL            "#msgctxt#object state#normal"
     IDS_STATE_UNAVAILABLE       "#msgctxt#object state#unavailable"
     IDS_STATE_SELECTED          "#msgctxt#object state#selected"

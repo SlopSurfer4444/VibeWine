@@ -23,6 +23,8 @@ enum macdrv_funcs
 {
     unix_init,
     unix_quit_result,
+    unix_ax_poll,
+    unix_ax_publish,
     unix_funcs_count
 };
 

@@ -26,6 +26,9 @@
 
 #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
+#include "ax_application.inc"
+#include "wave7_display_edr.inc"
+
 
 static NSString* const WineAppWaitQueryResponseMode = @"WineAppWaitQueryResponseMode";
 static NSString* const WineWillShowPermissionDialogNotification = @"WineWillShowPermissionDialogNotification";
@@ -119,6 +122,10 @@ static NSString* WineLocalizedString(unsigned int stringID)
 @property (retain, nonatomic) WineWindow* mouseCaptureWindow;
 
     - (void) setupObservations;
+    - (BOOL) releaseDisplayCaptureSavingModes:(BOOL)saveModes;
+    - (BOOL) beginDisplayCaptureRelease;
+    - (BOOL) retryDisplayCaptureRelease;
+    - (void) realizeLatentDisplayModes;
     - (void) applicationDidBecomeActive:(NSNotification *)notification;
     - (void) handleApplicationShouldTerminateReply:(BOOL)reply;  /* CW Hack 22310 */
 
@@ -202,12 +209,20 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 return nil;
             }
 
-            [self setupObservations];
-
             keyboardType = LMGetKbdType();
 
             if ([NSApp isActive])
                 [self applicationDidBecomeActive:nil];
+
+            /* Finalize capabilities after activation callbacks. run_cocoa_app
+               cannot publish COCOA_APP_RUNNING success before this returns. */
+            if (!macdrv_refresh_display_edr_main())
+            {
+                [self release];
+                return nil;
+            }
+            /* Block observers retain self; install only after fallible startup. */
+            [self setupObservations];
         }
         return self;
     }
@@ -221,6 +236,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
         [clipCursorHandler release];
         [cursorTimer release];
         [cursorFrames release];
+        [displayCaptureReleaseToken release];
         [latentDisplayModes release];
         [originalDisplayModes release];
         [keyWindows release];
@@ -294,7 +310,17 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
     - (void) transformProcessToForeground:(BOOL)activateIfTransformed
     {
-        if ([NSApp activationPolicy] != NSApplicationActivationPolicyRegular)
+        BOOL needsTransform = [NSApp activationPolicy] != NSApplicationActivationPolicyRegular;
+        NSMenu *existingMenu = [NSApp mainMenu];
+        NSMenuItem *placeholder = [existingMenu numberOfItems] == 1 ? [existingMenu itemAtIndex:0] : nil;
+        BOOL emptyPlaceholder = [placeholder submenu] && ![[placeholder submenu] numberOfItems] &&
+                                [placeholder action] == NSSelectorFromString(@"submenuAction:") &&
+                                [[placeholder target] isKindOfClass:[NSMenu class]];
+
+        /* A native .app can already be regular before Wine creates a window.
+           AppKit may have supplied only an empty application submenu.  Preserve
+           any existing menu that contains commands or other host structure. */
+        if (needsTransform || ![existingMenu numberOfItems] || emptyPlaceholder)
         {
             NSMenu* mainMenu;
             NSMenu* submenu;
@@ -318,17 +344,20 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 if ([blacklistedProcesses containsObject:exeName])
                 {
                     /* Try to honor the activation request regardless. */
-                    if (activateIfTransformed)
+                    if (needsTransform && activateIfTransformed)
                         [self tryToActivateIgnoringOtherApps:YES];
 
                     return;
                 }
             }
 
-            [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+            if (needsTransform)
+            {
+                [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-            if (activateIfTransformed)
-                [self tryToActivateIgnoringOtherApps:YES];
+                if (activateIfTransformed)
+                    [self tryToActivateIgnoringOtherApps:YES];
+            }
 
             if (!enable_app_nap)
             {
@@ -814,8 +843,97 @@ static NSString* WineLocalizedString(unsigned int stringID)
         [self adjustWindowLevels:[NSApp isActive]];
     }
 
+    /* Suspend exclusive display ownership before leaving the app, or discard
+       pending modes once an accepted Quit makes reactivation impossible.  Keep
+       the ownership bookkeeping on release failure so a later cleanup retries. */
+    - (BOOL) releaseDisplayCaptureSavingModes:(BOOL)saveModes
+    {
+        if (!saveModes)
+        {
+            displayCaptureTerminating = TRUE;
+            [latentDisplayModes removeAllObjects];
+        }
+
+        if (![self areDisplaysCaptured])
+            return TRUE;
+
+        if (saveModes)
+        {
+            for (NSNumber* displayID in originalDisplayModes)
+            {
+                /* A failed release may be retried after restoration.  Do not
+                   overwrite the saved game mode with the restored desktop mode. */
+                if (latentDisplayModes[displayID])
+                    continue;
+                CGDisplayModeRef mode = CGDisplayCopyDisplayMode([displayID unsignedIntValue]);
+                if (mode)
+                {
+                    [latentDisplayModes setObject:(id)mode forKey:displayID];
+                    CGDisplayModeRelease(mode);
+                }
+                else
+                    ERR(@"failed to save display mode for %u\n", [displayID unsignedIntValue]);
+            }
+        }
+
+        return [self beginDisplayCaptureRelease];
+    }
+
+    /* The application, rather than a departing swapchain/window, owns this
+       obligation. New acquisitions are refused until CG acknowledges release.
+       Retrying never replays a saved mode against a possibly changed topology. */
+    - (BOOL) beginDisplayCaptureRelease
+    {
+        if (!displayCaptureReleaseToken)
+        {
+            if (![self areDisplaysCaptured]) return TRUE;
+            displayCaptureReleaseToken = [[NSObject alloc] init];
+            CGRestorePermanentDisplayConfiguration();
+        }
+        return [self retryDisplayCaptureRelease];
+    }
+
+    - (BOOL) retryDisplayCaptureRelease
+    {
+        if (!displayCaptureReleaseToken) return TRUE;
+
+        CGError error = CGReleaseAllDisplays();
+        if (error != CGDisplayNoErr)
+        {
+            if (!displayCaptureReleaseRetryQueued)
+            {
+                NSObject* token = displayCaptureReleaseToken;
+                displayCaptureReleaseRetryQueued = TRUE;
+                ERR(@"failed to release displays: %d; native cleanup pending\n", error);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                    /* The block retains token, so a later allocation cannot
+                       reuse this identity while an old callback is queued. */
+                    if (displayCaptureReleaseToken != token) return;
+                    displayCaptureReleaseRetryQueued = FALSE;
+                    if ([self retryDisplayCaptureRelease] && [NSApp isActive])
+                    {
+                        [self realizeLatentDisplayModes];
+                        [self updateFullscreenWindows];
+                        [self adjustWindowLevels];
+                    }
+                });
+            }
+            return FALSE;
+        }
+
+        [originalDisplayModes removeAllObjects];
+        displaysCapturedForFullscreen = FALSE;
+        displaysCaptured = FALSE;
+        [displayCaptureReleaseToken release];
+        displayCaptureReleaseToken = nil;
+        displayCaptureReleaseRetryQueued = FALSE;
+        return TRUE;
+    }
+
     - (void) updateFullscreenWindows
     {
+        if (displayCaptureReleaseToken || displayCaptureTerminating ||
+            displaysTemporarilyUncapturedForDialog) return;
         if (capture_displays_for_fullscreen && [NSApp isActive])
         {
             BOOL anyFullscreen = FALSE;
@@ -823,7 +941,9 @@ static NSString* WineLocalizedString(unsigned int stringID)
             for (windowNumber in [NSWindow windowNumbersWithOptions:0])
             {
                 WineWindow* window = (WineWindow*)[NSApp windowWithWindowNumber:[windowNumber integerValue]];
-                if ([window isKindOfClass:[WineWindow class]] && window.fullscreen)
+                if ([window isKindOfClass:[WineWindow class]] && window.fullscreen &&
+                    !window.closing && [window isVisible] && ![window isMiniaturized] &&
+                    [window isOnActiveSpace])
                 {
                     anyFullscreen = TRUE;
                     break;
@@ -832,13 +952,18 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
             if (anyFullscreen)
             {
-                if ([self areDisplaysCaptured] || CGCaptureAllDisplays() == CGDisplayNoErr)
+                if ([self areDisplaysCaptured] || (displaysCaptured = (CGCaptureAllDisplays() == CGDisplayNoErr)))
                     displaysCapturedForFullscreen = TRUE;
             }
             else if (displaysCapturedForFullscreen)
             {
-                if ([originalDisplayModes count] || CGReleaseAllDisplays() == CGDisplayNoErr)
+                if ([originalDisplayModes count])
                     displaysCapturedForFullscreen = FALSE;
+                else
+                {
+                    displaysCapturedForFullscreen = FALSE;
+                    [self beginDisplayCaptureRelease];
+                }
             }
         }
     }
@@ -926,20 +1051,34 @@ static NSString* WineLocalizedString(unsigned int stringID)
     - (BOOL) setMode:(CGDisplayModeRef)mode forDisplay:(CGDirectDisplayID)displayID
     {
         BOOL ret = FALSE;
+        if (displayCaptureTerminating) return FALSE;
         NSNumber* displayIDKey = [NSNumber numberWithUnsignedInt:displayID];
         CGDisplayModeRef originalMode;
 
+        if (displayCaptureReleaseToken)
+        {
+            /* An explicit restore cancels reactivation intent even when the
+               physical release still fails. No new capture may overtake it. */
+            originalMode = (CGDisplayModeRef)originalDisplayModes[displayIDKey];
+            if (originalMode && [self mode:mode matchesMode:originalMode])
+                [latentDisplayModes removeObjectForKey:displayIDKey];
+            if (![self retryDisplayCaptureRelease]) return FALSE;
+        }
         originalMode = (CGDisplayModeRef)originalDisplayModes[displayIDKey];
 
         if (originalMode && [self mode:mode matchesMode:originalMode])
         {
             if ([originalDisplayModes count] == 1) // If this is the last changed display, do a blanket reset
             {
-                CGRestorePermanentDisplayConfiguration();
-                if (!displaysCapturedForFullscreen)
-                    CGReleaseAllDisplays();
-                [originalDisplayModes removeAllObjects];
-                ret = TRUE;
+                [latentDisplayModes removeObjectForKey:displayIDKey];
+                if (displaysCapturedForFullscreen)
+                {
+                    CGRestorePermanentDisplayConfiguration();
+                    [originalDisplayModes removeAllObjects];
+                    ret = TRUE;
+                }
+                else
+                    ret = [self beginDisplayCaptureRelease];
             }
             else // ... otherwise, try to restore just the one display
             {
@@ -954,13 +1093,23 @@ static NSString* WineLocalizedString(unsigned int stringID)
                     }
                 }
             }
+            /* A successful restore cancels a mode saved while deactivating,
+               including when display release previously failed. */
+            if (ret)
+                [latentDisplayModes removeObjectForKey:displayIDKey];
         }
         else
         {
             CGDisplayModeRef currentMode;
             NSArray* modes;
 
-            currentMode = CGDisplayModeRetain((CGDisplayModeRef)latentDisplayModes[displayIDKey]);
+            /* A latent mode is an inactive request, not physical display state.
+               In particular a failed release may already have restored the
+               desktop, while leaving a game mode saved for reactivation. */
+            if (![NSApp isActive])
+                currentMode = CGDisplayModeRetain((CGDisplayModeRef)latentDisplayModes[displayIDKey]);
+            else
+                currentMode = NULL;
             if (!currentMode)
                 currentMode = CGDisplayCopyDisplayMode(displayID);
             if (!currentMode) // Invalid display ID
@@ -969,6 +1118,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
             if ([self mode:mode matchesMode:currentMode]) // Already there!
             {
                 CGDisplayModeRelease(currentMode);
+                if ([NSApp isActive])
+                    [latentDisplayModes removeObjectForKey:displayIDKey];
                 return TRUE;
             }
 
@@ -983,8 +1134,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
             BOOL active = [NSApp isActive];
 
-            if ([originalDisplayModes count] || displaysCapturedForFullscreen ||
-                !active || CGCaptureAllDisplays() == CGDisplayNoErr)
+            if ([self areDisplaysCaptured] || !active ||
+                (displaysCaptured = (CGCaptureAllDisplays() == CGDisplayNoErr)))
             {
                 if (active)
                 {
@@ -1012,13 +1163,20 @@ static NSString* WineLocalizedString(unsigned int stringID)
                         [originalDisplayModes setObject:(id)originalMode forKey:displayIDKey];
                     else if (![originalDisplayModes count])
                     {
-                        CGRestorePermanentDisplayConfiguration();
-                        if (!displaysCapturedForFullscreen)
-                            CGReleaseAllDisplays();
+                        if (displaysCapturedForFullscreen)
+                            CGRestorePermanentDisplayConfiguration();
+                        else if (![self beginDisplayCaptureRelease])
+                        {
+                            ret = FALSE;
+                            if (originalMode)
+                                [originalDisplayModes setObject:(id)originalMode forKey:displayIDKey];
+                        }
                     }
 
                     if (currentMode)
                         CGDisplayModeRelease(currentMode);
+                    if (ret)
+                        [latentDisplayModes removeObjectForKey:displayIDKey];
                 }
                 else
                 {
@@ -1036,7 +1194,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
     - (BOOL) areDisplaysCaptured
     {
-        return ([originalDisplayModes count] > 0 || displaysCapturedForFullscreen);
+        return (displayCaptureReleaseToken != nil || displaysCaptured ||
+                [originalDisplayModes count] > 0 || displaysCapturedForFullscreen);
     }
 
     - (void) updateCursor:(BOOL)force
@@ -1215,20 +1374,9 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSRunningApplication* app;
             NSRunningApplication* otherValidApp = nil;
 
-            if ([originalDisplayModes count] || displaysCapturedForFullscreen)
+            if ([self areDisplaysCaptured])
             {
-                NSNumber* displayID;
-                for (displayID in originalDisplayModes)
-                {
-                    CGDisplayModeRef mode = CGDisplayCopyDisplayMode([displayID unsignedIntValue]);
-                    [latentDisplayModes setObject:(id)mode forKey:displayID];
-                    CGDisplayModeRelease(mode);
-                }
-
-                CGRestorePermanentDisplayConfiguration();
-                CGReleaseAllDisplays();
-                [originalDisplayModes removeAllObjects];
-                displaysCapturedForFullscreen = FALSE;
+                [self releaseDisplayCaptureSavingModes:TRUE];
             }
 
             for (app in [[NSWorkspace sharedWorkspace] runningApplications])
@@ -2001,7 +2149,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 lastTargetWindow = nil;
             if (window == self.mouseCaptureWindow)
                 self.mouseCaptureWindow = nil;
-            if ([window isKindOfClass:[WineWindow class]] && [(WineWindow*)window isFullscreen])
+            if ([window isKindOfClass:[WineWindow class]])
             {
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0), dispatch_get_main_queue(), ^{
                     [self updateFullscreenWindows];
@@ -2042,6 +2190,11 @@ static NSString* WineLocalizedString(unsigned int stringID)
                      name:NSWorkspaceActiveSpaceDidChangeNotification
                    object:nil];
 
+        [wsnc addObserver:self
+                 selector:@selector(workspaceWillSleep:)
+                     name:NSWorkspaceWillSleepNotification
+                   object:nil];
+
         [nc addObserver:self
                selector:@selector(releaseMouseCapture)
                    name:NSMenuDidBeginTrackingNotification
@@ -2079,20 +2232,9 @@ static NSString* WineLocalizedString(unsigned int stringID)
              */
             if ([NSApp isActive])
             {
-                if ([originalDisplayModes count] || displaysCapturedForFullscreen)
+                if ([self areDisplaysCaptured])
                 {
-                    NSNumber* displayID;
-                    for (displayID in originalDisplayModes)
-                    {
-                        CGDisplayModeRef mode = CGDisplayCopyDisplayMode([displayID unsignedIntValue]);
-                        [latentDisplayModes setObject:(id)mode forKey:displayID];
-                        CGDisplayModeRelease(mode);
-                    }
-
-                    CGRestorePermanentDisplayConfiguration();
-                    CGReleaseAllDisplays();
-                    [originalDisplayModes removeAllObjects];
-                    displaysCapturedForFullscreen = FALSE;
+                    [self releaseDisplayCaptureSavingModes:TRUE];
                     displaysTemporarilyUncapturedForDialog = TRUE;
                 }
                 temporarilyIgnoreResignEventsForDialog = TRUE;
@@ -2105,9 +2247,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
                     usingBlock:^(NSNotification *note){
             if (displaysTemporarilyUncapturedForDialog)
             {
-                [self applicationDidBecomeActive:nil];
-
                 displaysTemporarilyUncapturedForDialog = FALSE;
+                [self applicationDidBecomeActive:nil];
             }
             temporarilyIgnoreResignEventsForDialog = FALSE;
         }];
@@ -2211,42 +2352,52 @@ static NSString* WineLocalizedString(unsigned int stringID)
     /* CW Hack 22310, 24199 */
     - (void) handleExternalQuitRequest:(NSNotification *)notification
     {
+        NSDictionary *userInfo = notification.userInfo;
         NSString *targetAUMID, *targetExeName, *ourExeName;
-        pid_t sourcePID;
+        NSNumber *sourcePIDNumber;
+        long long sourcePID;
         NSProcessInfo *ourProcess;
         NSString *ourConfigDir, *otherConfigDir, *ourPrefix, *otherPrefix;
+        const char *pidType;
 
-        sourcePID = [notification.userInfo[WineExternalQuitNotificationSourcePIDKey] intValue];
+        /* Distributed userInfo is untrusted.  A valid label-scoped request is
+         * still not authenticated evidence of Windows helper ownership. */
+        if (![userInfo isKindOfClass:[NSDictionary class]]) return;
+        sourcePIDNumber = userInfo[WineExternalQuitNotificationSourcePIDKey];
+        if (![sourcePIDNumber isKindOfClass:[NSNumber class]]) return;
+        pidType = sourcePIDNumber.objCType;
+        if (!pidType || !pidType[0] || pidType[1] || !strchr("cCsSiIlLqQ", pidType[0])) return;
+        sourcePID = sourcePIDNumber.longLongValue;
+        if (sourcePID <= 1 || sourcePID > INT_MAX) return;
         ourProcess = [NSProcessInfo processInfo];
-
-        // Ignore requests from ourself
         if (sourcePID == ourProcess.processIdentifier) return;
 
-        targetAUMID = notification.userInfo[WineExternalQuitNotificationAUMIDKey];
-        if (targetAUMID.length && ![self.explicitAppUserModelID isEqualToString:targetAUMID])
-            return;
+        /* Do not require sender liveness: accepted Quit posts immediately
+         * before the sender exits, and delivery is asynchronous. */
+        targetAUMID = userInfo[WineExternalQuitNotificationAUMIDKey];
+        targetExeName = userInfo[WineExternalQuitNotificationExeNameKey];
+        if ((targetAUMID && ![targetAUMID isKindOfClass:[NSString class]]) ||
+            (targetExeName && ![targetExeName isKindOfClass:[NSString class]])) return;
+        if (!targetAUMID.length && !targetExeName.length) return;
+        if (targetAUMID.length && ![self.explicitAppUserModelID isEqualToString:targetAUMID]) return;
+        ourExeName = [NSRunningApplication currentApplication].executableURL.lastPathComponent;
+        if (targetExeName.length && ![ourExeName isEqualToString:targetExeName]) return;
 
-        targetExeName = notification.userInfo[WineExternalQuitNotificationExeNameKey];
-        ourExeName = [NSRunningApplication currentApplication].executableURL.lastPathComponent;;
-        if (targetExeName.length && ![ourExeName isEqualToString:targetExeName])
-            return;
-
-        // AUMID or EXE name matches. Make sure it's from the same prefix.
         ourConfigDir = ourProcess.environment[@"WINECONFIGDIR"];
-        otherConfigDir = notification.userInfo[WineExternalQuitNotificationWineConfigDirKey];
-        if (ourConfigDir.length && otherConfigDir.length &&
-            ![ourConfigDir isEqualToString:otherConfigDir])
-        {
-            return;
-        }
-
+        otherConfigDir = userInfo[WineExternalQuitNotificationWineConfigDirKey];
         ourPrefix = ourProcess.environment[@"WINEPREFIX"];
-        otherPrefix = notification.userInfo[WineExternalQuitNotificationWinePrefixKey];
-        if (ourPrefix.length && otherPrefix.length &&
-            ![ourPrefix isEqualToString:otherPrefix])
-        {
-            return;
-        }
+        otherPrefix = userInfo[WineExternalQuitNotificationWinePrefixKey];
+        if ((ourConfigDir && ![ourConfigDir isKindOfClass:[NSString class]]) ||
+            (otherConfigDir && ![otherConfigDir isKindOfClass:[NSString class]]) ||
+            (ourPrefix && ![ourPrefix isKindOfClass:[NSString class]]) ||
+            (otherPrefix && ![otherPrefix isKindOfClass:[NSString class]])) return;
+
+        /* Empty pairs are allowed for launchers which supply only one identity.
+         * At least one identity must be explicit, and neither may disagree or
+         * be supplied on only one side.  Never infer the default prefix here. */
+        if (!ourConfigDir.length && !ourPrefix.length) return;
+        if (![(ourConfigDir ? ourConfigDir : @"") isEqualToString:(otherConfigDir ? otherConfigDir : @"")] ||
+            ![(ourPrefix ? ourPrefix : @"") isEqualToString:(otherPrefix ? otherPrefix : @"")]) return;
 
         terminatingDueToExternalRequest = YES;
         [NSApp terminate:NSApp];
@@ -2255,7 +2406,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
     /* CW Hack 22310, 24199 */
     - (void) postExternalQuitRequest
     {
-        static NSArray *whitelistedAUMIDs, *whitelistedExeNames;
+        static NSArray *whitelistedAUMIDs;
         static dispatch_once_t onceToken;
         NSDictionary *userInfo;
         NSProcessInfo *process;
@@ -2287,6 +2438,9 @@ static NSString* WineLocalizedString(unsigned int stringID)
         if (!wineConfigDir) wineConfigDir = @"";
         winePrefix = process.environment[@"WINEPREFIX"];
         if (!winePrefix) winePrefix = @"";
+        /* Do not broadcast when receivers cannot establish a concrete prefix
+         * identity.  Empty targeting is already excluded by the app allowlist. */
+        if (!wineConfigDir.length && !winePrefix.length) return;
 
         userInfo = @{
             WineExternalQuitNotificationAUMIDKey: self.explicitAppUserModelID ? self.explicitAppUserModelID : @"",
@@ -2391,26 +2545,67 @@ static NSString* WineLocalizedString(unsigned int stringID)
         }
     }
 
-    - (void) unminimizeWindowIfNoneVisible
+    - (void) workspaceWillSleep:(NSNotification *)notification
     {
-        WineWindow *bestOption = nil;
-
-        if ([self isAnyWineWindowVisible])
-            return;
-
-        for (WineWindow *window in [NSApp windows])
+        if (![NSThread isMainThread])
         {
-            if (![window isKindOfClass:[WineWindow class]] || ![window isMiniaturized])
-                continue;
-
-            bestOption = window;
-
-            /* Prefer any window that would actually show something. */
-            if ([window presentsVisibleContent])
-                break;
+            dispatch_async(dispatch_get_main_queue(), ^{ [self workspaceWillSleep:notification]; });
+            return;
         }
 
-        [bestOption deminiaturize:self];
+        /* Sleep can occur while the Windows message thread is blocked.
+         * Resume from an absolute mouse position and require the Windows app
+         * to request any new confinement after waking. */
+        [self stopClippingCursor];
+        [self releaseMouseCapture];
+        forceNextMouseMoveAbsolute = TRUE;
+    }
+
+    - (WineWindow *) windowForReopen
+    {
+        NSArray *appWindows = [NSApp windows];
+        NSMutableArray *windows = [keyWindows mutableCopy];
+        WineWindow *bestOption = nil;
+
+        /* WineWindows are NSPanels, so AppKit's visible-window flag does not
+           describe them reliably.  Work only on this process's actual windows,
+           preferring its recent key-window order over creation order. */
+        for (WineWindow *window in appWindows)
+            if (![windows containsObject:window])
+                [windows addObject:window];
+
+        for (WineWindow *window in windows)
+        {
+            if (![appWindows containsObject:window] ||
+                ![window isKindOfClass:[WineWindow class]] || window.closing ||
+                window.disabled || window.noForeground || ![window canBecomeKeyWindow] ||
+                ![window presentsVisibleContent])
+                continue;
+
+            /* Do not order a never-shown service window in.  Prefer an existing
+               visible window; restore one minimized window only when needed. */
+            if ([window isVisible] && ![window isMiniaturized])
+            {
+                bestOption = window;
+                break;
+            }
+            if (!bestOption && [window isMiniaturized])
+                bestOption = window;
+        }
+
+        [bestOption retain];
+        [windows release];
+        return [bestOption autorelease];
+    }
+
+    - (void) unminimizeWindowIfNoneVisible
+    {
+        /* Activation must use the same eligibility as reopen.  A permissive
+           fallback here could otherwise restore a rejected service window
+           before the reopen delegate gets to choose the real window. */
+        WineWindow *window = [self windowForReopen];
+        if ([window isMiniaturized])
+            [window deminiaturize:self];
     }
 
     - (void) setRetinaMode:(BOOL)mode
@@ -2430,8 +2625,10 @@ static NSString* WineLocalizedString(unsigned int stringID)
     /*
      * ---------- NSApplicationDelegate methods ----------
      */
-    - (void)applicationDidBecomeActive:(NSNotification *)notification
+    - (void) realizeLatentDisplayModes
     {
+        if (displayCaptureReleaseToken || displayCaptureTerminating ||
+            displaysTemporarilyUncapturedForDialog) return;
         NSNumber* displayID;
         NSDictionary* modesToRealize = [latentDisplayModes autorelease];
 
@@ -2439,9 +2636,20 @@ static NSString* WineLocalizedString(unsigned int stringID)
         for (displayID in modesToRealize)
         {
             CGDisplayModeRef mode = (CGDisplayModeRef)modesToRealize[displayID];
-            [self setMode:mode forDisplay:[displayID unsignedIntValue]];
+            if (![self setMode:mode forDisplay:[displayID unsignedIntValue]] && !latentDisplayModes[displayID])
+            {
+                /* Keep a failed reactivation request for a later retry, without
+                   overwriting a newer request made during activation. */
+                [latentDisplayModes setObject:(id)mode forKey:displayID];
+            }
         }
 
+    }
+
+    - (void)applicationDidBecomeActive:(NSNotification *)notification
+    {
+        macdrv_refresh_display_edr_main();
+        [self realizeLatentDisplayModes];
         [self updateFullscreenWindows];
         [self adjustWindowLevels:YES];
 
@@ -2469,6 +2677,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
     - (void)applicationDidChangeScreenParameters:(NSNotification *)notification
     {
+        macdrv_refresh_display_edr_main();
         primaryScreenHeightValid = FALSE;
         [self sendDisplaysChanged:FALSE];
         [self adjustWindowLevels];
@@ -2488,6 +2697,13 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
         if (!temporarilyIgnoreResignEventsForDialog)
         {
+            /* Release native cursor confinement without waiting for the Windows
+             * message thread to consume APP_DEACTIVATED.  A blocked game thread
+             * must not leave the event-tap cursor detached while another app is
+             * active.  Preserve the existing temporary native-dialog exception:
+             * its Windows clipping state is intentionally not reset. */
+            [self stopClippingCursor];
+
             event = macdrv_create_event(APP_DEACTIVATED, nil);
 
             [eventQueuesLock lock];
@@ -2498,6 +2714,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
             macdrv_release_event(event);
         }
 
+        [self releaseDisplayCaptureSavingModes:TRUE];
         [self releaseMouseCapture];
     }
 
@@ -2508,10 +2725,19 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
     - (BOOL) applicationShouldHandleReopen:(NSApplication*)theApplication hasVisibleWindows:(BOOL)flag
     {
-        // Note that "flag" is often wrong.  WineWindows are NSPanels and NSPanels
-        // don't count as "visible windows" for this purpose.
-        [self unminimizeWindowIfNoneVisible];
-        return YES;
+        WineWindow *window = [self windowForReopen];
+
+        if (window)
+        {
+            /* Use the normal Window-menu path, which also informs Windows of
+               the z-order change even when this window was already key. */
+            [window makeKeyAndOrderFront:self];
+            [self tryToActivateIgnoringOtherApps:YES];
+        }
+
+        /* We handled Wine's windows, including the no-window case.  Do not let
+           AppKit's default reopen order hidden helper panels in afterward. */
+        return NO;
     }
 
     - (NSApplicationTerminateReply) applicationShouldTerminate:(NSApplication *)sender
@@ -2560,6 +2786,12 @@ static NSString* WineLocalizedString(unsigned int stringID)
     /* CW Hack 22310, 24199 */
     - (void)handleApplicationShouldTerminateReply:(BOOL)reply
     {
+        if (reply)
+        {
+            [self stopClippingCursor];
+            [self releaseDisplayCaptureSavingModes:FALSE];
+        }
+
         if (reply && !terminatingDueToExternalRequest)
         {
             // Normal Cocoa-initiated quit, so potentially tell other related
@@ -2571,6 +2803,13 @@ static NSString* WineLocalizedString(unsigned int stringID)
             terminatingDueToExternalRequest = NO;
 
         [NSApp replyToApplicationShouldTerminate:reply];
+    }
+
+    - (void)applicationWillTerminate:(NSNotification *)notification
+    {
+        macdrv_main_executor_stop_v1();
+        [self stopClippingCursor];
+        [self releaseDisplayCaptureSavingModes:FALSE];
     }
 
     - (void)applicationWillBecomeActive:(NSNotification *)notification
@@ -2733,6 +2972,21 @@ int macdrv_set_display_mode(CGDirectDisplayID displayID, CGDisplayModeRef displa
 
     OnMainThread(^{
         ret = [[WineApplicationController sharedController] setMode:display_mode forDisplay:displayID];
+    });
+
+    return ret;
+}
+
+/* Optional, query-only acknowledgement for a cooperating native bridge.
+   This is process-global capture state, not a per-window/output lease. A live
+   fullscreen owner deliberately prevents acknowledgement of global release. */
+__attribute__((visibility("default")))
+int macdrv_display_capture_cleanup_complete_v1(void)
+{
+    __block int ret;
+
+    OnMainThread(^{
+        ret = ![[WineApplicationController sharedController] areDisplaysCaptured];
     });
 
     return ret;

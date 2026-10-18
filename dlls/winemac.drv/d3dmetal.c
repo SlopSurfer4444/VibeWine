@@ -102,6 +102,8 @@ static struct d3dmetal_macdrv_win_data *my_get_win_data(HWND hwnd)
     struct macdrv_win_data *data;
     struct d3dmetal_macdrv_win_data *d3dm_data;
     struct macdrv_client_surface *client_surface;
+    CFMutableArrayRef client_surfaces;
+    static const CFArrayCallBacks callbacks = { .release = cf_client_surface_release };
     TRACE("get_win_data %p\n", hwnd);
 
     /* Creating a client surface on each call to get_win_data() means it's no longer idempotent,
@@ -109,26 +111,37 @@ static struct d3dmetal_macdrv_win_data *my_get_win_data(HWND hwnd)
      * They do:
      * get_win_data() -> create_metal_device() -> create_metal_view() -> get_metal_layer() -> release_win_data()
      */
-    client_surface = macdrv_client_surface_create(hwnd);
+    /* Prepare fallible bridge storage before creating/publishing a replacement view. */
+    if (!(d3dm_data = calloc(1, sizeof(*d3dm_data)))) return NULL;
+    if (!(client_surfaces = CFArrayCreateMutable(NULL, 0, &callbacks)))
+    {
+        free(d3dm_data);
+        return NULL;
+    }
+    if (!(client_surface = macdrv_client_surface_create(hwnd)))
+    {
+        CFRelease(client_surfaces);
+        free(d3dm_data);
+        return NULL;
+    }
 
     /* get_win_data() needs to happen after client_surface creation to avoid deadlocks */
     data = get_win_data(hwnd);
     if (!data)
     {
         client_surface_release((struct client_surface *)client_surface);
+        CFRelease(client_surfaces);
+        free(d3dm_data);
         return NULL;
     }
 
     macdrv_set_view_d3dmetal_client_surface(client_surface->cocoa_view, &client_surface->client);
 
     if (!data->d3dmetal_client_surfaces)
-    {
-        static const CFArrayCallBacks callbacks = { .release = cf_client_surface_release };
-        data->d3dmetal_client_surfaces = CFArrayCreateMutable(NULL, 0, &callbacks);
-    }
+        data->d3dmetal_client_surfaces = client_surfaces;
+    else
+        CFRelease(client_surfaces);
     CFArrayAppendValue(data->d3dmetal_client_surfaces, client_surface);
-
-    d3dm_data = calloc(1, sizeof(*d3dm_data));
 
     d3dm_data->hwnd = data->hwnd;
     d3dm_data->cocoa_window = data->cocoa_window;

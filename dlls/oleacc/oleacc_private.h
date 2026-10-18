@@ -19,6 +19,8 @@
 #include "oleacc_classes.h"
 #include "servprov.h"
 
+extern HINSTANCE oleacc_handle;
+
 struct win_class_data {
     const WCHAR *name;
     DWORD idx;

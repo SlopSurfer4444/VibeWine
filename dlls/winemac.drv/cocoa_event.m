@@ -765,6 +765,8 @@ void macdrv_set_query_done(macdrv_query *query)
 @end
 
 
+#include "wave7_main_executor.inc"
+
 /***********************************************************************
  *              macdrv_register_hot_key
  */

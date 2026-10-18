@@ -22,6 +22,10 @@
 
 #include "macdrv_cocoa.h"
 
+/* Internal lifecycle for the optional query-aware synchronous executor. */
+void macdrv_main_executor_start_v1(void);
+void macdrv_main_executor_stop_v1(void);
+
 #define ERR(...) do { if (macdrv_err_on) LogError(__func__, __VA_ARGS__); } while (false)
 
 
@@ -73,6 +77,12 @@ enum {
     NSMutableDictionary* originalDisplayModes;
     NSMutableDictionary* latentDisplayModes;
     BOOL displaysCapturedForFullscreen;
+    BOOL displaysCaptured; /* Successful capture still requiring release, even without a mode. */
+    /* Main-thread, application-owned release obligation. The immutable token
+       distinguishes queued retries from a later capture/release lifetime. */
+    NSObject* displayCaptureReleaseToken;
+    BOOL displayCaptureReleaseRetryQueued;
+    BOOL displayCaptureTerminating;
     BOOL displaysTemporarilyUncapturedForDialog;
     BOOL temporarilyIgnoreResignEventsForDialog;
 

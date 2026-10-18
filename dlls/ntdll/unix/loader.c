@@ -654,7 +654,11 @@ static void replace_wineloader_path_with_link(char **wineloader_path, const char
 #endif
 
 
-static void preloader_exec( char **argv, const char *image_path )
+#ifdef __APPLE__
+#include "native_app_route.h"
+#endif
+
+static void preloader_exec( char **argv, const char *image_path, BOOL native_bundle )
 {
 #ifdef HAVE_WINE_PRELOADER
     asprintf( &argv[0], "%s-preloader", argv[1] );
@@ -664,7 +668,7 @@ static void preloader_exec( char **argv, const char *image_path )
 
         /* CW HACK 22144: Create and exec a more descriptively-named link to the preloader,
          * which will show up as the icon name in the Dock. */
-        replace_wineloader_path_with_link( &(argv[0]), image_path );
+        if (!native_bundle) replace_wineloader_path_with_link( &(argv[0]), image_path );
 
         posix_spawnattr_init( &attr );
         posix_spawnattr_setflags( &attr, POSIX_SPAWN_SETEXEC | _POSIX_SPAWN_DISABLE_ASLR );
@@ -682,7 +686,7 @@ static void preloader_exec( char **argv, const char *image_path )
      * When the preloader is not being used, WINEDLLPATH needs to be set correctly for
      * the loader to find ntdll.so, so don't even attempt this unless WINEDLLPATH is set.
      */
-    if (getenv("WINEDLLPATH"))
+    if (!native_bundle && getenv("WINEDLLPATH"))
         replace_wineloader_path_with_link( &(argv[1]), image_path );
 #endif
 
@@ -696,10 +700,38 @@ static NTSTATUS loader_exec( char **argv, WORD machine, const char *image_path )
 
     putenv( noexec );
 
-    if (((argv[1] = get_alternate_wineloader( machine )))) preloader_exec( argv, image_path );
+#ifdef __APPLE__
+    {
+        char *native_loader = NULL;
+        int routed = native_app_route( config_dir, image_path, machine, &native_loader );
+        if (routed < 0)
+        {
+            ERR( "invalid native application route configuration in %s\n", config_dir );
+            return STATUS_INVALID_IMAGE_FORMAT;
+        }
+        if (routed)
+        {
+#ifdef HAVE_WINE_PRELOADER
+            /* This candidate admits only the packaged no-preloader loader.
+             * A sibling preloader needs its own architecture/identity admission. */
+            ERR( "native application routing is unsupported with a preloader\n" );
+            free( native_loader );
+            return STATUS_INVALID_IMAGE_FORMAT;
+#endif
+            argv[1] = native_loader;
+            /* PE argv, startup socket, reserve and architecture remain intact.
+             * Configured execution failure must not silently lose its identity. */
+            preloader_exec( argv, image_path, TRUE );
+            ERR( "could not execute native application loader %s: %s\n", native_loader, strerror(errno) );
+            free( native_loader );
+            return STATUS_INVALID_IMAGE_FORMAT;
+        }
+    }
+#endif
+    if (((argv[1] = get_alternate_wineloader( machine )))) preloader_exec( argv, image_path, FALSE );
 
     argv[1] = strdup( wineloader );
-    preloader_exec( argv, image_path );
+    preloader_exec( argv, image_path, FALSE );
     return STATUS_INVALID_IMAGE_FORMAT;
 }
 

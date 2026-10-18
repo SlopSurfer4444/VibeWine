@@ -21,6 +21,7 @@
 #include <assert.h>
 #include "oleacc_private.h"
 #include "commctrl.h"
+#include "resource.h"
 
 #include "wine/debug.h"
 
@@ -49,6 +50,9 @@ struct win_class_vtbl {
     HRESULT (*get_kbd_shortcut)(Client*, VARIANT, BSTR*);
     HRESULT (*get_value)(Client*, VARIANT, BSTR*);
     HRESULT (*put_value)(Client*, VARIANT, BSTR);
+    HRESULT (*get_role)(Client*, VARIANT, VARIANT*);
+    HRESULT (*get_default_action)(Client*, VARIANT, BSTR*);
+    HRESULT (*do_default_action)(Client*, VARIANT);
 };
 
 static HRESULT win_get_name(HWND hwnd, BSTR *name)
@@ -271,6 +275,9 @@ static HRESULT WINAPI Client_get_accRole(IAccessible *iface, VARIANT varID, VARI
         return E_INVALIDARG;
     }
 
+    if(This->vtbl && This->vtbl->get_role)
+        return This->vtbl->get_role(This, varID, pvarRole);
+
     V_VT(pvarRole) = VT_I4;
     V_I4(pvarRole) = This->role;
     return S_OK;
@@ -399,6 +406,9 @@ static HRESULT WINAPI Client_get_accDefaultAction(IAccessible *iface,
     TRACE("(%p)->(%s %p)\n", This, debugstr_variant(&varID), pszDefaultAction);
 
     *pszDefaultAction = NULL;
+    if(This->vtbl && This->vtbl->get_default_action)
+        return This->vtbl->get_default_action(This, varID, pszDefaultAction);
+
     if(convert_child_id(&varID) != CHILDID_SELF)
         return E_INVALIDARG;
     return S_FALSE;
@@ -479,6 +489,9 @@ static HRESULT WINAPI Client_accHitTest(IAccessible *iface,
 static HRESULT WINAPI Client_accDoDefaultAction(IAccessible *iface, VARIANT varID)
 {
     Client *This = impl_from_Client(iface);
+    if(This->vtbl && This->vtbl->do_default_action)
+        return This->vtbl->do_default_action(This, varID);
+
     FIXME("(%p)->(%s)\n", This, debugstr_variant(&varID));
     return E_NOTIMPL;
 }
@@ -868,10 +881,146 @@ static const win_class_vtbl edit_vtbl = {
     edit_put_value,
 };
 
+/* Standard BUTTON controls expose their native state through BM_* messages.
+ * Read the style on each query: BM_SETSTYLE can change a live control's role. */
+static LONG button_role(Client *client)
+{
+    switch(GetWindowLongW(client->hwnd, GWL_STYLE) & BS_TYPEMASK) {
+    case BS_CHECKBOX:
+    case BS_AUTOCHECKBOX:
+    case BS_3STATE:
+    case BS_AUTO3STATE:
+        return ROLE_SYSTEM_CHECKBUTTON;
+    case BS_RADIOBUTTON:
+    case BS_AUTORADIOBUTTON:
+        return ROLE_SYSTEM_RADIOBUTTON;
+    case BS_GROUPBOX:
+        return ROLE_SYSTEM_GROUPING;
+    default:
+        return ROLE_SYSTEM_PUSHBUTTON;
+    }
+}
+
+static HRESULT button_get_role(Client *client, VARIANT id, VARIANT *role)
+{
+    if(convert_child_id(&id) != CHILDID_SELF || !IsWindow(client->hwnd)) {
+        V_VT(role) = VT_EMPTY;
+        return E_INVALIDARG;
+    }
+    V_VT(role) = VT_I4;
+    V_I4(role) = button_role(client);
+    return S_OK;
+}
+
+static BOOL button_enabled(HWND hwnd)
+{
+    while(hwnd) {
+        if(!IsWindowEnabled(hwnd))
+            return FALSE;
+        if(!(GetWindowLongW(hwnd, GWL_STYLE) & WS_CHILD))
+            break;
+        hwnd = GetParent(hwnd);
+    }
+    return TRUE;
+}
+
+static HRESULT button_get_state(Client *client, VARIANT id, VARIANT *state)
+{
+    LONG role, style;
+    LRESULT button_state, check;
+    HRESULT hr;
+
+    if(convert_child_id(&id) != CHILDID_SELF || !IsWindow(client->hwnd)) {
+        V_VT(state) = VT_EMPTY;
+        return E_INVALIDARG;
+    }
+    hr = client_get_state(client, id, state);
+    if(FAILED(hr))
+        return hr;
+
+    role = button_role(client);
+    style = GetWindowLongW(client->hwnd, GWL_STYLE) & BS_TYPEMASK;
+    if(!button_enabled(client->hwnd)) {
+        V_I4(state) |= STATE_SYSTEM_UNAVAILABLE;
+        V_I4(state) &= ~STATE_SYSTEM_FOCUSABLE;
+    }
+    if(!IsWindowVisible(client->hwnd))
+        V_I4(state) |= STATE_SYSTEM_INVISIBLE;
+    if(role == ROLE_SYSTEM_GROUPING) {
+        V_I4(state) &= ~(STATE_SYSTEM_FOCUSABLE | STATE_SYSTEM_FOCUSED);
+        return S_OK;
+    }
+
+    button_state = SendMessageW(client->hwnd, BM_GETSTATE, 0, 0);
+    if(button_state & BST_PUSHED)
+        V_I4(state) |= STATE_SYSTEM_PRESSED;
+    if(style == BS_DEFPUSHBUTTON || style == BS_DEFSPLITBUTTON || style == BS_DEFCOMMANDLINK)
+        V_I4(state) |= STATE_SYSTEM_DEFAULT;
+    if(role == ROLE_SYSTEM_CHECKBUTTON || role == ROLE_SYSTEM_RADIOBUTTON) {
+        check = SendMessageW(client->hwnd, BM_GETCHECK, 0, 0);
+        if(check == BST_CHECKED)
+            V_I4(state) |= STATE_SYSTEM_CHECKED;
+        else if(check == BST_INDETERMINATE)
+            V_I4(state) |= STATE_SYSTEM_MIXED;
+    }
+    return S_OK;
+}
+
+static HRESULT button_get_default_action(Client *client, VARIANT id, BSTR *action)
+{
+    const WCHAR *text;
+    LONG role;
+    UINT resource;
+    int len;
+
+    if(convert_child_id(&id) != CHILDID_SELF || !IsWindow(client->hwnd))
+        return E_INVALIDARG;
+    role = button_role(client);
+    if(role == ROLE_SYSTEM_GROUPING)
+        return S_FALSE;
+
+    if(role == ROLE_SYSTEM_CHECKBUTTON)
+        resource = SendMessageW(client->hwnd, BM_GETCHECK, 0, 0) == BST_CHECKED ? IDS_ACTION_UNCHECK : IDS_ACTION_CHECK;
+    else if(role == ROLE_SYSTEM_RADIOBUTTON)
+        resource = IDS_ACTION_CHECK;
+    else
+        resource = IDS_ACTION_PRESS;
+    len = LoadStringW(oleacc_handle, resource, (WCHAR *)&text, 0);
+    if(!len)
+        return E_FAIL;
+    *action = SysAllocStringLen(text, len);
+    return *action ? S_OK : E_OUTOFMEMORY;
+}
+
+static HRESULT button_do_default_action(Client *client, VARIANT id)
+{
+    if(convert_child_id(&id) != CHILDID_SELF || !IsWindow(client->hwnd))
+        return E_INVALIDARG;
+    if(button_role(client) == ROLE_SYSTEM_GROUPING || !button_enabled(client->hwnd) ||
+            !IsWindowVisible(client->hwnd))
+        return S_FALSE;
+
+    /* Queue the native operation. The window's owning thread delivers the
+     * normal notifications and automatic check/radio transitions. */
+    return PostMessageW(client->hwnd, BM_CLICK, 0, 0) ? S_OK : E_FAIL;
+}
+
+static const win_class_vtbl button_vtbl = {
+    NULL,
+    button_get_state,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    button_get_role,
+    button_get_default_action,
+    button_do_default_action,
+};
+
 static const struct win_class_data classes[] = {
     {WC_LISTBOXW,           0x10000, TRUE},
     {L"#32768",             0x10001, TRUE}, /* menu */
-    {WC_BUTTONW,            0x10002, TRUE},
+    {WC_BUTTONW,            0x10002, FALSE, &button_vtbl},
     {WC_STATICW,            0x10003, TRUE},
     {WC_EDITW,              0x10004, FALSE, &edit_vtbl},
     {WC_COMBOBOXW,          0x10005, TRUE},
@@ -914,6 +1063,23 @@ HRESULT create_client_object(HWND hwnd, const IID *iid, void **obj)
         return E_OUTOFMEMORY;
 
     data = find_class_data(hwnd, classes);
+    if(data && data->vtbl == &button_vtbl && (!HIWORD(hwnd) || HIWORD(hwnd) == 0xffff)) {
+        HWND full;
+        unsigned int count;
+
+        /* Legacy HWND aliases omit the generation. Retain the canonical handle
+         * so this object cannot later act on a replacement reusing its slot. */
+        for(full = GetWindow(hwnd, GW_HWNDFIRST), count = 0; full && count < 0x8000;
+                full = GetWindow(full, GW_HWNDNEXT), count++)
+            if(LOWORD(full) == LOWORD(hwnd))
+                break;
+        if(!full || count == 0x8000 || !IsWindow(full)) {
+            free(client);
+            return E_FAIL;
+        }
+        hwnd = full;
+        data = find_class_data(hwnd, classes);
+    }
 
     client->IAccessible_iface.lpVtbl = &ClientVtbl;
     client->IOleWindow_iface.lpVtbl = &ClientOleWindowVtbl;

@@ -91,6 +91,7 @@
 @property (readonly, nonatomic) BOOL noForeground;
 @property (readonly, nonatomic) BOOL preventsAppActivation;
 @property (readonly, nonatomic) BOOL floating;
+@property (readonly, nonatomic) BOOL closing;
 @property (readonly, getter=isFullscreen, nonatomic) BOOL fullscreen;
 @property (readonly, getter=isFakingClose, nonatomic) BOOL fakingClose;
 @property (readonly, nonatomic) NSRect wine_fractionalFrame;

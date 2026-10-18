@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#define COBJMACROS
 #include <stdarg.h>
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
@@ -32,6 +33,7 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(macdrv);
 
+#include "ax_provider.inc"
 
 static HMODULE macdrv_module = 0;
 
@@ -43,6 +45,7 @@ struct quit_info {
     DWORD               flags;
     BOOL                result;
     BOOL                replied;
+    UINT                refs;
 };
 
 
@@ -114,6 +117,16 @@ static void quit_reply(int reply)
 }
 
 
+static void release_quit_info(struct quit_info *qi)
+{
+    if (!--qi->refs)
+    {
+        HeapFree(GetProcessHeap(), 0, qi->wins);
+        HeapFree(GetProcessHeap(), 0, qi);
+    }
+}
+
+
 static void CALLBACK quit_callback(HWND hwnd, UINT msg, ULONG_PTR data, LRESULT result)
 {
     struct quit_info *qi = (struct quit_info*)data;
@@ -154,6 +167,7 @@ static void CALLBACK quit_callback(HWND hwnd, UINT msg, ULONG_PTR data, LRESULT 
             {
                 TRACE("sending WM_ENDSESSION to win %p result %d flags 0x%08lx\n", qi->wins[i],
                       qi->result, qi->flags);
+                qi->refs++;
                 if (!SendMessageCallbackW(qi->wins[i], WM_ENDSESSION, qi->result, qi->flags,
                                           quit_callback, (ULONG_PTR)qi))
                 {
@@ -179,11 +193,10 @@ static void CALLBACK quit_callback(HWND hwnd, UINT msg, ULONG_PTR data, LRESULT 
             TRACE("%sterminating process\n", qi->result ? "" : "not ");
             if (qi->result)
                 TerminateProcess(GetCurrentProcess(), 0);
-
-            HeapFree(GetProcessHeap(), 0, qi->wins);
-            HeapFree(GetProcessHeap(), 0, qi);
         }
     }
+
+    release_quit_info(qi);
 }
 
 
@@ -207,13 +220,27 @@ NTSTATUS WINAPI macdrv_app_quit_request(void *arg, ULONG size)
     if (!qi->wins || !EnumWindows(get_process_windows, (LPARAM)qi))
         goto fail;
 
+    if (!qi->count)
+    {
+        HeapFree(GetProcessHeap(), 0, qi->wins);
+        HeapFree(GetProcessHeap(), 0, qi);
+        quit_reply(TRUE);
+        TerminateProcess(GetCurrentProcess(), 0);
+        return STATUS_SUCCESS;
+    }
+
     qi->flags = params->flags;
     qi->result = TRUE;
     qi->replied = FALSE;
+    /* Keep the dispatch loop alive across synchronous callbacks.  Each send
+       also owns a reference until its callback (or failure fallback) returns.
+       SendMessageCallback callbacks run on this requesting thread. */
+    qi->refs = 1;
 
     for (i = 0; i < qi->count; i++)
     {
         TRACE("sending WM_QUERYENDSESSION to win %p\n", qi->wins[i]);
+        qi->refs++;
         if (!SendMessageCallbackW(qi->wins[i], WM_QUERYENDSESSION, 0, qi->flags,
                                   quit_callback, (ULONG_PTR)qi))
         {
@@ -229,7 +256,7 @@ NTSTATUS WINAPI macdrv_app_quit_request(void *arg, ULONG size)
         }
     }
 
-    /* quit_callback() will clean up qi */
+    release_quit_info(qi);
     return STATUS_SUCCESS;
 
 fail:
@@ -490,6 +517,8 @@ static BOOL process_attach(void)
     params.regqueryvalueexa_callback = (UINT_PTR)macdrv_regqueryvalueexa;
 
     if (MACDRV_CALL(init, &params)) return FALSE;
+
+    macdrv_ax_provider_start();
 
     return TRUE;
 }

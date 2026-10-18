@@ -38,7 +38,7 @@ extern BOOL WINAPI OLEACC_DllMain(HINSTANCE, DWORD, void*);
 extern HRESULT WINAPI OLEACC_DllRegisterServer(void);
 extern HRESULT WINAPI OLEACC_DllUnregisterServer(void);
 
-static HINSTANCE oleacc_handle = 0;
+HINSTANCE oleacc_handle;
 
 int convert_child_id(VARIANT *v)
 {
