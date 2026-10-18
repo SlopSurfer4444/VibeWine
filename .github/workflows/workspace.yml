@@ -1,0 +1,23 @@
+name: Workspace source checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s tests/workspace
+      - run: python3 scripts/workspace.py check --metadata-only
+      - run: python3 scripts/workspace.py init
+      - run: python3 scripts/workspace.py check

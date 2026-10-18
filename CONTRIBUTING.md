@@ -22,10 +22,17 @@ changes in an issue before investing in a broad rewrite.
 
 ## Prepare a patch
 
-Start with [the README](README.md), [current source](current/README.md), and the
-relevant component's build and test instructions. This repository contains source
-snapshots and historical candidates; identify the exact tree and baseline you
-are changing. Do not describe an older snapshot as the current implementation.
+Start with [the README](README.md), [build instructions](docs/BUILDING.md) and
+[upstream provenance](docs/UPSTREAM.md). Edit complete source in `components/`.
+Commit inside the component and open its PR against `component/wine` or
+`component/dxmt`, not main. Once accepted, a separate main PR updates the gitlink
+and records integration evidence. Never use `submodule update --remote` as a
+substitute for a reviewed pin update. Historical snapshot folders are evidence,
+not duplicate production edit targets.
+
+For a component checkout, create a branch before editing (submodules initially
+use detached HEAD): `git -C components/dxmt switch -c my-fix`. Push that branch to
+your fork and target the matching component branch in VibeWine.
 
 Explain the failure, the intended behavior, and the smallest useful reproduction.
 Add or update a regression fixture where it meaningfully catches the bug. Report

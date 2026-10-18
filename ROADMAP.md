@@ -1,13 +1,13 @@
 # VibeWine roadmap
 
 This is a direction for contributions, not a release promise. Start with the
-[current source](current/README.md) and [contribution guide](CONTRIBUTING.md).
+[component source](README.md#start-with-the-source) and [contribution guide](CONTRIBUTING.md).
 
 ## Make the project easier to build and review
 
 - Establish an independently verifiable upstream baseline and dependency pins.
   The retained Wine archive identity does not substitute for a verified Git revision.
-- Turn the source overlays into a documented, reproducible patch/build path.
+- Validate clean-room component builds and combined runtime assembly from the pinned workspace.
 - Preserve component licenses and attribution; keep private deployment tooling out.
 - Add CI only for fixtures that can genuinely run in its supported environment.
   Current local test results are not CI coverage.

@@ -1,0 +1,8 @@
+[submodule "components/wine"]
+	path = components/wine
+	url = https://github.com/SlopSurfer4444/VibeWine.git
+	branch = component/wine
+[submodule "components/dxmt"]
+	path = components/dxmt
+	url = https://github.com/SlopSurfer4444/VibeWine.git
+	branch = component/dxmt

@@ -2,81 +2,63 @@
 
 **Vibe-code the fix. Prove it works. Share it.**
 
-An AI-friendly home for improving Wine on macOS: native window behavior,
-Retina rendering, accessibility for automation, compatibility, and measurable
-performance work. Human-written and AI-assisted pull requests are welcome.
-Bring a reproduction, explain your change, and show what you checked.
+An AI-friendly contributor workspace for Wine on macOS and DXMT: native window
+behavior, Retina, accessibility, compatibility and measurable performance.
+Human-written and AI-assisted contributions are equally welcome.
 
-**Early developer project:** this repository currently contains source snapshots,
-patches and regression fixtures. It is not a complete Wine checkout, a downloadable
-runtime, or a one-click replacement for CrossOver. The complete installed runtime
-is not yet reproducible from this repository alone.
+## Start with the source
 
-[Contribute](CONTRIBUTING.md) · [Current source and evidence](current/README.md) ·
-[Roadmap](ROADMAP.md) · [Source map](SOURCE_INDEX.md) · [Build boundaries](BUILDING_WAVE7.md)
+```sh
+git clone --recurse-submodules https://github.com/SlopSurfer4444/VibeWine.git
+cd VibeWine
+python3 scripts/workspace.py check
+```
 
-## Fix classes of bugs, keep game workarounds separate
-
-| Track | What belongs here | Default behavior |
+| Source | Purpose | Development |
 | --- | --- | --- |
-| Core | General Wine/macOS and graphics-layer corrections | Correct the demonstrated defect; preserve unrelated behavior |
-| Game profiles | Compatibility workarounds for a named title | Narrowly selected by an explicit application profile; no global override |
-| Experiments | Instrumentation and unproven alternatives | Off by default, bounded and removable |
+| [Wine source](https://github.com/SlopSurfer4444/VibeWine/tree/component/wine) (`components/wine`) | Complete Wine source and component history | `component/wine` branch |
+| [DXMT source](https://github.com/SlopSurfer4444/VibeWine/tree/component/dxmt) (`components/dxmt`) | Complete DXMT source and component history | `component/dxmt` branch |
+| [profiles](profiles/README.md) | Explicit title-specific compatibility | Opt-in, separate from core |
+| [experiments](experiments/README.md) | Instrumentation and exploratory work | Off by default |
 
-A bug found in Dark Souls III can lead to a general fix. A Dark Souls III
-workaround does not automatically belong in every application's code path.
-Keep the mechanism reusable and the exception in the profile. These tracks are
-contribution rules and source classifications, not a claim of a new plugin framework.
+The components are pinned Git submodules hosted as separate branches in this
+same repository. GitHub’s main-branch ZIP does **not** bundle submodule contents;
+use the recursive clone above or browse the component links. Main pins an exact pair; updating a branch does not silently
+change a checkout. Open component PRs against their component branch, workspace
+PRs against main. See [contributing](CONTRIBUTING.md).
 
-## What is here today
+**Developer source workspace, not a runtime release.** Complete source trees do
+not establish that their combined runtime is buildable, installed or gameplay
+validated. See [build instructions and limitations](docs/BUILDING.md) and
+[component provenance](docs/UPSTREAM.md). Workspace CI checks metadata and source
+pins; it does not certify Wine builds, Metal behavior or FPS gains.
 
-- **General Wine fixes:** a BOOLEAN ABI correction affecting directory enumeration;
-  Retina client-surface sizing; child-surface coordinate correction; handling
-  failed surface creation and bridge allocations.
-- **General DXGI correction:** checked errors and actual counts when finding a
-  display mode, with bounded retries when the list changes.
-- **Title-specific compatibility:** DS3's distinct-resolution cap is enabled by
-  its executable profile, not imposed on all applications. See
-  [the current classification](current/README.md).
-- **Accessibility work:** macOS accessibility discovery and standard-control
-  fixtures. Reliable end-to-end computer use in real games remains unfinished;
-  a game-rendered UI does not automatically become a semantic accessibility tree.
-- **Performance research:** opt-in diagnostics and regression work. No controlled,
-  general FPS improvement is claimed yet.
+## What we work on
 
-The latest generic fixes passed source fixtures and local build/installation
-checks. Those checks do not establish every game's compatibility. Earlier DS3
-sessions demonstrated resolution changes, fullscreen exit and repeat launch;
-latest-patch gameplay, Mission Control cursor release and sustained performance
-still need separate testing. See [current evidence](current/README.md).
+- General fixes for display modes, window surfaces, cursor release and lifetime.
+- macOS accessibility and reliable automation; game-rendered controls still need
+  visual feedback rather than an invented accessibility tree.
+- Repeatable frame-time measurements and controlled performance experiments.
+- Clear separation between reusable fixes and named-game exceptions.
 
-## Join in
+[Roadmap](ROADMAP.md) · [Contribution guide](CONTRIBUTING.md) ·
+[Historical installed-source evidence](current/README.md) ·
+[Snapshot-era source map](SOURCE_INDEX.md)
 
-Pick a reproducible bug, improve a fixture, test a second application, or help
-make the build reproducible. Small, understandable PRs are a great starting point.
-AI assistance is welcome; submitting a patch means taking responsibility for
-reviewing it, explaining its source and reporting honest validation.
+The retained `current/`, `native/`, `renderer/`, `ntdll/`, `optional/` and evidence
+folders describe earlier snapshots and experiments, not the source entrypoint
+for new component work. Their contents and history are preserved for comparison.
+They are not a claim that the new component pair has passed those old checks.
+The retained `FILE_MANIFEST` and provenance records describe their original
+snapshot scope; they do not inventory or certify the new component trees.
 
-Use [the contribution guide](CONTRIBUTING.md) and the PR/issue templates. We review
-behavior, maintainability, provenance and evidence. Generated code does not get
-a free pass, and an AI tool's confident explanation is not a test result.
+## Built with the ecosystem
 
-## Build on the ecosystem
+VibeWine is independent of Wine, DXMT and CodeWeavers. Preserve upstream authors,
+licenses and history. Wine-derived source retains LGPL notices; DXMT and its
+third-party components retain their own licenses. This workspace does not
+relicense them. No proprietary game files, saves or credentials belong here.
 
-VibeWine builds on the work of Wine, DXMT and their contributors. It is independent
-of those projects and is not an official Wine release. Useful general patches
-should remain reviewable and reusable by other projects; this is not an
-anti-upstream campaign.
-
-Related macOS projects include [Sikarugir](https://github.com/Sikarugir-App/Sikarugir),
-[the frankea Whisky fork](https://github.com/frankea/Whisky), and
-[Uncork](https://github.com/tonianev/uncork). Their scopes overlap with ours;
-we make no claim to be the first or only project working on these problems.
-
-Wine-derived code retains LGPL-2.1-or-later notices; DXMT trees retain their MIT
-and third-party notices. Read each component's license. No game binaries, saves,
-credentials or private machine-management code are included.
-
-Older checkpoints remain for comparison. Their historical status is not the
-current release status: start with `current/`, then consult
-[the retained history](history/PRE_VIBEWINE_README.md) when needed.
+AI assistance is welcome; responsibility for provenance, review and evidence
+stays with the contributor. No general FPS improvement is claimed without
+controlled measurements.
