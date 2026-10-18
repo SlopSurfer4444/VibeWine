@@ -189,3 +189,68 @@ The local test sandbox uses explicit deny/allow rules for machine-local
 endpoints and Unix IPC. macOS SBPL `localhost` includes the machine's interface
 addresses; it is not strict127.0.0.1/::1 isolation or remote-peer inbound
 isolation. The fixture itself uses literal127.0.0.1 and numeric DNS only.
+
+## Readiness extension candidate
+
+The subsequent extension is observational and still requires its own private
+Wine default/capture acceptance. The earlier console result above applies to
+its precursor. No generic networking fix is included in this extension.
+
+Wire version1, record128, capacity16384, all old API/phase IDs, header offsets,
+commit framing and Unix bridge ordinal remain unchanged. APIs11/12 append
+SELECT/WSAPoll. The 16-byte address slot at offset104 is an API-tagged union for
+these new records only: signed exact computed AFD timeout in100ns units,
+requested descriptor count, captured descriptor count. Negative timeout means
+relative, zero immediate, INT64_MAX infinite; positive values are preserved as
+absolute values, without reinterpretation or validation by the observer.
+
+A wait BEGIN is emitted before original validation and has unavailable
+metadata. ND_WAIT_VALID128 marks safely captured timeout/counts; the decoder
+otherwise reports null/unknown. BEGIN/COMPLETE are call summaries, with the
+original API return, NTSTATUS and WSA error. ATTEMPT/OBSERVED are per-descriptor
+records sharing the call operation ID. SELECT masks are native AFD masks;
+WSAPoll masks are public Windows poll flags. Each input lifetime is resolved
+once before the original wait and retained through output, including compaction
+or concurrent close/reuse. No new lookup or SO_ERROR query occurs at completion.
+
+At most16 descriptor entries are retained per call, including SELECT duplicates
+and invalid WSAPoll entries; ND_TRUNCATED32 explicitly marks a larger total.
+The API itself still processes every original descriptor. ND_MASK_UNKNOWN256
+marks unavailable input, such as an invalid WSAPoll member whose events field
+the original code does not read. ND_OUTPUT_UNKNOWN512 marks unavailable output.
+ATTEMPT has no output; a failed wait never fabricates zero readiness. A known
+zero output mask means no public readiness for that member, not a successful
+connection. The decoded AFD status is conservatively null unless a nonzero
+observed mask proves an AFD output entry. Generic raw status fields remain
+available; their default zero must not be interpreted as connect completion.
+
+Ordinary WSASocketW OPEN records add ND_SOCKET_INFO64 and encode effective
+signed sockettype in requested low32 and protocol in high32; address family
+remains in family. Protocol0 retains its requested default meaning. Accept and
+duplicated-socket paths remain unknown, with no extra socket query. FIONBIO
+transitions, IOCP-only connect completion, TLS/HTTP and application decisions
+remain coverage gaps.
+
+Use the matching new host tool for readiness decoding: wait union bytes are
+not endpoints and address_hex is null for APIs11/12. The old host tool remains
+raw-format compatible and prints numeric APIs, but cannot decode these new
+semantics. The new tool still reads original version1 records and init/fresh
+verification remains compatible. Deployment must pin the exact new tool and
+matched private module group; default behavior remains opt-out.
+
+The extended console source retains the original DNS/TCP/UDP and payload
+checks, adding zero/finite readiness, success/refusal, aliasing, invalid inputs,
+and17 distinct sockets to exercise the16-record cap. It creates no window and
+uses the same30second prearm delay and9second scenario wait budget. Compile is
+not execution evidence. Run the source-bound native readiness checks with:
+
+```sh
+python3 -B dlls/ws2_32/tests/netdiag/run_native_readiness.py
+```
+
+Nine exact-body cases exercise pointer-validation order, allocation failure,
+aliased sets, compacted outputs, invalid-member POLLNVAL retention, truncation,
+error preservation, pending/timeout/error outcomes and unarmed observation.
+External kernel/wait/lifetime seams are mocked; these tests do not establish
+PE/Unix bridge integration or actual Wine readiness. The existing native
+logger/controller and send/receive seam suites remain separately applicable.

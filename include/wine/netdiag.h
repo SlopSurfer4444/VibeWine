@@ -6,7 +6,8 @@
 enum wine_netdiag_api
 {
     ND_DNS = 1, ND_CONNECT, ND_CONNECTEX, ND_SEND, ND_RECV,
-    ND_SOCKET, ND_CLOSE, ND_NETWORK_EVENT, ND_OVERLAPPED, ND_LEGACY_DNS
+    ND_SOCKET, ND_CLOSE, ND_NETWORK_EVENT, ND_OVERLAPPED, ND_LEGACY_DNS,
+    ND_SELECT = 11, ND_WSAPOLL = 12
 };
 enum wine_netdiag_phase
 {
@@ -16,7 +17,9 @@ enum wine_netdiag_phase
 enum wine_netdiag_flags
 {
     ND_ERRNO_VALID = 1, ND_IS_PENDING = 2, ND_ENDPOINT_UNKNOWN = 4,
-    ND_LIFETIME_OBSERVED = 8, ND_LIFETIME_UNKNOWN = 16
+    ND_LIFETIME_OBSERVED = 8, ND_LIFETIME_UNKNOWN = 16,
+    ND_TRUNCATED = 32, ND_SOCKET_INFO = 64, ND_WAIT_VALID = 128,
+    ND_MASK_UNKNOWN = 256, ND_OUTPUT_UNKNOWN = 512
 };
 
 /* Pointer-free PE/Unix bridge and explicit on-disk record, same for x86/x64.
@@ -30,12 +33,27 @@ struct wine_netdiag_event
     uint32_t api, phase, status, error;
     int32_t native_fd, native_errno;
     uint32_t family, port, scope, flags;
-    uint8_t address[16];
+    union
+    {
+        uint8_t address[16];
+        /* ND_SELECT / ND_WSAPOLL only. Exact computed AFD timeout: negative
+         * relative 100ns ticks, zero immediate, INT64_MAX infinite. Metadata
+         * is unavailable until ND_WAIT_VALID is set after safe input capture.
+         * BEGIN/COMPLETE are call summaries; ATTEMPT/OBSERVED are members.
+         * Members retain requested input mask and returned output mask.
+         * ND_MASK_UNKNOWN marks unavailable input; ND_OUTPUT_UNKNOWN marks
+         * unavailable output (including ATTEMPT and unsuccessful waits).
+         * SELECT uses AFD masks, WSAPoll uses public Windows poll masks.
+         * Entry status is the observed AFD status, not an extra SO_ERROR read.
+         */
+        struct { int64_t timeout_100ns; uint32_t total, captured; } wait;
+    };
     uint32_t host_pid, thread_id;
 };
 _Static_assert(sizeof(struct wine_netdiag_event) == 128, "netdiag record ABI");
 
 #define WINE_NETDIAG_CAPACITY 16384u
+#define WINE_NETDIAG_WAIT_LIMIT 16u
 #define WINE_NETDIAG_MAP_HEADER 16384u
 #define WINE_NETDIAG_MAX_NS UINT64_C(45000000000)
 #define WINE_NETDIAG_MAGIC UINT64_C(0x31474454454e5756)

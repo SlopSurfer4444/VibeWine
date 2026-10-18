@@ -116,11 +116,54 @@ static void dump_file(struct wine_netdiag_header *h)
         struct wine_netdiag_event e;
         unsigned int j;
         memcpy(&e, snapshot + i, sizeof(e));
-        printf("{\"type\":\"event\",\"sequence\":%" PRIu64 ",\"time_ns\":%" PRIu64 ",\"operation_id\":%" PRIu64 ",\"lifetime\":%" PRIu64 ",\"requested\":%" PRIu64 ",\"returned\":%" PRId64 ",\"elapsed_ns\":%" PRIu64 ",\"api\":%u,\"phase\":%u,\"status\":%u,\"error\":%u,\"native_fd\":%d,\"native_errno\":%d,\"family\":%u,\"port\":%u,\"scope\":%u,\"flags\":%u,\"host_pid\":%u,\"thread_id\":%u,\"address_hex\":\"",
+        printf("{\"type\":\"event\",\"sequence\":%" PRIu64 ",\"time_ns\":%" PRIu64 ",\"operation_id\":%" PRIu64 ",\"lifetime\":%" PRIu64 ",\"requested\":%" PRIu64 ",\"returned\":%" PRId64 ",\"elapsed_ns\":%" PRIu64 ",\"api\":%u,\"phase\":%u,\"status\":%u,\"error\":%u,\"native_fd\":%d,\"native_errno\":%d,\"family\":%u,\"port\":%u,\"scope\":%u,\"flags\":%u,\"host_pid\":%u,\"thread_id\":%u",
                e.sequence, e.time_ns, e.operation_id, e.lifetime, e.requested, e.returned, e.elapsed_ns,
                e.api, e.phase, e.status, e.error, e.native_fd, e.native_errno, e.family, e.port, e.scope, e.flags, e.host_pid, e.thread_id);
-        for (j = 0; j < 16; ++j) printf("%02x", e.address[j]);
-        puts("\"}");
+        if (e.api == ND_SELECT || e.api == ND_WSAPOLL)
+        {
+            const char *role = e.phase == ND_BEGIN || e.phase == ND_COMPLETE ? "summary" :
+                               e.phase == ND_ATTEMPT || e.phase == ND_OBSERVED ? "member" : "other";
+            printf(",\"address_hex\":null,\"wait_record\":\"%s\",\"wait_metadata_valid\":%s,\"wait_capture_limit\":%u,\"wait_truncated\":%s",
+                   role, e.flags & ND_WAIT_VALID ? "true" : "false", WINE_NETDIAG_WAIT_LIMIT,
+                   e.flags & ND_TRUNCATED ? "true" : "false");
+            if (e.flags & ND_WAIT_VALID)
+            {
+                const char *kind = e.wait.timeout_100ns == INT64_MAX ? "infinite" :
+                                   e.wait.timeout_100ns < 0 ? "relative" : e.wait.timeout_100ns ? "absolute" : "immediate";
+                printf(",\"wait_timeout_100ns\":%" PRId64 ",\"wait_timeout_kind\":\"%s\",\"wait_total\":%u,\"wait_captured\":%u",
+                       e.wait.timeout_100ns, kind, e.wait.total, e.wait.captured);
+            }
+            else printf(",\"wait_timeout_100ns\":null,\"wait_timeout_kind\":\"unknown\",\"wait_total\":null,\"wait_captured\":null");
+            if (e.phase == ND_ATTEMPT || e.phase == ND_OBSERVED)
+            {
+                int output_known = e.phase == ND_OBSERVED && !(e.flags & ND_OUTPUT_UNKNOWN);
+                int afd_status_known = output_known && !(e.flags & ND_MASK_UNKNOWN) && e.returned != 0;
+                printf(",\"wait_mask_domain\":\"%s\",\"wait_input_mask_known\":%s,\"wait_input_mask\":",
+                       e.api == ND_SELECT ? "afd" : "windows_poll", e.flags & ND_MASK_UNKNOWN ? "false" : "true");
+                if (e.flags & ND_MASK_UNKNOWN) printf("null");
+                else printf("%" PRIu64, e.requested);
+                printf(",\"wait_output_mask_known\":%s,\"wait_output_mask\":", output_known ? "true" : "false");
+                if (output_known) printf("%" PRId64, e.returned);
+                else printf("null");
+                printf(",\"wait_afd_status_known\":%s,\"wait_afd_status\":", afd_status_known ? "true" : "false");
+                if (afd_status_known) printf("%u", e.status);
+                else printf("null");
+                printf(",\"wait_wsa_error\":");
+                if (e.phase == ND_OBSERVED) printf("%u", e.error);
+                else printf("null");
+            }
+            else printf(",\"wait_input_mask_known\":false,\"wait_output_mask_known\":false,\"wait_input_mask\":null,\"wait_output_mask\":null");
+        }
+        else
+        {
+            printf(",\"address_hex\":\"");
+            for (j = 0; j < 16; ++j) printf("%02x", e.address[j]);
+            printf("\"");
+            if (e.api == ND_SOCKET && (e.flags & ND_SOCKET_INFO))
+                printf(",\"socket_type\":%" PRId32 ",\"socket_protocol\":%" PRId32,
+                       (int32_t)(uint32_t)e.requested, (int32_t)(uint32_t)(e.requested >> 32));
+        }
+        puts("}");
     }
     free(snapshot);
 }

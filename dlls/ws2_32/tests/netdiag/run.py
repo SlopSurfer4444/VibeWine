@@ -108,8 +108,19 @@ def main():
             assert seqs == sorted(set(seqs))
             for e in records:
                 assert e["operation_id"] > 0 and e["host_pid"] > 0 and e["thread_id"] == 77
-                assert len(e["address_hex"]) == 32
-                if e["phase"] == 4 and e["api"] == 4 and e["requested"] > 1:
+                if e["api"] in (11, 12):
+                    assert e["address_hex"] is None
+                    assert e["family"] == 0 and e["flags"] & 4
+                    assert e["wait_capture_limit"] == 16
+                    if e["flags"] & 128:
+                        assert e["wait_metadata_valid"] and 0 <= e["wait_captured"] <= 16
+                    else:
+                        assert not e["wait_metadata_valid"]
+                        assert e["wait_timeout_kind"] == "unknown"
+                        assert e["wait_timeout_100ns"] is None and e["wait_total"] is None and e["wait_captured"] is None
+                else:
+                    assert len(e["address_hex"]) == 32
+                if e["phase"] == 4 and e["api"] == 4 and e["flags"] & 1:
                     assert e["returned"] == -e["requested"]
             return h, records
 
@@ -180,6 +191,80 @@ def main():
         assert json.loads(run([tool, "verify-fresh", path, EXE, TOKEN]).stdout)["fresh"]
         assert path.read_bytes() == original
         checks.append("fresh verification rejects every control field, lifetime storage, executable tail, padding and record bytes")
+
+        path = init()
+        f = Fixture(native, path)
+        run([tool, "arm", path, "45000"])
+        f.command("metadata")
+        h, records = dump(path)
+        assert h["version"] == 1 and h["record_size"] == 128 and h["capacity"] == CAPACITY
+        sockets = [e for e in records if e["api"] == 6 and e["phase"] == 7]
+        assert [(e["family"], e["socket_type"], e["socket_protocol"]) for e in sockets] == [(2, 1, 6), (23, -1, -2)]
+        assert all(e["flags"] & 64 and e["lifetime"] > 0 for e in sockets)
+        groups = {}
+        for e in records:
+            if e["api"] in (11, 12): groups.setdefault(e["operation_id"], []).append(e)
+        assert len(groups) == 5
+        unknown = list(groups.values())[-1]
+        assert [e["phase"] for e in unknown] == [1, 4]
+        assert all(not e["wait_metadata_valid"] for e in unknown)
+        assert (unknown[-1]["returned"], unknown[-1]["status"], unknown[-1]["error"]) == (-1, 0xc0000005, 10014)
+        for group, expected in zip(groups.values(), [(11, -123450, "relative", 2, 2, False),
+                                                      (12, 2**63 - 1, "infinite", 1, 1, False),
+                                                      (11, 0, "immediate", 19, 16, False),
+                                                      (12, -10000, "relative", 1, 1, True)]):
+            api, timeout, kind, total, captured, invalid = expected
+            summaries = [e for e in group if e["wait_record"] == "summary"]
+            members = [e for e in group if e["wait_record"] == "member"]
+            assert [e["phase"] for e in summaries] == [1, 4]
+            assert [e["requested"] for e in summaries] == [total, total]
+            assert summaries[-1]["returned"] == 1
+            assert all(e["wait_input_mask"] is None and e["wait_output_mask"] is None and
+                       not e["wait_input_mask_known"] and not e["wait_output_mask_known"] for e in summaries)
+            assert len(members) == captured * 2
+            for e in group:
+                assert e["api"] == api and e["wait_timeout_100ns"] == timeout and e["wait_timeout_kind"] == kind
+                assert (e["wait_total"], e["wait_captured"]) == (total, captured)
+                assert e["wait_truncated"] == bool(e["flags"] & 32) == (captured < total)
+            for before, after in zip(members[::2], members[1::2]):
+                assert (before["phase"], after["phase"]) == (2, 5)
+                assert before["lifetime"] == after["lifetime"]
+                assert (before["lifetime"] > 0) == (not invalid)
+                assert before["wait_mask_domain"] == after["wait_mask_domain"] == ("afd" if api == 11 else "windows_poll")
+                assert before["wait_input_mask"] == after["wait_input_mask"] == (None if invalid else 5 if api == 11 else 0x110)
+                assert before["wait_input_mask_known"] == after["wait_input_mask_known"] == (not invalid)
+                if invalid:
+                    assert before["requested"] == after["requested"] == 0
+                    assert after["wait_output_mask"] == 4
+                assert not before["wait_output_mask_known"] and before["wait_output_mask"] is None
+                assert after["wait_output_mask_known"] == (after["status"] == 0)
+                assert after["wait_output_mask"] == (after["returned"] if after["status"] == 0 else None)
+                assert not before["wait_afd_status_known"] and before["wait_afd_status"] is None
+                assert before["wait_wsa_error"] is None
+                afd_known = after["wait_output_mask_known"] and not invalid and after["returned"] != 0
+                assert after["wait_afd_status_known"] == afd_known
+                assert after["wait_afd_status"] == (after["status"] if afd_known else None)
+                assert after["wait_wsa_error"] == after["error"] == 0
+        run([tool, "stop", path])
+        f.close()
+        checks.append("encoded socket type/protocol and wait summary/member decoding: signed native timeout, infinite, truncation, mask domains and lifetimes")
+
+        # A record encoded using the original v1 layout must still dump unchanged
+        # generic values; no new socket/wait annotation is inferred for it.
+        path = init()
+        legacy = struct.pack("<6QqQ4I2i4I16s2I", 1, 123, 1, 2, 987654321, 25, 17, 99,
+                             4, 4, 0, 0, -1, 0, 2, 443, 0, 0,
+                             bytes([127, 0, 0, 1]) + bytes(12), 9999, 77)
+        assert len(legacy) == 128
+        patch(path, 16384, legacy)
+        patch(path, 40, struct.pack("<Q", 1))
+        h, records = dump(path)
+        assert len(records) == 1
+        e = records[0]
+        assert (e["api"], e["phase"], e["requested"], e["returned"], e["family"], e["port"]) == (4, 4, 25, 17, 2, 443)
+        assert e["address_hex"] == "7f000001" + "00" * 12
+        assert "socket_type" not in e and "wait_record" not in e
+        checks.append("original v1 binary record and numeric serializer remain compatible at 128 bytes and 16384 capacity")
 
         path = init()
         f = Fixture(native, path)

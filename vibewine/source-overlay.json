@@ -1027,6 +1027,61 @@
       "source": "component/wine: opt-in bounded process network metadata",
       "destination": "include/wine/netdiag_unix.h",
       "sha256": "433c86bc391ccd9060afae5a518bf316f659aa771377a28bdc6325fb63de5008"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/netdiag_pe.h",
+      "sha256": "5d186c7a0aa1e5a3e5275ca2a38701c19095a7b4f6e9e2a22209ddf645b13808"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/socket.c",
+      "sha256": "b322cc50691ac8bcb1b1ec097189c2391a62ccbac41c7f46ce0d4bc4d37ca142"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/README.md",
+      "sha256": "ed8a476db41da80504399c4a3327ac06b6173dc21baccc28990b4460c9931afb"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/logger-fixture.c",
+      "sha256": "19d80fecf11fd6428830375cb097a6010ff1f625d82a47ede517eb6582a99d64"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/native-readiness-fixture.c",
+      "sha256": "73905b66757f2e336eed3cd3d4ca0ed93adcbb2b01162adfd4bb133e3e8be6ed"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/netdiag-tool.c",
+      "sha256": "c151ed50a3e9e0f23d1ee8d705089d58beed1210b63ace4dbfa9e1dc95ec0e6a"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/run.py",
+      "sha256": "de0b088985dc96ccbef47808c6e39110163efdea50bb23aaf0978c09ac865648"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/run_native_readiness.py",
+      "sha256": "615cabe57531a94518baa7ce73c13e688ee19db119511754b5ea647bbbe3a330"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/tests/netdiag/windows-fixture.c",
+      "sha256": "1821f0139b429ef3dae343d6203140cd05be7c774d14be1874bdca9a3876a2ca"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "dlls/ws2_32/unixlib.c",
+      "sha256": "10846ff994a3498c940c8e9a0999a167b62e3533679abd8dcd4bb940fad732d7"
+    },
+    {
+      "source": "component/wine: bounded socket type and readiness metadata",
+      "destination": "include/wine/netdiag.h",
+      "sha256": "e5792ce9b67c034d55c746ac4a260bbe1e949dd513c22c650be1ab109217a1d8"
     }
   ]
 }

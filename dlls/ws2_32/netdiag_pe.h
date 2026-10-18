@@ -85,6 +85,75 @@ static inline void netdiag_result( struct wine_netdiag_event *event, unsigned in
     netdiag_call( event );
 }
 
+#define NETDIAG_WAIT_MAX WINE_NETDIAG_WAIT_LIMIT
+struct netdiag_wait
+{
+    struct wine_netdiag_event summary;
+    struct wine_netdiag_event members[NETDIAG_WAIT_MAX];
+    unsigned int captured;
+};
+
+static inline void netdiag_wait_begin( struct netdiag_wait *wait, unsigned int api )
+{
+    wait->summary = netdiag_begin( api, INVALID_SOCKET );
+    wait->captured = 0;
+}
+
+static inline void netdiag_wait_prepare( struct netdiag_wait *wait, unsigned int total, LONGLONG timeout )
+{
+    if (!wait->summary.operation_id) return;
+    wait->summary.requested = total;
+    wait->summary.wait.timeout_100ns = timeout;
+    wait->summary.wait.total = total;
+    wait->summary.wait.captured = 0;
+    wait->summary.flags |= ND_WAIT_VALID;
+    if (total > NETDIAG_WAIT_MAX) wait->summary.flags |= ND_TRUNCATED;
+}
+
+/* Snapshot only owned/copied metadata, before the IOCTL can compact its input.
+ * ATTEMPT resolves the lifetime once in the bridge; output reuses that value. */
+static inline void netdiag_wait_member( struct netdiag_wait *wait, SOCKET socket, unsigned int mask )
+{
+    struct wine_netdiag_event *member;
+
+    if (!wait->summary.operation_id || wait->captured == NETDIAG_WAIT_MAX) return;
+    member = &wait->members[wait->captured++];
+    *member = wait->summary;
+    member->handle = socket == INVALID_SOCKET ? UINT64_MAX : (UINT64)socket;
+    member->lifetime = 0;
+    member->flags &= ~(ND_LIFETIME_UNKNOWN | ND_LIFETIME_OBSERVED);
+    member->flags |= ND_OUTPUT_UNKNOWN;
+    member->requested = mask;
+    member->returned = member->status = member->error = 0;
+}
+
+static inline void netdiag_wait_attempts( struct netdiag_wait *wait )
+{
+    unsigned int i;
+
+    wait->summary.wait.captured = wait->captured;
+    for (i = 0; i < wait->captured; ++i)
+    {
+        INT64 output = wait->members[i].returned;
+        BOOL output_unknown = !!(wait->members[i].flags & ND_OUTPUT_UNKNOWN);
+        wait->members[i].wait.captured = wait->captured;
+        wait->members[i].flags |= ND_OUTPUT_UNKNOWN;
+        netdiag_result( &wait->members[i], ND_ATTEMPT, 0, 0, 0 );
+        wait->members[i].returned = output;
+        if (!output_unknown) wait->members[i].flags &= ~ND_OUTPUT_UNKNOWN;
+    }
+}
+
+static inline void netdiag_wait_finish( struct netdiag_wait *wait, NTSTATUS status, unsigned int error, int returned )
+{
+    unsigned int i;
+
+    for (i = 0; i < wait->captured; ++i)
+        netdiag_result( &wait->members[i], ND_OBSERVED, wait->members[i].status,
+                        error, wait->members[i].returned );
+    netdiag_result( &wait->summary, ND_COMPLETE, status, error, returned );
+}
+
 static inline void netdiag_dns_result( struct wine_netdiag_event *event, int result,
                                        const struct addrinfo *answers )
 {

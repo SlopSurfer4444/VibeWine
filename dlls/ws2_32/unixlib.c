@@ -1071,7 +1071,19 @@ static NTSTATUS unix_netdiag( void *args )
     struct wine_netdiag_event *event = args;
     if (event->phase == ND_BEGIN)
         wine_netdiag_begin( event, event->api, event->handle );
-    else wine_netdiag_emit( event );
+    else
+    {
+        /* Resolve readiness membership while the input is captured. Keep
+         * that exact lifetime in the PE context through completion; a socket
+         * may close and its value be reused while the original wait runs. */
+        if ((event->api == ND_SELECT || event->api == ND_WSAPOLL) &&
+            event->phase == ND_ATTEMPT && !(event->flags & ND_LIFETIME_UNKNOWN))
+        {
+            struct wine_netdiag_header *map = wine_netdiag_active();
+            if (map) wine_netdiag_lifetime( map, event, 0, 0 );
+        }
+        wine_netdiag_emit( event );
+    }
     return 0;
 }
 

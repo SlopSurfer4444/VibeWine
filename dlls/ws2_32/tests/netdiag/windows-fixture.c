@@ -121,6 +121,66 @@ static void numeric_dns(void)
     WSACloseEvent(event);
 }
 
+/* Observe readiness without consuming a connect error through SO_ERROR or an
+ * FD_CONNECT event. A zero timeout may already be ready on fast loopback. */
+static void tcp_readiness(SOCKET socket, int refused)
+{
+    fd_set writes, exceptions;
+    WSAPOLLFD pollfd;
+    struct timeval timeout;
+    DWORD limit;
+    unsigned int attempt;
+    int ret, error;
+
+    for (attempt = 0; attempt < 2; ++attempt)
+    {
+        limit = attempt ? wait_limit() : 0;
+        FD_ZERO(&writes);
+        FD_ZERO(&exceptions);
+        FD_SET(socket, &writes);
+        FD_SET(socket, &exceptions);
+        timeout.tv_sec = limit / 1000;
+        timeout.tv_usec = (limit % 1000) * 1000;
+        ret = select(0, NULL, &writes, &exceptions, &timeout);
+        error = WSAGetLastError();
+        printf("stage=tcp_%s_select_%s ret=%d error=%d write=%u except=%u\n",
+               refused ? "refused" : "success", attempt ? "finite" : "zero", ret, error,
+               (unsigned int)writes.fd_count, (unsigned int)exceptions.fd_count);
+        if (check(ret >= 0, error))
+        {
+            check(error == 0, error);
+            if (attempt) check(ret == 1, ret);
+            if (ret)
+            {
+                check(FD_ISSET(socket, refused ? &exceptions : &writes), 0);
+                check((refused ? writes.fd_count : exceptions.fd_count) == 0, 0);
+            }
+        }
+        if (attempt) check(limit != 0, WSAETIMEDOUT);
+    }
+
+    for (attempt = 0; attempt < 2; ++attempt)
+    {
+        limit = attempt ? wait_limit() : 0;
+        memset(&pollfd, 0, sizeof(pollfd));
+        pollfd.fd = socket;
+        pollfd.events = POLLWRNORM;
+        ret = WSAPoll(&pollfd, 1, (int)limit);
+        error = WSAGetLastError();
+        printf("stage=tcp_%s_poll_%s ret=%d error=%d revents=%u\n",
+               refused ? "refused" : "success", attempt ? "finite" : "zero", ret, error,
+               (unsigned int)(unsigned short)pollfd.revents);
+        if (check(ret >= 0, error))
+        {
+            check(error == 0, error);
+            if (attempt) check(ret == 1, ret);
+            if (ret) check((pollfd.revents & (refused ? POLLERR : POLLWRNORM)) != 0, 0);
+            else check(pollfd.revents == 0, 0);
+        }
+        if (attempt) check(limit != 0, WSAETIMEDOUT);
+    }
+}
+
 static void tcp_connect(int refused)
 {
     struct sockaddr_in address;
@@ -151,6 +211,8 @@ static void tcp_connect(int refused)
     printf("stage=%s connect_return=%d connect_error=%d\n", refused ? "tcp_refused" : "tcp_success", ret, error);
     if (!check(ret == 0 || (ret == SOCKET_ERROR && (error == WSAEWOULDBLOCK
                || error == WSAEINPROGRESS || (refused && error == WSAECONNREFUSED))), error)) goto done;
+    if (ret != SOCKET_ERROR || error != WSAECONNREFUSED)
+        tcp_readiness(client, refused);
     if (ret == SOCKET_ERROR && error == WSAECONNREFUSED)
         check(refused, error);
     else
@@ -194,6 +256,188 @@ done:
     if (client != INVALID_SOCKET) closesocket(client);
     if (server != INVALID_SOCKET) closesocket(server);
     if (event != WSA_INVALID_EVENT) WSACloseEvent(event);
+}
+
+static void readiness_validation(void)
+{
+    struct timeval zero = {0, 0};
+    fd_set bad;
+    WSAPOLLFD pollfd;
+    int ret, error;
+
+    WSASetLastError(0x1234);
+    ret = select(0, NULL, NULL, NULL, NULL);
+    error = WSAGetLastError();
+    check(ret == SOCKET_ERROR && error == WSAEINVAL, error);
+    /* The original empty-set validation returns before touching timeout. */
+    WSASetLastError(0x1234);
+    ret = select(0, NULL, NULL, NULL, (const struct timeval *)(ULONG_PTR)1);
+    error = WSAGetLastError();
+    check(ret == SOCKET_ERROR && error == WSAEINVAL, error);
+    FD_ZERO(&bad);
+    FD_SET(INVALID_SOCKET, &bad);
+    WSASetLastError(0x1234);
+    ret = select(0, &bad, NULL, NULL, &zero);
+    error = WSAGetLastError();
+    check(ret == SOCKET_ERROR && error == WSAENOTSOCK, error);
+
+    WSASetLastError(0x1234);
+    ret = WSAPoll(NULL, 0, 0);
+    error = WSAGetLastError();
+    check(ret == SOCKET_ERROR && error == WSAEINVAL, error);
+    /* A zero count likewise validates before reading the array pointer. */
+    WSASetLastError(0x1234);
+    ret = WSAPoll((WSAPOLLFD *)(ULONG_PTR)1, 0, 0);
+    error = WSAGetLastError();
+    check(ret == SOCKET_ERROR && error == WSAEINVAL, error);
+    WSASetLastError(0x1234);
+    ret = WSAPoll(NULL, 1, 0);
+    error = WSAGetLastError();
+    check(ret == SOCKET_ERROR && error == WSAEFAULT, error);
+    memset(&pollfd, 0, sizeof(pollfd));
+    pollfd.fd = INVALID_SOCKET;
+    pollfd.events = POLLRDNORM;
+    WSASetLastError(0x1234);
+    ret = WSAPoll(&pollfd, 1, 0);
+    error = WSAGetLastError();
+    check(ret == SOCKET_ERROR && error == WSAENOTSOCK, error);
+    check(pollfd.revents == POLLNVAL, 0);
+}
+
+/* A separate loopback UDP pair makes empty/ready results deterministic and
+ * leaves the original overlapped receive and its payload checks intact. */
+static void readiness_datagram(void)
+{
+    struct sockaddr_in receiver_address, sender_address;
+    SOCKET receiver = INVALID_SOCKET, sender = INVALID_SOCKET;
+    struct timeval timeout;
+    WSAPOLLFD pollfd[2];
+    fd_set reads, shared;
+    u_long nonblocking = 1;
+    char byte = 'r', received = 0;
+    DWORD limit;
+    unsigned int attempt;
+    int ret, error;
+
+    receiver = local_socket(SOCK_DGRAM, &receiver_address);
+    sender = local_socket(SOCK_DGRAM, &sender_address);
+    if (receiver == INVALID_SOCKET || sender == INVALID_SOCKET) goto done;
+    if (!check_api(ioctlsocket(receiver, FIONBIO, &nonblocking) == 0)
+        || !check_api(ioctlsocket(sender, FIONBIO, &nonblocking) == 0)) goto done;
+
+    for (attempt = 0; attempt < 2; ++attempt)
+    {
+        limit = attempt ? wait_limit() : 0;
+        if (limit > 25) limit = 25;
+        if (attempt) check(limit != 0, WSAETIMEDOUT);
+        FD_ZERO(&reads);
+        FD_SET(receiver, &reads);
+        timeout.tv_sec = 0;
+        timeout.tv_usec = limit * 1000;
+        ret = select(0, &reads, NULL, NULL, &timeout);
+        error = WSAGetLastError();
+        printf("stage=udp_empty_select_%s ret=%d error=%d count=%u\n",
+               attempt ? "finite" : "zero", ret, error, (unsigned int)reads.fd_count);
+        check(ret == 0 && error == 0, error);
+        check(reads.fd_count == 0, 0);
+
+        limit = attempt ? wait_limit() : 0;
+        if (limit > 25) limit = 25;
+        if (attempt) check(limit != 0, WSAETIMEDOUT);
+        memset(pollfd, 0, sizeof(pollfd));
+        pollfd[0].fd = receiver;
+        pollfd[0].events = POLLRDNORM;
+        ret = WSAPoll(pollfd, 1, (int)limit);
+        error = WSAGetLastError();
+        printf("stage=udp_empty_poll_%s ret=%d error=%d revents=%u\n",
+               attempt ? "finite" : "zero", ret, error,
+               (unsigned int)(unsigned short)pollfd[0].revents);
+        check(ret == 0 && error == 0, error);
+        check(pollfd[0].revents == 0, 0);
+    }
+
+    /* Windows permits aliasing read/write fd_set pointers. The output is the
+     * union, with each socket counted once; the empty UDP socket is writable. */
+    FD_ZERO(&shared);
+    FD_SET(sender, &shared);
+    timeout.tv_sec = timeout.tv_usec = 0;
+    ret = select(0, &shared, &shared, NULL, &timeout);
+    error = WSAGetLastError();
+    check(ret == 1 && error == 0 && shared.fd_count == 1 && FD_ISSET(sender, &shared), error);
+
+    /* An invalid member retains POLLNVAL while a valid empty member times out;
+     * existing Wine/Windows semantics do not count the invalid entry in ret. */
+    memset(pollfd, 0, sizeof(pollfd));
+    pollfd[0].fd = receiver;
+    pollfd[0].events = POLLRDNORM;
+    pollfd[1].fd = INVALID_SOCKET;
+    pollfd[1].events = POLLRDNORM;
+    ret = WSAPoll(pollfd, 2, 0);
+    error = WSAGetLastError();
+    check(ret == 0 && error == 0, error);
+    check(pollfd[0].revents == 0 && pollfd[1].revents == POLLNVAL, 0);
+
+    ret = sendto(sender, &byte, 1, 0, (struct sockaddr *)&receiver_address, sizeof(receiver_address));
+    if (!check(ret == 1, WSAGetLastError())) goto done;
+    FD_ZERO(&reads);
+    FD_SET(receiver, &reads);
+    limit = wait_limit();
+    timeout.tv_sec = limit / 1000;
+    timeout.tv_usec = (limit % 1000) * 1000;
+    ret = select(0, &reads, NULL, NULL, &timeout);
+    error = WSAGetLastError();
+    check(ret == 1 && error == 0 && reads.fd_count == 1 && FD_ISSET(receiver, &reads), error);
+    memset(pollfd, 0, sizeof(pollfd));
+    pollfd[0].fd = receiver;
+    pollfd[0].events = POLLRDNORM;
+    ret = WSAPoll(pollfd, 1, (int)wait_limit());
+    error = WSAGetLastError();
+    check(ret == 1 && error == 0 && (pollfd[0].revents & POLLRDNORM), error);
+    /* Neither readiness call consumes the queued datagram. */
+    ret = recv(receiver, &received, 1, 0);
+    error = WSAGetLastError();
+    check(ret == 1 && received == byte, error);
+done:
+    if (receiver != INVALID_SOCKET) closesocket(receiver);
+    if (sender != INVALID_SOCKET) closesocket(sender);
+}
+
+static void readiness_capacity(void)
+{
+    /* Seventeen distinct sockets cross the diagnostic member limit of sixteen
+     * without relying on duplicate-descriptor counting behavior. */
+    struct sockaddr_in address;
+    SOCKET sockets[17];
+    WSAPOLLFD pollfd[17];
+    fd_set reads;
+    struct timeval zero = {0, 0};
+    unsigned int i;
+    int ret, error;
+
+    for (i = 0; i < 17; ++i) sockets[i] = INVALID_SOCKET;
+    memset(pollfd, 0, sizeof(pollfd));
+    FD_ZERO(&reads);
+    for (i = 0; i < 17; ++i)
+    {
+        sockets[i] = local_socket(SOCK_DGRAM, &address);
+        if (sockets[i] == INVALID_SOCKET) goto done;
+        FD_SET(sockets[i], &reads);
+        pollfd[i].fd = sockets[i];
+        pollfd[i].events = POLLRDNORM;
+    }
+    ret = select(0, &reads, NULL, NULL, &zero);
+    error = WSAGetLastError();
+    printf("stage=capacity17_select ret=%d error=%d count=%u\n",
+           ret, error, (unsigned int)reads.fd_count);
+    check(ret == 0 && error == 0 && reads.fd_count == 0, error);
+    ret = WSAPoll(pollfd, 17, 0);
+    error = WSAGetLastError();
+    printf("stage=capacity17_poll ret=%d error=%d\n", ret, error);
+    check(ret == 0 && error == 0, error);
+    for (i = 0; i < 17; ++i) check(pollfd[i].revents == 0, 0);
+done:
+    for (i = 0; i < 17; ++i)
+        if (sockets[i] != INVALID_SOCKET) closesocket(sockets[i]);
 }
 
 static void udp_overlapped(void)
@@ -291,8 +535,11 @@ int main(int argc, char **argv)
             started = GetTickCount();
         }
         numeric_dns();
+        readiness_validation();
         tcp_connect(0);
         tcp_connect(1);
+        readiness_datagram();
+        readiness_capacity();
         udp_overlapped();
         check_api(WSACleanup() == 0);
     }
