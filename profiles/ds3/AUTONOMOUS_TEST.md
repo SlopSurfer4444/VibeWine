@@ -46,8 +46,21 @@ created the real DS3 window. Mouse clicks dismissed the improper-exit notice and
 information screen. A bounded Down key changed selection from Continue to Load
 game. Return/Escape did not visibly confirm those dialogs in the observed
 attempts. Before world loading was verified the window became unavailable and
-Steam logged the game process ending; the cause remains unresolved. No gameplay
-FPS, movement, clean exit or complete autonomous cycle is claimed.
+Steam logged the game process ending. The user confirmed this was not a manual
+exit. Wine logged a null write at `DarkSoulsIII.exe+0xf14c52`; inspection of the
+matching executable identifies a deliberate `0xdead` fatal-stop instruction.
+The caller and triggering condition are unknown: this is evidence of a crash,
+not evidence that CUA, DXGI, or a specific patch caused it. A full caller stack
+is still required.
+
+A second run remained alive at the title screen. AX enumeration, screenshots,
+and the exposed Raise action succeeded, but a coordinate click failed with CUA
+`noWindowsAvailable` (`-10005`). Return delivery had no visible effect. The
+helper stopped input on the failure as designed. AX visibility must therefore
+not be used as proof of native input routing. Keep this routing defect separate
+from the earlier game crash; their relationship has not been established.
+
+No gameplay FPS, movement, clean exit or complete autonomous cycle is claimed.
 
 ## Capture discipline
 
