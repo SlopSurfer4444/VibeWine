@@ -912,6 +912,31 @@
       "source": "component/wine: explicit AX Raise instance activation",
       "destination": "dlls/winemac.drv/ax_window_identity.inc",
       "sha256": "cd831472d21154c597c74e4fc3dd81078ef4440cc144191e774e94ec2e708f51"
+    },
+    {
+      "source": "component/wine: opt-in process-local XInput test backend",
+      "destination": "dlls/xinput1_3/main.c",
+      "sha256": "d6b10c41ab0645e8279a5ccd577ec6835e357d74abd98bcd0bffa9c1a4ae9439"
+    },
+    {
+      "source": "component/wine: opt-in process-local XInput test backend",
+      "destination": "dlls/xinput1_3/test_backend.h",
+      "sha256": "92c0f82952b38b5da2507ade04d36de3858d20a5f0d6ca2d0f6019e3567f15ef"
+    },
+    {
+      "source": "component/wine: opt-in process-local XInput test backend",
+      "destination": "dlls/xinput1_3/tests/process-local/README.md",
+      "sha256": "b7184ded8ee556110d9b9e9c712480320d8f9a3b99ac01b81ce4e7f724bd3a18"
+    },
+    {
+      "source": "component/wine: opt-in process-local XInput test backend",
+      "destination": "dlls/xinput1_3/tests/process-local/build.py",
+      "sha256": "3e694408ae332986035f42cd68ce62ce42268c613ddf3b6eb6091857075e0d18"
+    },
+    {
+      "source": "component/wine: opt-in process-local XInput test backend",
+      "destination": "dlls/xinput1_3/tests/process-local/fixture.c",
+      "sha256": "b753c9ffccc7e03ca415cc27bc4b534a5dca74838b8be847b173a62256cbfa03"
     }
   ]
 }
