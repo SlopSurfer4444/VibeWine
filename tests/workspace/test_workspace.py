@@ -67,6 +67,54 @@ class WorkspaceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'differs from pinned'):
             workspace.check(self.root)
 
+    def nested_fixture(self, populate=True):
+        self.populate()
+        parent = self.root / 'components/dxmt'
+        git(parent, 'config', 'user.name', 'Fixture')
+        git(parent, 'config', 'user.email', 'fixture@example.invalid')
+        (parent / '.gitmodules').write_text(
+            '[submodule "dependency"]\n path = dependency\n url = https://example.invalid/source\n')
+        git(parent, 'add', '.gitmodules')
+        git(parent, 'update-index', '--add', '--cacheinfo', f'160000,{self.pin},dependency')
+        git(parent, 'commit', '-qm', 'nested fixture')
+        nested_pin = git(parent, 'rev-parse', 'HEAD')
+        git(self.root, 'update-index', '--cacheinfo', f'160000,{nested_pin},components/dxmt')
+        git(self.root, 'commit', '-qm', 'pin nested fixture')
+        child = parent / 'dependency'
+        child.mkdir()
+        if populate:
+            git(child, 'init', '-q')
+            git(child, 'fetch', '-q', str(self.root), self.pin)
+            git(child, 'checkout', '-q', '--detach', self.pin)
+        return parent, child
+
+    def test_nested_missing_rejected(self):
+        self.nested_fixture(False)
+        with self.assertRaisesRegex(ValueError, 'not initialized'):
+            workspace.check(self.root)
+
+    def test_nested_exact_passes(self):
+        self.nested_fixture()
+        workspace.check(self.root)
+
+    def test_nested_dirty_blocks_init_even_when_ignored(self):
+        parent, child = self.nested_fixture()
+        git(parent, 'config', 'submodule.dependency.ignore', 'all')
+        (child / 'local.txt').write_text('preserve me')
+        with patch.object(workspace.subprocess, 'run', wraps=subprocess.run) as run:
+            with self.assertRaisesRegex(ValueError, 'local changes'):
+                workspace.initialize(self.root)
+            self.assertFalse(any('update' in call.args[0] for call in run.call_args_list))
+        self.assertEqual((child / 'local.txt').read_text(), 'preserve me')
+
+    def test_nested_wrong_pin_rejected_even_when_ignored(self):
+        parent, child = self.nested_fixture()
+        git(parent, 'config', 'submodule.dependency.ignore', 'all')
+        git(child, 'fetch', '-q', str(parent), 'HEAD')
+        git(child, 'checkout', '-q', '--detach', 'FETCH_HEAD')
+        with self.assertRaisesRegex(ValueError, 'local changes|differs from pinned'):
+            workspace.check(self.root)
+
     def test_metadata_without_network(self):
         self.assertEqual(len(workspace.check(self.root, True)), 2)
 

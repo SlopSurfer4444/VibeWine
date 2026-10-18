@@ -39,6 +39,30 @@ def metadata(root):
     return pins
 
 
+def inspect_checkout(component, require_populated):
+    # Explicitly override ignore settings: hidden nested dirt must block mutation.
+    if git(component, 'status', '--porcelain', '--untracked-files=normal',
+           '--ignore-submodules=none'):
+        raise ValueError(f'{component.name} contains local changes; preserve or commit them first')
+    for record in git(component, 'ls-tree', '-rz', 'HEAD').split('\0'):
+        if not record:
+            continue
+        header, path = record.split('\t', 1)
+        mode, kind, pin = header.split()
+        if mode != '160000':
+            continue
+        if git(component, 'ls-files', '--stage', '--', path).split() != [mode, pin, '0', path]:
+            raise ValueError(f'{path} index pin differs from HEAD')
+        child = component / path
+        if not (child / '.git').exists():
+            if require_populated:
+                raise ValueError(f'{path} not initialized; run workspace.py init')
+            continue
+        if git(child, 'rev-parse', 'HEAD') != pin:
+            raise ValueError(f'{path} differs from pinned {pin}')
+        inspect_checkout(child, require_populated)
+
+
 def check(root, metadata_only=False):
     pins = metadata(root)
     if not metadata_only:
@@ -48,8 +72,7 @@ def check(root, metadata_only=False):
                 raise ValueError(f'{path} not initialized; run workspace.py init')
             if git(component, 'rev-parse', 'HEAD') != pin:
                 raise ValueError(f'{path} differs from pinned {pin}')
-            if git(component, 'status', '--porcelain', '--untracked-files=normal'):
-                raise ValueError(f'{path} contains local changes; preserve or commit them first')
+            inspect_checkout(component, True)
     return pins
 
 
@@ -58,10 +81,9 @@ def initialize(root):
     # Inspect all existing checkouts before updating any of them.
     for path in pins:
         component = root / path
-        if (component / '.git').exists() and git(
-                component, 'status', '--porcelain', '--untracked-files=normal'):
-            raise ValueError(f'{path} contains local changes; init will not modify any component')
-    subprocess.run(['git', '-C', str(root), 'submodule', 'update', '--init',
+        if (component / '.git').exists():
+            inspect_checkout(component, False)
+    subprocess.run(['git', '-C', str(root), 'submodule', 'update', '--init', '--recursive',
                     '--', *pins], check=True)
 
 

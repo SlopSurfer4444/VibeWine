@@ -2,10 +2,12 @@
 
 ## Fetch and check source
 
-`python3 scripts/workspace.py init` initializes the exact pinned submodules using
+`python3 scripts/workspace.py init` initializes the exact pinned components and their nested submodules using
 Git. It requires network access if objects are missing, does not follow branch
 tips and never runs downloaded build scripts. `python3 scripts/workspace.py check`
-is offline and rejects missing, dirty or mismatched component checkouts.
+is offline and rejects missing, dirty or mismatched component and nested dependency
+checkouts. Initialization preflights existing checkouts recursively, overriding
+Git submodule ignore settings so local changes cannot be hidden.
 `python3 scripts/workspace.py check --metadata-only` checks repository wiring
 without requiring populated components. `python3 -m unittest discover -s tests/workspace`
 runs the helper's local tests without downloading or building code.
