@@ -611,6 +611,7 @@ public:
 
   virtual void
   WaitUntilGPUIdle() override {
+    std::lock_guard<d3d11_device_mutex> lock(mutex);
     cs2trace::ReasonScope reason(cs2trace::CommitReason::GPUIdle,cmd_queue.traceSerial());
     uint64_t seq = cmd_queue.CurrentSeqId();
     if(!InvalidateCurrentPass())
