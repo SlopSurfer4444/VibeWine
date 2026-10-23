@@ -2,6 +2,12 @@
 
 This branch is the complete vendor Wine source tree, with VibeWine changes applied in place. The top-level Wine README and build system remain intact. It is a development source branch, not a downloaded binary runtime, a verified fresh whole-engine build, or a claim of FPS improvement.
 
+The 2026-10-23 development source adds selected Wine, Proton-GE and Highball
+backports for clipboard ownership, SRW wake avoidance, handle-close lifetime and
+MSync registration cleanup. [Exact sources, checks and limitations](UPSTREAM_BACKPORTS.md)
+are recorded separately from the older module-build evidence below. These source
+imports do not install or switch an existing runtime.
+
 ## Provenance and history
 
 `vendor/wine11-import` imports all 11,094 regular files from the corresponding-source archive, SHA-256 `7be5819017b34f09670293f2be7ed9f4476734b8f42dab121a8b74e6619c92a8`. No files are reconstructed from binaries. The archive's packaged `RUNTIME-BUILD.md` identifies its source as CodeWeavers public CrossOver 26.3 / Wine 11.0, with earlier vendor modifications (Steam CEF single-process, exception handling, generated-code cache). That statement is package provenance, not an independently verified exact Git revision. The upstream Git ancestor and original download URL of this local archive are **unknown**.

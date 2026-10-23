@@ -1,0 +1,191 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* The driver replaces the marker with the verbatim production function. */
+#include <CoreFoundation/CoreFoundation.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef unsigned int UINT;
+typedef void *(*DRVIMPORTFUNC)(CFDataRef, size_t *);
+typedef struct
+{
+    UINT format_id;
+    DRVIMPORTFUNC import_func;
+} WINE_CLIPFORMAT;
+
+/* Match include/ntuser.h, including its trailing one-byte array. */
+struct format_entry
+{
+    UINT format;
+    UINT size;
+    char data[1];
+};
+
+#define TRACE(...) ((void)0)
+
+static const unsigned char payload[8] = { 1, 3, 5, 7, 9, 11, 13, 15 };
+static const unsigned char null_payload[8] = { 2, 4, 6, 8, 10, 12, 14, 16 };
+static CFDataRef external_data;
+static int return_null_data, fail_realloc;
+static unsigned int copy_calls, import_calls, null_import_calls, realloc_calls, freed_imports;
+static void *imports[2];
+static int failures, ownership_failures;
+
+static void check(int condition, const char *scenario, const char *detail)
+{
+    if (!condition)
+    {
+        fprintf(stderr, "CLIPBOARD_FAILURE scenario=%s detail=%s\n", scenario, detail);
+        failures++;
+    }
+}
+
+static void *fixture_import(CFDataRef data, size_t *size)
+{
+    void *result = malloc(sizeof(payload));
+    if (!result) abort();
+    *size = sizeof(payload);
+    if (data)
+    {
+        if (CFDataGetLength(data) != sizeof(payload)) abort();
+        memcpy(result, CFDataGetBytePtr(data), sizeof(payload));
+    }
+    else
+    {
+        null_import_calls++;
+        memcpy(result, null_payload, sizeof(null_payload));
+    }
+    if (import_calls >= sizeof(imports) / sizeof(imports[0])) abort();
+    imports[import_calls++] = result;
+    return result;
+}
+
+static WINE_CLIPFORMAT fixture_format = { 0xc123, fixture_import };
+
+static WINE_CLIPFORMAT *format_for_type(CFStringRef type)
+{
+    return CFEqual(type, CFSTR("org.wine.backport-fixture")) ? &fixture_format : NULL;
+}
+
+static CFArrayRef macdrv_copy_pasteboard_types(CFTypeRef pasteboard)
+{
+    const void *types[2] = { CFSTR("org.wine.backport-fixture"),
+                             CFSTR("org.wine.backport-fixture") };
+    (void)pasteboard;
+    return CFArrayCreate(NULL, types, 2, &kCFTypeArrayCallBacks);
+}
+
+static CFDataRef macdrv_copy_pasteboard_data(CFTypeRef pasteboard, CFStringRef type)
+{
+    (void)pasteboard;
+    (void)type;
+    copy_calls++;
+    /* Keep the fixture's original ownership independent of each copied result. */
+    return return_null_data ? NULL : (CFDataRef)CFRetain(external_data);
+}
+
+static void *fixture_realloc(void *pointer, size_t size)
+{
+    realloc_calls++;
+    return fail_realloc ? NULL : realloc(pointer, size);
+}
+
+static void fixture_free(void *pointer)
+{
+    unsigned int i;
+    for (i = 0; i < sizeof(imports) / sizeof(imports[0]); i++)
+    {
+        if (pointer && pointer == imports[i])
+        {
+            imports[i] = NULL;
+            freed_imports++;
+            break;
+        }
+    }
+    free(pointer);
+}
+
+/* Intercept only allocations made by the inserted production function. */
+#define realloc fixture_realloc
+#define free fixture_free
+/* PRODUCTION_FUNCTION */
+#undef free
+#undef realloc
+
+static void run_case(const char *scenario, int force_failure, int null_data)
+{
+    CFMutableDataRef owned_data = CFDataCreateMutable(NULL, 0);
+    CFIndex starting_count, ending_count;
+    struct format_entry *entries;
+    UINT entries_size = 0xdeadbeef;
+    unsigned int i;
+    size_t stride = sizeof(struct format_entry) + sizeof(payload);
+
+    if (!owned_data) abort();
+    CFDataAppendBytes(owned_data, payload, sizeof(payload));
+    external_data = owned_data;
+    starting_count = CFGetRetainCount(external_data);
+    return_null_data = null_data;
+    fail_realloc = force_failure;
+    copy_calls = import_calls = null_import_calls = realloc_calls = freed_imports = 0;
+    memset(imports, 0, sizeof(imports));
+
+    entries = get_format_entries(CFSTR("fixture pasteboard"), &entries_size);
+    ending_count = CFGetRetainCount(external_data);
+    if (ending_count != starting_count)
+    {
+        fprintf(stderr, "REGRESSION_CF_DATA_OWNERSHIP scenario=%s before=%ld after=%ld\n",
+                scenario, (long)starting_count, (long)ending_count);
+        ownership_failures++;
+    }
+    check(copy_calls == 2, scenario, "copy count");
+    check(import_calls == 2, scenario, "import count");
+    check(null_import_calls == (null_data ? 2u : 0u), scenario, "NULL importer count");
+    check(realloc_calls == 2, scenario, "realloc count");
+    check(freed_imports == 2, scenario, "imports freed");
+
+    if (force_failure)
+    {
+        check(entries == NULL, scenario, "failed realloc returns NULL entries");
+        check(entries_size == 0, scenario, "failed realloc returns zero size");
+    }
+    else
+    {
+        check(entries != NULL, scenario, "entries returned");
+        check(entries_size == 2 * stride, scenario, "returned byte size");
+        if (entries && entries_size == 2 * stride)
+        {
+            for (i = 0; i < 2; i++)
+            {
+                struct format_entry *entry = (struct format_entry *)((char *)entries + i * stride);
+                check(entry->format == fixture_format.format_id, scenario, "entry format");
+                check(entry->size == sizeof(payload), scenario, "entry size");
+                check(!memcmp(entry->data, null_data ? null_payload : payload, sizeof(payload)),
+                      scenario, "imported bytes");
+            }
+        }
+    }
+    printf("CLIPBOARD_CASE scenario=%s imports=%u freed=%u retain_before=%ld retain_after=%ld\n",
+           scenario, import_calls, freed_imports, (long)starting_count, (long)ending_count);
+    free(entries);
+    /* Clean up a failing candidate after recording evidence; run all cases. */
+    for (i = 0; i < sizeof(imports) / sizeof(imports[0]); i++) free(imports[i]);
+    while (ending_count > starting_count)
+    {
+        CFRelease(external_data);
+        ending_count--;
+    }
+    CFRelease(owned_data);
+    external_data = NULL;
+}
+
+int main(void)
+{
+    run_case("successful_realloc", 0, 0);
+    run_case("forced_realloc_failure", 1, 0);
+    run_case("NULL_data", 0, 1);
+    if (ownership_failures) return 43;
+    if (failures) return 44;
+    puts("CLIPBOARD_PASS");
+    return 0;
+}

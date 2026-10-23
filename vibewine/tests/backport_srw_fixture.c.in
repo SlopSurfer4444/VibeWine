@@ -1,0 +1,135 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* Native seam fixture. Production SRW structure/functions are inserted verbatim. */
+#include <assert.h>
+#include <errno.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+typedef int32_t LONG;
+typedef int BOOL;
+typedef struct { void *Ptr; } RTL_SRWLOCK;
+#define WINAPI
+#define TRUE 1
+#define FALSE 0
+#define ERR(...) do { fprintf(stderr, __VA_ARGS__); abort(); } while (0)
+#define C_ASSERT(x) _Static_assert(x, #x)
+
+static pthread_mutex_t wait_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
+static unsigned int waits, single_wakes, all_wakes, acquired;
+static int stop_waiting;
+
+static short InterlockedExchangeAdd16(short *p, short value)
+{
+    return __atomic_fetch_add(p, value, __ATOMIC_SEQ_CST);
+}
+
+static LONG InterlockedCompareExchange(LONG *p, LONG value, LONG compare)
+{
+    __atomic_compare_exchange_n(p, &compare, value, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return compare;
+}
+
+/* Implement the address-wait seam with pthreads. This does not test Wine's
+ * address queue, futexes, or Windows ABI. It makes a real thread block until
+ * the extracted release function signals the address queue. */
+static void RtlWaitOnAddress(volatile void *address, void *compare, size_t size, void *timeout)
+{
+    (void)timeout;
+    pthread_mutex_lock(&wait_mutex);
+    ++waits;
+    pthread_cond_broadcast(&wait_cond);
+    while (!stop_waiting && !memcmp((const void *)address, compare, size))
+        pthread_cond_wait(&wait_cond, &wait_mutex);
+    pthread_mutex_unlock(&wait_mutex);
+}
+
+static void RtlWakeAddressSingle(void *address)
+{
+    (void)address;
+    pthread_mutex_lock(&wait_mutex);
+    ++single_wakes;
+    pthread_cond_broadcast(&wait_cond);
+    pthread_mutex_unlock(&wait_mutex);
+}
+
+static void RtlWakeAddressAll(void *address)
+{
+    (void)address;
+    pthread_mutex_lock(&wait_mutex);
+    ++all_wakes;
+    pthread_cond_broadcast(&wait_cond);
+    pthread_mutex_unlock(&wait_mutex);
+}
+
+/* PRODUCTION_STRUCTURE */
+/* PRODUCTION_FUNCTIONS */
+
+static void *exclusive_waiter(void *arg)
+{
+    RtlAcquireSRWLockExclusive(arg);
+    pthread_mutex_lock(&wait_mutex);
+    acquired = 1;
+    pthread_cond_broadcast(&wait_cond);
+    pthread_mutex_unlock(&wait_mutex);
+    RtlReleaseSRWLockExclusive(arg);
+    return NULL;
+}
+
+static int await_counter(unsigned int *counter)
+{
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += 3;
+    pthread_mutex_lock(&wait_mutex);
+    while (!*counter)
+    {
+        int ret = pthread_cond_timedwait(&wait_cond, &wait_mutex, &deadline);
+        if (ret == ETIMEDOUT) { pthread_mutex_unlock(&wait_mutex); return 0; }
+        assert(!ret);
+    }
+    pthread_mutex_unlock(&wait_mutex);
+    return 1;
+}
+
+int main(void)
+{
+    RTL_SRWLOCK lock = {0};
+    pthread_t thread;
+    int redundant;
+
+    /* Isolate the target: only final shared release may wake, and only when
+     * an exclusive waiter exists. Check multiple-reader release too. */
+    for (unsigned int i = 0; i < 128; ++i)
+    {
+        unsigned int wakes_before = single_wakes;
+        RtlAcquireSRWLockShared(&lock);
+        RtlAcquireSRWLockShared(&lock);
+        RtlReleaseSRWLockShared(&lock);
+        assert(single_wakes == wakes_before && !all_wakes);
+        RtlReleaseSRWLockShared(&lock);
+    }
+    redundant = single_wakes;
+    printf("srw uncontended final releases=128 queue_wakes=%u\n", single_wakes);
+    single_wakes = 0;
+
+    RtlAcquireSRWLockShared(&lock);
+    assert(!pthread_create(&thread, NULL, exclusive_waiter, &lock));
+    if (!await_counter(&waits)) { fprintf(stderr, "FIXTURE_NO_BLOCKED_WAITER\n"); return 61; }
+    pthread_mutex_lock(&wait_mutex);
+    assert(!acquired);
+    pthread_mutex_unlock(&wait_mutex);
+    RtlReleaseSRWLockShared(&lock);
+    if (!await_counter(&acquired)) { fprintf(stderr, "REGRESSION_EXCLUSIVE_WAITER_NOT_WOKEN\n"); return 62; }
+    assert(!pthread_join(thread, NULL));
+    assert(single_wakes == 1);
+    assert(all_wakes == 1); /* exclusive release lets shared waiters proceed */
+    printf("srw blocked exclusive waiter acquired=1 release_wakes=1\n");
+    if (redundant) { fprintf(stderr, "REGRESSION_REDUNDANT_SRW_WAKE count=%d\n", redundant); return 42; }
+    puts("SRW_PASS");
+    return 0;
+}

@@ -1068,6 +1068,7 @@ struct format_entry *get_format_entries(CFTypeRef pasteboard, UINT *entries_size
         }
 
         free(import);
+        if (data) CFRelease(data);
     }
 
     CFRelease(types);

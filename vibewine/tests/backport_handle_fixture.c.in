@@ -1,0 +1,131 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* Narrow wineserver close_handle callback/reentrancy fixture. */
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef unsigned int obj_handle_t;
+struct object;
+struct process;
+struct object_ops { int (*close_handle)(struct object *, struct process *, obj_handle_t); };
+struct object { const struct object_ops *ops; unsigned int refs; unsigned int kind; };
+struct handle_entry { struct object *ptr; unsigned int access; };
+struct handle_table { struct handle_entry *entries; int free; int last; };
+struct process { struct object obj; struct handle_table *handles; };
+static struct handle_table *global_table;
+static unsigned int objects_destroyed, processes_destroyed, handle_releases, shrinks;
+static int callback_mode;
+#define STATUS_SUCCESS 0
+#define STATUS_INVALID_HANDLE 0xc0000008u
+#define STATUS_HANDLE_NOT_CLOSABLE 0xc0000235u
+#define RESERVED_CLOSE_PROTECT 0x100u
+
+static int handle_to_index(obj_handle_t handle) { return (handle >> 2) - 1; }
+static int handle_is_global(obj_handle_t handle) { (void)handle; return 0; }
+static void *grab_object(void *pointer)
+{
+    struct object *obj = pointer;
+    assert(obj->refs);
+    ++obj->refs;
+    return pointer;
+}
+static void release_object(void *pointer)
+{
+    struct object *obj = pointer;
+    assert(obj->refs);
+    if (--obj->refs) return;
+    if (obj->kind == 1) ++processes_destroyed;
+    else ++objects_destroyed;
+    free(pointer);
+}
+static void release_object_from_handle(struct object *obj)
+{
+    ++handle_releases;
+    release_object(obj);
+}
+static struct handle_entry *get_handle(struct process *process, obj_handle_t handle)
+{
+    if (handle != 4 || !process->handles || !process->handles->entries[0].ptr) return NULL;
+    return &process->handles->entries[0];
+}
+static void shrink_handle_table(struct handle_table *table) { (void)table; ++shrinks; }
+
+static int callback(struct object *obj, struct process *process, obj_handle_t handle)
+{
+    (void)handle;
+    if (callback_mode == 1) return 0;
+    if (callback_mode == 2)
+    {
+        /* Teardown drops the last ordinary process and handle references.
+         * Callback temporaries in production must hold both objects alive. */
+        struct handle_table *table = process->handles;
+        process->handles = NULL;
+        free(table->entries);
+        free(table);
+        release_object_from_handle(obj);
+        release_object(process);
+    }
+    return 1;
+}
+static const struct object_ops ops = { callback };
+
+/* PRODUCTION_FUNCTION */
+
+static struct process *setup(void)
+{
+    struct process *process = calloc(1, sizeof(*process));
+    struct object *obj = calloc(1, sizeof(*obj));
+    assert(process && obj);
+    process->obj.refs = 1;
+    process->obj.kind = 1;
+    obj->refs = 1; /* one handle reference */
+    obj->ops = &ops;
+    process->handles = calloc(1, sizeof(*process->handles));
+    assert(process->handles);
+    process->handles->entries = calloc(1, sizeof(*process->handles->entries));
+    assert(process->handles->entries);
+    process->handles->entries[0].ptr = obj;
+    return process;
+}
+static void teardown(struct process *process)
+{
+    struct handle_table *table = process->handles;
+    if (table->entries[0].ptr) release_object_from_handle(table->entries[0].ptr);
+    free(table->entries);
+    free(table);
+    release_object(process);
+}
+int main(int argc, char **argv)
+{
+    struct process *process = setup();
+    if (argc != 2) return 64;
+    if (!strcmp(argv[1], "reentrant"))
+    {
+        callback_mode = 2;
+        assert(close_handle(process, 4) == STATUS_SUCCESS);
+        /* Both objects are now gone: inspect counters, never stale pointers. */
+        assert(processes_destroyed == 1 && objects_destroyed == 1 && handle_releases == 1);
+        puts("HANDLE_REENTRANT_PASS");
+    }
+    else if (!strcmp(argv[1], "controls"))
+    {
+        struct object *obj = process->handles->entries[0].ptr;
+        assert(close_handle(process, 8) == STATUS_INVALID_HANDLE);
+        process->handles->entries[0].access = RESERVED_CLOSE_PROTECT;
+        assert(close_handle(process, 4) == STATUS_HANDLE_NOT_CLOSABLE);
+        process->handles->entries[0].access = 0;
+        callback_mode = 1;
+        assert(close_handle(process, 4) == STATUS_HANDLE_NOT_CLOSABLE);
+        assert(process->obj.refs == 1 && obj->refs == 1 && !handle_releases);
+        callback_mode = 0;
+        assert(close_handle(process, 4) == STATUS_SUCCESS);
+        assert(!process->handles->entries[0].ptr);
+        assert(objects_destroyed == 1 && process->obj.refs == 1 && handle_releases == 1 && shrinks == 1);
+        teardown(process);
+        assert(processes_destroyed == 1);
+        puts("HANDLE_CONTROLS_PASS");
+    }
+    else return 64;
+    return 0;
+}

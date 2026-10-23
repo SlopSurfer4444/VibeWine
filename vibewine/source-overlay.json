@@ -907,6 +907,95 @@
       "source": "current/ntdll/sync.c",
       "destination": "dlls/ntdll/unix/sync.c",
       "sha256": "6388ba964be344a17daceeb06b6597375090b6d08c4e689c0e3f11e0ef56872a"
+    },
+    {
+      "source": "https://github.com/wine-mirror/wine/commit/53a91cdcbe21125913b24a48cf0f429597017d6a",
+      "destination": "dlls/winemac.drv/clipboard.c",
+      "sha256": "8bf26058b10e39ffba901c6212dac1f75108110f07a2bb341591f19798011248",
+      "originCommit": "53a91cdcbe21125913b24a48cf0f429597017d6a",
+      "adaptation": "guarded CFRelease adaptation",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "https://github.com/GloriousEggroll/proton-ge-custom/commit/6b27fb1e663ffcd9ea6ad71ec256476320438031",
+      "destination": "dlls/ntdll/sync.c",
+      "sha256": "161a66d00b56922e5648d7d2c65a25a4ef48206e326cb05c2e3e59e80aea1c12",
+      "originCommit": "6b27fb1e663ffcd9ea6ad71ec256476320438031",
+      "adaptation": "exact production hunk",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "https://github.com/GloriousEggroll/proton-ge-custom/commit/a1a8366fd448417004d6a312448d8a9527d4eed9",
+      "destination": "server/handle.c",
+      "sha256": "bd475fd4031f8496f961c82e6d86d7740abffdd835132a1e149211d1c4a2892e",
+      "originCommit": "a1a8366fd448417004d6a312448d8a9527d4eed9",
+      "adaptation": "exact production hunk",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "https://github.com/gauthierpiarrette/highball-engine/commit/84ff7c76141bad87d5025c801fe92a0771e31e2a",
+      "destination": "dlls/ntdll/unix/msync.c",
+      "sha256": "4ae0ad9221507615e9a3df40de624bd2ba948c2779d7c65389bf110475fbc334",
+      "originCommit": "84ff7c76141bad87d5025c801fe92a0771e31e2a",
+      "adaptation": "exact native MSync patch hunk",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "https://github.com/gauthierpiarrette/highball-engine/commit/84ff7c76141bad87d5025c801fe92a0771e31e2a",
+      "destination": "server/msync.c",
+      "sha256": "86a021fecc8169642673bfba0c4e967f87f635efc2563988061a11f1b2bc8490",
+      "originCommit": "84ff7c76141bad87d5025c801fe92a0771e31e2a",
+      "adaptation": "exact server MSync patch hunks",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/UPSTREAM_BACKPORTS.md",
+      "destination": "vibewine/UPSTREAM_BACKPORTS.md",
+      "sha256": "918201569cc7470ee953bd72af90582f137cf23b69948a97b02f83c6f2d7ecaf",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/MSYNC_REGISTRATION.md",
+      "destination": "vibewine/tests/MSYNC_REGISTRATION.md",
+      "sha256": "dde244da1bbe90884af34324f4c50c14226311b03bc271c31251bdd74efc4099",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/backport_clipboard_fixture.c.in",
+      "destination": "vibewine/tests/backport_clipboard_fixture.c.in",
+      "sha256": "6f8bb75ef1904acfc2cc1d32338ac66b929c7d41ec88611e9586a34b53c3c251",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/backport_handle_fixture.c.in",
+      "destination": "vibewine/tests/backport_handle_fixture.c.in",
+      "sha256": "4a85fa4cf382cef0a441ef68b58e02f6ee409e5c335d3b4f18ff87561b2c9675",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/backport_srw_fixture.c.in",
+      "destination": "vibewine/tests/backport_srw_fixture.c.in",
+      "sha256": "d5ab31d82e541b7805a69d23db0be82416106943235800adcf8bf6af5b43aaad",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/backports.py",
+      "destination": "vibewine/tests/backports.py",
+      "sha256": "36c20fca222ec989ddd25b6175c1a178780211f6c28f652245a552825d69384f",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/msync_registration.py",
+      "destination": "vibewine/tests/msync_registration.py",
+      "sha256": "3fddeacfd88c08cd562f92c008da2b300afc17771abd8a3326e768ad39de8171",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
     }
   ]
 }
