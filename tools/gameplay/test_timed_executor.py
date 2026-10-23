@@ -52,12 +52,17 @@ class TimedExecutorTests(unittest.TestCase):
         original_publish = te.vc.publish
         original_popen = subprocess.Popen
         original_save = te.vc.save_manifest
+        self.delayed_reservations = []
         def save(directory, manifest):
             original_save(directory, manifest)
             if late_reservation and manifest['seq'] == 2:
-                time.sleep(0.03)
+                # Advance only after the real sequence reservation is durable.
+                # Host scheduling must not trip the earlier route lateness gate.
+                self.assertTrue(publication_clock)
+                self.delayed_reservations.append(manifest['seq'])
+                clock.sleep(0.03)
         class PublicationClock:
-            # Only cancellation semantics use simulated local publication time.
+            # Cancellation and reservation deadlines use simulated local time.
             # Native collector subprocesses and file publication remain real.
             now = time.monotonic()
             def monotonic(inner): return inner.now
@@ -91,10 +96,12 @@ class TimedExecutorTests(unittest.TestCase):
             status = {te.vc.ARM: 'READY', te.vc.STATE: 'STATE', te.vc.RELEASE: 'RELEASE'}[flags]
             payload = f"VXIA0001 {manifest['token']} 123 {seq} {self.polls} 1 {status}\n".encode()
             te.vc.atomic_write(directory, te.vc.ACK_FILE, payload)
-            if flags == te.vc.STATE and cancel_at_state:
-                # Observe the actual nonneutral packet before cancellation.
+            if flags == te.vc.STATE:
+                # Observe every successful nonneutral publication, including
+                # one that might later be overwritten by neutral cleanup.
                 packet = te.vc.SNAPSHOT.unpack(te.vc.read_file(directory, te.vc.STATE_FILE, limit=72, private=True))
                 self.published_active_states.append(packet)
+            if flags == te.vc.STATE and cancel_at_state:
                 cancelled.set()
             if flags == te.vc.STATE and late_state:
                 # Receipt/publication latency is part of the unchanged 40ms hold.
@@ -360,8 +367,10 @@ class TimedExecutorTests(unittest.TestCase):
 
     def test_late_sequence_persistence_cannot_publish_active_state(self):
         self.route()
-        result = self.run_capture(late_reservation=True)
+        result = self.run_capture(late_reservation=True, publication_clock=True)
         self.assertEqual(result['status'], 'failed'); self.assertIn('publication deadline', result['error'])
+        self.assertEqual(self.delayed_reservations, [2])
+        self.assertEqual(self.published_active_states, [])
         self.assertEqual(result['schedule'], [])
         self.assertTrue(result['neutralAcknowledged'] and result['traceStopped'])
         packet = te.vc.SNAPSHOT.unpack((Path(self.request['controllerDirectory']) / te.vc.STATE_FILE).read_bytes())
