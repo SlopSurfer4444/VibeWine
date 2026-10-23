@@ -5,6 +5,10 @@ identified VibeWine component bases; an unrelated Wine vendor history is never
 merged wholesale. The installed DS3 runtime and its caches remain unchanged.
 No FPS gain, network repair or cure of previous game freezes is established.
 
+The subsequent [independent performance investigation](independent-performance-review-20261023.md)
+records new source findings and bounded reproductions; its candidates are not
+part of the accepted source imports or installed runtime.
+
 ## Initial selected changes
 
 | Source | Change | Why it fits | Verification scope |
