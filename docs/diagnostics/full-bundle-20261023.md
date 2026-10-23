@@ -31,8 +31,22 @@ old shader caches. AIRCONV's public version remains 26; the local epoch is 1.
 
 The private trial retained the preceding Wine driver, NTDLL, network and
 controller candidates. Those files were not rebuilt by this graphics change.
-Promotion into the ordinary repeatable launcher remains a separate delivery
-step. This source checkpoint does not claim that promotion is complete.
+Promotion into the ordinary launcher was subsequently completed through the
+private installer's supported transaction. Readback matched all ten selected
+runtime files, four graphics prefix pairs and the installed lifecycle. Repeating
+that installation was a no-op. The ordinary application launched DS3 with schema4
+native confirmation; same-birth mapped-file observations verified the four
+loaded graphics artifacts and the retained runtime XInput/WS2 pair. A visible
+title/information screen was also observed. A repeated ordinary launcher request
+returned already-running without creating another game session.
+
+This verifies installation and initial ordinary launch, not sustained gameplay
+on that permanent route. The earlier positive owner session used the matching
+private trial. Normal game-menu exit followed by relaunch with Steam left open
+remains unverified in this follow-up: automation could inspect the window but
+did not establish reliable keyboard control. The title session also displayed
+the previously reported server-disconnection message. No network repair or
+controlled FPS improvement is claimed.
 
 Private build receipts, profiles, session identifiers and raw game observations
 are deliberately absent from this repository. Optional diagnostics and cache
