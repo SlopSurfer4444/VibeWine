@@ -51,6 +51,10 @@ that Dynamic/staging retention caused this stall. The full CPU profile was not
 usable after oversized finalization; the independent native Metal history and
 text stack samples remain available.
 
-This candidate is built and GPU-correctness-tested, not installed or tested in DS3.
-No game FPS gain or freeze repair has been established. A controlled same-scene
-comparison remains required before promoting it as a gameplay repair.
+The candidate was subsequently activated in a separate private g23 trial. Its
+runtime preserves all six previous Wine/input/native/network changes and replaces
+only D3D11. A fresh process-incarnation check and physical mapped-file observation
+confirmed the candidate DLL in DS3; the title screen appeared and native Quit
+closed the game. This is not a canonical renderer installation or combat/FPS
+acceptance. No game FPS gain or freeze repair has been established. A controlled
+same-scene comparison remains required before promoting it as a gameplay repair.
