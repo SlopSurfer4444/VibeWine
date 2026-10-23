@@ -15,6 +15,12 @@ remain intact and will miss under the new key. No automatic migration, cache
 deletion or manual SQLite maintenance is introduced. Possible incompatible
 cache reuse motivated this change; it is not a proven cause of a game freeze.
 
+Epoch 2 incorporates the upstream `ce001dfb` correction for hull shaders whose
+relative patch index is `OUTPUT_CONTROL_POINT_ID`. Their compiled index now uses
+the invoking control point plus the immediate offset. `AIRCONV_VERSION` stays 26;
+new shader tables and optional PSO digests therefore separate this compiler output
+from epoch 1 without removing any existing data.
+
 ## Data lifecycle contract
 
 Owner: existing DXMT cache implementation. Scope: compiled shader output in

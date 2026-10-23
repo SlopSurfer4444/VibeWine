@@ -133,6 +133,8 @@ uint64_t serialized_version(const std::vector<unsigned char> &bytes) {
 int main() {
   static_assert(std::is_same_v<decltype(current::kDXMTShaderCacheVersion), const uint64_t>);
   static_assert(sizeof(current::kDXMTShaderCacheVersion) == 8);
+  static_assert(kVibeWineCompilerCacheEpoch == 2);
+  static_assert(AIRCONV_VERSION == 26);
   static_assert(dxmt::kDXMTCompilerCacheCompatibility == current::kDXMTShaderCacheVersion);
   static_assert((current::kDXMTShaderCacheVersion >> 32) == AIRCONV_VERSION);
   static_assert(uint32_t(current::kDXMTShaderCacheVersion) == kVibeWineCompilerCacheEpoch);

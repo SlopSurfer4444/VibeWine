@@ -7,7 +7,7 @@ namespace dxmt {
 
 // Bump when VibeWine compiler output changes without an AIRCONV API version
 // change. This namespaces persisted output; it does not change the compiler ABI.
-constexpr uint32_t kVibeWineCompilerCacheEpoch = 1;
+constexpr uint32_t kVibeWineCompilerCacheEpoch = 2;
 
 constexpr uint64_t
 makeCompilerCacheCompatibility(uint32_t upstream_version, uint32_t local_epoch) {
