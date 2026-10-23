@@ -2,6 +2,25 @@
 #include "dxmt_texture.hpp"
 
 namespace dxmt {
+namespace {
+
+template <typename Queue>
+void
+trimCompletedDynamicAllocations(Queue &fifo, uint64_t coherent_seq_id) {
+  // The caller has reserved one reusable allocation. Retain recent bursts for
+  // 300 completed sequences, then release excess pool references lazily. The
+  // current name and allocations still owned by command lists are not in fifo.
+  constexpr uint64_t kIdleAllocationLifetime = 300;
+  while (!fifo.empty()) {
+    const auto retirement = fifo.front().will_free_at;
+    if (retirement > coherent_seq_id || coherent_seq_id - retirement < kIdleAllocationLifetime)
+      break;
+    fifo.pop();
+  }
+}
+
+} // namespace
+
 DynamicBuffer::DynamicBuffer(Buffer *buffer, Flags<BufferAllocationFlag> flags) :
     buffer(buffer),
     flags_(flags),
@@ -32,6 +51,7 @@ DynamicBuffer::allocate(uint64_t coherent_seq_id) {
     }
     ret = std::move(entry.allocation);
     fifo.pop();
+    trimCompletedDynamicAllocations(fifo, coherent_seq_id);
     break;
   }
   if (!ret.ptr())
@@ -100,6 +120,7 @@ DynamicLinearTexture::allocate(uint64_t coherent_seq_id) {
     }
     ret = std::move(entry.allocation);
     fifo.pop();
+    trimCompletedDynamicAllocations(fifo, coherent_seq_id);
     break;
   }
   if (!ret.ptr())
