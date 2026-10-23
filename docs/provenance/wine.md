@@ -1,5 +1,14 @@
 # Wine patch origins and installed-source gap
 
+## Integrated candidate checkpoint, 2026-10-23
+
+New candidate source: `e20af58312ef059e54f8d16767ee7b74cb8358e5`; selected PE/native/client/server closure, FreeType headers 2.14.3 and retained library-search paths. It was built and signed in a separate
+quarantine and passed the documented native controls. Installation, actual loaded
+game modules and gameplay/performance remain separate pending checks. See the
+[integrated record](../diagnostics/integrated-wave-20261023.md). The historical
+source bindings and installed baseline below remain unchanged.
+
+
 This inventory describes the **pre-backport pin** below and retained installed
 modules. Later development-only Wine/Proton-GE/Highball imports are recorded in
 [the fork review](../integrations/fork-review-20261023.md) and the component's

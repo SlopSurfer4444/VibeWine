@@ -1,6 +1,13 @@
 using dxmt::wsi::DXMTWindowState;
 namespace wsi = dxmt::wsi;
 static int scenarios;
+static HANDLE capture_identity(const DXMTWindowState &state) {
+#if WSI_CAPTURE_GENERATIONS
+  return state.capture_token;
+#else
+  return reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(&state));
+#endif
+}
 static void pass(const std::string &name) { ++scenarios; std::cout << "PASS " << name << '\n'; }
 static void original_restored(const fake::Window &original, const DXMTWindowState &state) {
   fake::require(fake::window.style == original.style, "style was not restored");
@@ -9,7 +16,7 @@ static void original_restored(const fake::Window &original, const DXMTWindowStat
   fake::require(fake::empty(fake::window.present), "present rectangle was not cleared");
   fake::require(!state.captured && fake::window.props.empty(), "cleanup obligation was not retired");
 }
-// State address is the identity token; states must remain at their capture address.
+// Capture identity belongs to a generation; retain each state at its capture address.
 static void enter_into(DXMTWindowState &state) {
   fake::require(wsi::enterFullscreenMode(fake::monitor, fake::hwnd, &state, true), "entry failed");
 }
@@ -228,7 +235,7 @@ static void destruction_cleanup() {
   fake::events.clear();
   fake::require(FAILED(refused.CleanupFullscreenForDestruction()) && fake::warnings >= 2,
                 "RemoveProp refusal was not reported");
-  fake::require(GetPropW(fake::hwnd,L"DXMTFullscreenState") == &refused.window_state_ &&
+  fake::require(GetPropW(fake::hwnd,L"DXMTFullscreenState") == capture_identity(refused.window_state_) &&
                 refused.window_state_.style_pending, "refused detach lost unresolved obligation");
   fake::require(std::find(fake::events.begin(),fake::events.end(),"set_prop") == fake::events.end(),
                 "terminal detach overwrote a window property");
@@ -240,7 +247,7 @@ static void destruction_cleanup() {
   fake::inject("remove_prop");
   fake::require(!wsi::leaveFullscreenMode(fake::hwnd,&state,true) && fake::failed && state.captured,
                 "successful physical leave lost failed property removal retry");
-  fake::require(GetPropW(fake::hwnd,L"DXMTFullscreenState") == &state,
+  fake::require(GetPropW(fake::hwnd,L"DXMTFullscreenState") == capture_identity(state),
                 "failed removal unexpectedly changed owner marker");
   fake::failure.clear();
   fake::require(wsi::leaveFullscreenMode(fake::hwnd,&state,true) && !state.captured,
@@ -280,7 +287,10 @@ static void detach_identity() {
   fake::after_call = {};
   pass("terminal detach preserves marker replaced during removal callback");
   fake::reset(); DXMTWindowState orphan;
-  fake::window.props[L"DXMTFullscreenState"] = &orphan;
+#if WSI_CAPTURE_GENERATIONS
+  orphan.capture_token = DXMTAllocateFullscreenToken();
+#endif
+  fake::window.props[L"DXMTFullscreenState"] = capture_identity(orphan);
   fake::require(!orphan.captured && wsi::detachFullscreenState(fake::hwnd,&orphan) &&
                 GetPropW(fake::hwnd,L"DXMTFullscreenState") == nullptr,
                 "terminal exact-token detach depended on lost capture flag");
@@ -319,7 +329,7 @@ static void checked_window_updates() {
   }
   for (bool topmost : {false, true}) {
     for (const char *failure : {"desktop_rect", "present_rect", "position"}) {
-      fake::reset(); fake::inject(failure);
+      fake::reset(); DXMTWindowState state; enter_into(state); fake::inject(failure);
       fake::require(!wsi::updateFullscreenWindow(fake::monitor, fake::hwnd, topmost) && fake::failed,
                     std::string("unchecked fullscreen update: ") + failure);
       pass(std::string("checked fullscreen update: ") + failure + (topmost ? " topmost" : " move"));
@@ -327,6 +337,7 @@ static void checked_window_updates() {
   }
   for (bool fullscreen : {false,true}) {
     fake::reset(); DXMTWindowState state;
+    if (fullscreen) enter_into(state);
     fake::after_call = [&](const std::string &name) {
       if (name == "position") fake::window.alive = false;
     };
@@ -339,6 +350,69 @@ static void checked_window_updates() {
   DXMTWindowState state;
   fake::require(wsi::resizeWindow(fake::hwnd, &state, 800,600), "zero style resize falsely failed");
   pass("checked resize accepts zero styles with ERROR_SUCCESS");
+}
+static void fullscreen_update_identity() {
+  for (bool topmost : {false, true}) {
+    for (const char *boundary : {"present_rect", "position"}) {
+      for (bool replacement_owner : {false, true}) {
+        fake::reset(); DXMTWindowState state, replacement_state; enter_into(state);
+        bool replaced=false; fake::Window replacement;
+        fake::events.clear();
+        fake::after_call = [&](const std::string &name) {
+          if (!replaced && name == boundary) {
+            fake::replacement();
+            if (replacement_owner)
+              fake::window.props[L"DXMTFullscreenState"] = &replacement_state;
+            replacement=fake::window; replaced=true;
+          }
+        };
+        fake::require(!wsi::updateFullscreenWindow(fake::monitor,fake::hwnd,topmost),
+                      "fullscreen update accepted a recycled HWND");
+        fake::require(replaced, "fullscreen replacement boundary not exercised");
+        fake::require(fake::eq(fake::window.rect,replacement.rect) &&
+                      fake::window.style==replacement.style && fake::window.exstyle==replacement.exstyle &&
+                      fake::window.props==replacement.props && fake::eq(fake::window.present,replacement.present),
+                      "fullscreen update modified replacement window after owner loss");
+        fake::after_call={}; fake::events.clear();
+        fake::require(wsi::leaveFullscreenMode(fake::hwnd,&state,true) && fake::events.empty(),
+                      "old fullscreen owner cleanup changed replacement window");
+        pass(std::string("fullscreen update rejects recycled HWND after ") + boundary +
+             (topmost ? " topmost" : " move") + (replacement_owner ? " new owner" : " no owner"));
+      }
+    }
+  }
+}
+// This injected ABA case deliberately reuses both the numeric HWND and state
+// storage through real WSI capture, rather than installing a different token.
+static void fullscreen_update_same_state_recapture() {
+  for (bool topmost : {false, true}) {
+    for (const char *boundary : {"present_rect", "position"}) {
+      fake::reset(); DXMTWindowState state; enter_into(state);
+      const HANDLE old_token=GetPropW(fake::hwnd,L"DXMTFullscreenState");
+      bool recaptured=false; fake::Window replacement;
+      fake::events.clear();
+      fake::after_call = [&](const std::string &name) {
+        if (!recaptured && name == boundary) {
+          recaptured=true;
+          fake::replacement();
+          fake::require(wsi::leaveFullscreenMode(fake::hwnd,&state,true), "old WSI state failed to retire");
+          fake::require(wsi::enterFullscreenMode(fake::monitor,fake::hwnd,&state,true), "same-storage WSI recapture failed");
+          // Give the new captured window distinguishable app-owned geometry.
+          fake::window.rect={11,13,711,613};
+          replacement=fake::window;
+        }
+      };
+      fake::require(!wsi::updateFullscreenWindow(fake::monitor,fake::hwnd,topmost),
+                    "fullscreen update accepted same-state recapture after HWND replacement");
+      fake::require(recaptured && old_token!=GetPropW(fake::hwnd,L"DXMTFullscreenState"),
+                    "same-storage recapture did not mint a fresh ownership token");
+      fake::require(fake::eq(fake::window.rect,replacement.rect) && fake::window.props==replacement.props,
+                    "stale update changed recaptured window");
+      fake::after_call={};
+      fake::require(wsi::leaveFullscreenMode(fake::hwnd,&state,true), "recaptured owner cleanup failed");
+      pass(std::string("fullscreen same-state recapture after ") + boundary + (topmost ? " topmost" : " move"));
+    }
+  }
 }
 static void initial_fullscreen_status() {
   for (const char *failure : {"get_output", "output_desc", "display_set", "position"}) {
@@ -394,13 +468,99 @@ static void pacing_after_restore() {
   fake::require(chain.PresentationDuration(1) == 1.0/144, "stale timing result overwrote later generation");
   pass("timing failure, topology invalidation and stale generation discard");
 }
+static void capture_generation_boundaries() {
+#if WSI_CAPTURE_GENERATIONS
+  // A refused property store must leave the caller snapshot and window intact.
+  fake::reset(); DXMTWindowState state;
+  const auto original=fake::window;
+  fake::inject("set_prop");
+  fake::require(!wsi::enterFullscreenMode(fake::monitor,fake::hwnd,&state,true) && fake::failed,
+                "failed SetProp accepted capture");
+  fake::require(!state.captured && !state.capture_token && !state.owner && fake::window.props.empty() &&
+                fake::eq(fake::window.rect,original.rect) && fake::window.style==original.style &&
+                fake::window.exstyle==original.exstyle && fake::eq(fake::window.present,original.present),
+                "failed SetProp changed window or published capture");
+  fake::failure.clear();
+  fake::require(!wsi::updateFullscreenWindow(fake::monitor,fake::hwnd,false), "ownerless update accepted");
+  pass("failed SetProp and absent token preserve capture/window");
+
+  for (const char *boundary : {"get_style","get_exstyle","set_style","set_exstyle","present_rect","position","remove_prop"}) {
+    fake::reset(); DXMTWindowState current; enter_into(current);
+    const HANDLE old_token=current.capture_token;
+    bool recaptured=false; fake::Window replacement; DXMTWindowState recaptured_state;
+    fake::after_call = [&](const std::string &name) {
+      if (!recaptured && name==boundary) {
+        recaptured=true;
+        fake::replacement();
+        // Driver API recursion can replace the capture in the same storage.
+        fake::require(wsi::leaveFullscreenMode(fake::hwnd,&current,true), "nested lost capture failed");
+        fake::require(wsi::enterFullscreenMode(fake::monitor,fake::hwnd,&current,true), "nested recapture failed");
+        replacement=fake::window; recaptured_state=current;
+      }
+    };
+    fake::require(wsi::leaveFullscreenMode(fake::hwnd,&current,true), "outer old capture leave failed");
+    fake::require(recaptured && current.capture_token!=old_token && current.captured &&
+                  current.capture_token==recaptured_state.capture_token &&
+                  current.style_pending==recaptured_state.style_pending &&
+                  current.exstyle_pending==recaptured_state.exstyle_pending &&
+                  current.present_rect_pending==recaptured_state.present_rect_pending &&
+                  current.position_pending==recaptured_state.position_pending &&
+                  fake::window.props==replacement.props && fake::eq(fake::window.rect,replacement.rect),
+                  "old leave corrupted same-storage recapture obligations");
+    fake::after_call={};
+    fake::require(wsi::leaveFullscreenMode(fake::hwnd,&current,true), "new capture cleanup failed");
+    pass(std::string("leave preserves same-storage recapture at ")+boundary);
+  }
+  // Simulate separately linked D3D11/D3D12 WSI capture code. Each production
+  // body calls the same extracted DXGI-owned allocator, never a local counter.
+  fake::reset(); DXMTWindowState first_module, second_module;
+  enter_into(first_module);
+  const HANDLE first_id=first_module.capture_token;
+  fake::replacement();
+  fake::require(dxmt::wsi_peer::enterFullscreenMode(fake::monitor,fake::hwnd,&second_module,true),
+                "second WSI copy capture failed");
+  fake::require(second_module.capture_token && second_module.capture_token!=first_id,
+                "independent WSI copies reused token from different capture");
+  const auto second_window=fake::window;
+  fake::events.clear();
+  fake::require(wsi::leaveFullscreenMode(fake::hwnd,&first_module,true) && fake::events.empty() &&
+                fake::window.props==second_window.props && fake::eq(fake::window.rect,second_window.rect),
+                "first WSI copy altered second copy capture");
+  fake::require(wsi::leaveFullscreenMode(fake::hwnd,&second_module,true), "shared allocator capture cleanup failed");
+  pass("two independent production WSI copies share DXGI token allocator");
+
+  // Set allocator near exhaustion: only the last permitted unique ID can issue.
+  // This is injected allocator state, not a real OS or practical exhaustion run.
+  fake::reset(); DXMTWindowState last, exhausted;
+  const auto saved_next=nextFullscreenToken.load();
+  nextFullscreenToken.store(~ULONG_PTR(0)-1);
+  enter_into(last);
+  fake::require(reinterpret_cast<ULONG_PTR>(last.capture_token)==~ULONG_PTR(0)-1, "last capture token incorrect");
+  fake::require(wsi::leaveFullscreenMode(fake::hwnd,&last,true), "last capture cleanup failed");
+  const auto before=fake::window;
+  fake::events.clear();
+  for (unsigned i=0;i<3;++i)
+    fake::require(!wsi::enterFullscreenMode(fake::monitor,fake::hwnd,&exhausted,true), "exhausted allocator wrapped or succeeded");
+  const bool mutated=std::any_of(fake::events.begin(),fake::events.end(),[](const std::string &event) {
+    return event=="set_prop" || event=="present_rect" || event=="set_style" || event=="set_exstyle" ||
+           event=="position" || event=="remove_prop";
+  });
+  fake::require(nextFullscreenToken.load()==~ULONG_PTR(0) && !exhausted.captured &&
+                !exhausted.capture_token && !exhausted.owner && !mutated &&
+                fake::window.props==before.props && fake::eq(fake::window.rect,before.rect) &&
+                fake::window.style==before.style && fake::window.exstyle==before.exstyle,
+                "exhaustion changed owner/window or wrapped");
+  nextFullscreenToken.store(saved_next); // restore this fixture's injected allocator only
+  pass("capture token exhaustion refuses without wrap or window/state mutation");
+#endif
+}
 int main() {
   try {
-    capture_obligation_ack(); checked_window_updates(); initial_fullscreen_status(); pacing_after_restore();
+    capture_obligation_ack(); checked_window_updates(); fullscreen_update_identity(); fullscreen_update_same_state_recapture(); initial_fullscreen_status(); pacing_after_restore();
     entry_failures(); restore_failures(); zero_returns(); identity_lifecycle();
     display_restore(); application_style_change();
     swapchain_entry_failures(); swapchain_display_retry(); swapchain_resize_and_guard();
-    destruction_cleanup(); detach_identity();
+    destruction_cleanup(); detach_identity(); capture_generation_boundaries();
     std::cout << "RESULT " << scenarios << " scenarios passed\n";
     return 0;
   } catch (const std::exception &e) {

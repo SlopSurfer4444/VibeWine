@@ -93,3 +93,20 @@ Use `tools/telemetry` and its explicit record budget. Keep GUI observations
 outside a stationary timed capture, retain raw records and reject overflow or
 configuration changes. Do not report title/menu cadence as gameplay FPS. The
 independent observer overhead comparison remains a separate required experiment.
+
+## Implemented lifecycle policy (source only)
+
+[`lifecycle-policy.mjs`](lifecycle-policy.mjs) supplies DS3's allowed visual
+intents for the [finite lifecycle API](../../tools/gameplay/LIFECYCLE.md). Actual
+screenshot classification, exact process/native window binding, ordinary launcher,
+fresh neutral receipts and a local telemetry/controller executor remain explicit
+caller capabilities. The source workflow and CPU tests do not complete the live
+scenario described above. There is no default route from an unknown saved spot.
+
+The classifier must first verify offline mode before `continue-offline`. It may
+choose one visually safe WASD pulse of at most 250 ms and must then observe its
+actual response. The route admits only bounded left-stick movement, after a
+successful stationary capture and separate visual corridor/endpoint admission.
+Unexpected online/network/character states fail the runner rather than receive
+blind confirmations. Normal exit must visibly return to title before the final
+observed desktop Quit; process absence and a new generation are then checked.

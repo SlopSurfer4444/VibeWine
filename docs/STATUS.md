@@ -1,16 +1,28 @@
-# Current verified checkpoint
+# Current source/build checkpoint and installed baseline
 
-Last reconciled: **2026-10-23**. This describes a private macOS test installation
-and source published for inspection. It is not a downloadable binary release.
+Reconciled **2026-10-23**. The integrated candidate binds Wine
+`e20af58312ef059e54f8d16767ee7b74cb8358e5` and DXMT
+`828429ca6b142230399d98272207af7714f12895`. All 22 selected Wine/graphics
+artifacts were freshly built together; this includes both PE architectures,
+matching client/server, native window/font modules, graphics bridge and compiler.
+It remains a selected closure over the retained engine/dependencies, not a full
+reproducible engine distribution. Compiler cache output uses epoch 2.
 
-The workspace development pins now include [selected source backports](integrations/fork-review-20261023.md)
-from Wine, Proton-GE, Highball, Dormison, macOS forks and DXMT. The follow-up
-adds address-wait timeout handling, inactive window ordering, deferred Metal-view
-teardown, SM50 ownership and optional Vulkan portability enumeration. Their
-focused regressions are separate from the earlier installed-bundle evidence
-below. No newly matched runtime build
-or activation of these backports has occurred. Compiler output uses epoch 2 in
-development; the installed matched bundle retains epoch 1.
+The final signed candidate passed isolated native GDI font rasterization and its
+blank-image control, all five offscreen GPU stages and three deliberately broken
+GPU controls with correct natural exit statuses. A separate 32-run native PE
+shutdown test passed after a reproduced SIGQUIT reentry repair. Source/sanitizer
+fixtures cover the scheduler/persistence, query publication/retirement, native
+configuration and command batching changes. See the [integrated build record](diagnostics/integrated-wave-20261023.md)
+and [patch review](integrations/independent-performance-review-20261023.md).
+
+**Installation and gameplay acceptance of this candidate are pending.** The
+existing installed epoch-1 bundle is unchanged at this checkpoint. The table and
+retained provenance below describe that previous installed baseline, not the new
+candidate. No numerical FPS gain, universal game compatibility or autonomous
+gameplay follows from these build/fixture results.
+
+## Previous installed baseline
 
 | Layer | Observation | Limit |
 | --- | --- | --- |

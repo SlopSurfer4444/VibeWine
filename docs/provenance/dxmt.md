@@ -1,5 +1,14 @@
 # DXMT patch provenance
 
+## Integrated candidate checkpoint, 2026-10-23
+
+New candidate source: `828429ca6b142230399d98272207af7714f12895`; matched PE/native bridge/compiler, helper and epoch-2 cache namespace. It was built and signed in a separate
+quarantine and passed the documented native controls. Installation, actual loaded
+game modules and gameplay/performance remain separate pending checks. See the
+[integrated record](../diagnostics/integrated-wave-20261023.md). The historical
+source bindings and installed baseline below remain unchanged.
+
+
 This page inventories the **matched-build baseline**, including its nine logical
 local changes. Later development-only upstream imports and cache epoch 2 are
 recorded in [the fork review](../integrations/fork-review-20261023.md) and

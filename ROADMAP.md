@@ -3,11 +3,12 @@
 This is a direction for contributions, not a release promise. Start with the
 [component source](README.md#get-the-source) and [contribution guide](CONTRIBUTING.md).
 
-## Proposed integrated wave — 23 October 2026
+## Active integrated wave — 23 October 2026
 
 The owner requested maximum useful macOS integration, frame-time improvement and
 autonomous DS3 testing in one end-to-end wave. This section is the current shared
-plan for that proposal, not an implementation or installation receipt. The
+plan, authorized by the owner's subsequent go-ahead. Activation is not an
+installation receipt. The
 research checkpoint is hub `8a76bfb5`, Wine `bee453b09460e0c3eb49b7c491a6d04e65cc38a5`
 and DXMT `fab325e0adcd639d822dbfac87a1b840ccb2d4bf`. The
 [independent findings](docs/integrations/independent-performance-review-20261023.md)
@@ -31,15 +32,15 @@ implicit prerequisite for the verified core candidate.
 
 | ID | Deliverable and consumer | Prerequisites | State / admission |
 | --- | --- | --- | --- |
-| W0 | Bind source, dependencies, overlay provenance, bundle identity and a reproducible reference; integration owner | Current source/provenance inventory | Planned; reconcile the experimental XInput/network overlays and installed composite Wine before claiming a matched full rebuild |
-| W1 | Discriminating bounded telemetry and displayed-observer admission; performance integrator | W0 for live acceptance | Planned; extend current producer/consumer, do not add an unbounded logger |
-| W2 | Query publication and teardown correctness; renderer integrator | Current source; W0/W1 for runtime acceptance | Ready for source implementation; exact-class TSAN reproducer already fails; teardown remains a separate hypothesis |
-| W3 | Shader readiness, bounded persistence and backlog-aware compiler scheduling; renderer integrator | Shared lifetime/shutdown contract; W1/W2 before final acceptance | Ready for source implementation; persistence and scheduler stay independently comparable |
-| W4 | Descriptor getter hoisting, render/compute setup and final-pass batching; renderer integrator | Existing synchronous command-list ABI; W1 for performance attribution | Ready for source implementation; optimized assembly and command-equivalence CPU controls already exist |
-| W5 | Native geometry, focus/cursor, fullscreen/exit/relaunch regressions and repairs; native integrator | W0 and agreed view/swapchain ownership; W2/W4 for combined rendering tests | Planned; reproduce material failures and preserve prior fixes rather than replace the window owner |
-| W6 | Autonomous load/scene/control/benchmark/exit adapter; test integrator | Existing CUA guards and explicitly admitted process-local input; W0/W1/W5 for live acceptance | Planned; current helpers do not establish a complete autonomous cycle |
-| W7 | Bounded MSync registration-ACK repair; Wine integrator | Paired client/server protocol and cleanup ownership | Ready for source adaptation; require timeout, park/wake and unregister regressions plus native stress before runtime promotion |
-| W8 | Matched build, native GPU regression, controlled DS3 comparisons, ordinary-launch promotion and publication; integration owner | W0–W7 accepted, and no material unresolved failures | Planned; source tests cannot substitute for this checkpoint |
+| W0 | Bind source, dependencies, overlay provenance, bundle identity and a reproducible reference; integration owner | Current source/provenance inventory | Source/build checkpoint accepted: Wine e20af583, terminal SIGQUIT race covered, scoped overlays reconciled, affected x64/i386 modules and server linked; full production-feature Wine build not claimed |
+| W1 | Discriminating bounded telemetry and displayed-observer admission; performance integrator | W0 for live acceptance | Source accepted: bounded detailed events and actual SQLite status; 144 combined telemetry tests pass; live displayed-observer admission pending |
+| W2 | Query publication and teardown correctness; renderer integrator | Current source; W0/W1 for runtime acceptance | Source/GPU accepted for covered cases: publication and empty-chunk completion repaired, Windows retirement drains before destruction; ASan/TSAN controls and real empty-chunk query pass; game lifecycle pending |
+| W3 | Shader readiness, bounded persistence and backlog-aware compiler scheduling; renderer integrator | Shared lifetime/shutdown contract; W1/W2 before final acceptance | Source/build accepted: bounded persistence, real cache status and opt-in backlog growth; ownership/failure fixtures, native SQLite and full linking pass; game/performance acceptance pending |
+| W4 | Descriptor getter hoisting, render/compute setup and final-pass batching; renderer integrator | Existing synchronous command-list ABI; W1 for performance attribution | Source/GPU accepted for covered cases: draw/MRT-depth/compute/MSAA pass with all matched mappings; displayed Present performance remains pending |
+| W5 | Native geometry, focus/cursor, fullscreen/exit/relaunch regressions and repairs; native integrator | W0 and agreed view/swapchain ownership; W2/W4 for combined rendering tests | Source/build accepted: HDR validation and shared fullscreen capture generations; real mode/focus/cursor/exit checks pending |
+| W6 | Autonomous load/scene/control/benchmark/exit adapter; test integrator | Existing CUA guards and explicitly admitted process-local input; W0/W1/W5 for live acceptance | Source accepted: finite lifecycle, guarded Quit and actual timed Node/Python/native collector glue; 50 JS,30 controller,13 executor tests pass; live scene/display evidence pending |
+| W7 | Bounded MSync registration-ACK repair; Wine integrator | Paired client/server protocol and cleanup ownership | Source/build accepted: paired ACK park/wake, source/native controls and isolated paired runtime progress pass; matched server delivery transaction under implementation |
+| W8 | Matched build, native GPU regression, controlled DS3 comparisons, ordinary-launch promotion and publication; integration owner | W0–W7 accepted, and no material unresolved failures | Running: matched fresh build and all five offscreen GPU stages/three negative controls pass; root owns schema12 transaction, ordinary live acceptance, measurements and publication |
 
 ### Core implementation scope
 
@@ -174,3 +175,14 @@ wave.
 
 DS3 is the initial test case, not the project's API contract. No claim is made
 that the existing profile is a finished generic profile-management system.
+
+### Matched native checkpoint, 2026-10-23
+
+Wine e20af583 / DXMT 828429ca selected 22-file closure built with FreeType restored
+and the installed relative library paths preserved. Native font positive/blank
+controls, 32 PE shutdown runs and all five GPU stages plus three negative controls
+passed with actual mapping/hash checks. The shutdown reentry follow-up has
+old-fail/new-pass real-signal coverage in both terminal thread paths. W8 is still
+open: schema12 source transaction is reviewed/committed separately; canonical
+installation, real game lifecycle, fixed-window presented measurements and
+publication remain required. Installed epoch1 remains untouched at this point.

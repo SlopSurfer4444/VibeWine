@@ -43,18 +43,42 @@ def method(text, name):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', type=pathlib.Path, default=ROOT)
+    parser.add_argument('--baseline-ref', help='use these Git source bodies and require the HWND-reuse regression to fail')
     parser.add_argument('--mutation-check', action='store_true',
                         help='prove connected tests reject deliberately regressed production bodies')
     args = parser.parse_args()
     files = [args.source / 'src/util/wsi_platform_win32.hpp',
              args.source / 'src/util/wsi_window_win32.cpp']
     files.append(args.source / 'src/d3d11/d3d11_swapchain.cpp')
-    state, wsi, swapchain = [p.read_text() for p in files]
+    contents = [p.read_text() for p in files]
+    if args.baseline_ref:
+        if args.mutation_check:
+            parser.error('--baseline-ref and --mutation-check are separate checks')
+        contents = [subprocess.run(['git', 'show', args.baseline_ref + ':' + str(p.relative_to(args.source))],
+                                   cwd=args.source, text=True, capture_output=True, check=True).stdout for p in files]
+    state, wsi, swapchain = contents
     for path, content in zip(files, [state, wsi, swapchain]):
         print(f'SOURCE {hashlib.sha256(content.encode()).hexdigest()} {path}', flush=True)
     feedback = (args.source / 'src/winemetal/wave7_feedback.h').read_text()
-    unit = '#include <cstdint>\n' + strip_includes(feedback) + '\n' + (HERE / 'win32_doubles.hpp').read_text() + '\n' + strip_includes(state)
+    unit = '#include <cstdint>\n#define __stdcall\n' + strip_includes(feedback) + '\n' + (HERE / 'win32_doubles.hpp').read_text() + '\n' + strip_includes(state)
+    if 'HANDLE capture_token' in state:
+        allocator_source = args.source / 'src/dxgi/dxgi.cpp'
+        allocator_text = allocator_source.read_text()
+        allocator_start = allocator_text.index('static std::atomic<ULONG_PTR> nextFullscreenToken')
+        allocator_body = balanced(allocator_text, allocator_text.index('extern "C" HANDLE __stdcall DXMTAllocateFullscreenToken()'))
+        allocator_declaration = allocator_text[allocator_start:allocator_text.index('\n', allocator_start)]
+        unit += '\n' + allocator_declaration + '\n' + allocator_body + '\n'
+        print(f'SOURCE {hashlib.sha256(allocator_text.encode()).hexdigest()} {allocator_source}', flush=True)
+    unit += '\n#define WSI_CAPTURE_GENERATIONS ' + ('1' if 'HANDLE capture_token' in state else '0') + '\n'
     unit += '\n' + strip_includes(wsi)
+    if 'HANDLE capture_token' in state:
+        # Two independently compiled WSI capture bodies, one actual DXGI owner.
+        # Only pure helper dependencies are shared with the first WSI copy.
+        unit += '\nnamespace dxmt::wsi_peer {\n'
+        for name in ['DXMTWindowState', 'getDesktopCoordinates', 'getWindowLongChecked',
+                     'setWindowLongChecked', 'fullscreenStateProperty', 'ownsFullscreenState']:
+            unit += 'using dxmt::wsi::' + name + ';\n'
+        unit += balanced(wsi, wsi.index('bool enterFullscreenMode(')) + '\n}\n'
     unit += '\n' + balanced(swapchain, swapchain.index('class ModeSetGuard')) + ';\n'
     unit += (HERE / 'swapchain_doubles.hpp').read_text()
     for name in ['SetFullscreenState', 'EnterFullscreenMode', 'LeaveFullscreenMode',
@@ -83,7 +107,14 @@ def main():
                    '-Wno-unused-parameter', '-fsanitize=address,undefined',
                    '-fno-omit-frame-pointer', '-g', str(source), '-o', str(binary)]
         subprocess.run(command, check=True)
-        subprocess.run([str(binary)], check=True)
+        if args.baseline_ref:
+            result = subprocess.run([str(binary)], text=True, capture_output=True, timeout=10)
+            expected = 'FAIL fullscreen update accepted a recycled HWND'
+            if result.returncode == 0 or expected not in result.stderr:
+                raise RuntimeError('baseline did not reach expected HWND-reuse failure: ' + result.stdout + result.stderr)
+            print('BASELINE REJECTED ' + args.baseline_ref + ': ' + result.stderr.strip(), flush=True)
+            return
+        subprocess.run([str(binary)], check=True, timeout=10)
         if args.mutation_check:
             mutations = [
                 ('capture receipt not required for equal mode',
@@ -95,8 +126,8 @@ def main():
                  'initialization_result_ = EnterFullscreenMode(nullptr);',
                  'EnterFullscreenMode(nullptr);'),
                 ('fullscreen move failure ignored',
-                 'return positioned && ::IsWindow(hWindow);',
-                 '(void)positioned; return ::IsWindow(hWindow);'),
+                 'return positioned && ownsWindow();' if 'return positioned && ownsWindow();' in unit else 'return positioned && ::IsWindow(hWindow);',
+                 '(void)positioned; return ownsWindow();' if 'return positioned && ownsWindow();' in unit else '(void)positioned; return ::IsWindow(hWindow);'),
                 ('restored display cadence discarded',
                  'RefreshDisplayTiming(wsi::getWindowMonitor(hWnd));',
                  'display_refresh_rate_ = DBL_MAX;'),
@@ -107,7 +138,7 @@ def main():
                  'return *value != 0 || ::GetLastError() == ERROR_SUCCESS;',
                  'return *value != 0;'),
                 ('recycled HWND property check omitted',
-                 '::GetPropW(window, fullscreenStateProperty) == reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(state))',
+                 '::GetPropW(window, fullscreenStateProperty) == token' if 'HANDLE capture_token' in state else '::GetPropW(window, fullscreenStateProperty) == reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(state))',
                  'true'),
                 ('current DEVMODE size omitted',
                  'current_mode.dmSize = sizeof(current_mode);', ''),
@@ -124,10 +155,24 @@ def main():
                  '!wsi::detachFullscreenState(hWnd, &window_state_)',
                  'false'),
             ]
+            if 'return positioned && ownsWindow();' in unit:
+                mutations.append(('fullscreen update HWND identity ignored',
+                                  '::GetPropW(hWindow, fullscreenStateProperty) == owner;',
+                                  'true;'))
+            if 'HANDLE capture_token' in state:
+                mutations.extend([
+                    ('state address reused as capture token',
+                     'const HANDLE token = DXMTAllocateFullscreenToken();',
+                     'const HANDLE token = reinterpret_cast<HANDLE>(pState);'),
+                    ('capture token allocator wraps',
+                     'while (value != ~ULONG_PTR(0)) {', 'while (true) {'),
+                    ('stale leave clears recaptured state',
+                     'if (state->capture_token == token)\n    *state = {};', '*state = {};')])
             for name, old, new in mutations:
-                if unit.count(old) != 1:
+                expected_count = 2 if name == 'state address reused as capture token' else 1
+                if unit.count(old) != expected_count:
                     raise RuntimeError('mutation seam changed: ' + name)
-                source.write_text(unit.replace(old, new, 1))
+                source.write_text(unit.replace(old, new, expected_count))
                 subprocess.run(command, check=True, capture_output=True)
                 result = subprocess.run([str(binary)], text=True, capture_output=True)
                 if result.returncode == 0 or 'FAIL ' not in result.stderr:

@@ -55,6 +55,29 @@ export function createSession(app, options = {}) {
     }
   }
 
+  function chooseAction(previous, action) {
+    let perform;
+    if (action.type === 'key') {
+      const durationMs = action.durationMs ?? 100;
+      if (!keys.has(action.key) || !Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 1000) {
+        throw new Error('Key or duration outside navigation/movement policy');
+      }
+      perform = () => app.pressKey(action.key, { durationMs });
+    } else if (action.type === 'click') {
+      const { x, y } = action;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 ||
+          x >= previous.dimensions.width || y >= previous.dimensions.height) {
+        throw new Error('Click outside declared screenshot coordinate bounds');
+      }
+      perform = () => app.click([x, y]);
+    } else if (action.type === 'secondary') {
+      if (!Number.isInteger(action.index) || action.index < 0 ||
+          typeof action.action !== 'string' || !action.action.trim()) throw new Error('Invalid AX action');
+      perform = () => app.performSecondaryAction(action.index, action.action);
+    } else throw new Error('Unsupported action');
+    return perform;
+  }
+
   return Object.freeze({
     get blocked() { return blocked; },
     observe(bounds) {
@@ -63,6 +86,19 @@ export function createSession(app, options = {}) {
         return capture(bounds);
       });
     },
+    // One final visibly chosen Quit action may destroy its own window. No later
+    // input/observation is allowed; process reconciliation supplies exit proof.
+    finish(token, action) {
+      return guarded(async () => {
+        const previous = current;
+        current = null;
+        if (!previous || token !== previous.token) throw new Error('Stale or missing observation token');
+        if (!action || typeof action !== 'object') throw new Error('Action required');
+        const perform = chooseAction(previous, action);
+        await perform();
+        return Object.freeze({ delivered: true });
+      }).finally(() => { blocked = true; current = null; });
+    },
     act(token, action, nextBounds) {
       return guarded(async () => {
         const previous = current;
@@ -70,25 +106,7 @@ export function createSession(app, options = {}) {
         if (!previous || token !== previous.token) throw new Error('Stale or missing observation token');
         dimensions(nextBounds); // Validate before sending any input.
         if (!action || typeof action !== 'object') throw new Error('Action required');
-        let perform;
-        if (action.type === 'key') {
-          const durationMs = action.durationMs ?? 100;
-          if (!keys.has(action.key) || !Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 1000) {
-            throw new Error('Key or duration outside navigation/movement policy');
-          }
-          perform = () => app.pressKey(action.key, { durationMs });
-        } else if (action.type === 'click') {
-          const { x, y } = action;
-          if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 ||
-              x >= previous.dimensions.width || y >= previous.dimensions.height) {
-            throw new Error('Click outside declared screenshot coordinate bounds');
-          }
-          perform = () => app.click([x, y]);
-        } else if (action.type === 'secondary') {
-          if (!Number.isInteger(action.index) || action.index < 0 ||
-              typeof action.action !== 'string' || !action.action.trim()) throw new Error('Invalid AX action');
-          perform = () => app.performSecondaryAction(action.index, action.action);
-        } else throw new Error('Unsupported action');
+        const perform = chooseAction(previous, action);
         // Even a failed input is followed by observation; no further input follows.
         let inputError, inputFailed = false;
         try { await perform(); } catch (error) { inputFailed = true; inputError = error; }

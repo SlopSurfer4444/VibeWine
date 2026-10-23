@@ -234,3 +234,30 @@ native application menu (not the in-game normal-exit path), its owned Steam was
 shut down, and the exact ordinary launch settings were restored and verified.
 The game may consequently show its improper-exit notice on the next start.
 This remains an opt-in experiment, not a production replacement.
+
+### Host fixture timing boundary
+
+Rejection/interrupt propagation fixtures use a deterministic polling peer that
+reads the actually published binary snapshot before writing its receipt, plus a
+controlled test clock. This keeps thread scheduling and fsync latency from
+preventing the semantic phase under test. Separate asynchronous peer tests still
+exercise the real command/lease deadlines. A late-state-receipt fixture proves
+that elapsed receipt latency consumes the original hold budget, sends no extra
+hold and still publishes neutral RELEASE. Product deadlines are unchanged.
+
+During the W6 integration check, the old 28-test suite first had two timing-phase
+failures: the interruption case expired before reaching hold, and the combined
+INVALID case timed out before the expected state rejection. A relaxed-load
+reproduction then passed all 28. The repaired 29-test suite passed normally and
+under two bounded CPU workers; these remain host flow checks, with no game or
+actual producer exercised by the fake peer.
+
+
+The local timed executor additionally opts into publication deadline fencing:
+sequence persistence is followed by remaining-lease recomputation, and a final
+check rejects expired STATE replacement after temporary-file fsync. It records
+actual atomic replacement bounds; a replacement that overruns the admitted
+schedule tolerance invalidates the interval and invokes neutral cleanup. These
+optional host guards change no binary protocol and no ordinary `pulse` deadline.
+Consumer-relative lease expiry and actual game consumption remain separate from
+host publication timing.

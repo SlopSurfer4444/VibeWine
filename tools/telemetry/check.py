@@ -19,7 +19,7 @@ def main():
     build.mkdir(parents=True, exist_ok=True)
     binary = build / 'cs2trace'
     subprocess.run(['xcrun', 'clang++', '-std=c++20', '-O2', '-Wall', '-Wextra',
-                    '-Werror', str(here / 'trace_controller.cpp'), '-o', str(binary)], check=True)
+                    '-Werror', str(here / 'trace_controller.cpp'), '-framework', 'QuartzCore', '-o', str(binary)], check=True)
     import tests_cli
     tests_cli.CONTROLLER = binary
     suite = unittest.defaultTestLoader.discover(str(here), pattern='test*.py')

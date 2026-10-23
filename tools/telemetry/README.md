@@ -77,3 +77,154 @@ captures. Separately measure CPU/GPU activity and cache events to form hypothese
 none alone proves a bottleneck or an FPS improvement. A controlled before/after
 in-game comparison and the overhead baseline are still required. No such live
 result is claimed by this directory's offline tests.
+
+## W1 bounded detailed probes (default off)
+
+`DXMT_CS2_TRACE_DETAIL_LIMIT=N` opts a compatible producer into detailed probes,
+only while its v2 capture is armed. Empty, zero, malformed or values above 32768
+disable them. `N` is a **per-producer, per-generation source cap shared by all
+types 80–94**: at most N budgeted detailed records plus one event 89 cap-failure
+marker. Stale-generation failure markers consume that N budget. All other
+existing events still consume the fixed process-lifetime
+131072-slot file. This cap is a count budget, not a promised capture duration or
+record rate. Reserve the extra marker and existing events in capture admission;
+calibrate N outside the timed experiment. No queue, timer, new file, background
+sampler, paths, shader bytecode or user payload is added by these probes.
+
+| Type | Meaning and payload |
+|---|---|
+| 80 / 81 | Task enqueue / run attempt start. Object: immutable task birth serial; p0: scheduler birth serial; p1: sampled runnable depth; flags: worker count. Samples occur under scheduler admission lock. |
+| 82 / 83 | Task blocks on / is released by a dependency. Object: task birth serial; p0: dependency task birth serial; p1: scheduler serial; flags zero. A dependency can be observed before its own submission. Missing dependency events stay unknown. |
+| 84 | Ready publication edge before SetDone lets consumers retire the task. Object task; p0 scheduler; other payload zero. |
+| 85 | Optional persistence admission. Object task; p0 scheduler; p1 charged bytes; flags 0 accepted / 1 rejected. |
+| 86 | Optional persistence callable CPU interval. Same identities/bytes; flags 0 returned / 1 C++ exception. A normal return does not establish a successful SQL write. |
+| 87 / 88 | Cache writer lock wait / checked native call CPU interval. Object task; p0 scheduler; p1 zero. 87 flags zero; 88 flags raw SQLite status. |
+| 89 | Detailed capture failure, object zero. Flags 1: cap exhausted, p0 configured cap; flags 2: stale generation callback, p0 callback generation. These invalidate detailed capture acceptance. |
+| 90 | Query readback destruction interval before CPU coherence. Object queue birth serial; p0 chunk sequence; p1 frame; flags zero. |
+| 91 / 92 | Chunk reset complete, before / after CPU coherence signal. Same queue/sequence/frame, zero flags. 92 observes return from signal, not consumer wake latency. |
+| 93 / 94 | Checked cache get / init CPU interval. Object cache birth serial; p0 operation birth serial; p1 zero; flags raw SQLite status. |
+
+All start/end fields in 80–94 use the existing producer CPU steady clock. No
+absolute GPU/native presentation timestamps are subtracted. SQLite result codes
+retain their full raw value and primary code: ROW=100 (read hit), DONE=101 (read
+miss or completed write), BUSY=5, LOCKED=6, CORRUPT=11, NOTADB=26. Reserved flags
+0xffffffff mean native result unavailable; 0xfffffffe mean C++ exception. Even a
+completed write is not a durability or performance claim. IDs are birth serials,
+never raw task pointers. Generation admission and the shared record cap apply to
+checked cache probes too. Crossing capture boundaries stays incomplete; stale
+tokens cannot silently produce an identity join in a new capture.
+
+`detailed_probes.capture_usable` fails on malformed or ambiguous detailed joins,
+source failure markers, decoder overflow/uncommitted evidence
+or changing counters. Missing task boundaries and dependency observations retain
+unknown values. Readback/coherence timing requires unique 90/91/92 and a unique
+accepted 20–23 chunk join with matching frame. Existing capture quality limits
+and independent presented-frame admission remain required separately.
+The decoder's legacy `wrong_generation` counter counts filtered historical
+records in the append-only lifetime file. It is reported separately as
+`historical_generation_records_excluded` and does not invalidate a new capture.
+A current decoded event with mismatched generation is rejected structurally;
+event 89 stale asynchronous work still fails detailed capture acceptance.
+
+Producer/retention contract, before activation: the performance integrator owns
+these metadata-only records in the existing private `cs2trace new-session`
+directory. Each producer file remains bounded to 8,392,704 bytes (4096 + 131072
+× 64); admit at most eight producer files / 67,141,632 bytes per experiment.
+Raw captures and decoded derivatives have a 7-day TTL and 80 MiB aggregate cap
+per experiment; retain a source-bound summary and minimal failure evidence for
+30 days / 4 MiB. No automatic cleanup is installed. The experiment owner must
+perform bounded inventory and explicit removal through the existing session
+lifecycle after verifying summaries/evidence. Active mappings, pending decoder
+work, unresolved acceptance/recovery investigations and explicitly held captures
+are excluded; holds require a reviewed expiry and prevent starting more bulk
+collection when the cap would be exceeded. This declaration authorizes no
+deletion of unrelated or active files. Detailed probes remain unactivated here.
+
+## Exact stationary windows in native presentation time
+
+`cs2trace clock-sample` emits one bounded JSON observation and exits. It uses the
+public [CACurrentMediaTime API](https://developer.apple.com/documentation/quartzcore/cacurrentmediatime())
+twice, bracketing a `mach_absolute_time` read. These APIs share the documented
+Mach absolute clock. Tick conversion uses the reported Mach timebase and
+128-bit intermediate arithmetic. The sample retains raw ticks, converted
+nanoseconds, clock/API names, UUID, PID, timebase and the CA bracket width.
+Brackets above 100 ms or invalid native clocks fail; analysis defaults to a
+stricter 1 ms bracket limit. The collector links QuartzCore (see `check.py`).
+It creates no trace mapping, output file, timer or background observer.
+
+The caller must hash the **actual executable it invoked** and bind each returned
+sample to the same fresh measurement UUID in a receipt envelope:
+
+```json
+{
+  "measurement_id": "12345678-1234-4234-9234-123456789abc",
+  "collector_sha256": "ACTUAL_64_CHARACTER_LOWERCASE_SHA256",
+  "clock_sample": {"kind": "clock_sample", "schema": 1, "...": "native output"}
+}
+```
+
+The envelope is an execution receipt owned by the caller. A `valid` or `verified`
+boolean is not accepted as execution evidence. The analyzer checks the expected
+hash, measurement/sample identities, public clock domains/APIs, exact raw tick
+conversion, finite bounded times, bracket widths, timebase consistency and clock
+progress. It does not establish the executable's identity from JSON alone or
+claim a kernel boot identity.
+
+```python
+from fixed_window_analysis import analyze_fixed_window
+result = analyze_fixed_window(
+    decoded_rows, begin_envelope, end_envelope,
+    window_seconds=30, expected_swapchain=SWAPCHAIN_BIRTH_SERIAL,
+    expected_dimensions={"width": 1280, "height": 720}, expected_revision=REVISION,
+    expected_collector_sha256=ACTUAL_COLLECTOR_SHA256,
+    measurement_id=MEASUREMENT_UUID, scenario="stationary")
+```
+
+The exact half-open CA window is `[begin.ca_upper_seconds,
+begin.ca_upper_seconds + window_seconds)`. The independently sampled end clock
+must reach its end and be no more than two seconds late by default. Sample the
+beginning after trace admission, retain a warm stationary scene, and collect a
+small tail after the window so native feedback and counters can span its end.
+Sampling overhead and caller/route timing are separate: the native window is
+not relabelled as the executor's Python monotonic interval. Moving routes are
+rejected until their exact alignment is separately bounded. This helper does
+not provide an observer for instrumentation-disabled runs or verify overhead.
+
+Acceptance requires unique valid 71/72/73 triplets and consecutive frame
+identities spanning both boundaries, the requested drawable geometry/revision
+throughout that spanning interval, supported native presentation capability,
+complete native counter snapshots bracketing feedback **receipt timestamps in
+the same producer CPU domain**, and no native/PE loss. Missing loss-summary
+fields are unknown and rejected. Counter accounting must be internally
+consistent, and the terminal completed-callback count must cover the observed
+feedback span. Malformed selected native control records and
+invalid/unlocalizable feedback cannot be discarded to manufacture an accepted
+subset. Known valid configuration changes wholly outside the spanning interval
+are reported as excluded tails. Historical generation records retain their
+separate exclusion count.
+
+The report separates presentations counted inside the exact window divided by
+its duration from distributions of intervals wholly inside it. Intervals crossing
+either boundary are excluded and counted; zero presentations with consecutive
+feedback spanning the entire window is retained as an observed stall. These are
+drawable presentation observations, not physical scanout, full display/frame
+latency, or proof of an FPS improvement. No CPU Present rate substitutes for them.
+
+The same analysis is available as a bounded offline CLI (exit 0 accepted, 3
+ineligible, 2 malformed input):
+
+```text
+python3 tools/telemetry/fixed_window_analysis.py TRACE.ndjson BEGIN.json END.json \
+  --output WINDOW.json --window-seconds 30 --swapchain SERIAL \
+  --width 1280 --height 720 --revision REVISION \
+  --collector-sha256 HASH --measurement-id UUID --scenario stationary
+```
+
+Decoded input is capped at 64 MiB and the existing event-count/line limits;
+clock envelopes are capped at 8 KiB each. Clock receipts and window reports are
+metadata under the existing experiment owner, 7-day raw/80-MiB aggregate and
+30-day summary/4-MiB policy above, including active/hold exclusions and manual
+cleanup. A window requires two single-shot samples, no continuing producer.
+The 131072-slot trace lifetime cap still applies: calibrate event rate before
+choosing duration. A long requested window is rejected if its source overflows;
+this analyzer does not expand/reset the ring or silently shorten measurement.

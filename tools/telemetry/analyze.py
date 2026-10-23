@@ -4,6 +4,7 @@ import argparse,json,math,statistics
 from collections import defaultdict
 from pathlib import Path
 from wave7_analysis import wave7_analysis
+from detail_analysis import detail_analysis
 CAPACITY=131072
 REASONS={0:'Unknown',1:'Present',2:'StagingMap',3:'GetDataNotReady',4:'ExplicitFlush',5:'GPUIdle',6:'FenceSignal',7:'FenceWait',8:'PassPromotion'}
 SYNC_NAMES={30:'StagingMap CPU fence wait',31:'GetData not-ready Flush',32:'GPUIdle CPU fence wait'}
@@ -87,7 +88,7 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
         for k in ['generation','type','thread','flags']:uint32(e[k])
         if e['generation']!=gen or e['index']>=CAPACITY or e['index'] in seen:raise ValueError('generation/index mismatch or duplicate')
         seen.add(e['index'])
-        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|{17,19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76,77,78} else 'unknown'
+        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|set(range(80,95))|{17,19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76,77,78} else 'unknown'
         if e.get('clock_domain')!=expected:raise ValueError('clock domain mismatch')
     rejected=defaultdict(int); cadence=[]; presentations=defaultdict(list);intervals=defaultdict(list)
     for e in events:
@@ -144,11 +145,13 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
             else:rejected['invalid_gpu_interval']+=1
         chunkrows.append({'queue':queue,'chunk':seq,'frame':frame,'completion_status':status,'included_in_successful_aggregates':status==4,'swapchain_if_unambiguous':attribution,'publish_to_encode_ms':q/1e6,'encode_setup_commit_ms':a/1e6,'commit_to_cpu_completion_observation_ms':c/1e6,'gpu_duration_ms':None if gd is None else gd/1e6})
     sync=sync_analysis(events,chunkrows,rejected)
+    detailed=detail_analysis(events,summary,chunkrows,rejected)
     quality=[]
     if summary.get('inconclusive_window') is not False:quality.append('decoder_snapshot_inconclusive')
     for k in ['dropped_before','dropped_after','uncommitted_reserved']:
         if uint(summary.get(k,0)):quality.append(k)
     if summary.get('counters_changed'):quality.append('counters_changed')
+    if not detailed['capture_usable']:quality.append('detailed_capture_invalid')
     if summary.get('producer_quiescence_verified') is not True:quality.append('producer_quiescence_unverified_boundary_events_may_be_missing')
     if summary.get('live_pid_verified') is not True:quality.append('live_pid_unverified')
     if summary.get('bridge_verified') is not True:quality.append('bridge_unverified')
@@ -165,7 +168,7 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
     if not wave7["strict_acceptance"]["capture_identity_quality_ok"]:quality.append("unidentified_native_feedback_records")
     return {'schema':2,'generation':gen,'decoder_identity':summary.get('identity'),'scope':'observed immutable snapshot only; displayed cadence only from valid native presented feedback; no FPS gain inference','wave7':wave7,
       'quality_limits':quality,'rejections':dict(rejected),'cpu_present_streams':cadence,'queue_chunk_metrics':{'joined_chunks':len(chunkrows),'successful_completed_chunks':sum(c['completion_status']==4 for c in chunkrows),'publish_to_encode':stats(queuewait),'encode_setup_commit':stats(encodecommit),'commit_to_cpu_completion_observation':stats(completion),'gpu_command_buffer_durations':stats(gpu)},'chunks':chunkrows,
-      'full_api_boundaries':api,'sync_probes':sync,'interpretation':['GPU duration uses native GPU end-start only; never subtract CPU and GPU epochs.','GPU durations may overlap and must not be summed as GPU busy time.','No absent event is interpreted as zero cost; old scopes below 100 us are censored.','V2 queue identity uses birth serials; legacy Present body identity remains a pointer. Duplicate chunk keys are rejected.','Missing boundary chunks and frame ownership prevent complete-frame GPU attribution.']}
+      'full_api_boundaries':api,'sync_probes':sync,'detailed_probes':detailed,'interpretation':['GPU duration uses native GPU end-start only; never subtract CPU and GPU epochs.','GPU durations may overlap and must not be summed as GPU busy time.','No absent event is interpreted as zero cost; old scopes below 100 us are censored.','V2 queue identity uses birth serials; legacy Present body identity remains a pointer. Duplicate chunk keys are rejected.','Missing boundary chunks and frame ownership prevent complete-frame GPU attribution.']}
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('input',type=Path);p.add_argument('--output',type=Path,required=True)

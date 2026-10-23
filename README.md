@@ -7,15 +7,17 @@ windows, Retina, accessibility, game compatibility and performance you can
 measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
-**Current checkpoint: 23 October 2026.** A matched DXMT/Metal bundle has passed
-native GPU correctness checks and private installation/launch checks. An owner
-reported a good DS3 gameplay session on the matching trial. Controlled FPS gains,
-sustained freeze elimination and compatibility with other games remain open.
-This repository distributes source, not a ready-to-install Wine runtime.
+**Current checkpoint: 23 October 2026.** A fresh selected Wine/DXMT candidate
+passed matched builds, isolated font/shutdown controls and native offscreen GPU
+tests. It includes general compiler scheduling/persistence, query publication,
+command batching and native lifecycle improvements. Installation and controlled
+game performance acceptance of this wave remain pending; the previous runtime
+has an owner-reported good DS3 session.
 
-The development pins also include [selected upstream/fork backports](docs/integrations/fork-review-20261023.md)
-with focused regressions. These newer source changes are not installed in that
-previously tested runtime and have no measured FPS result.
+This repository distributes source, not a ready-to-install Wine runtime.
+[Selected upstream/fork backports](docs/integrations/fork-review-20261023.md),
+[the integrated checkpoint](docs/diagnostics/integrated-wave-20261023.md) and
+[status](docs/STATUS.md) distinguish source, builds, installation and game results.
 
 [Patch origins](docs/PATCHES.md) · [Current status](docs/STATUS.md) ·
 [Build guide](docs/BUILDING.md) · [Contribute](CONTRIBUTING.md)
@@ -40,9 +42,10 @@ python3 scripts/workspace.py check
 Components are pinned submodules hosted on branches in this same repository.
 Updating a component branch does not silently update the workspace pin. GitHub's
 main-branch ZIP omits submodule contents; use a recursive clone or the component
-links above. The installed test runtime combines several source revisions; it is
-not a full clean rebuild of the pinned Wine branch. [Status](docs/STATUS.md)
-records that boundary explicitly.
+links above. The selected candidate is rebuilt from these pins over a retained
+engine/dependency base. The previous installed runtime is composite; neither is
+a full reproducible Wine distribution. [Status](docs/STATUS.md) records these
+boundaries explicitly.
 
 ## Keep the scope clear
 

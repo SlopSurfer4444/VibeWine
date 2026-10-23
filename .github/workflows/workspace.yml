@@ -20,7 +20,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tools/gameplay/session.test.mjs
+      - run: node --test tools/gameplay/*.test.mjs
+      - run: python3 -m unittest discover -s tools/gameplay -p 'test_*.py'
       - run: python3 -m unittest discover -s tests/workspace
       - run: python3 scripts/workspace.py check --metadata-only
       - run: python3 scripts/workspace.py init
@@ -36,6 +37,7 @@ jobs:
           python-version: '3.12'
       - run: git submodule update --init components/dxmt
       - run: python3 tools/telemetry/check.py
+      - run: python3 -m unittest discover -s tools/gameplay -p 'test_*.py'
   backports:
     runs-on: macos-latest
     steps:
@@ -48,6 +50,7 @@ jobs:
           python-version: '3.12'
       - run: git submodule update --init components/wine components/dxmt
       - run: python3 components/wine/vibewine/verify_source.py
+      - run: python3 components/wine/vibewine/tests/thread-exit/run.py --sanitize --repetitions 2
       - run: python3 components/wine/vibewine/tests/backports.py
       - run: python3 components/wine/vibewine/tests/msync_registration.py --source-dir components/wine
       - run: python3 components/wine/vibewine/tests/address-wait/run.py --sanitize

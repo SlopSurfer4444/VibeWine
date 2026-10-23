@@ -4,6 +4,31 @@
 #include <limits>
 #include <cmath>
 #include <iomanip>
+#include <QuartzCore/CABase.h>
+#include <mach/mach_time.h>
+#include <uuid/uuid.h>
+static std::string json(const std::string &s);
+
+// One public native-clock observation. No producer mapping, process inspection,
+// capture mutation, timer, output file, or background observer is created.
+static void clockSample() {
+  uuid_t identity;uuid_generate_random(identity);char id[37];uuid_unparse_lower(identity,id);
+  mach_timebase_info_data_t timebase{};
+  if(mach_timebase_info(&timebase)!=KERN_SUCCESS || !timebase.numer || !timebase.denom)
+    trace::fail("native Mach timebase unavailable");
+  const uint64_t resolution=(uint64_t(timebase.numer)+timebase.denom-1)/timebase.denom;
+  if(resolution>1000000)trace::fail("native raw clock resolution exceeds 1 ms");
+  const double lower=CACurrentMediaTime();
+  const auto ticks=mach_absolute_time();
+  const double upper=CACurrentMediaTime();
+  if(!std::isfinite(lower)||!std::isfinite(upper)||lower<=0||upper<lower||upper>=1e9||upper-lower>.1||!ticks)
+    trace::fail("native clock sample invalid or bracket exceeds 100 ms");
+  const auto converted=(__uint128_t(ticks)*timebase.numer)/timebase.denom;
+  if(converted>UINT64_MAX)trace::fail("native clock conversion overflow");
+  const uint64_t stamp=uint64_t(converted);
+  const auto width=uint64_t(std::ceil((upper-lower)*1e9));
+  std::cout<<"{\"kind\":\"clock_sample\",\"schema\":1,\"clock_domain\":\"ca_host_seconds\",\"clock_api\":\"CACurrentMediaTime\",\"monotonic_clock_domain\":\"native_mach_absolute_ns\",\"monotonic_clock_api\":\"mach_absolute_time\",\"sample_id\":"<<json(id)<<",\"pid\":"<<getpid()<<",\"ca_lower_seconds\":"<<std::setprecision(17)<<lower<<",\"ca_upper_seconds\":"<<upper<<",\"native_monotonic_ns\":"<<stamp<<",\"native_monotonic_resolution_ns\":"<<resolution<<",\"mach_ticks\":"<<ticks<<",\"timebase_numer\":"<<timebase.numer<<",\"timebase_denom\":"<<timebase.denom<<",\"bracket_ns\":"<<width<<"}\n";
+}
 
 static std::string json(const std::string &s) {
   std::string out="\"";
@@ -32,11 +57,12 @@ static uint64_t recordBudget(const char *arg) {
 }
 static const char *clockDomain(uint32_t type) {
   if(type==24)return "native_gpu_ns";
-  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78))return "cpu_steady_ns";
+  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=94))return "cpu_steady_ns";
   return "unknown";
 }
 int main(int argc,char **argv) {
   try {
+    if(argc==2 && std::string(argv[1])=="clock-sample") {clockSample();return 0;}
     if(argc==3 && std::string(argv[1])=="new-session") {
       std::cout<<"{\"session\":"<<json(trace::newSession(argv[2]))<<",\"runtime_started\":false}\n";return 0;
     }
@@ -61,7 +87,7 @@ int main(int argc,char **argv) {
       uint32_t gen=generation(argv[3]);trace::Mapping m(argv[2],false,argv[4]);auto s=trace::decode(m,gen);
       for(const auto &e:s.events) {
         std::cout<<"{\"kind\":\"event\",\"index\":"<<e.index<<",\"generation\":"<<e.generation<<",\"type\":"<<e.type<<",\"thread\":"<<e.thread<<",\"flags\":"<<e.flags<<",\"object\":"<<e.object<<",\"start\":"<<e.start<<",\"end\":"<<e.end<<",\"padding0\":"<<e.padding0<<",\"padding1\":"<<e.padding1<<",\"clock_domain\":"<<json(clockDomain(e.type))<<",\"duration_ns\":";
-        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && probe::valid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
+        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && probe::valid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
         if(e.type==71){
           const double seconds=std::bit_cast<double>(e.padding1);
           const bool positive=std::isfinite(seconds)&&seconds>0;
@@ -78,6 +104,6 @@ int main(int argc,char **argv) {
       std::cout<<"{\"kind\":\"summary\",\"identity\":"<<json(m.binding)<<",\"generation\":"<<gen<<",\"events\":"<<s.events.size()<<",\"committed_all_generations\":"<<s.committed<<",\"wrong_generation\":"<<s.wrongGeneration<<",\"next_before_reserved\":"<<s.nextBefore<<",\"next_after_reserved\":"<<s.nextAfter<<",\"dropped_before\":"<<s.droppedBefore<<",\"dropped_after\":"<<s.droppedAfter<<",\"uncommitted_reserved\":"<<s.uncommitted<<",\"counters_changed\":"<<(s.countersChanged?"true":"false")<<",\"inconclusive_window\":"<<(s.inconclusive?"true":"false")<<",\"producer_quiescence_verified\":"<<(s.structurallyComplete?"true":"false")<<",\"structurally_complete\":"<<(s.structurallyComplete?"true":"false")<<",\"boundary_rejected_total\":"<<s.boundaryRejected<<",\"all_operations_complete\":false,\"protocol_version\":2,\"live_pid_verified\":false,\"bridge_verified\":false}\n";
       return s.inconclusive?3:0;
     }
-    std::cerr<<"Usage:\n  cs2trace new-session ABS_ROOT\n  cs2trace inspect ABS_FILE\n  cs2trace arm ABS_FILE GENERATION DEV:INODE PLANNED_RECORDS TAIL_RESERVE\n  cs2trace stop ABS_FILE GENERATION DEV:INODE\n  cs2trace decode ABS_FILE GENERATION DEV:INODE\n";return 2;
+    std::cerr<<"Usage:\n  cs2trace clock-sample\n  cs2trace new-session ABS_ROOT\n  cs2trace inspect ABS_FILE\n  cs2trace arm ABS_FILE GENERATION DEV:INODE PLANNED_RECORDS TAIL_RESERVE\n  cs2trace stop ABS_FILE GENERATION DEV:INODE\n  cs2trace decode ABS_FILE GENERATION DEV:INODE\n";return 2;
   } catch(const std::exception &e) {std::cerr<<"cs2trace: "<<e.what()<<"\n";return 1;}
 }

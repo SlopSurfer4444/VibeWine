@@ -59,3 +59,25 @@ The separate [virtual-controller writer](VIRTUAL_CONTROLLER.md) prepares bounded
 process-local XInput states for an admitted experimental Wine producer. It does
 not use this CUA App or activate windows. Host mock tests do not establish actual
 background game control, producer expiry or preservation of the active Space.
+
+## Finite lifecycle API
+
+[The lifecycle adapter](LIFECYCLE.md) composes existing CUA guards with explicitly
+supplied process, actual-image classifier, neutral-input and local timed-capture
+adapters. It implements the offline load → safe-action proof → fixed warmup →
+stationary capture → separately admitted finite route → normal exit → process
+absence → fresh relaunch sequence. It supplies no default vision model or safe
+DS3 route. A terminal `session.finish(token, action)` consumes one observed final
+Quit action without trying to screenshot a destroyed window, and permanently
+closes that session; process reconciliation must still prove exit.
+
+Run the CPU-only workflow contracts with
+`node --test tools/gameplay/session.test.mjs tools/gameplay/lifecycle.test.mjs`.
+These passes do not admit a live executor or establish autonomous gameplay.
+
+The [local timed executor](TIMED_EXECUTOR.md) now supplies the concrete Node/Python
+adapter over the existing controller writer and native telemetry CLI. It executes
+stationary/fixed-route intervals locally with finite cancellation/cleanup,
+identity-bound receipts, trace quiescence and honest cross-process clock bounds.
+Independent displayed metrics remain explicitly inconclusive until admitted by
+the separate observer path.

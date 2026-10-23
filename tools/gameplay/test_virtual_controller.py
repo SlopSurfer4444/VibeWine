@@ -1,4 +1,5 @@
 """Host safety tests with a fake polling peer. No game or UI is launched."""
+from contextlib import contextmanager
 import importlib.util
 import json
 import os
@@ -242,6 +243,33 @@ class HostTests(unittest.TestCase):
         self.fake_peer(vc.STATE, state_status, polls=2)
         self.fake_peer(vc.RELEASE, release_status, polls=3)
 
+    @contextmanager
+    def synchronous_pulse_peer(self, state_status="STATE", release_status="RELEASE", on_publish=None):
+        """Deterministic semantic peer; asynchronous transport is tested separately.
+
+        Observe the actually published binary snapshot before emitting a receipt.
+        A controlled clock keeps disk/fsync and thread scheduling outside tests
+        whose subject is rejection/interrupt propagation rather than latency.
+        """
+        original_publish = vc.publish
+        polls = 0
+        now = [1000.0]
+        def publish(directory, manifest, flags, *args, **kwargs):
+            nonlocal polls
+            seq = original_publish(directory, manifest, flags, *args, **kwargs)
+            packet = vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())
+            self.assertEqual(packet[2], seq)
+            self.assertEqual(packet[-1], flags)
+            polls += 1
+            status = {vc.ARM: "READY", vc.STATE: state_status, vc.RELEASE: release_status}[flags]
+            self.write_ack(seq, polls, status=status)
+            if on_publish:
+                on_publish(flags, now)
+            return seq
+        with mock.patch.object(vc, "publish", side_effect=publish), \
+             mock.patch.object(vc.time, "monotonic", side_effect=lambda: now[0]):
+            yield
+
     def test_pulse_single_lock_arm_state_hold_release(self):
         self.pulse_peers()
         original_publish = vc.publish
@@ -281,9 +309,9 @@ class HostTests(unittest.TestCase):
         self.assertFalse((self.path / vc.STATE_FILE).exists())
 
     def test_pulse_state_rejection_still_releases_and_reports_failure(self):
-        self.pulse_peers(state_status="INVALID")
-        with self.assertRaisesRegex(vc.ControllerError, "pulse failed.*INVALID"):
-            vc.pulse(self.path, hold_ms=60, lx=20000)
+        with self.synchronous_pulse_peer(state_status="INVALID"):
+            with self.assertRaisesRegex(vc.ControllerError, "pulse failed.*INVALID"):
+                vc.pulse(self.path, hold_ms=60, lx=20000)
         packet = vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())
         self.assertEqual(packet[-1], vc.RELEASE)
         self.assertEqual(packet[4:11], (0, 0, 0, 0, 0, 0, 0))
@@ -311,9 +339,13 @@ class HostTests(unittest.TestCase):
         self.assertFalse(vc.status(self.path)["last_command_acknowledged"])
 
     def test_pulse_reports_primary_and_release_failures(self):
-        self.pulse_peers(state_status="INVALID", release_status="INVALID")
-        with self.assertRaisesRegex(vc.ControllerError, "pulse failed:.*INVALID.*release unacknowledged"):
-            vc.pulse(self.path, hold_ms=60, buttons=2)
+        with self.synchronous_pulse_peer(state_status="INVALID", release_status="INVALID"):
+            with self.assertRaises(vc.ControllerError) as failure:
+                vc.pulse(self.path, hold_ms=60, buttons=2)
+        primary, release = str(failure.exception).split("; release unacknowledged:", 1)
+        self.assertIn("pulse failed:", primary)
+        self.assertIn("game poll reported INVALID", primary)
+        self.assertIn("game poll reported INVALID", release)
         self.assertEqual(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())[-1], vc.RELEASE)
 
     def test_pulse_release_timeout_is_not_success(self):
@@ -324,16 +356,26 @@ class HostTests(unittest.TestCase):
         self.assertEqual(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())[-1], vc.RELEASE)
 
     def test_pulse_interrupt_during_hold_releases_without_hiding_interrupt(self):
-        self.pulse_peers()
-        original_sleep = time.sleep
         def interrupted_hold(seconds):
-            if seconds > 0.02:
-                raise KeyboardInterrupt("test interruption")
-            original_sleep(seconds)
-        with mock.patch.object(vc.time, "sleep", side_effect=interrupted_hold):
+            self.assertAlmostEqual(seconds, 0.12)
+            raise KeyboardInterrupt("test interruption")
+        with self.synchronous_pulse_peer(), mock.patch.object(vc.time, "sleep", side_effect=interrupted_hold):
             with self.assertRaisesRegex(KeyboardInterrupt, "test interruption"):
                 vc.pulse(self.path, hold_ms=120, buttons=2)
         self.assertEqual(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())[-1], vc.RELEASE)
+        self.assertFalse(vc.status(self.path)["last_command_acknowledged"])
+
+    def test_pulse_state_receipt_latency_consumes_hold_budget(self):
+        def late_state(flags, now):
+            if flags == vc.STATE:
+                now[0] += 0.061
+        with self.synchronous_pulse_peer(on_publish=late_state), mock.patch.object(vc.time, "sleep") as sleep:
+            with self.assertRaisesRegex(vc.ControllerError, "pulse failed:.*unacknowledged"):
+                vc.pulse(self.path, hold_ms=60, buttons=2)
+            sleep.assert_not_called()  # no extra hold after the already elapsed lease
+        packet = vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes())
+        self.assertEqual(packet[-1], vc.RELEASE)
+        self.assertEqual(packet[4:11], (0, 0, 0, 0, 0, 0, 0))
         self.assertFalse(vc.status(self.path)["last_command_acknowledged"])
 
     def test_pulse_arm_lease_guard_prevents_late_active_state(self):
@@ -357,6 +399,17 @@ class HostTests(unittest.TestCase):
         with self.assertRaisesRegex(vc.ControllerError, "insufficient pulse deadline"):
             vc.pulse(self.path, hold_ms=120, timeout_ms=150, buttons=2)
         self.assertEqual(vc.status(self.path)["sequence"], 2)
+
+    def test_optional_atomic_publication_fence_preserves_previous_neutral_snapshot(self):
+        self.bind()
+        previous = (self.path / vc.STATE_FILE).read_bytes()
+        with vc.locked_session(self.path) as (directory, manifest):
+            packet = vc.encode_snapshot(manifest['token'], 2, 30, pid=123, buttons=2)
+            with mock.patch.object(vc.time, 'monotonic', return_value=1001):
+                with self.assertRaisesRegex(vc.ControllerError, 'before atomic replacement'):
+                    vc.atomic_write(directory, vc.STATE_FILE, packet, not_after=1000)
+        self.assertEqual((self.path / vc.STATE_FILE).read_bytes(), previous)
+        self.assertEqual(list(self.path.glob('.write-*')), [])
 
     def test_invalid_receipt_formats(self):
         valid = f"VXIA0001 {TOKEN} 1 1 1 1 STATE".encode()

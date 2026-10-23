@@ -135,7 +135,7 @@ def read_file(directory, name, limit=8192, private=False):
         os.close(fd)
 
 
-def atomic_write(directory, name, raw):
+def atomic_write(directory, name, raw, *, not_after=None, publication_receipt=None):
     # Reject existing links/non-private files; never open a replaced target to write.
     try:
         existing = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
@@ -157,7 +157,14 @@ def atomic_write(directory, name, raw):
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
+        # Opt-in route fence: sequence reservation and fsync may have consumed
+        # the schedule budget. Reject before replacing a neutral snapshot.
+        replacement_before = time.monotonic() if not_after is not None or publication_receipt is not None else None
+        if not_after is not None and replacement_before >= not_after:
+            raise ControllerError("snapshot publication deadline elapsed before atomic replacement")
         os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
+        if publication_receipt is not None:
+            publication_receipt.update(beforeReplace=replacement_before, afterReplace=time.monotonic())
         os.fsync(directory)
     finally:
         if fd is not None:
@@ -253,7 +260,7 @@ def receipt_for(directory, manifest, seq=None, minimum_polls=None):
     return ack
 
 
-def publish(directory, manifest, flags, lease_ms=500, **gamepad):
+def publish(directory, manifest, flags, lease_ms=500, *, publication_not_after=None, lease_end=None, publication_receipt=None, **gamepad):
     if manifest["seq"] == MAX_SEQ:
         raise ControllerError("sequence exhausted; initialize a new session")
     seq = manifest["seq"] + 1
@@ -263,12 +270,25 @@ def publish(directory, manifest, flags, lease_ms=500, **gamepad):
     manifest["seq"] = seq
     manifest["armed"] = False
     save_manifest(directory, manifest)
-    atomic_write(directory, STATE_FILE, data)
+    if publication_not_after is not None and time.monotonic() >= publication_not_after:
+        raise ControllerError("snapshot publication deadline elapsed after sequence reservation")
+    if lease_end is not None:
+        remaining_ms = int((lease_end - time.monotonic()) * 1000)
+        if remaining_ms < 1:
+            raise ControllerError("snapshot lease budget elapsed after sequence reservation")
+        lease_ms = min(lease_ms, remaining_ms)
+        data = encode_snapshot(manifest["token"], seq, lease_ms,
+                               pid=manifest["pid"], flags=flags, **gamepad)
+    write_options = {}
+    if publication_not_after is not None: write_options['not_after'] = publication_not_after
+    if publication_receipt is not None: write_options['publication_receipt'] = publication_receipt
+    atomic_write(directory, STATE_FILE, data, **write_options)
     return seq
 
 
 def _command_locked(directory, manifest, flags, lease_ms=500, timeout_ms=1500,
-                    *, not_after=None, fresh_lease=False, cleanup_on_failure=True, **gamepad):
+                    *, not_after=None, fresh_lease=False, cleanup_on_failure=True,
+                    publication_not_after=None, lease_end=None, publication_receipt=None, **gamepad):
     if flags == STATE and not manifest["armed"]:
         raise ControllerError("a fresh acknowledged neutral ARM is required")
     if flags == RELEASE and not manifest["pid"]:
@@ -294,7 +314,14 @@ def _command_locked(directory, manifest, flags, lease_ms=500, timeout_ms=1500,
     started = time.monotonic()
     if not_after is not None and started >= not_after:
         raise ControllerError("command deadline elapsed before publication")
-    seq = publish(directory, manifest, flags, lease_ms, **gamepad)
+    publish_options = dict(gamepad)
+    if publication_not_after is not None:
+        publish_options['publication_not_after'] = publication_not_after
+    if lease_end is not None:
+        publish_options['lease_end'] = lease_end
+    if publication_receipt is not None:
+        publish_options['publication_receipt'] = publication_receipt
+    seq = publish(directory, manifest, flags, lease_ms, **publish_options)
     deadline = started + timeout_ms / 1000
     if not_after is not None:
         deadline = min(deadline, not_after)
