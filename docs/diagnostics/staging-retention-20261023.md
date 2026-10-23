@@ -39,6 +39,14 @@ rebuilt across all 69 translation units. Its Metal helper content and PE import/
 export names and ordinals were unchanged. The candidate is not installed, and no
 game was launched. The historical `current/` snapshot remains unchanged.
 
+The headless hardware D3D11 guest in
+`tests/vibewine/staging-retention/gpu/` subsequently passed in a copied runtime and
+authless disposable prefix. It verified 192 byte-exact snapshots, three aging
+windows, 2937 checks and 1164 event queries, then exited zero before the isolated
+server was shut down. Engine and prefix module hashes were checked before and
+after execution. This extends correctness evidence to real GPU copies; it does
+not measure the retained pool size or game performance.
+
 ## Relationship to the reported freeze
 
 The saved Metal timeline confirms one displayed frame held for 42.066 seconds.
