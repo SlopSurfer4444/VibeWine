@@ -1,5 +1,8 @@
 # Checking and building current Wave7 sources
 
+**Historical checkpoint.** Use the [current status](docs/STATUS.md)
+and [component build guide](docs/BUILDING.md) for new development.
+
 On macOS with Python 3 and Xcode Command Line Tools, run `python3 tests/run_wave7.py` from this repository. The current focused runner checks frozen source hashes, copies the export into a disposable directory, and executes event 77, persistence, R1, B1/B2, pure AX, consumer and mask checks. `--sanitizer none|address|thread` selects a narrower mode for event 77/persistence; default `all` uses all three. R1 and clear-pipeline runners retain their own regular/sanitizer controls. No Wine/game or AppKit application is launched by the default aggregate.
 
 The previous aggregate is preserved under history/wave7-checked-mask as historical source. Its old --mutation-check/--include-history flags are not current-runner options. Earlier component fixtures remain available separately; they are not automatically accepted against a changed production tree.

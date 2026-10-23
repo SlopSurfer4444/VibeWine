@@ -1,5 +1,17 @@
 # DXMT patch provenance
 
+## Current follow-up, 24 October 2026
+
+The matched build source is `356cc60d500f11d59dd2cb215250b2a08b07e8ba`;
+public equivalent `14e3a6a88288b8b69ff84b0b8c69c8c2af663385` has the exact
+same tree. The [publication map](focused-publication-20261024.json) records all
+three new commit pairs. Later publication-only test-reference changes preserve
+production bytes. The selected closure is installed with verified hash readback
+and no-op convergence; real-game exit/relaunch and FPS acceptance remain open.
+See [the focused evidence](../diagnostics/focused-followup-20261024.md).
+
+The dated checkpoints below retain their original scope and acceptance limits.
+
 ## Integrated candidate checkpoint, 2026-10-23
 
 New candidate source: `828429ca6b142230399d98272207af7714f12895`; matched PE/native bridge/compiler, helper and epoch-2 cache namespace. It was built and signed in a separate

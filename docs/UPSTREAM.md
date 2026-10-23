@@ -40,6 +40,13 @@ historical build records are retained. A subsequent documentation-only commit
 updates public baseline references; production/test code remains identical.
 No published history is force-rewritten and no new runtime build is inferred.
 
+The 24 October follow-up has a separate
+[publication map](provenance/focused-publication-20261024.json) for three new
+DXMT commits. It preserves the same source trees and original local history.
+The public workspace also replaces one unpublished DXMT gitlink with its mapped
+equivalent; all other files of that intermediate workspace checkpoint match.
+No existing public history is rewritten.
+
 ## Update flow
 
 Fetch upstream in an isolated component branch; inspect changes and

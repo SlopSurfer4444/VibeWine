@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "kind": "metadata-sanitized-public-equivalents",
+  "alreadyPublicBase": "828429ca6b142230399d98272207af7714f12895",
+  "auditedBuildSource": "356cc60d500f11d59dd2cb215250b2a08b07e8ba",
+  "publicEquivalentTip": "14e3a6a88288b8b69ff84b0b8c69c8c2af663385",
+  "mapping": [
+    {
+      "auditedLocalCommit": "3dfb89c2b1ece8dba19d7a1c22657b8779d33b6d",
+      "publicCommit": "cbb49af47bfac8dde208c02df30cc0612120f51a",
+      "tree": "d5c98b629e498ec6e702229962c5005b760b0554",
+      "subject": "winemetal: avoid native release after process shutdown begins"
+    },
+    {
+      "auditedLocalCommit": "2902c0deffcf9ed79bef7791ca598ead7f18e0b9",
+      "publicCommit": "12a7ebf1ddf0689d1f054ccb02b1e30d4c5fe6e5",
+      "tree": "a8120384bdb3a4fdd7809c36b0b882e1bb750058",
+      "subject": "trace: add bounded opt-in compiler and readiness profile"
+    },
+    {
+      "auditedLocalCommit": "356cc60d500f11d59dd2cb215250b2a08b07e8ba",
+      "publicCommit": "14e3a6a88288b8b69ff84b0b8c69c8c2af663385",
+      "tree": "c10414dc0fc5adc13281b9125ae571067e2cc94f",
+      "subject": "winemetal: declare shutdown query against production MinGW headers"
+    }
+  ],
+  "verification": "Each mapped public commit has exactly the audited local Git tree. Author names/dates/messages, original source and licenses remain; unpublished email metadata uses the public GitHub account. Original local history and build receipts are unchanged.",
+  "limits": "Tree identity is not another build, game validation or FPS result.",
+  "workspacePublication": {
+    "schema": 1,
+    "localHubSource": "ff97b0862e67feb2d4a0af2473056b4a1806f13a",
+    "publicHubEquivalent": "76519e1df89edfb42bfe860cf8ce3a3b08bec567",
+    "scope": "same hub files, only DXMT gitlink replaced by exact-tree public equivalent"
+  },
+  "workspacePin": "236089329156243f6c3777b4114be38b50bb4301",
+  "publicationOnlyFollowup": "Changes the production-header negative-control reference to its public equivalent; production source unchanged."
+}

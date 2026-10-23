@@ -7,12 +7,12 @@ windows, Retina, accessibility, game compatibility and performance you can
 measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
-**Current checkpoint: 23 October 2026.** A fresh selected Wine/DXMT candidate
-passed matched builds, isolated font/shutdown controls and native offscreen GPU
-tests. It includes general compiler scheduling/persistence, query publication,
-command batching and native lifecycle improvements. Installation and controlled
-game performance acceptance of this wave remain pending; the previous runtime
-has an owner-reported good DS3 session.
+**Current checkpoint: 24 October 2026.** The selected Wine/DXMT closure is
+installed in the owner's DS3 runtime; repeated installation made no changes.
+The latest follow-up adds process-shutdown-safe Metal release, an opt-in
+compiler/wait trace profile and explicit scene-label tooling. Matched builds
+and native regressions pass. Real-game exit/relaunch on this follow-up and controlled FPS
+comparisons are still pending. [Changes and checks](docs/diagnostics/focused-followup-20261024.md).
 
 This repository distributes source, not a ready-to-install Wine runtime.
 [Selected upstream/fork backports](docs/integrations/fork-review-20261023.md),
@@ -21,6 +21,21 @@ This repository distributes source, not a ready-to-install Wine runtime.
 
 [Patch origins](docs/PATCHES.md) · [Current status](docs/STATUS.md) ·
 [Build guide](docs/BUILDING.md) · [Contribute](CONTRIBUTING.md)
+
+## Start here
+
+| You want to… | Authoritative place |
+| --- | --- |
+| Change Wine or DXMT | `components/wine` or `components/dxmt`, pinned below |
+| Find a general fix and its original author | [Patch origins](docs/PATCHES.md) |
+| Change behavior for one game | [Game-policy map](profiles/README.md); it names the actual engine gates |
+| Run measurements or test control | [Telemetry](tools/telemetry/README.md) / [gameplay tools](tools/gameplay/README.md) |
+| See what is built, installed or actually tested | [Status](docs/STATUS.md) |
+
+The top-level `current/`, `native/`, `renderer/`, `ntdll/`, `baseline/` and
+`WAVE*` material is retained history. It is not a second active engine tree.
+New contributions start in the component trees; historical paths remain stable
+for source attribution and old reproductions.
 
 ## Get the source
 
@@ -39,7 +54,8 @@ python3 scripts/workspace.py check
 | [Telemetry](tools/telemetry/README.md) and [gameplay tools](tools/gameplay/README.md) | Analysis, bounded test control and reproducible test protocols | `main` |
 | [Experiments](experiments/README.md) | Opt-in instrumentation and native presentation probes | `main` |
 
-Components are pinned submodules hosted on branches in this same repository.
+The workspace pins Wine `e20af583` and DXMT `23608932`. Components are pinned
+submodules hosted on branches in this same repository.
 Updating a component branch does not silently update the workspace pin. GitHub's
 main-branch ZIP omits submodule contents; use a recursive clone or the component
 links above. The selected candidate is rebuilt from these pins over a retained

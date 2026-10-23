@@ -1,4 +1,12 @@
-# Current post-Wave7 entry points
+# Historical snapshot source index
+
+This index records earlier checkpoints, including their original “current” and
+“installed” wording. It is not the active development map. Start new work in
+[`components/`](README.md#get-the-source); use [status](docs/STATUS.md) for the
+current source/build/install checkpoint and [patch origins](docs/PATCHES.md) for
+scope and attribution. Historical paths and evidence below remain unchanged.
+
+## Post-Wave7 entry points (18 October 2026)
 
 - `current/ntdll/sync.c`: NtQueryDirectoryObject byte-argument correctness.
 - `current/winemac/window.c`: top-level raw client extent.

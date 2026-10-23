@@ -58,30 +58,17 @@ The pinned Wine component passed reduced-dependency module compilation for
 native winemac, ntdll and win32u, and i386/x86_64 PE oleacc and winemac modules.
 This is not a complete production-feature Wine runtime build.
 
-The installed graphics bundle corresponds to the earlier locally audited matched
-build recorded in [DXMT provenance](provenance/dxmt.md). Its complete Meson build
-compiled/linked the PE, native Metal, AIRCONV and Metal-helper components; the
-compiler command-line tool passed its help invocation. Subsequent isolated GPU
-checks, private installation and ordinary-launch observations are listed in
-[status](STATUS.md). Public equivalents retain the same code; publication-only
-documentation changes do not rerun those builds.
+The current selected Wine/graphics closure passed the matched builds recorded
+in [status](STATUS.md) and the [24 October follow-up](diagnostics/focused-followup-20261024.md).
+This covers matching PE/native graphics, static AIRCONV, the Metal helper and
+selected paired Wine modules over retained engine/dependency assets. It is not
+a full clean-room Wine distribution. The public equivalents preserve production
+source; publication-only reference/documentation changes do not rerun a build.
 
-The newer development pins select [upstream and fork source fixes](integrations/fork-review-20261023.md).
-Their component notes document focused source/CPU regressions and syntax checks.
-The deeper follow-up also checks real Darwin `kqueue` timeout races, native
-AppKit window levels and Metal-view FIFO ownership, and the actual SM50 public
-converter API. Native window fixtures require a logged-in WindowServer and fail
-when it is unavailable; the hosted workflow does not claim those GUI checks.
-SM50 tests require the separately provisioned LLVM14/support build. Optional
-Vulkan enumeration has a host-contract fixture, not a live MoltenVK loader test.
-These do not extend the old full-build result to a new runtime: a newly matched
-compiler, PE libraries, native bridge and helper build, dependency checks and
-runtime acceptance remain required before activation.
-
-Those results do not establish a full production-feature Wine rebuild or
-measured FPS improvement. The test runtime retained Wine artifacts from multiple
-source/build revisions. [Exact source patches](../patches/runtime-2026-10-23/README.md)
-and [Wine provenance](provenance/wine.md) record their separate bases, configured
-dependency requirements and composite NTDLL limitations. Apply/check those patches
-only in a disposable checkout of the named base; they are not a single blind
-patch queue for the stable Wine pin.
+The [fork review](integrations/fork-review-20261023.md) and component notes record
+the imported fixes and focused source/native checks. Some fixtures need a real
+WindowServer, configured Wine build, LLVM or Metal SDK; hosted checks do not
+stand in for those prerequisites or live game acceptance. Existing exact runtime
+source patches describe the older composite baseline. Follow their named bases
+for historical reproduction, rather than applying them as a blind queue onto
+the new component pins. Controlled game performance remains pending.

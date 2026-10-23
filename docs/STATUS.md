@@ -1,26 +1,45 @@
-# Current source/build checkpoint and installed baseline
+# Current source, installation and checks
 
-Reconciled **2026-10-23**. The integrated candidate binds Wine
-`e20af58312ef059e54f8d16767ee7b74cb8358e5` and DXMT
-`828429ca6b142230399d98272207af7714f12895`. All 22 selected Wine/graphics
-artifacts were freshly built together; this includes both PE architectures,
-matching client/server, native window/font modules, graphics bridge and compiler.
-It remains a selected closure over the retained engine/dependencies, not a full
-reproducible engine distribution. Compiler cache output uses epoch 2.
+Reconciled **24 October 2026**. This is the authoritative current checkpoint;
+dated snapshot documents retain their original historical claims.
 
-The final signed candidate passed isolated native GDI font rasterization and its
-blank-image control, all five offscreen GPU stages and three deliberately broken
-GPU controls with correct natural exit statuses. A separate 32-run native PE
-shutdown test passed after a reproduced SIGQUIT reentry repair. Source/sanitizer
-fixtures cover the scheduler/persistence, query publication/retirement, native
-configuration and command batching changes. See the [integrated build record](diagnostics/integrated-wave-20261023.md)
-and [patch review](integrations/independent-performance-review-20261023.md).
+| Layer | Current state | What it does not establish |
+| --- | --- | --- |
+| Development source | Wine `e20af583`; DXMT `23608932` (production tree from public equivalent `14e3a6a8`, plus test-reference and documentation changes) | A component branch tip is not an installed runtime |
+| Matched build | Selected Wine modules and matching client/server; D3D11, DXGI, D3D10Core, WineMetal PE/native and static AIRCONV; compiler cache epoch 2 | Full reproducible Wine distribution or every optional feature |
+| Installation | Selected 22-file closure installed in the owner's ordinary DS3 runtime; hash readback matched and repeated installation made no changes; prior recovery retained | This follow-up's real-game exit/relaunch or FPS acceptance |
+| Latest correctness checks | Terminal release old-fail/new-pass controls on arm64 and Rosetta, real NTDLL lifecycle controls, production MinGW-header compilation, five offscreen GPU stages and three rejected broken controls | A cure for every game hang |
+| Latest diagnostics | 178 offline telemetry checks; process-bound observed phase labels and opt-in compiler/wait coverage; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
+| Game observations | Earlier owner reports described usable play under background load; a previous unlabeled 1080p stream was retained | Controlled before/after FPS, clean gameplay-only timing or a causal network repair |
 
-**Installation and gameplay acceptance of this candidate are pending.** The
-existing installed epoch-1 bundle is unchanged at this checkpoint. The table and
-retained provenance below describe that previous installed baseline, not the new
-candidate. No numerical FPS gain, universal game compatibility or autonomous
-gameplay follows from these build/fixture results.
+The exact locally built DXMT revision is `356cc60d500f11d59dd2cb215250b2a08b07e8ba`.
+Its [public equivalents](provenance/focused-publication-20261024.json) retain
+identical trees while excluding unpublished machine-local email metadata.
+Later test-reference and documentation changes do not change production code or imply a
+new runtime build. The private install/admission tooling and licensed retained
+engine dependencies are not distributed here.
+
+See [the focused changes and checks](diagnostics/focused-followup-20261024.md)
+and the [earlier integrated build record](diagnostics/integrated-wave-20261023.md).
+
+## Open acceptance
+
+- Real-game normal exit and a fresh launch with Steam left open on the latest
+  installed follow-up; investigate any surviving CPU-heavy process.
+- Actual menu/loading/gameplay phase labels in a new capture; comparable cold
+  and warm frame times at fixed scene, settings, resolution and power state.
+- Compiler/wait profile activation through the supported launch route. The
+  producer/decoder are implemented; the installed launcher does not yet expose
+  this profile option. Filtering does not enlarge the fixed trace capacity.
+- Resolution/Retina transitions, Mission Control cursor release, and reliable
+  input on another Space remain separate live checks.
+- Intermittent server access and multiplayer latency remain unlocalized; no
+  networking or FPS cure is inferred from an earlier successful session.
+
+## Earlier checkpoint: before the 24 October promotion
+
+The table below describes the retained epoch-1 baseline and its evidence. It is
+historical, not the current installation inventory.
 
 ## Previous installed baseline
 

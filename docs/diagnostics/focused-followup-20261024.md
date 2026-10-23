@@ -1,7 +1,7 @@
 # Exit and frame-hitch follow-up, 24 October 2026
 
 Wine remains `e20af58312ef059e54f8d16767ee7b74cb8358e5`. The new DXMT
-candidate is `356cc60d500f11d59dd2cb215250b2a08b07e8ba`, following the
+build source is `356cc60d500f11d59dd2cb215250b2a08b07e8ba`, following the
 previous `828429ca` matched graphics build. These are component/build identities;
 they do not claim that every Wine feature was rebuilt or every game was tested.
 
@@ -27,6 +27,17 @@ query tests with actual candidate module mappings; three deliberately broken
 GPU controls were rejected. These establish covered correctness, not a game
 freeze cure. Actual installed DS3 exit/relaunch remains a separate gate.
 
+## Installation checkpoint
+
+The selected 22-file Wine/graphics closure was promoted through the existing
+matched-runtime transaction, with prior recovery retained. Fresh installed
+hash readback matched, and repeating the operation made no changes. The ordinary
+launcher uses that installed closure. The public DXMT equivalent is
+`14e3a6a88288b8b69ff84b0b8c69c8c2af663385`; the
+[tree-equality map](../provenance/focused-publication-20261024.json) binds it to
+the actual build source. No real-game exit/relaunch result on this follow-up is
+claimed yet. Packaging did not replace game files, saves or caches.
+
 ## Diagnostic changes
 
 - `DXMT_CS2_TRACE_PROFILE=compile-waits` selects the existing compiler, readiness,
@@ -41,7 +52,13 @@ freeze cure. Actual installed DS3 exit/relaunch remains a separate gate.
 - The temporary collection adapter disables automatic stack sampling by default
   and timestamps copied log-byte ranges. A nominal one-second native sample in
   the previous run lived for over eight seconds and overlapped late hitches.
-  Source/adapter tests and activation are reported separately.
+  Source/adapter tests and activation are reported separately; the revised
+  collection adapter is packaged but has not yet been activated in a new game
+  session.
+
+The installed launcher does not yet expose `compile-waits`; setting an external
+shell variable does not activate it through the launcher’s fixed environment.
+The producer/decoder feature and supported live activation are separate gates.
 
 The maintained collector/analyzer passed 178 offline checks including the new
 profile and phase cases. They do not establish live labels or instrumentation
@@ -57,8 +74,9 @@ These engine repairs and diagnostic policies have no DS3 image check. DS3 startu
 and resolution policy stays in its existing profile. The private delivery adapter
 also corrects current-helper versus historical-native endpoint validation while
 retaining every historical image edge; it is an installation lifecycle repair,
-not a graphics optimization. Runtime installation, ordinary application launch,
-real game exit/relaunch and labeled cold/warm comparison remain explicit evidence.
+not a graphics optimization. Runtime installation is verified separately from
+actual application launch,
+real game exit/relaunch and labeled cold/warm comparison.
 
 No new permanent service, cache purge or cleaner is introduced. Capture scopes
 reuse seven-day raw retention, a sampled 256 MiB capture cap and 30-day/4 MiB
