@@ -28,6 +28,12 @@ NSObject_retain(obj_handle_t obj) {
 
 WINEMETAL_API void
 NSObject_release(obj_handle_t obj) {
+  /* Process shutdown has already terminated the other Windows threads. They
+   * may have held host allocator or Objective-C locks, so releasing an object
+   * can deadlock here. The OS reclaims these process-lifetime resources.
+   * Ordinary releases and explicit DLL unload still need normal ownership. */
+  if (RtlDllShutdownInProgress())
+    return;
   UNIX_CALL(1, &obj);
 }
 
