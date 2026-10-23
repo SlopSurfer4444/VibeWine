@@ -58,13 +58,19 @@ The pinned Wine component passed reduced-dependency module compilation for
 native winemac, ntdll and win32u, and i386/x86_64 PE oleacc and winemac modules.
 This is not a complete production-feature Wine runtime build.
 
-The current DXMT production source corresponds to the locally audited matched
+The installed graphics bundle corresponds to the earlier locally audited matched
 build recorded in [DXMT provenance](provenance/dxmt.md). Its complete Meson build
 compiled/linked the PE, native Metal, AIRCONV and Metal-helper components; the
 compiler command-line tool passed its help invocation. Subsequent isolated GPU
 checks, private installation and ordinary-launch observations are listed in
 [status](STATUS.md). Public equivalents retain the same code; publication-only
 documentation changes do not rerun those builds.
+
+The newer development pins select [upstream and fork source fixes](integrations/fork-review-20261023.md).
+Their component notes document focused source/CPU regressions and syntax checks.
+These do not extend the old full-build result to a new runtime: a newly matched
+compiler, PE libraries, native bridge and helper build, dependency checks and
+runtime acceptance remain required before activation.
 
 Those results do not establish a full production-feature Wine rebuild or
 measured FPS improvement. The test runtime retained Wine artifacts from multiple

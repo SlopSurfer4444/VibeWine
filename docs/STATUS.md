@@ -3,6 +3,12 @@
 Last reconciled: **2026-10-23**. This describes a private macOS test installation
 and source published for inspection. It is not a downloadable binary release.
 
+The workspace development pins now include [six selected source backports](integrations/fork-review-20261023.md)
+from Wine, Proton-GE, Highball and DXMT. Their focused regressions are separate
+from the earlier installed-bundle evidence below. No newly matched runtime build
+or activation of these backports has occurred. Compiler output uses epoch 2 in
+development; the installed matched bundle retains epoch 1.
+
 | Layer | Observation | Limit |
 | --- | --- | --- |
 | Source | Pinned complete Wine/DXMT trees; per-patch origins and exact source deltas | Wine vendor import has no verified exact WineHQ Git ancestor |
@@ -25,7 +31,7 @@ objects and subsequently signed; publishing source/recipes does not establish a
 full reproducible rebuild. See [Wine provenance](provenance/wine.md) and the
 [exact patches](../patches/runtime-2026-10-23/README.md).
 
-The stable Wine component pin is distinct from those experimental branches and
+The development Wine component pin is distinct from those experimental branches and
 native snapshots. Cloning, updating Git branches and workspace checks do not
 install or switch an owner's runtime.
 

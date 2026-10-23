@@ -26,6 +26,11 @@ separates the stable component, experimental XInput/network branches and exact
 The installed test mixture is not a new Wine release or a clean rebuild of the
 stable component pin.
 
+[The 2026-10-23 fork review](integrations/fork-review-20261023.md) records later
+development backports, including small personal forks, rejected duplicates and
+platform/ABI mismatches. These source changes are distinct from the prior matched
+bundle and preserve original upstream author and license attribution.
+
 Six previously unpublished DXMT commits used machine-local email metadata.
 Their public equivalents preserve exact source trees, original author
 names/dates/messages, upstream ancestry and licenses while using the public

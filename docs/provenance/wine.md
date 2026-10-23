@@ -1,5 +1,11 @@
 # Wine patch origins and installed-source gap
 
+This inventory describes the **pre-backport pin** below and retained installed
+modules. Later development-only Wine/Proton-GE/Highball imports are recorded in
+[the fork review](../integrations/fork-review-20261023.md) and the component's
+`vibewine/UPSTREAM_BACKPORTS.md`. They do not change the named bases or original
+source hashes of the retained runtime patches.
+
 Audited 2026-10-23 against the workspace Wine pin
 `7469fcf53c4f537dfe305e961bffb0495d7b750d`. This page distinguishes the
 published development baseline from retained source evidence for the later

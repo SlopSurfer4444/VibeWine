@@ -1,5 +1,11 @@
 # DXMT patch provenance
 
+This page inventories the **matched-build baseline**, including its nine logical
+local changes. Later development-only upstream imports and cache epoch 2 are
+recorded in [the fork review](../integrations/fork-review-20261023.md) and
+[component backport notes](../../components/dxmt/docs/upstream-backports-20261023.md).
+They are not covered by the original matched-build or gameplay evidence below.
+
 Reviewed 2026-10-23 against audited local build-source component
 `5cf1662beee80e428810a49f0d5564569884b1bb`. Public publication identities
 are distinguished below. This is a source and evidence inventory; it does not enable profiles, install binaries or claim an FPS gain.

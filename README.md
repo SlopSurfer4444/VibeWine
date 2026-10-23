@@ -13,6 +13,10 @@ reported a good DS3 gameplay session on the matching trial. Controlled FPS gains
 sustained freeze elimination and compatibility with other games remain open.
 This repository distributes source, not a ready-to-install Wine runtime.
 
+The development pins also include [selected upstream/fork backports](docs/integrations/fork-review-20261023.md)
+with focused regressions. These newer source changes are not installed in that
+previously tested runtime and have no measured FPS result.
+
 [Patch origins](docs/PATCHES.md) · [Current status](docs/STATUS.md) ·
 [Build guide](docs/BUILDING.md) · [Contribute](CONTRIBUTING.md)
 

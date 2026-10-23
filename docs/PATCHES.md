@@ -17,6 +17,8 @@ or a claim that every feature is enabled in the installed test runtime.
 | Socket/readiness metadata | Local experimental Wine branch | Opt-in diagnostics, not an established server fix | [Wine provenance](provenance/wine.md) |
 | DS3 modes, aspect and borderless policy | Local title-specific compatibility | Exact title/profile gates | [DXMT gates](provenance/dxmt.md), [profiles](../profiles/README.md) |
 | Metrics and presentation probes | Local tooling / experiments | Explicit test/capture use | [Telemetry](../tools/telemetry/README.md), [experiments](../experiments/README.md) |
+| Clipboard ownership, SRW wake avoidance, reentrant handle close and MSync registration cleanup | Selected Wine, Proton-GE and Highball patches | General source backports; not installed by this integration | [Fork audit and exact upstream revisions](integrations/fork-review-20261023.md) |
+| Hull relative indexing and four context lock entries | DXMT upstream backports | General compiler/context correctness; development cache epoch 2 | [Source audit](integrations/fork-review-20261023.md), [component checks](../components/dxmt/docs/upstream-backports-20261023.md) |
 
 ## Which source represents the installed test?
 

@@ -36,3 +36,23 @@ jobs:
           python-version: '3.12'
       - run: git submodule update --init components/dxmt
       - run: python3 tools/telemetry/check.py
+  backports:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: git submodule update --init components/wine components/dxmt
+      - run: python3 components/wine/vibewine/verify_source.py
+      - run: python3 components/wine/vibewine/tests/backports.py
+      - run: python3 components/wine/vibewine/tests/msync_registration.py --source-dir components/wine
+      - run: python3 tests/vibewine/compile_regressions.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/context-locks/run.py --sanitize
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/context-locks/run.py --source-ref e7b02196a31dc633ac802c9c27b88dbdd8f40dca --expect-unlocked-baseline --sanitize
+        working-directory: components/dxmt
