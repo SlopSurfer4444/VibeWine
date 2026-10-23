@@ -356,6 +356,33 @@ static inline int check_shm_contention( void **objs_shm, void *alert_obj_shm, in
     return 0;
 }
 
+/* Registration acknowledgments share the thread word with the normal wait. A
+ * client arms ACK_PARKED before sleeping; the pump must wake that state when it
+ * publishes the acknowledgment (see acknowledge_wait() in server/msync.c). */
+#define MSYNC_ACK_PENDING 2
+#define MSYNC_ACK_PARKED  3
+#define MSYNC_ACK_SPINS   4096
+#define MSYNC_ACK_SLICE_NS 10000000
+
+#if defined(__x86_64__) || defined(__i386__)
+#define MSYNC_ACK_YIELD __asm__ __volatile__( "pause" ::: "memory" )
+#elif defined(__aarch64__)
+#define MSYNC_ACK_YIELD __asm__ __volatile__( "yield" ::: "memory" )
+#else
+#define MSYNC_ACK_YIELD do {} while (0)
+#endif
+
+/* A dead send right cannot ever acknowledge a registration. Polling it while
+ * waiting for the ACK needs no watcher thread or additional Mach port. */
+static inline void check_msync_server( void )
+{
+    mach_port_type_t type;
+    kern_return_t ret = mach_port_type( mach_task_self(), server_port, &type );
+
+    if (ret == KERN_INVALID_NAME || (ret == KERN_SUCCESS && (type & MACH_PORT_TYPE_DEAD_NAME)))
+        abort_thread( 0 );
+}
+
 static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert_obj, void *alert_obj_shm,
                                      int count, ULONGLONG *end, int tid )
 {
@@ -364,18 +391,23 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
     ULONGLONG ns_timeleft = 0;
     mach_msg_return_t mr;
     unsigned int msgh_id;
+    unsigned int spins = 0;
     int total_count = count + (alert_obj ? 1 : 0);
 
-    __atomic_store_n( addr, 2, __ATOMIC_RELEASE );
+    __atomic_store_n( addr, MSYNC_ACK_PENDING, __ATOMIC_RELEASE );
     msgh_id = (tid << 8) | total_count;
     mr = server_register_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
 
     if (mr != MACH_MSG_SUCCESS)
-        return STATUS_PENDING;
-
-    while (__atomic_load_n( addr, __ATOMIC_ACQUIRE ) == 2)
     {
-        if (check_shm_contention( objs_shm, alert_obj_shm, count, tid ))
+        check_msync_server();
+        return STATUS_PENDING;
+    }
+
+    while ((val = __atomic_load_n( addr, __ATOMIC_ACQUIRE )) == MSYNC_ACK_PENDING || val == MSYNC_ACK_PARKED)
+    {
+        if ((!(spins & 63) || spins >= MSYNC_ACK_SPINS)
+                && check_shm_contention( objs_shm, alert_obj_shm, count, tid ))
         {
             /* The server still gets the registration sent above and, if nothing it waits
              * for is signaled by then, keeps this thread on every object's list. Nothing
@@ -387,8 +419,45 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
             server_remove_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
             return STATUS_PENDING;
         }
+
+        if (end && (!(spins & 63) || spins >= MSYNC_ACK_SPINS)
+                && !(ns_timeleft = update_timeout( *end ) * 100))
+        {
+            server_remove_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
+            return STATUS_TIMEOUT;
+        }
+
+        if (spins < MSYNC_ACK_SPINS)
+        {
+            ++spins;
+            MSYNC_ACK_YIELD;
+            continue;
+        }
+
+        if (val == MSYNC_ACK_PENDING)
+        {
+            int expected = MSYNC_ACK_PENDING;
+
+            if (!__atomic_compare_exchange_n( addr, &expected, MSYNC_ACK_PARKED, 0,
+                                              __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST ))
+                continue;
+        }
+
+        check_msync_server();
+        /* Bound the ACK park even for an infinite object wait, so a dead server
+         * or an alert published while the pump is stalled is noticed. A slice
+         * timeout only rechecks the ACK; it is not the object's deadline. */
+        if (!end || ns_timeleft > MSYNC_ACK_SLICE_NS) ns_timeleft = MSYNC_ACK_SLICE_NS;
+        ret = ulock_wait( UL_COMPARE_AND_WAIT_SHARED | ULF_NO_ERRNO, addr, MSYNC_ACK_PARKED, ns_timeleft );
+        if (ret && ret != -EINTR && ret != -EFAULT && ret != -EAGAIN && ret != -ETIMEDOUT)
+        {
+            server_remove_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
+            return STATUS_PENDING;
+        }
     }
 
+    /* ACK slices must not become a deadline for an infinite object wait. */
+    ns_timeleft = 0;
     do
     {
         if (end)

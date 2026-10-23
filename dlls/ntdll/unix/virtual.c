@@ -4823,14 +4823,14 @@ ssize_t virtual_locked_pread( int fd, void *addr, size_t size, off_t offset )
 /***********************************************************************
  *           virtual_locked_recvmsg
  */
-ssize_t virtual_locked_recvmsg( int fd, struct msghdr *hdr, int flags )
+ssize_t virtual_locked_recvmsg( int fd, struct msghdr *hdr, int flags, struct wine_netdiag_event *diag )
 {
     sigset_t sigset;
     size_t i;
     BOOL has_write_watch = FALSE;
     int err = EFAULT;
 
-    ssize_t ret = recvmsg( fd, hdr, flags );
+    ssize_t ret = netdiag_recvmsg( fd, hdr, flags, diag );
     if (ret != -1 || use_kernel_writewatch || errno != EFAULT) return ret;
 
     server_enter_uninterrupted_section( &virtual_mutex, &sigset );
@@ -4839,7 +4839,7 @@ ssize_t virtual_locked_recvmsg( int fd, struct msghdr *hdr, int flags )
             break;
     if (i == hdr->msg_iovlen)
     {
-        ret = recvmsg( fd, hdr, flags );
+        ret = netdiag_recvmsg( fd, hdr, flags, diag );
         err = errno;
     }
     if (has_write_watch)

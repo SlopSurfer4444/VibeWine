@@ -144,6 +144,7 @@ enum ws_unix_funcs
     ws_unix_gethostbyname,
     ws_unix_gethostname,
     ws_unix_getnameinfo,
+    ws_unix_netdiag,
     ws_unix_funcs_count,
 };
 

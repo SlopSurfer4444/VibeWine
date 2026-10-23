@@ -27,6 +27,7 @@
  */
 
 #include "ws2_32_private.h"
+#include "netdiag_pe.h"
 
 #define FILE_USE_FILE_POINTER_POSITION ((LONGLONG)-2)
 
@@ -827,6 +828,10 @@ SOCKET WINAPI accept( SOCKET s, struct sockaddr *addr, int *len )
         CloseHandle( SOCKET2HANDLE(ret) );
         return INVALID_SOCKET;
     }
+    {
+        struct wine_netdiag_event diag = netdiag_begin( ND_SOCKET, ret );
+        netdiag_result( &diag, ND_OPEN, 0, 0, ret );
+    }
     if (addr && len && getpeername( ret, addr, len ))
     {
         closesocket( ret );
@@ -1244,6 +1249,7 @@ int WINAPI bind( SOCKET s, const struct sockaddr *addr, int len )
  */
 int WINAPI closesocket( SOCKET s )
 {
+    struct wine_netdiag_event diag;
     TRACE( "%#Ix\n", s );
 
     if (!num_startup)
@@ -1258,7 +1264,11 @@ int WINAPI closesocket( SOCKET s )
         return -1;
     }
 
-    CloseHandle( (HANDLE)s );
+    diag = netdiag_begin( ND_CLOSE, s );
+    if (CloseHandle( (HANDLE)s ))
+        netdiag_result( &diag, ND_CLOSED, 0, 0, 0 );
+    else
+        netdiag_result( &diag, ND_OBSERVED, 0, GetLastError(), 0 );
     return 0;
 }
 
@@ -1268,6 +1278,7 @@ int WINAPI closesocket( SOCKET s )
  */
 int WINAPI connect( SOCKET s, const struct sockaddr *addr, int len )
 {
+    struct wine_netdiag_event diag = netdiag_begin( ND_CONNECT, s );
     struct afd_connect_params *params;
     IO_STATUS_BLOCK io;
     HANDLE sync_event;
@@ -1275,23 +1286,38 @@ int WINAPI connect( SOCKET s, const struct sockaddr *addr, int len )
 
     TRACE( "socket %#Ix, addr %s, len %d\n", s, debugstr_sockaddr(addr), len );
 
-    if (!(sync_event = get_sync_event())) return -1;
+    if (!(sync_event = get_sync_event()))
+    {
+        netdiag_result( &diag, ND_COMPLETE, 0, GetLastError(), -1 );
+        return -1;
+    }
 
     if (!(params = malloc( sizeof(*params) + len )))
     {
         SetLastError( ERROR_NOT_ENOUGH_MEMORY );
+        netdiag_result( &diag, ND_COMPLETE, 0, GetLastError(), -1 );
         return -1;
     }
     params->addr_len = len;
     params->synchronous = TRUE;
     memcpy( params + 1, addr, len );
+    if (diag.operation_id)
+    {
+        if (len > 0) netdiag_endpoint( &diag, (const struct sockaddr *)(params + 1), len );
+        netdiag_result( &diag, ND_ATTEMPT, 0, 0, 0 );
+    }
 
     status = NtDeviceIoControlFile( (HANDLE)s, sync_event, NULL, NULL, &io, IOCTL_AFD_WINE_CONNECT,
                                     params, sizeof(*params) + len, NULL, 0 );
     free( params );
     if (status == STATUS_PENDING)
     {
-        if (wait_event_alertable( sync_event ) == WAIT_FAILED) return -1;
+        netdiag_result( &diag, ND_PENDING, status, WSA_IO_PENDING, -1 );
+        if (wait_event_alertable( sync_event ) == WAIT_FAILED)
+        {
+            netdiag_result( &diag, ND_OBSERVED, status, GetLastError(), -1 );
+            return -1;
+        }
         status = io.Status;
     }
     if (status)
@@ -1299,8 +1325,12 @@ int WINAPI connect( SOCKET s, const struct sockaddr *addr, int len )
         /* NtStatusToWSAError() has no mapping for WSAEALREADY */
         SetLastError( status == STATUS_ADDRESS_ALREADY_ASSOCIATED ? WSAEALREADY : NtStatusToWSAError( status ) );
         TRACE( "failed, status %#lx.\n", status );
+        netdiag_result( &diag, GetLastError() == WSAEWOULDBLOCK || GetLastError() == WSAEINPROGRESS
+                        || GetLastError() == WSAEALREADY ? ND_PENDING : ND_COMPLETE,
+                        status, GetLastError(), -1 );
         return -1;
     }
+    netdiag_result( &diag, ND_COMPLETE, status, 0, 0 );
     return 0;
 }
 
@@ -1321,6 +1351,7 @@ int WINAPI WSAConnect( SOCKET s, const struct sockaddr *name, int namelen,
 static BOOL WINAPI WS2_ConnectEx( SOCKET s, const struct sockaddr *name, int namelen,
                                   void *send_buffer, DWORD send_len, DWORD *ret_len, OVERLAPPED *overlapped )
 {
+    struct wine_netdiag_event diag = netdiag_begin( ND_CONNECTEX, s );
     struct afd_connect_params *params;
     void *cvalue = NULL;
     NTSTATUS status;
@@ -1331,6 +1362,7 @@ static BOOL WINAPI WS2_ConnectEx( SOCKET s, const struct sockaddr *name, int nam
     if (!overlapped)
     {
         SetLastError( WSA_INVALID_PARAMETER );
+        netdiag_result( &diag, ND_COMPLETE, 0, GetLastError(), FALSE );
         return FALSE;
     }
 
@@ -1341,12 +1373,19 @@ static BOOL WINAPI WS2_ConnectEx( SOCKET s, const struct sockaddr *name, int nam
     if (!(params = malloc( sizeof(*params) + namelen + send_len )))
     {
         SetLastError( ERROR_NOT_ENOUGH_MEMORY );
+        netdiag_result( &diag, ND_COMPLETE, 0, GetLastError(), SOCKET_ERROR );
         return SOCKET_ERROR;
     }
     params->addr_len = namelen;
     params->synchronous = FALSE;
     memcpy( params + 1, name, namelen );
     memcpy( (char *)(params + 1) + namelen, send_buffer, send_len );
+    if (diag.operation_id)
+    {
+        diag.requested = send_len;
+        if (namelen > 0) netdiag_endpoint( &diag, (const struct sockaddr *)(params + 1), namelen );
+        netdiag_result( &diag, ND_ATTEMPT, 0, 0, 0 );
+    }
 
     status = NtDeviceIoControlFile( SOCKET2HANDLE(s), overlapped->hEvent, NULL, cvalue,
                                     (IO_STATUS_BLOCK *)overlapped, IOCTL_AFD_WINE_CONNECT,
@@ -1355,6 +1394,8 @@ static BOOL WINAPI WS2_ConnectEx( SOCKET s, const struct sockaddr *name, int nam
     if (ret_len) *ret_len = overlapped->InternalHigh;
     SetLastError( NtStatusToWSAError( status ) );
     TRACE( "status %#lx.\n", status );
+    netdiag_result( &diag, status == STATUS_PENDING ? ND_PENDING : ND_COMPLETE,
+                    status, GetLastError(), !status );
     return !status;
 }
 
@@ -1766,7 +1807,19 @@ int WINAPI getsockopt( SOCKET s, int level, int optname, char *optval, int *optl
             return 0;
 
         case SO_ERROR:
-            return server_getsockopt( s, IOCTL_AFD_WINE_GET_SO_ERROR, optval, optlen );
+        {
+            struct wine_netdiag_event diag = netdiag_begin( ND_NETWORK_EVENT, s );
+            int error;
+
+            ret = server_getsockopt( s, IOCTL_AFD_WINE_GET_SO_ERROR, optval, optlen );
+            if (diag.operation_id && !ret && *optlen >= sizeof(error))
+            {
+                memcpy( &error, optval, sizeof(error) );
+                diag.requested = SO_ERROR;
+                netdiag_result( &diag, ND_OBSERVED, 0, error, ret );
+            }
+            return ret;
+        }
 
         case SO_KEEPALIVE:
             if (*optlen < 1 || !optval)
@@ -2838,27 +2891,37 @@ int WINAPI select( int count, fd_set *read_ptr, fd_set *write_ptr,
     static const int write_flags = AFD_POLL_WRITE;
     static const int except_flags = AFD_POLL_OOB | AFD_POLL_CONNECT_ERR;
 
+    struct netdiag_wait diag;
     struct fd_set *read_input = NULL;
     struct afd_poll_params *params;
     unsigned int poll_count = 0;
-    ULONG params_size, i, j;
+    ULONG params_size, i, j, k;
     SOCKET poll_socket = 0;
     IO_STATUS_BLOCK io;
     HANDLE sync_event;
     int ret_count = 0;
     NTSTATUS status;
 
+    netdiag_wait_begin( &diag, ND_SELECT );
+
     TRACE( "read %p, write %p, except %p, timeout %p\n", read_ptr, write_ptr, except_ptr, timeout );
 
-    if (!(sync_event = get_sync_event())) return -1;
+    if (!(sync_event = get_sync_event()))
+    {
+        netdiag_wait_finish( &diag, 0, GetLastError(), -1 );
+        return -1;
+    }
 
     if (read_ptr) poll_count += read_ptr->fd_count;
     if (write_ptr) poll_count += write_ptr->fd_count;
     if (except_ptr) poll_count += except_ptr->fd_count;
 
+    diag.summary.requested = poll_count;
+    diag.summary.wait.total = poll_count;
     if (!poll_count)
     {
         SetLastError( WSAEINVAL );
+        netdiag_wait_finish( &diag, 0, GetLastError(), -1 );
         return -1;
     }
 
@@ -2866,6 +2929,7 @@ int WINAPI select( int count, fd_set *read_ptr, fd_set *write_ptr,
     if (!(params = calloc( params_size, 1 )))
     {
         SetLastError( WSAENOBUFS );
+        netdiag_wait_finish( &diag, 0, GetLastError(), -1 );
         return -1;
     }
 
@@ -2873,6 +2937,8 @@ int WINAPI select( int count, fd_set *read_ptr, fd_set *write_ptr,
         params->timeout = (LONGLONG)timeout->tv_sec * -10000000 + (LONGLONG)timeout->tv_usec * -10;
     else
         params->timeout = TIMEOUT_INFINITE;
+
+    netdiag_wait_prepare( &diag, poll_count, params->timeout );
 
     if (read_ptr)
     {
@@ -2882,6 +2948,7 @@ int WINAPI select( int count, fd_set *read_ptr, fd_set *write_ptr,
         {
             free( params );
             SetLastError( WSAENOBUFS );
+            netdiag_wait_finish( &diag, 0, GetLastError(), -1 );
             return -1;
         }
         memcpy( read_input, read_ptr, read_size );
@@ -2918,6 +2985,10 @@ int WINAPI select( int count, fd_set *read_ptr, fd_set *write_ptr,
     }
 
     assert( params->count == poll_count );
+    if (diag.summary.operation_id)
+        for (i = 0; i < params->count && i < NETDIAG_WAIT_MAX; ++i)
+            netdiag_wait_member( &diag, params->sockets[i].socket, params->sockets[i].flags );
+    netdiag_wait_attempts( &diag );
 
     status = NtDeviceIoControlFile( (HANDLE)poll_socket, sync_event, NULL, NULL, &io,
                                     IOCTL_AFD_POLL, params, params_size, params, params_size );
@@ -2927,6 +2998,7 @@ int WINAPI select( int count, fd_set *read_ptr, fd_set *write_ptr,
         {
             free( read_input );
             free( params );
+            netdiag_wait_finish( &diag, status, GetLastError(), -1 );
             return -1;
         }
         status = io.Status;
@@ -2934,6 +3006,7 @@ int WINAPI select( int count, fd_set *read_ptr, fd_set *write_ptr,
     if (status == STATUS_TIMEOUT) status = STATUS_SUCCESS;
     if (!status)
     {
+        for (k = 0; k < diag.captured; ++k) diag.members[k].flags &= ~ND_OUTPUT_UNKNOWN;
         /* pointers may alias, so clear them all first */
         if (read_ptr) read_ptr->fd_count = 0;
         if (write_ptr) write_ptr->fd_count = 0;
@@ -2943,6 +3016,19 @@ int WINAPI select( int count, fd_set *read_ptr, fd_set *write_ptr,
         {
             unsigned int flags = params->sockets[i].flags;
             SOCKET s = params->sockets[i].socket;
+
+            /* AFD compacts its output. Match the captured input mask and handle;
+             * each record retains the lifetime bound before the wait. */
+            for (k = 0; k < diag.captured; ++k)
+            {
+                struct wine_netdiag_event *member = &diag.members[k];
+                unsigned int observed = flags & ((unsigned int)member->requested | AFD_POLL_CLOSE);
+                if (member->handle == (UINT64)s && observed)
+                {
+                    member->returned |= observed;
+                    member->status = params->sockets[i].status;
+                }
+            }
 
             if (read_input)
             {
@@ -2975,6 +3061,7 @@ int WINAPI select( int count, fd_set *read_ptr, fd_set *write_ptr,
 
     SetLastError( NtStatusToWSAError( status ) );
     TRACE( "status %#lx.\n", status );
+    netdiag_wait_finish( &diag, status, GetLastError(), status ? -1 : ret_count );
     return status ? -1 : ret_count;
 }
 
@@ -3010,6 +3097,7 @@ static unsigned int afd_poll_flag_to_win32( unsigned int flags )
  */
 int WINAPI WSAPoll( WSAPOLLFD *fds, ULONG count, int timeout )
 {
+    struct netdiag_wait diag;
     struct afd_poll_params *params;
     ULONG params_size, i, j;
     SOCKET poll_socket = 0;
@@ -3018,57 +3106,82 @@ int WINAPI WSAPoll( WSAPOLLFD *fds, ULONG count, int timeout )
     int ret_count = 0;
     NTSTATUS status;
 
+    netdiag_wait_begin( &diag, ND_WSAPOLL );
+    diag.summary.requested = count;
+    diag.summary.wait.total = count;
+
     if (!count)
     {
         SetLastError(WSAEINVAL);
+        netdiag_wait_finish( &diag, 0, GetLastError(), SOCKET_ERROR );
         return SOCKET_ERROR;
     }
     if (!fds)
     {
         SetLastError(WSAEFAULT);
+        netdiag_wait_finish( &diag, 0, GetLastError(), SOCKET_ERROR );
         return SOCKET_ERROR;
     }
 
-    if (!(sync_event = get_sync_event())) return -1;
+    if (!(sync_event = get_sync_event()))
+    {
+        netdiag_wait_finish( &diag, 0, GetLastError(), -1 );
+        return -1;
+    }
 
     params_size = offsetof( struct afd_poll_params, sockets[count] );
     if (!(params = calloc( params_size, 1 )))
     {
         SetLastError(WSAENOBUFS);
+        netdiag_wait_finish( &diag, 0, GetLastError(), SOCKET_ERROR );
         return SOCKET_ERROR;
     }
 
     params->timeout = (timeout >= 0 ? (LONGLONG)timeout * -10000 : TIMEOUT_INFINITE);
+    netdiag_wait_prepare( &diag, count, params->timeout );
 
     for (i = 0; i < count; ++i)
     {
         unsigned int flags = AFD_POLL_HUP | AFD_POLL_RESET | AFD_POLL_CONNECT_ERR;
+        SOCKET socket = fds[i].fd;
+        unsigned int events;
 
-        if ((INT_PTR)fds[i].fd < 0 || !socket_list_find( fds[i].fd ))
+        if ((INT_PTR)socket < 0 || !socket_list_find( socket ))
         {
             fds[i].revents = POLLNVAL;
+            netdiag_wait_member( &diag, socket, 0 );
+            if (i < diag.captured)
+            {
+                diag.members[i].flags |= ND_MASK_UNKNOWN | ND_LIFETIME_UNKNOWN;
+                diag.members[i].flags &= ~ND_OUTPUT_UNKNOWN;
+                diag.members[i].returned = POLLNVAL;
+            }
             continue;
         }
 
-        poll_socket = fds[i].fd;
-        params->sockets[params->count].socket = fds[i].fd;
+        poll_socket = socket;
+        params->sockets[params->count].socket = socket;
 
-        if (fds[i].events & POLLRDNORM)
+        events = (unsigned short)fds[i].events;
+        if (events & POLLRDNORM)
             flags |= AFD_POLL_ACCEPT | AFD_POLL_READ;
-        if (fds[i].events & POLLRDBAND)
+        if (events & POLLRDBAND)
             flags |= AFD_POLL_OOB;
-        if (fds[i].events & POLLWRNORM)
+        if (events & POLLWRNORM)
             flags |= AFD_POLL_WRITE;
         params->sockets[params->count].flags = flags;
         ++params->count;
 
         fds[i].revents = 0;
+        netdiag_wait_member( &diag, params->sockets[params->count - 1].socket, events );
     }
+    netdiag_wait_attempts( &diag );
 
     if (!poll_socket)
     {
         SetLastError( WSAENOTSOCK );
         free( params );
+        netdiag_wait_finish( &diag, 0, GetLastError(), -1 );
         return -1;
     }
 
@@ -3079,19 +3192,21 @@ int WINAPI WSAPoll( WSAPOLLFD *fds, ULONG count, int timeout )
         if (wait_event_alertable( sync_event ) == WAIT_FAILED)
         {
             free( params );
+            netdiag_wait_finish( &diag, status, GetLastError(), -1 );
             return -1;
         }
         status = io.Status;
     }
     if (!status)
     {
+        for (i = 0; i < diag.captured; ++i) diag.members[i].flags &= ~ND_OUTPUT_UNKNOWN;
         for (i = 0; i < count; ++i)
         {
             for (j = 0; j < params->count; ++j)
             {
                 if (fds[i].fd == params->sockets[j].socket)
                 {
-                    unsigned int revents = 0;
+                    unsigned int revents = 0, public_revents;
 
                     if (params->sockets[j].flags & (AFD_POLL_ACCEPT | AFD_POLL_READ))
                         revents |= POLLRDNORM;
@@ -3106,7 +3221,13 @@ int WINAPI WSAPoll( WSAPOLLFD *fds, ULONG count, int timeout )
                     if (params->sockets[j].flags & AFD_POLL_CLOSE)
                         revents |= POLLNVAL;
 
-                    fds[i].revents = revents & (fds[i].events | POLLHUP | POLLERR | POLLNVAL);
+                    public_revents = revents & (fds[i].events | POLLHUP | POLLERR | POLLNVAL);
+                    fds[i].revents = public_revents;
+                    if (i < diag.captured)
+                    {
+                        diag.members[i].returned = public_revents;
+                        diag.members[i].status = params->sockets[j].status;
+                    }
 
                     if (fds[i].revents)
                         ++ret_count;
@@ -3114,12 +3235,17 @@ int WINAPI WSAPoll( WSAPOLLFD *fds, ULONG count, int timeout )
             }
         }
     }
-    if (status == STATUS_TIMEOUT) status = STATUS_SUCCESS;
+    if (status == STATUS_TIMEOUT)
+    {
+        for (i = 0; i < diag.captured; ++i) diag.members[i].flags &= ~ND_OUTPUT_UNKNOWN;
+        status = STATUS_SUCCESS;
+    }
 
     free( params );
 
     SetLastError( NtStatusToWSAError( status ) );
     TRACE( "status %#lx.\n", status );
+    netdiag_wait_finish( &diag, status, GetLastError(), status ? -1 : ret_count );
     return status ? -1 : ret_count;
 }
 
@@ -3738,7 +3864,13 @@ int WINAPI WSAEnumNetworkEvents( SOCKET s, WSAEVENT event, WSANETWORKEVENTS *ret
             ret_events->iErrorCode[FD_ACCEPT_BIT] = NtStatusToWSAError( params.status[AFD_POLL_BIT_ACCEPT] );
 
         if (ret_events->lNetworkEvents & FD_CONNECT)
+        {
+            struct wine_netdiag_event diag = netdiag_begin( ND_NETWORK_EVENT, s );
             ret_events->iErrorCode[FD_CONNECT_BIT] = NtStatusToWSAError( params.status[AFD_POLL_BIT_CONNECT_ERR] );
+            diag.requested = FD_CONNECT;
+            netdiag_result( &diag, ND_OBSERVED, params.status[AFD_POLL_BIT_CONNECT_ERR],
+                            ret_events->iErrorCode[FD_CONNECT_BIT], 0 );
+        }
 
         if (ret_events->lNetworkEvents & FD_CLOSE)
         {
@@ -3807,6 +3939,7 @@ BOOL WINAPI WSAGetOverlappedResult( SOCKET s, LPWSAOVERLAPPED lpOverlapped,
                                     LPDWORD lpcbTransfer, BOOL fWait,
                                     LPDWORD lpdwFlags )
 {
+    struct wine_netdiag_event diag = netdiag_begin( ND_OVERLAPPED, s );
     NTSTATUS status;
 
     TRACE( "socket %#Ix, overlapped %p, transfer %p, wait %d, flags %p\n",
@@ -3816,12 +3949,14 @@ BOOL WINAPI WSAGetOverlappedResult( SOCKET s, LPWSAOVERLAPPED lpOverlapped,
     {
         ERR( "Invalid pointer\n" );
         SetLastError(WSA_INVALID_PARAMETER);
+        netdiag_result( &diag, ND_OBSERVED, 0, GetLastError(), FALSE );
         return FALSE;
     }
 
     if (!socket_list_find( s ))
     {
         SetLastError( WSAENOTSOCK );
+        netdiag_result( &diag, ND_OBSERVED, 0, GetLastError(), FALSE );
         return FALSE;
     }
 
@@ -3833,12 +3968,16 @@ BOOL WINAPI WSAGetOverlappedResult( SOCKET s, LPWSAOVERLAPPED lpOverlapped,
         if (!fWait)
         {
             SetLastError( WSA_IO_INCOMPLETE );
+            netdiag_result( &diag, ND_PENDING, status, WSA_IO_INCOMPLETE, FALSE );
             return FALSE;
         }
 
         if (WaitForSingleObject( lpOverlapped->hEvent ? lpOverlapped->hEvent : SOCKET2HANDLE(s),
                                  INFINITE ) == WAIT_FAILED)
+        {
+            netdiag_result( &diag, ND_OBSERVED, status, GetLastError(), FALSE );
             return FALSE;
+        }
         /* We don't need to give this load acquire semantics; the wait above
          * already guarantees that the IOSB and output buffer are filled. */
         status = lpOverlapped->Internal;
@@ -3852,6 +3991,9 @@ BOOL WINAPI WSAGetOverlappedResult( SOCKET s, LPWSAOVERLAPPED lpOverlapped,
 
     SetLastError( NtStatusToWSAError(status) );
     TRACE( "status %#lx.\n", status );
+    if (diag.operation_id) diag.requested = lpOverlapped->InternalHigh;
+    netdiag_result( &diag, status == STATUS_PENDING ? ND_PENDING : ND_OBSERVED,
+                    status, GetLastError(), NT_SUCCESS( status ) );
     return NT_SUCCESS( status );
 }
 
@@ -3971,6 +4113,10 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
             CloseHandle(SOCKET2HANDLE(ret));
             return INVALID_SOCKET;
         }
+        {
+            struct wine_netdiag_event diag = netdiag_begin( ND_SOCKET, ret );
+            netdiag_result( &diag, ND_OPEN, 0, 0, ret );
+        }
         return ret;
     }
 
@@ -4056,6 +4202,13 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
         return INVALID_SOCKET;
     }
     WSASetLastError(0);
+    {
+        struct wine_netdiag_event diag = netdiag_begin( ND_SOCKET, ret );
+        diag.family = af;
+        diag.requested = (UINT64)(UINT32)type | ((UINT64)(UINT32)protocol << 32);
+        diag.flags |= ND_SOCKET_INFO;
+        netdiag_result( &diag, ND_OPEN, 0, 0, ret );
+    }
     return ret;
 }
 

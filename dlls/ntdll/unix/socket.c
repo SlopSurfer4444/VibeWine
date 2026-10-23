@@ -81,6 +81,7 @@
 #include "wine/afd.h"
 
 #include "unix_private.h"
+#include "wine/netdiag_unix.h"
 
 #if !defined(TCP_KEEPIDLE) && defined(TCP_KEEPALIVE)
 /* TCP_KEEPALIVE is the Mac OS name for TCP_KEEPIDLE */
@@ -111,6 +112,7 @@ union unix_sockaddr
 struct async_recv_ioctl
 {
     struct async_fileio io;
+    struct wine_netdiag_event netdiag;
     void *control;
     struct WS_sockaddr *addr;
     int *addr_len;
@@ -124,6 +126,7 @@ struct async_recv_ioctl
 struct async_send_ioctl
 {
     struct async_fileio io;
+    struct wine_netdiag_event netdiag;
     const struct WS_sockaddr *addr;
     int addr_len;
     int unix_flags;
@@ -784,6 +787,102 @@ static ssize_t fixup_icmp_over_dgram( struct msghdr *hdr, union unix_sockaddr *u
     return recv_len;
 }
 
+static void netdiag_endpoint( struct wine_netdiag_event *event, const struct sockaddr *addr, socklen_t len )
+{
+    event->family = event->port = event->scope = 0;
+    memset( event->address, 0, sizeof(event->address) );
+    event->flags |= ND_ENDPOINT_UNKNOWN;
+    if (!addr || len < offsetof(struct sockaddr, sa_data)) return;
+    if (addr->sa_family == AF_INET && len >= sizeof(struct sockaddr_in))
+    {
+        const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
+        event->family = WS_AF_INET;
+        event->port = ntohs( in->sin_port );
+        memcpy( event->address, &in->sin_addr, 4 );
+    }
+    else if (addr->sa_family == AF_INET6 && len >= sizeof(struct sockaddr_in6))
+    {
+        const struct sockaddr_in6 *in = (const struct sockaddr_in6 *)addr;
+        event->family = WS_AF_INET6;
+        event->port = ntohs( in->sin6_port );
+        event->scope = in->sin6_scope_id;
+        memcpy( event->address, &in->sin6_addr, 16 );
+    }
+    else return;
+    event->flags &= ~ND_ENDPOINT_UNKNOWN;
+}
+
+static uint64_t netdiag_iov_size( const struct iovec *iov, unsigned int count )
+{
+    uint64_t total = 0;
+    unsigned int i;
+    /* Only owned iov length metadata is read, never iov_base or its bytes. */
+    for (i = 0; i < count; ++i)
+    {
+        if (UINT64_MAX - total < iov[i].iov_len) return UINT64_MAX;
+        total += iov[i].iov_len;
+    }
+    return total;
+}
+
+static void netdiag_result( struct wine_netdiag_event *context, unsigned int phase,
+                            unsigned int status, ULONG_PTR returned )
+{
+    struct wine_netdiag_event event;
+    if (!context->operation_id) return;
+    event = *context;
+    event.phase = phase;
+    event.status = status;
+    event.returned = returned;
+    if (phase == ND_PENDING) event.flags |= ND_IS_PENDING;
+    wine_netdiag_emit( &event );
+}
+
+static void netdiag_attempt( const struct wine_netdiag_event *context, int fd, uint64_t requested,
+                             ssize_t result, int error, uint64_t started,
+                             const struct sockaddr *addr, socklen_t len )
+{
+    struct wine_netdiag_event event;
+    uint64_t finished;
+    if (!context->operation_id) return;
+    finished = wine_netdiag_now();
+    event = *context;
+    event.phase = ND_ATTEMPT;
+    event.native_fd = fd;
+    event.requested = requested;
+    event.returned = result;
+    event.native_errno = result < 0 ? error : 0;
+    /* EINTR is a retry observation; the ordinary mapper emits a FIXME for it. */
+    event.status = result < 0 ? error == EINTR ? STATUS_ALERTED : sock_errno_to_status( error ) : STATUS_SUCCESS;
+    event.elapsed_ns = finished >= started ? finished - started : 0;
+    if (result < 0) event.flags |= ND_ERRNO_VALID;
+    netdiag_endpoint( &event, addr, len );
+    wine_netdiag_emit( &event );
+}
+
+/* Called at both actual recvmsg seams, including write-watch EFAULT retry.
+ * An unarmed context takes the original syscall without metadata reads. */
+ssize_t netdiag_recvmsg( int fd, struct msghdr *hdr, int flags, struct wine_netdiag_event *context )
+{
+    socklen_t capacity;
+    void *name;
+    uint64_t started, requested;
+    ssize_t ret;
+    int call_errno;
+    if (!context || !context->operation_id) return recvmsg( fd, hdr, flags );
+    name = hdr->msg_name;
+    capacity = hdr->msg_namelen;
+    requested = netdiag_iov_size( hdr->msg_iov, hdr->msg_iovlen );
+    started = wine_netdiag_now();
+    ret = recvmsg( fd, hdr, flags );
+    call_errno = errno;
+    netdiag_attempt( context, fd, requested, ret, call_errno, started,
+                     ret >= 0 && hdr->msg_name == name && hdr->msg_namelen <= capacity ? name : NULL,
+                     ret >= 0 ? hdr->msg_namelen : 0 );
+    errno = call_errno;
+    return ret;
+}
+
 static NTSTATUS try_recv( int fd, struct async_recv_ioctl *async, ULONG_PTR *size )
 {
     char control_buffer[512];
@@ -791,6 +890,7 @@ static NTSTATUS try_recv( int fd, struct async_recv_ioctl *async, ULONG_PTR *siz
     struct msghdr hdr;
     NTSTATUS status;
     ssize_t ret;
+    int call_errno;
 
     memset( &hdr, 0, sizeof(hdr) );
     if (async->addr || async->icmp_over_dgram)
@@ -803,7 +903,12 @@ static NTSTATUS try_recv( int fd, struct async_recv_ioctl *async, ULONG_PTR *siz
     hdr.msg_control = control_buffer;
     hdr.msg_controllen = sizeof(control_buffer);
 
-    while ((ret = virtual_locked_recvmsg( fd, &hdr, async->unix_flags )) < 0 && errno == EINTR);
+    do
+    {
+        ret = virtual_locked_recvmsg( fd, &hdr, async->unix_flags, &async->netdiag );
+        call_errno = errno; /* before any clocks, diagnostics, mapping or retry */
+        errno = call_errno;
+    } while (ret < 0 && call_errno == EINTR);
 
     if (ret < 0)
     {
@@ -882,7 +987,10 @@ static BOOL async_recv_proc( void *user, ULONG_PTR *info, unsigned int *status )
     if (*status == STATUS_ALERTED)
     {
         if ((*status = server_get_unix_fd( async->io.handle, 0, &fd, &needs_close, NULL, NULL )))
+        {
+            netdiag_result( &async->netdiag, ND_COMPLETE, *status, 0 );
             return TRUE;
+        }
 
         *status = try_recv( fd, async, info );
         TRACE( "got status %#x, %#lx bytes read\n", *status, *info );
@@ -891,6 +999,8 @@ static BOOL async_recv_proc( void *user, ULONG_PTR *info, unsigned int *status )
         if (*status == STATUS_DEVICE_NOT_READY)
             return FALSE;
     }
+    netdiag_result( &async->netdiag, ND_COMPLETE, *status,
+                    (NT_SUCCESS(*status) || *status == STATUS_BUFFER_OVERFLOW) ? *info : 0 );
     release_fileio( &async->io );
     return TRUE;
 }
@@ -919,11 +1029,17 @@ static NTSTATUS sock_recv( HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, voi
     BOOL nonblocking;
     unsigned int i, status;
     ULONG options;
+    ULONG_PTR diagnostic_bytes = 0;
+
+    wine_netdiag_begin( &async->netdiag, ND_RECV, (uintptr_t)handle );
+    if (async->netdiag.operation_id)
+        async->netdiag.requested = netdiag_iov_size( async->iov, async->count );
 
     for (i = 0; i < async->count; ++i)
     {
         if (!virtual_check_buffer_for_write( async->iov[i].iov_base, async->iov[i].iov_len ))
         {
+            netdiag_result( &async->netdiag, ND_COMPLETE, STATUS_ACCESS_VIOLATION, 0 );
             release_fileio( &async->io );
             return STATUS_ACCESS_VIOLATION;
         }
@@ -949,13 +1065,18 @@ static NTSTATUS sock_recv( HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, voi
         ULONG_PTR information;
 
         status = try_recv( fd, async, &information );
+        if (NT_SUCCESS(status) || status == STATUS_BUFFER_OVERFLOW) diagnostic_bytes = information;
         if (status == STATUS_DEVICE_NOT_READY && (force_async || !nonblocking))
             status = STATUS_PENDING;
         set_async_direct_result( &wait_handle, options, io, status, information, FALSE );
     }
 
     if (status != STATUS_PENDING)
+    {
+        netdiag_result( &async->netdiag, ND_COMPLETE, status, diagnostic_bytes );
         release_fileio( &async->io );
+    }
+    else netdiag_result( &async->netdiag, ND_PENDING, status, 0 );
 
     if (wait_handle) status = wait_async( wait_handle, options & FILE_SYNCHRONOUS_IO_ALERT );
     return status;
@@ -1046,6 +1167,8 @@ static NTSTATUS try_send( int fd, struct async_send_ioctl *async )
     int sock_type;
     socklen_t len = sizeof(sock_type);
     ssize_t ret;
+    int call_errno;
+    uint64_t started;
 
     getsockopt(fd, SOL_SOCKET, SO_TYPE, &sock_type, &len);
 
@@ -1089,8 +1212,16 @@ static NTSTATUS try_send( int fd, struct async_send_ioctl *async )
     hdr.msg_iov = async->iov + async->iov_cursor;
     hdr.msg_iovlen = async->count - async->iov_cursor;
 
-    while ((ret = sendmsg( fd, &hdr, async->unix_flags )) == -1)
+    for (;;)
     {
+        started = async->netdiag.operation_id ? wine_netdiag_now() : 0;
+        ret = sendmsg( fd, &hdr, async->unix_flags );
+        call_errno = errno; /* preserve the actual attempt before diagnostics */
+        if (async->netdiag.operation_id)
+            netdiag_attempt( &async->netdiag, fd, netdiag_iov_size( hdr.msg_iov, hdr.msg_iovlen ),
+                             ret, call_errno, started, hdr.msg_name, hdr.msg_namelen );
+        errno = call_errno;
+        if (ret != -1) break;
         if (errno == EISCONN)
         {
             hdr.msg_name = NULL;
@@ -1138,7 +1269,10 @@ static BOOL async_send_proc( void *user, ULONG_PTR *info, unsigned int *status )
     {
         needs_close = FALSE;
         if ((fd = async->fd) == -1 && (*status = server_get_unix_fd( async->io.handle, 0, &fd, &needs_close, NULL, NULL )))
+        {
+            netdiag_result( &async->netdiag, ND_COMPLETE, *status, 0 );
             return TRUE;
+        }
 
         *status = try_send( fd, async );
         TRACE( "got status %#x\n", *status );
@@ -1149,6 +1283,7 @@ static BOOL async_send_proc( void *user, ULONG_PTR *info, unsigned int *status )
             return FALSE;
     }
     *info = async->sent_len;
+    netdiag_result( &async->netdiag, ND_COMPLETE, *status, async->sent_len );
     if (async->fd != -1) close( async->fd );
     release_fileio( &async->io );
     return TRUE;
@@ -1186,6 +1321,10 @@ static NTSTATUS sock_send( HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, voi
     BOOL nonblocking;
     unsigned int status;
     ULONG options;
+
+    wine_netdiag_begin( &async->netdiag, ND_SEND, (uintptr_t)handle );
+    if (async->netdiag.operation_id)
+        async->netdiag.requested = netdiag_iov_size( async->iov, async->count );
 
     SERVER_START_REQ( send_socket )
     {
@@ -1278,9 +1417,11 @@ static NTSTATUS sock_send( HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, voi
 
     if (status != STATUS_PENDING)
     {
+        netdiag_result( &async->netdiag, ND_COMPLETE, status, async->sent_len );
         if (async->fd != -1) close( async->fd );
         release_fileio( &async->io );
     }
+    else netdiag_result( &async->netdiag, ND_PENDING, status, 0 );
 
     if (wait_handle) status = wait_async( wait_handle, options & FILE_SYNCHRONOUS_IO_ALERT );
     return status;

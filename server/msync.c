@@ -345,12 +345,34 @@ static inline void unregister_wait( mach_register_message_t *message, unsigned i
         remove_tid( message->shm_idx[i], tid );
 }
 
+static inline void wake_tid_word( int *shm )
+{
+    static unsigned int failures;
+    int ret;
+
+    do ret = __ulock_wake( UL_COMPARE_AND_WAIT_SHARED, (void *)shm, 0 );
+    while (ret == -1 && errno == EINTR);
+
+    if (ret == -1 && errno != ENOENT && failures++ < 8)
+        fprintf( stderr, "msync: thread wake failed: %s\n", strerror( errno ) );
+}
+
+static inline void acknowledge_wait( int tid )
+{
+    int *shm = shm_tid_map + tid;
+
+    /* Paired with the client's MSYNC_ACK_PARKED=3 compare-and-wait. Publishing
+     * before it parks is safe: ulock compares the armed value atomically. */
+    if (__atomic_exchange_n( shm, 1, __ATOMIC_SEQ_CST ) == 3)
+        wake_tid_word( shm );
+}
+
 static inline void wake_tid( int tid )
 {
     int *shm = shm_tid_map + tid;
 
     __atomic_store_n( shm, 0, __ATOMIC_RELEASE );
-    __ulock_wake( UL_COMPARE_AND_WAIT_SHARED, (void *)shm, 0 );
+    wake_tid_word( shm );
 }
 
 static inline void signal_all_internal( unsigned int shm_idx )
@@ -521,8 +543,7 @@ static void *mach_message_pump( void *args )
             add_tid( receive_message.shm_idx[i], tid );
             if (i == count - 1)
             {
-                /* The client can stop spinning and safely start waiting now */
-                __atomic_store_n( shm_tid_map + tid, 1, __ATOMIC_RELEASE );
+                acknowledge_wait( tid );
             }
         }
     }

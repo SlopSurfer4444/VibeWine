@@ -110,6 +110,15 @@ static int receive_mach_msg(mach_register_message_t *out) {
     if(qread==qwrite) longjmp(drained,1);
     *out=queue[qread++]; return 0;
 }
+static int __ulock_wake(uint32_t op, void *addr, uint64_t value) { return 0; }
+typedef unsigned int mach_port_type_t;
+typedef int kern_return_t;
+#define KERN_INVALID_NAME 15
+#define KERN_SUCCESS 0
+#define MACH_PORT_TYPE_DEAD_NAME 16
+static int mach_task_self(void) { return 1; }
+static int mach_port_type(int task, int port, mach_port_type_t *type) { *type=1; return 0; }
+static void abort_thread(int status) { abort(); }
 '''
 
 TESTS = r'''
@@ -174,8 +183,12 @@ int main(void) {
 def build_and_run(label, sources, workdir, compiler):
     client, server = sources
     parts = [client[:client.index('*/') + 2], PRELUDE]
+    if 'MSYNC_ACK_PENDING' in client:
+        parts.append(client[client.index('#define MSYNC_ACK_PENDING'):client.index('static NTSTATUS msync_wait_multiple')])
     for name in ('server_register_wait', 'server_remove_wait', 'check_shm_contention', 'msync_wait_multiple'):
         parts.append(extract(client, name))
+    if 'static inline void acknowledge_wait' in server:
+        parts.extend(extract(server, name) for name in ('wake_tid_word', 'acknowledge_wait'))
     for name in ('grow_tid_map', 'get_tid_list', 'add_tid', 'remove_tid', 'unregister_wait',
                  'signal_all_internal', 'decode_msgh_id', 'check_bit', 'mach_message_pump'):
         parts.append(extract(server, name))

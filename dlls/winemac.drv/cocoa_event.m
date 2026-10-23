@@ -24,6 +24,7 @@
 #include <libkern/OSAtomic.h>
 
 #include "macdrv_cocoa.h"
+#include "drawable_phase_diag.h"
 #import "cocoa_event.h"
 #import "cocoa_app.h"
 #import "cocoa_window.h"
@@ -197,8 +198,19 @@ static const OSType WineHotKeySignature = 'Wine';
     {
         NSIndexSet* indexes;
         MacDrvEvent* lastEvent;
+        struct w7pd_sample diag = w7pd_begin();
+        uint64_t diag_count_before = 0, diag_count_after = 0;
+        uintptr_t diag_surface = 0;
+        int diag_type = -1;
 
         [eventsLock lock];
+        w7pd_mark(&diag, 1);
+        if (diag.active) {
+            diag_count_before = [events count];
+            diag_type = event->event->type;
+            if (diag_type == CLIENT_SURFACE_PRESENTED)
+                diag_surface = (uintptr_t)event->event->client_surface_presented.client_surface;
+        }
 
         indexes = [events indexesOfObjectsPassingTest:^BOOL(id obj, NSUInteger idx, BOOL *stop){
             return ((MacDrvEvent*)obj)->event->deliver <= 0;
@@ -232,9 +244,15 @@ static const OSType WineHotKeySignature = 'Wine';
         else
             [events addObject:event];
 
+        if (diag.active) diag_count_after = [events count];
+        w7pd_mark(&diag, 2);
         [eventsLock unlock];
+        w7pd_mark(&diag, 3);
 
         [self signalEventAvailable];
+        w7pd_mark(&diag, 4);
+        w7pd_report(&diag, "queue-post", 0, (uintptr_t)self, diag_surface,
+                    0, diag_count_before, diag_count_after, diag_type);
     }
 
     - (void) postEvent:(macdrv_event*)inEvent

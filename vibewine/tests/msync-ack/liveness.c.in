@@ -1,0 +1,27 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* Exercise the production ACK liveness check against actual Mach send rights.
+ * This is port teardown, not an installed Wine server/process test. */
+#include <mach/mach.h>
+#include <setjmp.h>
+#include <stdio.h>
+#include <stdlib.h>
+static mach_port_t server_port;
+static jmp_buf aborted;
+static int aborts;
+static void abort_thread(int status) { if(status) abort(); ++aborts; longjmp(aborted,1); }
+/* PRODUCTION_LIVENESS */
+int main(void) {
+    if(mach_port_allocate(mach_task_self(),MACH_PORT_RIGHT_RECEIVE,&server_port)!=KERN_SUCCESS) return 2;
+    if(mach_port_insert_right(mach_task_self(),server_port,server_port,MACH_MSG_TYPE_MAKE_SEND)!=KERN_SUCCESS) return 2;
+    if(setjmp(aborted)) return 3;
+    check_msync_server();
+    if(aborts) return 4;
+    if(mach_port_mod_refs(mach_task_self(),server_port,MACH_PORT_RIGHT_RECEIVE,-1)!=KERN_SUCCESS) return 2;
+    if(!setjmp(aborted)) { check_msync_server(); return 5; }
+    if(aborts!=1) return 6;
+    if(mach_port_deallocate(mach_task_self(),server_port)!=KERN_SUCCESS) return 2;
+    if(!setjmp(aborted)) { check_msync_server(); return 7; }
+    if(aborts!=2) return 8;
+    puts("native Mach liveness PASS: live=continue dead-name=abort invalid-name=abort rights=released");
+    return 0;
+}

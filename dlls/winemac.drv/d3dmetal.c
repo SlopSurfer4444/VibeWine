@@ -97,6 +97,8 @@ static void my_macdrv_init_display_devices(BOOL p1)
     TRACE("macdrv_init_display_devices %d - no-op\n", p1);
 }
 
+extern void macdrv_visibility_set_image_v1(const unsigned short *image, size_t bytes);
+
 static struct d3dmetal_macdrv_win_data *my_get_win_data(HWND hwnd)
 {
     struct macdrv_win_data *data;
@@ -105,6 +107,13 @@ static struct d3dmetal_macdrv_win_data *my_get_win_data(HWND hwnd)
     CFMutableArrayRef client_surfaces;
     static const CFArrayCallBacks callbacks = { .release = cf_client_surface_release };
     TRACE("get_win_data %p\n", hwnd);
+    if (getenv("VIBEWINE_DS3_VISIBILITY_DIR"))
+    {
+        TEB *teb = NtCurrentTeb();
+        RTL_USER_PROCESS_PARAMETERS *params = teb && teb->Peb ? teb->Peb->ProcessParameters : NULL;
+        macdrv_visibility_set_image_v1(params ? params->ImagePathName.Buffer : NULL,
+                                      params ? params->ImagePathName.Length : 0);
+    }
 
     /* Creating a client surface on each call to get_win_data() means it's no longer idempotent,
      * but D3DMetal/DXMT both call it only when creating a new DXGI swapchain.

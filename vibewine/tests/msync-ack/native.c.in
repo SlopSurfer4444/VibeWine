@@ -1,0 +1,243 @@
+/* Darwin-only cross-process ACK test. The two marked helpers are extracted
+ * verbatim from server/msync.c by the runner. The client is a harness protocol
+ * driver, not an extraction of Wine's client wait implementation. */
+#include <errno.h>
+#include <signal.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+
+#define UL_COMPARE_AND_WAIT_SHARED 3
+extern int __ulock_wait(uint32_t, void *, uint64_t, uint32_t);
+extern int __ulock_wake(uint32_t, void *, uint64_t);
+#define ERR(...) fprintf(stderr, __VA_ARGS__)
+#define WARN(...) fprintf(stderr, __VA_ARGS__)
+
+enum { ACK = 1, PENDING = 2, PARKED = 3, ITERATIONS = 2000 };
+enum { EARLY, PARK, INTERRUPT, RACE, HOLD };
+struct shared_state
+{
+    int token;
+    unsigned request, done;
+    int mode, stop;
+    unsigned wake_calls, wake_success, wake_eintr;
+};
+static struct shared_state *shared;
+static int *shm_tid_map;
+static pid_t owned_child = -1;
+static volatile sig_atomic_t interrupted, expired;
+static unsigned waits, wait_eintr, parks;
+
+static uint64_t now_ns(void)
+{
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts)) abort();
+    return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
+static void pause_us(unsigned us)
+{
+    struct timespec ts = { us / 1000000, (us % 1000000) * 1000 };
+    while (nanosleep(&ts, &ts) && errno == EINTR && !expired) {}
+}
+
+static void signal_handler(int sig)
+{
+    if (sig == SIGUSR1) interrupted++;
+    else expired = 1;
+}
+
+/* Observe real Darwin syscalls without inventing any return values. */
+static int observed_ulock_wake(uint32_t operation, void *addr, uint64_t value)
+{
+    int ret, saved;
+    __atomic_add_fetch(&shared->wake_calls, 1, __ATOMIC_RELAXED);
+    ret = __ulock_wake(operation, addr, value);
+    saved = errno;
+    if (!ret) __atomic_add_fetch(&shared->wake_success, 1, __ATOMIC_RELAXED);
+    else if (saved == EINTR) __atomic_add_fetch(&shared->wake_eintr, 1, __ATOMIC_RELAXED);
+    errno = saved;
+    return ret;
+}
+
+#define __ulock_wake observed_ulock_wake
+@WAKE_TID_WORD@
+@ACKNOWLEDGE_WAIT@
+#undef __ulock_wake
+
+static void reap_child(void)
+{
+    int status;
+    pid_t ret;
+    if (owned_child <= 0) return;
+    kill(owned_child, SIGKILL);
+    do ret = waitpid(owned_child, &status, 0); while (ret < 0 && errno == EINTR);
+    if (ret < 0 && errno != ECHILD) perror("waitpid cleanup");
+    owned_child = -1;
+}
+
+static void fail(const char *reason)
+{
+    fprintf(stderr, "native ACK FAIL: %s (waits=%u, EINTR=%u, wakes=%u)\n",
+            reason, waits, wait_eintr, shared ? shared->wake_success : 0);
+    reap_child();
+    exit(1);
+}
+
+static void wait_done(unsigned request)
+{
+    uint64_t end = now_ns() + 100000000;
+    while (__atomic_load_n(&shared->done, __ATOMIC_ACQUIRE) != request)
+    {
+        if (expired || now_ns() >= end) fail("server completion deadline");
+        pause_us(25);
+    }
+}
+
+/* Returns one only for a genuine unacknowledged deadline. A syscall timeout
+ * after the child already ACKed is a missing-wake failure, even if loading the
+ * token afterwards would otherwise hide it. */
+static int drive_client_wait(uint64_t budget_ns)
+{
+    uint64_t end = now_ns() + budget_ns;
+    int expected, ret, saved;
+    for (;;)
+    {
+        if (expired) fail("10 second supervisor or termination signal");
+        expected = __atomic_load_n(&shared->token, __ATOMIC_SEQ_CST);
+        if (expected == ACK) return 0;
+        if (expected == PENDING)
+        {
+            expected = PENDING;
+            if (!__atomic_compare_exchange_n(&shared->token, &expected, PARKED, 0,
+                                             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) continue;
+        }
+        uint64_t now = now_ns();
+        if (now >= end) return 1;
+        uint64_t us = (end - now + 999) / 1000;
+        if (us > UINT32_MAX) us = UINT32_MAX;
+        waits++;
+        ret = __ulock_wait(UL_COMPARE_AND_WAIT_SHARED, &shared->token, PARKED, (uint32_t)us);
+        saved = errno;
+        if (!ret) { parks++; continue; }
+        if (saved == EINTR) { wait_eintr++; continue; }
+        if (saved == EAGAIN) continue;
+        if (saved == ETIMEDOUT)
+        {
+            if (__atomic_load_n(&shared->token, __ATOMIC_SEQ_CST) == ACK)
+                fail("ACK observed only after ulock timeout: missing server wake");
+            return 1;
+        }
+        fprintf(stderr, "__ulock_wait: %s\n", strerror(saved));
+        fail("unexpected Darwin wait error");
+    }
+}
+
+static void server_child(pid_t parent)
+{
+    unsigned previous = 0;
+    /* The child's independent watchdog bounds even an orphaned test server. */
+    alarm(9);
+    while (!expired && !__atomic_load_n(&shared->stop, __ATOMIC_ACQUIRE))
+    {
+        unsigned request = __atomic_load_n(&shared->request, __ATOMIC_ACQUIRE);
+        if (getppid() != parent) _exit(5);
+        if (request == previous) { pause_us(25); continue; }
+        previous = request;
+        int mode = __atomic_load_n(&shared->mode, __ATOMIC_RELAXED);
+        if (mode == HOLD)
+        {
+            __atomic_store_n(&shared->done, request, __ATOMIC_RELEASE);
+            continue;
+        }
+        if (mode == PARK || mode == INTERRUPT) pause_us(250);
+        if (mode == INTERRUPT)
+        {
+            if (getppid() != parent) _exit(5);
+            if (kill(parent, SIGUSR1)) _exit(3);
+            pause_us(250);
+        }
+        acknowledge_wait(0);
+        __atomic_store_n(&shared->done, request, __ATOMIC_RELEASE);
+    }
+    _exit(expired ? 4 : 0);
+}
+
+int main(void)
+{
+    struct sigaction sa;
+    uint64_t started = now_ns();
+    unsigned request = 0, early = 0, parked = 0, racing = 0, signalled = 0;
+    int status;
+    pid_t child, ret, parent = getpid();
+    /* Keep the real wake helper in store-only negative-control builds too. */
+    (void)wake_tid_word;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGUSR1, &sa, NULL) || sigaction(SIGALRM, &sa, NULL) ||
+        sigaction(SIGTERM, &sa, NULL) || sigaction(SIGINT, &sa, NULL)) return 2;
+    shared = mmap(NULL, sizeof(*shared), PROT_READ | PROT_WRITE,
+                  MAP_SHARED | MAP_ANON, -1, 0);
+    if (shared == MAP_FAILED) { perror("mmap"); return 2; }
+    memset(shared, 0, sizeof(*shared));
+    shm_tid_map = &shared->token;
+    if (atexit(reap_child)) return 2;
+    alarm(10);
+    child = fork();
+    if (child < 0) { perror("fork"); return 2; }
+    if (!child) server_child(parent);
+    owned_child = child;
+    for (unsigned i = 0; i < ITERATIONS; i++)
+    {
+        int mode = i % 4;
+        __atomic_store_n(&shared->token, PENDING, __ATOMIC_SEQ_CST);
+        __atomic_store_n(&shared->mode, mode, __ATOMIC_RELAXED);
+        if (mode == PARK || mode == INTERRUPT)
+            __atomic_store_n(&shared->token, PARKED, __ATOMIC_SEQ_CST);
+        __atomic_store_n(&shared->request, ++request, __ATOMIC_RELEASE);
+        if (mode == EARLY) { wait_done(request); early++; }
+        else if (mode == PARK) parked++;
+        else if (mode == INTERRUPT) signalled++;
+        else racing++;
+        if (drive_client_wait(100000000)) fail("ACK deadline");
+        wait_done(request);
+        if (__atomic_load_n(&shared->token, __ATOMIC_SEQ_CST) != ACK)
+            fail("ACK token changed after completion");
+    }
+    if (!parks || !shared->wake_success) fail("no actual parked cross-process wake observed");
+    if (!interrupted) fail("no signal handler execution observed");
+    if (!wait_eintr) fail("no actual interrupted Darwin wait observed");
+
+    /* A missing/dead server must leave the bounded wait, without touching any
+     * external process. The sole owned child is killed and synchronously reaped. */
+    __atomic_store_n(&shared->token, PARKED, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&shared->mode, HOLD, __ATOMIC_RELAXED);
+    __atomic_store_n(&shared->request, ++request, __ATOMIC_RELEASE);
+    wait_done(request);
+    if (!drive_client_wait(2000000)) fail("unacknowledged wait did not reach deadline");
+    if (kill(child, SIGKILL)) fail("kill owned server");
+    do ret = waitpid(child, &status, 0); while (ret < 0 && errno == EINTR);
+    if (ret != child || !WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL)
+        fail("owned server was not reaped after termination");
+    owned_child = -1;
+    if (!drive_client_wait(2000000)) fail("dead server wait did not reach deadline");
+    errno = 0;
+    if (waitpid(child, &status, WNOHANG) != -1 || errno != ECHILD)
+        fail("owned server remains unreaped");
+    alarm(0);
+    printf("native ACK PASS: iterations=%u early=%u parked=%u race=%u signalled=%u "
+           "waits=%u wait_EINTR=%u real_wakes=%u wake_EINTR=%u "
+           "deadline=PASS dead_server=PASS reaped=PASS elapsed_ms=%llu\n",
+           ITERATIONS, early, parked, racing, signalled, waits, wait_eintr,
+           shared->wake_success, shared->wake_eintr,
+           (unsigned long long)((now_ns() - started) / 1000000));
+    if (munmap(shared, sizeof(*shared))) return 2;
+    return 0;
+}

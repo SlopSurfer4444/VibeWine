@@ -1119,6 +1119,286 @@
       "sha256": "88da29ae789ae857b6aa449594ea3f6a7b69f2000c8c53daccc200ef521134e1",
       "origin": "local regression/documentation for attributed source backports",
       "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "integrated-wave-20261023/bounded-ack-c9966373-adaptation/dlls/ntdll/unix/msync.c",
+      "destination": "dlls/ntdll/unix/msync.c",
+      "sha256": "6b7fa3d1cddfb054d440fcecc10171bc125951cb892debbeb0f28fe02e5f923a"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ntdll/unix/socket.c",
+      "destination": "dlls/ntdll/unix/socket.c",
+      "sha256": "ded310c7f2d690f56d865aecdf45925856e84db640d20b7686a5c331f7b741d0"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ntdll/unix/unix_private.h",
+      "destination": "dlls/ntdll/unix/unix_private.h",
+      "sha256": "d2bff47019a82e481b52a98833732cc1b6e17963b718e2943dc7a5e1f460e788"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ntdll/unix/virtual.c",
+      "destination": "dlls/ntdll/unix/virtual.c",
+      "sha256": "7dabf172afab173a26610c04e0ed912f292279b1090b03f70827bc9ea597c745"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/dlls/winemac.drv/ax_window_identity.inc",
+      "destination": "dlls/winemac.drv/ax_window_identity.inc",
+      "sha256": "cd831472d21154c597c74e4fc3dd81078ef4440cc144191e774e94ec2e708f51"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/dlls/winemac.drv/cocoa_event.m",
+      "destination": "dlls/winemac.drv/cocoa_event.m",
+      "sha256": "f89908766edbeaf2e86c5c20ecfbd5d05fd8dde49a19512e8e6ccf0aecfe726c"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/dlls/winemac.drv/d3dmetal.c",
+      "destination": "dlls/winemac.drv/d3dmetal.c",
+      "sha256": "a57f4c03a8a9df0c73ede6cf8c56eaf60008fb36a711a89b26564db540f3cc77"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/dlls/winemac.drv/d3dmetal_objc.m",
+      "destination": "dlls/winemac.drv/d3dmetal_objc.m",
+      "sha256": "f4a07a4b956ca94d98010aec0d5bf4503e028ea4565c5453ee41996396b437e9"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/dlls/winemac.drv/drawable_phase_diag.h",
+      "destination": "dlls/winemac.drv/drawable_phase_diag.h",
+      "sha256": "6001cb3cd3d7e20fd275d714b20ff1b6521c135a7875380788111f299c825aa8"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/dlls/winemac.drv/visibility_guard.h",
+      "destination": "dlls/winemac.drv/visibility_guard.h",
+      "sha256": "2712d9894b5a1b7432bf237dde2da25260737e7354496500a6f6d68e5bad1170"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/dlls/winemac.drv/visibility_snapshot.inc",
+      "destination": "dlls/winemac.drv/visibility_snapshot.inc",
+      "sha256": "17135acf127b54e529fc5aaa20a18c195fc3031f0d024bc51ec0d77a46f195dd"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/dlls/winemac.drv/visibility_startup.inc",
+      "destination": "dlls/winemac.drv/visibility_startup.inc",
+      "sha256": "9bcaea58d3e29918be3512473dae13d3407cac78969a548d4329f79cae790d9f"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/async.c",
+      "destination": "dlls/ws2_32/async.c",
+      "sha256": "4a012bfae81e208a7df76ab51cb1a8c03cd045fcb3a691a3105c187dfabf297c"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/netdiag_pe.h",
+      "destination": "dlls/ws2_32/netdiag_pe.h",
+      "sha256": "5d186c7a0aa1e5a3e5275ca2a38701c19095a7b4f6e9e2a22209ddf645b13808"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/protocol.c",
+      "destination": "dlls/ws2_32/protocol.c",
+      "sha256": "1838f3fedaa20a3fabf93b45d27c18bb94ba553ad09ea0037be5009cf0c53194"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/socket.c",
+      "destination": "dlls/ws2_32/socket.c",
+      "sha256": "b322cc50691ac8bcb1b1ec097189c2391a62ccbac41c7f46ce0d4bc4d37ca142"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/tests/netdiag/README.md",
+      "destination": "dlls/ws2_32/tests/netdiag/README.md",
+      "sha256": "ed8a476db41da80504399c4a3327ac06b6173dc21baccc28990b4460c9931afb"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/tests/netdiag/logger-fixture.c",
+      "destination": "dlls/ws2_32/tests/netdiag/logger-fixture.c",
+      "sha256": "19d80fecf11fd6428830375cb097a6010ff1f625d82a47ede517eb6582a99d64"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/tests/netdiag/native-hook-fixture.c",
+      "destination": "dlls/ws2_32/tests/netdiag/native-hook-fixture.c",
+      "sha256": "a009f9cb82d7c89cbf410f3667b767de4d509ac20b489185bf8d64c09cfb58c9"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/tests/netdiag/native-readiness-fixture.c",
+      "destination": "dlls/ws2_32/tests/netdiag/native-readiness-fixture.c",
+      "sha256": "73905b66757f2e336eed3cd3d4ca0ed93adcbb2b01162adfd4bb133e3e8be6ed"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/tests/netdiag/netdiag-tool.c",
+      "destination": "dlls/ws2_32/tests/netdiag/netdiag-tool.c",
+      "sha256": "c151ed50a3e9e0f23d1ee8d705089d58beed1210b63ace4dbfa9e1dc95ec0e6a"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/tests/netdiag/run.py",
+      "destination": "dlls/ws2_32/tests/netdiag/run.py",
+      "sha256": "de0b088985dc96ccbef47808c6e39110163efdea50bb23aaf0978c09ac865648"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/tests/netdiag/run_native_hooks.py",
+      "destination": "dlls/ws2_32/tests/netdiag/run_native_hooks.py",
+      "sha256": "9d0307b988d2abf5916f290b38ec4bf9a80eb4e1b70f1d41287c7e621521ec0b"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/tests/netdiag/run_native_readiness.py",
+      "destination": "dlls/ws2_32/tests/netdiag/run_native_readiness.py",
+      "sha256": "615cabe57531a94518baa7ce73c13e688ee19db119511754b5ea647bbbe3a330"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/tests/netdiag/windows-fixture.c",
+      "destination": "dlls/ws2_32/tests/netdiag/windows-fixture.c",
+      "sha256": "1821f0139b429ef3dae343d6203140cd05be7c774d14be1874bdca9a3876a2ca"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/unixlib.c",
+      "destination": "dlls/ws2_32/unixlib.c",
+      "sha256": "10846ff994a3498c940c8e9a0999a167b62e3533679abd8dcd4bb940fad732d7"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/dlls/ws2_32/ws2_32_private.h",
+      "destination": "dlls/ws2_32/ws2_32_private.h",
+      "sha256": "fc3667360430cc6a6d087fbf1c228b661cfe7d7b2bc4138391de5a5421b9d679"
+    },
+    {
+      "source": "integrated-wave-20261023/xinput-fbe0e3de/dlls/xinput1_3/main.c",
+      "destination": "dlls/xinput1_3/main.c",
+      "sha256": "0098fd1239c8037e9cbb193f865ec58d08bf65a6c16ba4d5a72a2e9b2eb097de"
+    },
+    {
+      "source": "integrated-wave-20261023/xinput-fbe0e3de/dlls/xinput1_3/test_backend.h",
+      "destination": "dlls/xinput1_3/test_backend.h",
+      "sha256": "4608cb72f79d6b81a2b21249020d0621be3b88edc6a4eeb1dec64d627eb03908"
+    },
+    {
+      "source": "integrated-wave-20261023/xinput-fbe0e3de/dlls/xinput1_3/tests/process-local/README.md",
+      "destination": "dlls/xinput1_3/tests/process-local/README.md",
+      "sha256": "40856d6f577a2adbfee7ddb80e4f63beaf0dc73ca4038d0b62e849f4ec6506dd"
+    },
+    {
+      "source": "integrated-wave-20261023/xinput-fbe0e3de/dlls/xinput1_3/tests/process-local/build.py",
+      "destination": "dlls/xinput1_3/tests/process-local/build.py",
+      "sha256": "3e694408ae332986035f42cd68ce62ce42268c613ddf3b6eb6091857075e0d18"
+    },
+    {
+      "source": "integrated-wave-20261023/xinput-fbe0e3de/dlls/xinput1_3/tests/process-local/fixture.c",
+      "destination": "dlls/xinput1_3/tests/process-local/fixture.c",
+      "sha256": "06718b03f5e3c1db16399e475cc33113af0291af0e85ed56b59a96ae2c537b8a"
+    },
+    {
+      "source": "integrated-wave-20261023/xinput-fbe0e3de/dlls/xinput1_3/tests/process-local/native-expiry-fixture.c",
+      "destination": "dlls/xinput1_3/tests/process-local/native-expiry-fixture.c",
+      "sha256": "63034d91432466eb90012079620960b89802a6caa25f49ae20c7520b688275d0"
+    },
+    {
+      "source": "integrated-wave-20261023/xinput-fbe0e3de/dlls/xinput1_3/tests/process-local/predecessor-10557ac.h",
+      "destination": "dlls/xinput1_3/tests/process-local/predecessor-10557ac.h",
+      "sha256": "92c0f82952b38b5da2507ade04d36de3858d20a5f0d6ca2d0f6019e3567f15ef"
+    },
+    {
+      "source": "integrated-wave-20261023/xinput-fbe0e3de/dlls/xinput1_3/tests/process-local/run_native_expiry.py",
+      "destination": "dlls/xinput1_3/tests/process-local/run_native_expiry.py",
+      "sha256": "efb27b85b021194846fc152db7bedff8934c96c0dd9d36b63d90fc99ab385950"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/include/Makefile.in",
+      "destination": "include/Makefile.in",
+      "sha256": "e889e96a262a31515a329082811187e03df4e5381b9857f7f9d974296bd9a0c0"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/include/wine/netdiag.h",
+      "destination": "include/wine/netdiag.h",
+      "sha256": "e5792ce9b67c034d55c746ac4a260bbe1e949dd513c22c650be1ab109217a1d8"
+    },
+    {
+      "source": "integrated-wave-20261023/network-0b426177-build-integration/include/wine/netdiag_unix.h",
+      "destination": "include/wine/netdiag_unix.h",
+      "sha256": "433c86bc391ccd9060afae5a518bf316f659aa771377a28bdc6325fb63de5008"
+    },
+    {
+      "source": "integrated-wave-20261023/bounded-ack-c9966373-adaptation/server/msync.c",
+      "destination": "server/msync.c",
+      "sha256": "d2fe0526e83ae963239d2eade1850e2169d641c36a12ea1717e6df930e8178b7"
+    },
+    {
+      "source": "integrated-wave-20261023/bounded-ack-c9966373-adaptation/vibewine/tests/msync-ack/README.md",
+      "destination": "vibewine/tests/msync-ack/README.md",
+      "sha256": "82b0377dbe80abdbc44ba0711c220a483908d04d4c3ae645a614ed030f91bca3"
+    },
+    {
+      "source": "integrated-wave-20261023/bounded-ack-c9966373-adaptation/vibewine/tests/msync-ack/fixture.c.in",
+      "destination": "vibewine/tests/msync-ack/fixture.c.in",
+      "sha256": "f1db35f5b91b2d9e13eceb825269a1541685da55eb01cbff0ff0edf31d5a9380"
+    },
+    {
+      "source": "integrated-wave-20261023/bounded-ack-c9966373-adaptation/vibewine/tests/msync-ack/liveness.c.in",
+      "destination": "vibewine/tests/msync-ack/liveness.c.in",
+      "sha256": "680fb48edfd56c17c89e46e3ee64d24500fb882535e181039c0c91170ceb4d90"
+    },
+    {
+      "source": "integrated-wave-20261023/bounded-ack-c9966373-adaptation/vibewine/tests/msync-ack/native.c.in",
+      "destination": "vibewine/tests/msync-ack/native.c.in",
+      "sha256": "5d08a4da12a3fda956fc8d4414b73fc2e43d4be658a3de6f9f46ea38efdc4209"
+    },
+    {
+      "source": "integrated-wave-20261023/bounded-ack-c9966373-adaptation/vibewine/tests/msync-ack/run.py",
+      "destination": "vibewine/tests/msync-ack/run.py",
+      "sha256": "3da779105113fa7cc2095aa490fb028ae08d5339b2318f110922c11a53141995"
+    },
+    {
+      "source": "integrated-wave-20261023/bounded-ack-c9966373-adaptation/vibewine/tests/msync_registration.py",
+      "destination": "vibewine/tests/msync_registration.py",
+      "sha256": "65b23bb78ddafc0644b07d0065f30fd485211ad8a673e51a08aad4ad09859029"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/raise.m",
+      "destination": "vibewine/tests/raise.m",
+      "sha256": "a02b247314c432fb0631449fab66edf1beecdc72f040eb3e5e5335e252f2fd51"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/run_raise.py",
+      "destination": "vibewine/tests/run_raise.py",
+      "sha256": "b2dbc53ee593c3e8c205ce5707222c389046c83aac367bb15f49d1396937da38"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/runtime-native-diagnostics/README.md",
+      "destination": "vibewine/tests/runtime-native-diagnostics/README.md",
+      "sha256": "3c183eadcb02192322080da50ed0443d2fdda11d17386baefed8b62b07feebe2"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/runtime-native-diagnostics/guards.c",
+      "destination": "vibewine/tests/runtime-native-diagnostics/guards.c",
+      "sha256": "6d7f63581ff9162cc3b99f6b2b403fc1eb998d15a9369bcba7790928a8feab55"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/runtime-native-diagnostics/lifecycle.m",
+      "destination": "vibewine/tests/runtime-native-diagnostics/lifecycle.m",
+      "sha256": "9543dfc6fa8aa781f1e5fd433bde827f55a16ac7bddf407c1a68da626ba4e57f"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/runtime-native-diagnostics/override.m",
+      "destination": "vibewine/tests/runtime-native-diagnostics/override.m",
+      "sha256": "2d45f986b59b5b77c5fdd8f1f38e088861fb8a60b1443342b43407330210980b"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/runtime-native-diagnostics/policy.c",
+      "destination": "vibewine/tests/runtime-native-diagnostics/policy.c",
+      "sha256": "885e2974bcacdb8b351bce62dceec4061735f9fb5075b22e812e532f5487b2c2"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/runtime-native-diagnostics/raw.c",
+      "destination": "vibewine/tests/runtime-native-diagnostics/raw.c",
+      "sha256": "e6aed9d82feb9df8b757a0aa40208e92b49b89f8aeb17ef81bcf7c99ebe1d844"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/runtime-native-diagnostics/run.py",
+      "destination": "vibewine/tests/runtime-native-diagnostics/run.py",
+      "sha256": "3eb9a366d545cd5ee93fac3d7ae1677225ee132afd0e1f22dd37054e5cd93afc"
+    },
+    {
+      "source": "integrated-wave-20261023/native-4e6b2354-port-and-visibility-cleanup/vibewine/tests/runtime-native-diagnostics/second.c",
+      "destination": "vibewine/tests/runtime-native-diagnostics/second.c",
+      "sha256": "dba0b404688a9f8efe6a314e7c7e4837c0f783d7c4de7a4aabe0a7ca6858b665"
+    },
+    {
+      "source": "integrated-wave-20261023/source-contract/vibewine/INTEGRATED_WAVE_20261023.md",
+      "destination": "vibewine/INTEGRATED_WAVE_20261023.md",
+      "sha256": "56e9403ef5295d80beccae35b63271d8010d3a86498060a9b176ba0014508891"
     }
   ]
 }

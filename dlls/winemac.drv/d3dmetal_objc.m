@@ -35,6 +35,10 @@
 #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
 
+#include "drawable_phase_diag.h"
+#include "visibility_snapshot.inc"
+#include "visibility_startup.inc"
+
 @implementation WineMetalLayer
 
     /* Extend [CAMetalLayer nextDrawable] so client_surface_present() can be
@@ -42,6 +46,11 @@
      */
     - (id<CAMetalDrawable>) nextDrawable
     {
+        struct w7pd_sample diag = w7pd_begin();
+        uintptr_t diag_queue = 0, diag_surface = 0;
+        id<CAMetalDrawable> drawable;
+        bool diag_posted = false;
+        w7vis_startup_from_layer(self);
         /* CAMetalLayer's delegate is the WineMetalView that contains it (seems like that's always true
          * for an NSView backing layer).
          * That WineMetalView's parent is the client_surface->cocoa_view WineContentView, it has the
@@ -61,13 +70,27 @@
                     event->client_surface_presented.client_surface = client_surface;
 
                     WineEventQueue *queue = [(WineWindow*)view.window queue];
+                    diag_queue = (uintptr_t)queue;
+                    diag_surface = (uintptr_t)client_surface;
+                    w7pd_mark(&diag, 1);
                     [queue postEvent:event];
+                    w7pd_mark(&diag, 2);
+                    diag_posted = true;
                     macdrv_release_event(event);
                 }
             }
         }
 
-        return [super nextDrawable];
+        w7pd_mark(&diag, 3);
+        if (diag.active && !diag_posted) {
+            diag.wall[1] = diag.wall[2] = diag.wall[3];
+            diag.cpu[1] = diag.cpu[2] = diag.cpu[3];
+        }
+        drawable = [super nextDrawable];
+        w7pd_mark(&diag, 4);
+        w7pd_report(&diag, "drawable", (uintptr_t)self, diag_queue,
+                    diag_surface, (uintptr_t)drawable, 0, 0, -1);
+        return drawable;
     }
 
 @end

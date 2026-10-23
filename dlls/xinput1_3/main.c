@@ -120,6 +120,8 @@ static struct xinput_controller controllers[XUSER_MAX_COUNT] =
 };
 
 static HMODULE xinput_instance;
+
+#include "test_backend.h"
 static HANDLE start_event;
 static HANDLE update_event;
 
@@ -809,6 +811,12 @@ void WINAPI DECLSPEC_HOTPATCH XInputEnable(BOOL enable)
 
     TRACE("enable %d.\n", enable);
 
+    if (test_backend_active())
+    {
+        test_backend_enable(enable);
+        return;
+    }
+
     /* Setting to false will stop messages from XInputSetState being sent
     to the controllers. Setting to true will send the last vibration
     value (sent to XInputSetState) to the controller and allow messages to
@@ -830,6 +838,12 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputSetState(DWORD index, XINPUT_VIBRATION *vib
 
     TRACE("index %lu, vibration %p.\n", index, vibration);
 
+    if (test_backend_active())
+    {
+        if (index >= XUSER_MAX_COUNT || !vibration) return ERROR_BAD_ARGUMENTS;
+        return index ? ERROR_DEVICE_NOT_CONNECTED : ERROR_SUCCESS;
+    }
+
     start_update_thread();
 
     if (index >= XUSER_MAX_COUNT) return ERROR_BAD_ARGUMENTS;
@@ -847,6 +861,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputSetState(DWORD index, XINPUT_VIBRATION *vib
 static DWORD xinput_get_state(DWORD index, XINPUT_STATE *state)
 {
     if (!state) return ERROR_BAD_ARGUMENTS;
+    if (test_backend_active()) return test_backend_get_state(index, state);
 
     start_update_thread();
 
@@ -973,10 +988,9 @@ static BOOL trigger_is_on(const BYTE value)
     return value > 30;
 }
 
-static DWORD check_for_keystroke(const DWORD index, XINPUT_KEYSTROKE *keystroke)
+static DWORD check_gamepad_keystroke(DWORD index, XINPUT_KEYSTROKE *keystroke,
+                                     const XINPUT_GAMEPAD *cur, XINPUT_GAMEPAD *last)
 {
-    struct xinput_controller *controller = &controllers[index];
-    const XINPUT_GAMEPAD *cur;
     DWORD ret = ERROR_EMPTY;
     int i;
 
@@ -1002,26 +1016,22 @@ static DWORD check_for_keystroke(const DWORD index, XINPUT_KEYSTROKE *keystroke)
         /* note: guide button does not send an event */
     };
 
-    if (!controller_lock(controller)) return ERROR_DEVICE_NOT_CONNECTED;
-
-    cur = &controller->state.Gamepad;
-
     /*** buttons ***/
     for (i = 0; i < ARRAY_SIZE(buttons); ++i)
     {
-        if ((cur->wButtons & buttons[i].mask) ^ (controller->last_keystroke.wButtons & buttons[i].mask))
+        if ((cur->wButtons & buttons[i].mask) ^ (last->wButtons & buttons[i].mask))
         {
             keystroke->VirtualKey = buttons[i].vk;
             keystroke->Unicode = 0; /* unused */
             if (cur->wButtons & buttons[i].mask)
             {
                 keystroke->Flags = XINPUT_KEYSTROKE_KEYDOWN;
-                controller->last_keystroke.wButtons |= buttons[i].mask;
+                last->wButtons |= buttons[i].mask;
             }
             else
             {
                 keystroke->Flags = XINPUT_KEYSTROKE_KEYUP;
-                controller->last_keystroke.wButtons &= ~buttons[i].mask;
+                last->wButtons &= ~buttons[i].mask;
             }
             keystroke->UserIndex = index;
             keystroke->HidCode = 0;
@@ -1031,46 +1041,55 @@ static DWORD check_for_keystroke(const DWORD index, XINPUT_KEYSTROKE *keystroke)
     }
 
     /*** triggers ***/
-    if (trigger_is_on(cur->bLeftTrigger) ^ trigger_is_on(controller->last_keystroke.bLeftTrigger))
+    if (trigger_is_on(cur->bLeftTrigger) ^ trigger_is_on(last->bLeftTrigger))
     {
         keystroke->VirtualKey = VK_PAD_LTRIGGER;
         keystroke->Unicode = 0; /* unused */
         keystroke->Flags = trigger_is_on(cur->bLeftTrigger) ? XINPUT_KEYSTROKE_KEYDOWN : XINPUT_KEYSTROKE_KEYUP;
         keystroke->UserIndex = index;
         keystroke->HidCode = 0;
-        controller->last_keystroke.bLeftTrigger = cur->bLeftTrigger;
+        last->bLeftTrigger = cur->bLeftTrigger;
         ret = ERROR_SUCCESS;
         goto done;
     }
 
-    if (trigger_is_on(cur->bRightTrigger) ^ trigger_is_on(controller->last_keystroke.bRightTrigger))
+    if (trigger_is_on(cur->bRightTrigger) ^ trigger_is_on(last->bRightTrigger))
     {
         keystroke->VirtualKey = VK_PAD_RTRIGGER;
         keystroke->Unicode = 0; /* unused */
         keystroke->Flags = trigger_is_on(cur->bRightTrigger) ? XINPUT_KEYSTROKE_KEYDOWN : XINPUT_KEYSTROKE_KEYUP;
         keystroke->UserIndex = index;
         keystroke->HidCode = 0;
-        controller->last_keystroke.bRightTrigger = cur->bRightTrigger;
+        last->bRightTrigger = cur->bRightTrigger;
         ret = ERROR_SUCCESS;
         goto done;
     }
 
     /*** joysticks ***/
     ret = check_joystick_keystroke(index, keystroke, &cur->sThumbLX, &cur->sThumbLY,
-            &controller->last_keystroke.sThumbLX,
-            &controller->last_keystroke.sThumbLY, VK_PAD_LTHUMB_UP);
+            &last->sThumbLX,
+            &last->sThumbLY, VK_PAD_LTHUMB_UP);
     if (ret == ERROR_SUCCESS)
         goto done;
 
     ret = check_joystick_keystroke(index, keystroke, &cur->sThumbRX, &cur->sThumbRY,
-            &controller->last_keystroke.sThumbRX,
-            &controller->last_keystroke.sThumbRY, VK_PAD_RTHUMB_UP);
+            &last->sThumbRX,
+            &last->sThumbRY, VK_PAD_RTHUMB_UP);
     if (ret == ERROR_SUCCESS)
         goto done;
 
 done:
-    controller_unlock(controller);
+    return ret;
+}
 
+static DWORD check_for_keystroke(DWORD index, XINPUT_KEYSTROKE *keystroke)
+{
+    struct xinput_controller *controller = &controllers[index];
+    DWORD ret;
+
+    if (!controller_lock(controller)) return ERROR_DEVICE_NOT_CONNECTED;
+    ret = check_gamepad_keystroke(index, keystroke, &controller->state.Gamepad, &controller->last_keystroke);
+    controller_unlock(controller);
     return ret;
 }
 
@@ -1079,6 +1098,21 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetKeystroke(DWORD index, DWORD reserved, P
     TRACE("index %lu, reserved %lu, keystroke %p.\n", index, reserved, keystroke);
 
     if (index >= XUSER_MAX_COUNT && index != XUSER_INDEX_ANY) return ERROR_BAD_ARGUMENTS;
+
+    if (test_backend_active())
+    {
+        DWORD ret;
+        if (!keystroke) return ERROR_BAD_ARGUMENTS;
+        if (index && index != XUSER_INDEX_ANY) return ERROR_DEVICE_NOT_CONNECTED;
+        test_diagnostics_enter(TEST_KEY);
+        EnterCriticalSection(&test_backend_cs);
+        test_backend_poll(FALSE);
+        test_diagnostics_snapshot();
+        test_diagnostics_exit(TEST_KEY, test_backend_expire());
+        ret = check_gamepad_keystroke(0, keystroke, &test_backend.state.Gamepad, &test_backend.last_keystroke);
+        LeaveCriticalSection(&test_backend_cs);
+        return ret;
+    }
 
     if (index == XUSER_INDEX_ANY)
     {
@@ -1097,6 +1131,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilities(DWORD index, DWORD flags, X
     XINPUT_CAPABILITIES_EX caps_ex;
     DWORD ret;
 
+    if (test_backend_active() && !capabilities) return ERROR_BAD_ARGUMENTS;
     ret = XInputGetCapabilitiesEx(1, index, flags, &caps_ex);
 
     if (!ret) *capabilities = caps_ex.Capabilities;
@@ -1110,6 +1145,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetDSoundAudioDeviceGuids(DWORD index, GUID
           debugstr_guid(capture_guid));
 
     if (index >= XUSER_MAX_COUNT || !render_guid || !capture_guid) return ERROR_BAD_ARGUMENTS;
+    if (test_backend_active()) return index ? ERROR_DEVICE_NOT_CONNECTED : ERROR_NOT_SUPPORTED;
     if (!controllers[index].device) return ERROR_DEVICE_NOT_CONNECTED;
 
     return ERROR_NOT_SUPPORTED;
@@ -1122,6 +1158,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetBatteryInformation(DWORD index, BYTE typ
     if (!once++) FIXME("index %lu, type %u, battery %p.\n", index, type, battery);
 
     if (index >= XUSER_MAX_COUNT) return ERROR_BAD_ARGUMENTS;
+    if (test_backend_active()) return index ? ERROR_DEVICE_NOT_CONNECTED : ERROR_NOT_SUPPORTED;
     if (!controllers[index].device) return ERROR_DEVICE_NOT_CONNECTED;
 
     return ERROR_NOT_SUPPORTED;
@@ -1133,6 +1170,8 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilitiesEx(DWORD unk, DWORD index, D
     DWORD ret = ERROR_SUCCESS;
 
     TRACE("unk %lu, index %lu, flags %#lx, capabilities %p.\n", unk, index, flags, caps);
+
+    if (test_backend_active()) return test_backend_capabilities(index, caps);
 
     start_update_thread();
 

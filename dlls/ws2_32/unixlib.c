@@ -101,6 +101,7 @@
 #include "wine/debug.h"
 
 #include "ws2_32_private.h"
+#include "wine/netdiag_unix.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(winsock);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
@@ -1064,6 +1065,28 @@ static NTSTATUS unix_getnameinfo( void *args )
 }
 
 
+/* Pointer-free scalar bridge; no application payload or name is accepted. */
+static NTSTATUS unix_netdiag( void *args )
+{
+    struct wine_netdiag_event *event = args;
+    if (event->phase == ND_BEGIN)
+        wine_netdiag_begin( event, event->api, event->handle );
+    else
+    {
+        /* Resolve readiness membership while the input is captured. Keep
+         * that exact lifetime in the PE context through completion; a socket
+         * may close and its value be reused while the original wait runs. */
+        if ((event->api == ND_SELECT || event->api == ND_WSAPOLL) &&
+            event->phase == ND_ATTEMPT && !(event->flags & ND_LIFETIME_UNKNOWN))
+        {
+            struct wine_netdiag_header *map = wine_netdiag_active();
+            if (map) wine_netdiag_lifetime( map, event, 0, 0 );
+        }
+        wine_netdiag_emit( event );
+    }
+    return 0;
+}
+
 const unixlib_entry_t __wine_unix_call_funcs[] =
 {
     unix_getaddrinfo,
@@ -1071,6 +1094,7 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
     unix_gethostbyname,
     unix_gethostname,
     unix_getnameinfo,
+    unix_netdiag,
 };
 
 C_ASSERT( ARRAYSIZE(__wine_unix_call_funcs) == ws_unix_funcs_count );
@@ -1351,6 +1375,7 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
     wow64_unix_gethostbyname,
     wow64_unix_gethostname,
     wow64_unix_getnameinfo,
+    unix_netdiag,
 };
 
 C_ASSERT( ARRAYSIZE(__wine_unix_call_wow64_funcs) == ws_unix_funcs_count );
