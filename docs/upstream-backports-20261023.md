@@ -57,3 +57,33 @@ translation units passed on this Mac. A full newly matched compiler, PE librarie
 native bridge and Metal helper build remains a separate integration gate. No game,
 GPU rendering, FPS, installed activation or compatibility claim follows from
 these CPU/source checks.
+
+## Follow-up: SM50 public API ownership
+
+From component `284f84ccbc3ec61fb5ea25744a951d3f1eabdeaa`, adapt the ownership
+part of Feifan He's [upstream `39625fa9`](https://github.com/3Shain/dxmt/commit/39625fa98c9830ffb035d51a37e3590e2b8d4d9e)
+(`feifan@codeweavers.com`, original Signed-off-by retained as provenance).
+The unrelated IOHelper/VertexPuller refactors in that upstream revision are not
+transplanted into this older compiler architecture.
+
+Error objects and partially initialized shaders now use `unique_ptr`; public
+ownership transfers only on the documented output boundary. Successful calls no
+longer leak their unused error object, error paths tolerate an omitted `ppError`,
+and failed initialization releases a partial shader. All five compile wrappers
+share this error-ownership rule. Public API 26 and compiler epoch 2 remain
+unchanged: successful shader lowering/output has not changed in this follow-up.
+
+```sh
+python3 tests/vibewine/sm50-lifetime/run.py --llvm /absolute/llvm14-prefix --support-build /absolute/existing-matched-build
+python3 tests/vibewine/sm50-lifetime/run.py --llvm /absolute/llvm14-prefix --support-build /absolute/existing-matched-build --baseline-ref 284f84ccbc3ec61fb5ea25744a951d3f1eabdeaa
+```
+
+The fixture compiles the complete changed converter translation unit with UBSan
+and checks 22 public-API cases: real compute initialization/compilation/destruction,
+partial hull rejection, conversion errors, null output and optional error output.
+After warmup, allocation counters return to zero across repeated calls. The same
+baseline compiles and must produce the exact expected leaks, null-output UBSan
+diagnostics and unaffected ownership controls; arbitrary crashes cannot pass.
+Retained LLVM14/static objects supply unchanged support code. Successful specialized
+tessellation/geometry pipelines, a new full renderer build, real GPU rendering,
+installed behavior and numerical FPS impact remain unverified.
