@@ -1,5 +1,10 @@
 # Completed ring-block retention
 
+Historical verification checkpoint. Original local build/source identities below
+remain unchanged; [DXMT provenance](../provenance/dxmt.md) maps them to
+code-equivalent public commits. For the latest installation state, see
+[current status](../STATUS.md).
+
 DXMT component `bd107f63a816c76c79e1452e0b606412a7c3476d` fixes serial idle
 aging in `RingBumpState`, used by upload, argument, temporary-copy and host
 command heaps. It is a general allocator change, without game-name checks.
@@ -26,8 +31,11 @@ cd components/dxmt
 python3 tests/vibewine/ring-retention/run.py --sanitize
 python3 tests/vibewine/ring-retention/run.py --arch x86_64 --sanitize
 python3 tests/vibewine/ring-retention/run.py \
-  --source-ref 6f21900c --expect-retained-baseline --sanitize
+  --source-ref a5ad261e --expect-retained-baseline --sanitize
 ```
+
+The baseline command above uses public `a5ad261e`, whose tree equals the
+originally tested local `6f21900c`; it works in fresh public component clones.
 
 Native and translated ASan/UBSan fixtures passed. The predecessor reproduces
 retention and fails the candidate's new bound. Tests exercise fixed/advancing

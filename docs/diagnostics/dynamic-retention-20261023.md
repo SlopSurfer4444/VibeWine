@@ -1,5 +1,10 @@
 # Completed Dynamic allocation retention
 
+Historical verification checkpoint. Original local build/source identities below
+remain unchanged; [DXMT provenance](../provenance/dxmt.md) maps them to
+code-equivalent public commits. For the latest installation state, see
+[current status](../STATUS.md).
+
 `DynamicBuffer` and `DynamicLinearTexture` kept their retired backing-allocation
 FIFO at its historical highwater until destruction. A counted source fixture
 reproduces 33 live allocations after a 32-rename burst and 1000 fully coherent

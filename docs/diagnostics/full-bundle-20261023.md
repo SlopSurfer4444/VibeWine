@@ -1,5 +1,10 @@
 # Matched graphics bundle, 2026-10-23
 
+Historical verification checkpoint. Original local build/source identities below
+remain unchanged; [DXMT provenance](../provenance/dxmt.md) maps them to
+code-equivalent public commits. For the latest installation state, see
+[current status](../STATUS.md).
+
 The DXMT component pin `5cf1662beee80e428810a49f0d5564569884b1bb`
 was built as one matched group: D3D11, DXGI, D3D10Core, WineMetal PE,
 and the native WineMetal bridge with statically linked AIRCONV. New PE code

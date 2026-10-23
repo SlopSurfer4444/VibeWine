@@ -1,7 +1,7 @@
 # VibeWine roadmap
 
 This is a direction for contributions, not a release promise. Start with the
-[component source](README.md#start-with-the-source) and [contribution guide](CONTRIBUTING.md).
+[component source](README.md#get-the-source) and [contribution guide](CONTRIBUTING.md).
 
 ## Make the project easier to build and review
 

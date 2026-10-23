@@ -1,5 +1,10 @@
 # Completed staging allocation retention
 
+Historical verification checkpoint. Original local build/source identities below
+remain unchanged; [DXMT provenance](../provenance/dxmt.md) maps them to
+code-equivalent public commits. For the latest installation state, see
+[current status](../STATUS.md).
+
 The general DXMT fix is component commit
 `44800cafedf849aa6f03e05a01698e9016cb6e22`. It is independent of any game profile.
 
