@@ -1,0 +1,29 @@
+--- a/dlls/ntdll/unix/msync.c
++++ b/dlls/ntdll/unix/msync.c
+@@ -250,7 +250,26 @@
+                      0, MACH_PORT_NULL, MACH_MSG_TIMEOUT_NONE, 0 );
+ 
+     if (mr != MACH_MSG_SUCCESS)
++    {
++        /* The server did not receive the registration. Undo only this waiter's
++         * references before terminating, as for a broken server request pipe.
++         * Retrying through STATUS_PENDING would spin without checking timeout. */
++        if (alert_obj)
++        {
++            struct event *obj = (struct event *)alert_obj_shm;
++
++            __atomic_sub_fetch( &obj->multiple_waiters, 1, __ATOMIC_SEQ_CST );
++            count--;
++        }
++        for (i = 0; i < count; i++)
++        {
++            struct event *obj = (struct event *)objs_shm[i];
++
++            __atomic_sub_fetch( &obj->multiple_waiters, 1, __ATOMIC_SEQ_CST );
++        }
+         ERR("Failed to send server register wait: %#x\n", mr);
++        abort_thread( mr == MACH_SEND_INVALID_DEST ? 0 : 1 );
++    }
+ 
+     return mr;
+ }

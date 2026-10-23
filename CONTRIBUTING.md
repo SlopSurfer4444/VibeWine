@@ -24,6 +24,9 @@ changes in an issue before investing in a broad rewrite.
 
 Start with [the README](README.md), [build instructions](docs/BUILDING.md) and
 [upstream provenance](docs/UPSTREAM.md). Edit complete source in `components/`.
+Use the [patch map](docs/PATCHES.md) to identify an existing fix or experimental
+base before duplicating it. Update the relevant provenance entry when importing
+or adapting code; mark unknown origins explicitly.
 Commit inside the component and open its PR against `component/wine` or
 `component/dxmt`, not main. Once accepted, a separate main PR updates the gitlink
 and records integration evidence. Never use `submodule update --remote` as a
@@ -56,6 +59,10 @@ the tree you modify. For imported or adapted code, identify its source URL,
 revision when available, license, and your adaptations. Mark unknown provenance
 as unknown rather than inventing a revision or source history. Do not submit code
 you lack permission to contribute.
+
+For retained runtime source patches, follow their named bases and reconstruction
+instructions. A patch exported from a private build is not automatically a safe
+merge into a newer component or proof of a full reproducible binary build.
 
 Keep generated binaries, proprietary game/runtime files, credentials, saves,
 personal paths, and private logs out of patches. Review logs and screenshots for

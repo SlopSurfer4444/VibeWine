@@ -16,7 +16,28 @@ history.
 Wine upstream identity is not necessarily the identity of a historical installed
 CrossOver-derived runtime. Do not infer exact ancestry from a version string.
 
-Update flow: fetch upstream in an isolated component branch; inspect changes and
+## Current provenance map
+
+[Patch origins](PATCHES.md) links each change to its actual source and scope.
+[DXMT provenance](provenance/dxmt.md) records the identified upstream ancestor,
+local changes and the matched graphics build. [Wine provenance](provenance/wine.md)
+separates the stable component, experimental XInput/network branches and exact
+[native-driver/MSync source deltas](../patches/runtime-2026-10-23/README.md).
+The installed test mixture is not a new Wine release or a clean rebuild of the
+stable component pin.
+
+Six previously unpublished DXMT commits used machine-local email metadata.
+Their public equivalents preserve exact source trees, original author
+names/dates/messages, upstream ancestry and licenses while using the public
+account email. [The map](../components/dxmt/docs/PUBLICATION.json) binds original
+build-source identities to public equivalents. Original local commits and
+historical build records are retained. A subsequent documentation-only commit
+updates public baseline references; production/test code remains identical.
+No published history is force-rewritten and no new runtime build is inferred.
+
+## Update flow
+
+Fetch upstream in an isolated component branch; inspect changes and
 resolve conflicts by behavior; run component checks; merge the component PR; then
 update main's gitlink with integration evidence. Preserve local corrections only
 where still needed. No game-specific override becomes a global default merely

@@ -1,0 +1,7 @@
+fixture-arm64
+fixture-x86_64
+*.app/
+checks.json
+manifest.json
+sessions/
+__pycache__/

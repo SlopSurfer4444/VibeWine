@@ -2,11 +2,21 @@
 
 **Vibe-code the fix. Prove it works. Share it.**
 
-An AI-friendly contributor workspace for Wine on macOS and DXMT: native window
-behavior, Retina, accessibility, compatibility and measurable performance.
-Human-written and AI-assisted contributions are equally welcome.
+An AI-friendly contributor workspace for **Wine on macOS and DXMT**: native
+windows, Retina, accessibility, game compatibility and performance you can
+measure. Human-written and AI-assisted contributions are welcome. Bring a
+reproduction, a focused patch and evidence of what you checked.
 
-## Start with the source
+**Current checkpoint: 23 October 2026.** A matched DXMT/Metal bundle has passed
+native GPU correctness checks and private installation/launch checks. An owner
+reported a good DS3 gameplay session on the matching trial. Controlled FPS gains,
+sustained freeze elimination and compatibility with other games remain open.
+This repository distributes source, not a ready-to-install Wine runtime.
+
+[Patch origins](docs/PATCHES.md) · [Current status](docs/STATUS.md) ·
+[Build guide](docs/BUILDING.md) · [Contribute](CONTRIBUTING.md)
+
+## Get the source
 
 ```sh
 git clone --recurse-submodules https://github.com/SlopSurfer4444/VibeWine.git
@@ -14,52 +24,50 @@ cd VibeWine
 python3 scripts/workspace.py check
 ```
 
-| Source | Purpose | Development |
+| Source | What it contains | Where to contribute |
 | --- | --- | --- |
-| [Wine source](https://github.com/SlopSurfer4444/VibeWine/tree/component/wine) (`components/wine`) | Complete Wine source and component history | `component/wine` branch |
-| [DXMT source](https://github.com/SlopSurfer4444/VibeWine/tree/component/dxmt) (`components/dxmt`) | Complete DXMT source and component history | `component/dxmt` branch |
-| [profiles](profiles/README.md) | Explicit title-specific compatibility | Opt-in, separate from core |
-| [Telemetry tools](tools/telemetry/README.md) | Offline collector/analyzer and measurement protocol | `main` branch |
-| [experiments](experiments/README.md) | Instrumentation and exploratory work | Off by default |
+| [Wine](https://github.com/SlopSurfer4444/VibeWine/tree/component/wine), `components/wine` | Complete vendor-derived Wine tree and reviewed native/AX fixes | `component/wine` |
+| [DXMT](https://github.com/SlopSurfer4444/VibeWine/tree/component/dxmt), `components/dxmt` | Complete renderer, compiler and matching native Metal bridge | `component/dxmt` |
+| [Installed Wine source deltas](patches/runtime-2026-10-23/README.md) | Exact native-driver/MSync patches; links to separate XInput/network source branches | See each patch's base and provenance |
+| [Game profiles](profiles/README.md) | Explicit title-specific compatibility | `main`, or the component owning the gate |
+| [Telemetry](tools/telemetry/README.md) and [gameplay tools](tools/gameplay/README.md) | Analysis, bounded test control and reproducible test protocols | `main` |
+| [Experiments](experiments/README.md) | Opt-in instrumentation and native presentation probes | `main` |
 
-The components are pinned Git submodules hosted as separate branches in this
-same repository. GitHub’s main-branch ZIP does **not** bundle submodule contents;
-use the recursive clone above or browse the component links. Main pins an exact pair; updating a branch does not silently
-change a checkout. Open component PRs against their component branch, workspace
-PRs against main. See [contributing](CONTRIBUTING.md).
+Components are pinned submodules hosted on branches in this same repository.
+Updating a component branch does not silently update the workspace pin. GitHub's
+main-branch ZIP omits submodule contents; use a recursive clone or the component
+links above. The installed test runtime combines several source revisions; it is
+not a full clean rebuild of the pinned Wine branch. [Status](docs/STATUS.md)
+records that boundary explicitly.
 
-**Developer source workspace, not a runtime release.** Complete source trees do
-not establish that their combined runtime is buildable, installed or gameplay
-validated. See [build instructions and limitations](docs/BUILDING.md) and
-[component provenance](docs/UPSTREAM.md). Workspace CI checks metadata and source
-pins; it does not certify Wine builds, Metal behavior or FPS gains.
+## Keep the scope clear
 
-## What we work on
+| Scope | Examples | Expected contribution |
+| --- | --- | --- |
+| **Core** | Graphics allocation lifetime, DXGI correctness, native window/AX behavior | General fix with an unaffected-path regression |
+| **Game profile** | DS3 mode-list limit, narrowly selected aspect/borderless behavior | Named gate, activation/deactivation and reason |
+| **Experiment** | Virtual XInput, network metadata, presentation diagnostics | Off by default, bounded and reversible |
+| **Tooling / docs** | Build helpers, fixtures, provenance, analysis | Reproducible commands and truthful limits |
 
-- General fixes for display modes, window surfaces, cursor release and lifetime.
-- macOS accessibility and reliable automation; game-rendered controls still need
-  visual feedback rather than an invented accessibility tree.
-- Repeatable frame-time measurements and controlled performance experiments.
-- Clear separation between reusable fixes and named-game exceptions.
+[The patch map](docs/PATCHES.md) separates upstream work, adapted code and local
+changes. A game observation is useful feedback; a performance claim also needs
+comparable scenes, settings, cache state and frame-time measurements. Computer
+use seeing a window does not establish reliable game input.
 
-[Roadmap](ROADMAP.md) · [Contribution guide](CONTRIBUTING.md) ·
-[Historical installed-source evidence](current/README.md) ·
-[Snapshot-era source map](SOURCE_INDEX.md)
+Start with a small issue or PR. Explain the failure, identify the source/base,
+keep unrelated changes separate and report the checks you actually ran. See the
+[contribution guide](CONTRIBUTING.md) and [roadmap](ROADMAP.md).
 
-The retained `current/`, `native/`, `renderer/`, `ntdll/`, `optional/` and evidence
-folders describe earlier snapshots and experiments, not the source entrypoint
-for new component work. Their contents and history are preserved for comparison.
-They are not a claim that the new component pair has passed those old checks.
-The retained `FILE_MANIFEST` and provenance records describe their original
-snapshot scope; they do not inventory or certify the new component trees.
+## History and attribution
 
-## Built with the ecosystem
+VibeWine is independent of Wine, DXMT and CodeWeavers. Upstream authors,
+copyright notices and per-file licenses remain intact. Wine-derived code retains
+LGPL terms; DXMT and its dependencies have their own notices, including LGPL
+Metal source. AI assistance does not remove contributor responsibility for
+provenance, review or licensing.
 
-VibeWine is independent of Wine, DXMT and CodeWeavers. Preserve upstream authors,
-licenses and history. Wine-derived source retains LGPL notices; DXMT and its
-third-party components retain their own licenses. This workspace does not
-relicense them. No proprietary game files, saves or credentials belong here.
-
-AI assistance is welcome; responsibility for provenance, review and evidence
-stays with the contributor. No general FPS improvement is claimed without
-controlled measurements.
+`current/`, `native/`, `renderer/`, `ntdll/`, `optional/` and retained evidence
+folders describe earlier source snapshots. They remain available for comparison;
+new component work starts in `components/`. Snapshot manifests certify only their
+original scope. [Upstream and publication history](docs/UPSTREAM.md) explains the
+known bases, unknown ancestry and public equivalents of locally built commits.

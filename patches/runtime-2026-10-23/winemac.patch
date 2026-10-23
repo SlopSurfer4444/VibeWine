@@ -1,0 +1,556 @@
+--- a/dlls/winemac.drv/ax_window_identity.inc
++++ b/dlls/winemac.drv/ax_window_identity.inc
+@@ -26,3 +26,33 @@
+         return [NSString stringWithFormat:@"wine-hwnd-%p", hwnd];
+     }
+ 
++/* An explicit accessibility action may activate this native window's app.
++ * Reads remain passive; Windows still approves focus via its existing event path. */
++    - (BOOL) accessibilityPerformRaise
++    {
++        static BOOL raising;
++        if (!wine_ax_window_root_enabled() || !hwnd)
++            return [super accessibilityPerformRaise];
++        if (![NSThread isMainThread] || raising || self.closing || self.disabled ||
++            self.noForeground || ![self canBecomeKeyWindow] ||
++            ![self presentsVisibleContent]) return NO;
++
++        BOOL submitted = NO;
++        raising = YES;
++        @try
++        {
++            [self makeKeyAndOrderFront:self];
++            if (!self.closing)
++            {
++                /* This is NSApplication's instance method, not the deprecated
++                 * NSRunningApplication activation option. The generic Wine
++                 * cooperative activation helper remains unchanged. */
++                [NSApp activateIgnoringOtherApps:YES];
++                submitted = YES;
++            }
++        }
++        @finally { raising = NO; }
++        /* Accepted request, not a promise that asynchronous OS activation or
++         * the Windows foreground handshake has already completed. */
++        return submitted;
++    }
+--- a/dlls/winemac.drv/cocoa_event.m
++++ b/dlls/winemac.drv/cocoa_event.m
+@@ -24,6 +24,7 @@
+ #include <libkern/OSAtomic.h>
+ 
+ #include "macdrv_cocoa.h"
++#include "drawable_phase_diag.h"
+ #import "cocoa_event.h"
+ #import "cocoa_app.h"
+ #import "cocoa_window.h"
+@@ -197,8 +198,19 @@
+     {
+         NSIndexSet* indexes;
+         MacDrvEvent* lastEvent;
++        struct w7pd_sample diag = w7pd_begin();
++        uint64_t diag_count_before = 0, diag_count_after = 0;
++        uintptr_t diag_surface = 0;
++        int diag_type = -1;
+ 
+         [eventsLock lock];
++        w7pd_mark(&diag, 1);
++        if (diag.active) {
++            diag_count_before = [events count];
++            diag_type = event->event->type;
++            if (diag_type == CLIENT_SURFACE_PRESENTED)
++                diag_surface = (uintptr_t)event->event->client_surface_presented.client_surface;
++        }
+ 
+         indexes = [events indexesOfObjectsPassingTest:^BOOL(id obj, NSUInteger idx, BOOL *stop){
+             return ((MacDrvEvent*)obj)->event->deliver <= 0;
+@@ -232,9 +244,15 @@
+         else
+             [events addObject:event];
+ 
++        if (diag.active) diag_count_after = [events count];
++        w7pd_mark(&diag, 2);
+         [eventsLock unlock];
++        w7pd_mark(&diag, 3);
+ 
+         [self signalEventAvailable];
++        w7pd_mark(&diag, 4);
++        w7pd_report(&diag, "queue-post", 0, (uintptr_t)self, diag_surface,
++                    0, diag_count_before, diag_count_after, diag_type);
+     }
+ 
+     - (void) postEvent:(macdrv_event*)inEvent
+--- a/dlls/winemac.drv/d3dmetal.c
++++ b/dlls/winemac.drv/d3dmetal.c
+@@ -97,6 +97,8 @@
+     TRACE("macdrv_init_display_devices %d - no-op\n", p1);
+ }
+ 
++extern void macdrv_visibility_set_image_v1(const unsigned short *image, size_t bytes);
++
+ static struct d3dmetal_macdrv_win_data *my_get_win_data(HWND hwnd)
+ {
+     struct macdrv_win_data *data;
+@@ -105,6 +107,13 @@
+     CFMutableArrayRef client_surfaces;
+     static const CFArrayCallBacks callbacks = { .release = cf_client_surface_release };
+     TRACE("get_win_data %p\n", hwnd);
++    if (getenv("VIBEWINE_DS3_VISIBILITY_DIR"))
++    {
++        TEB *teb = NtCurrentTeb();
++        RTL_USER_PROCESS_PARAMETERS *params = teb && teb->Peb ? teb->Peb->ProcessParameters : NULL;
++        macdrv_visibility_set_image_v1(params ? params->ImagePathName.Buffer : NULL,
++                                      params ? params->ImagePathName.Length : 0);
++    }
+ 
+     /* Creating a client surface on each call to get_win_data() means it's no longer idempotent,
+      * but D3DMetal/DXMT both call it only when creating a new DXGI swapchain.
+--- a/dlls/winemac.drv/d3dmetal_objc.m
++++ b/dlls/winemac.drv/d3dmetal_objc.m
+@@ -35,6 +35,10 @@
+ #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
+ 
+ 
++#include "drawable_phase_diag.h"
++#include "visibility_snapshot.inc"
++#include "visibility_startup.inc"
++
+ @implementation WineMetalLayer
+ 
+     /* Extend [CAMetalLayer nextDrawable] so client_surface_present() can be
+@@ -42,6 +46,11 @@
+      */
+     - (id<CAMetalDrawable>) nextDrawable
+     {
++        struct w7pd_sample diag = w7pd_begin();
++        uintptr_t diag_queue = 0, diag_surface = 0;
++        id<CAMetalDrawable> drawable;
++        bool diag_posted = false;
++        w7vis_startup_from_layer(self);
+         /* CAMetalLayer's delegate is the WineMetalView that contains it (seems like that's always true
+          * for an NSView backing layer).
+          * That WineMetalView's parent is the client_surface->cocoa_view WineContentView, it has the
+@@ -61,13 +70,27 @@
+                     event->client_surface_presented.client_surface = client_surface;
+ 
+                     WineEventQueue *queue = [(WineWindow*)view.window queue];
++                    diag_queue = (uintptr_t)queue;
++                    diag_surface = (uintptr_t)client_surface;
++                    w7pd_mark(&diag, 1);
+                     [queue postEvent:event];
++                    w7pd_mark(&diag, 2);
++                    diag_posted = true;
+                     macdrv_release_event(event);
+                 }
+             }
+         }
+ 
+-        return [super nextDrawable];
++        w7pd_mark(&diag, 3);
++        if (diag.active && !diag_posted) {
++            diag.wall[1] = diag.wall[2] = diag.wall[3];
++            diag.cpu[1] = diag.cpu[2] = diag.cpu[3];
++        }
++        drawable = [super nextDrawable];
++        w7pd_mark(&diag, 4);
++        w7pd_report(&diag, "drawable", (uintptr_t)self, diag_queue,
++                    diag_surface, (uintptr_t)drawable, 0, 0, -1);
++        return drawable;
+     }
+ 
+ @end
+--- /dev/null
++++ b/dlls/winemac.drv/drawable_phase_diag.h
+@@ -0,0 +1,113 @@
++/* Experimental native phase diagnostics. No Wine trace channel or filesystem opens.
++ * Include once in each of the two instrumented translation units. Each TU owns
++ * one distinct site and a process-lifetime, saturating 128-record budget.
++ */
++#ifndef W7_DRAWABLE_PHASE_DIAG_H
++#define W7_DRAWABLE_PHASE_DIAG_H
++#include <stdatomic.h>
++#include <stdint.h>
++#include <stdbool.h>
++#include <stdlib.h>
++#include <string.h>
++#include <time.h>
++#include <pthread.h>
++#include <unistd.h>
++#include <stdio.h>
++#include <inttypes.h>
++#include <errno.h>
++
++#define W7PD_THRESHOLD_NS UINT64_C(100000000)
++#define W7PD_RECORD_LIMIT 128u
++#ifndef W7PD_CLOCK_GETTIME
++#define W7PD_CLOCK_GETTIME clock_gettime
++#endif
++#ifndef W7PD_WRITE
++#define W7PD_WRITE write
++#endif
++#ifndef W7PD_THREAD_ID
++#define W7PD_THREAD_ID pthread_threadid_np
++#endif
++static bool w7pd_enabled;
++static _Atomic unsigned w7pd_emitted;
++_Static_assert(ATOMIC_INT_LOCK_FREE == 2, "diagnostic budget requires lock-free atomics");
++static void __attribute__((constructor)) w7pd_initialize(void)
++{
++    const char *mode = getenv("VIBEWINE_DRAWABLE_PHASE_DIAG");
++    w7pd_enabled = mode && !strcmp(mode, "1");
++}
++struct w7pd_sample {
++    bool active, cpu_valid;
++    uint64_t wall[5], cpu[5], tid;
++};
++static inline bool w7pd_clock(clockid_t clock, uint64_t *value)
++{
++    struct timespec ts;
++    int saved_errno = errno;
++    int result = W7PD_CLOCK_GETTIME(clock, &ts);
++    errno = saved_errno;
++    if (result || ts.tv_sec < 0 || ts.tv_nsec < 0 ||
++        ts.tv_nsec >= 1000000000 || (uint64_t)ts.tv_sec >
++        (UINT64_MAX - (uint64_t)ts.tv_nsec) / UINT64_C(1000000000)) return false;
++    *value = (uint64_t)ts.tv_sec * UINT64_C(1000000000) + (uint64_t)ts.tv_nsec;
++    return true;
++}
++static inline void w7pd_mark(struct w7pd_sample *s, unsigned index)
++{
++    if (!s->active) return;
++    if (!w7pd_clock(CLOCK_MONOTONIC_RAW, &s->wall[index])) { s->active = false; return; }
++    if (s->cpu_valid && !w7pd_clock(CLOCK_THREAD_CPUTIME_ID, &s->cpu[index])) s->cpu_valid = false;
++}
++static inline struct w7pd_sample w7pd_begin(void)
++{
++    struct w7pd_sample s = {0};
++    int saved_errno;
++    if (!w7pd_enabled || atomic_load_explicit(&w7pd_emitted, memory_order_relaxed) >= W7PD_RECORD_LIMIT) return s;
++    s.active = s.cpu_valid = true;
++    saved_errno = errno;
++    (void)W7PD_THREAD_ID(NULL, &s.tid);
++    errno = saved_errno;
++    w7pd_mark(&s, 0);
++    return s;
++}
++/* Must be called after eventsLock is released. All object values are scalar
++ * addresses for correlation, never dereferenced or retained by diagnostics.
++ * marks are entry, phase1 boundary, phase2 boundary, phase3 boundary, exit.
++ */
++static inline void w7pd_report(struct w7pd_sample *s, const char *site,
++    uintptr_t layer, uintptr_t queue, uintptr_t surface, uintptr_t drawable,
++    uint64_t count_before, uint64_t count_after, int event_type)
++{
++    uint64_t phases[4], cpu = 0;
++    unsigned i, slot;
++    char line[1024];
++    int length, saved_errno;
++    if (!s->active) return;
++    for (i = 0; i < 4; ++i) {
++        if (s->wall[i + 1] < s->wall[i]) return;
++        phases[i] = s->wall[i + 1] - s->wall[i];
++        if (s->cpu[i + 1] < s->cpu[i]) s->cpu_valid = false;
++    }
++    if (s->wall[4] - s->wall[0] < W7PD_THRESHOLD_NS) return;
++    slot = atomic_load_explicit(&w7pd_emitted, memory_order_relaxed);
++    do {
++        if (slot >= W7PD_RECORD_LIMIT) return;
++    } while (!atomic_compare_exchange_weak_explicit(&w7pd_emitted, &slot, slot + 1,
++                memory_order_relaxed, memory_order_relaxed));
++    if (s->cpu_valid) cpu = s->cpu[4] - s->cpu[0];
++    saved_errno = errno;
++    length = snprintf(line, sizeof(line),
++        "W7PD v=1 site=%s record=%u pid=%ld tid=%" PRIu64
++        " layer=0x%" PRIxPTR " queue=0x%" PRIxPTR " surface=0x%" PRIxPTR " drawable=0x%" PRIxPTR
++        " event_type=%d count_before=%" PRIu64 " count_after=%" PRIu64
++        " start_ns=%" PRIu64 " end_ns=%" PRIu64 " wall_ns=%" PRIu64
++        " cpu_valid=%u cpu_ns=%" PRIu64 " phase0_ns=%" PRIu64 " phase1_ns=%" PRIu64
++        " phase2_ns=%" PRIu64 " phase3_ns=%" PRIu64 "\n",
++        site, slot + 1, (long)getpid(), s->tid, layer, queue, surface, drawable,
++        event_type, count_before, count_after, s->wall[0], s->wall[4], s->wall[4] - s->wall[0],
++        s->cpu_valid ? 1u : 0u, cpu, phases[0], phases[1], phases[2], phases[3]);
++    /* One bounded raw write; no stdio lock, allocation, open, retry or polling.
++     * A blocked stderr can delay the caller after the measured interval. */
++    if (length > 0 && (size_t)length < sizeof(line)) (void)W7PD_WRITE(STDERR_FILENO, line, (size_t)length);
++    errno = saved_errno;
++}
++#endif
+--- /dev/null
++++ b/dlls/winemac.drv/visibility_guard.h
+@@ -0,0 +1,101 @@
++/* Private DS3 startup visibility diagnostic. No environment value establishes
++ * process identity. These helpers are shared verbatim with offline tests. */
++#ifndef W7_VISIBILITY_GUARD_H
++#define W7_VISIBILITY_GUARD_H
++#include <stdint.h>
++#include <stddef.h>
++#include <stdbool.h>
++#include <string.h>
++#include <fcntl.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <errno.h>
++#include <limits.h>
++
++#define W7VIS_DS3_IMAGE "C:\\Program Files (x86)\\Steam\\steamapps\\common\\DARK SOULS III\\Game\\DarkSoulsIII.exe"
++#define W7VIS_RESULT_NAME "startup-visibility.json"
++
++static inline bool w7vis_exact_ds3_image(const uint16_t *image, size_t bytes)
++{
++    static const char expected[] = W7VIS_DS3_IMAGE;
++    size_t i;
++    if (!image || bytes != (sizeof(expected) - 1) * sizeof(uint16_t)) return false;
++    for (i = 0; i < sizeof(expected) - 1; i++)
++    {
++        uint16_t a = image[i], b = (unsigned char)expected[i];
++        if (a >= 'A' && a <= 'Z') a += 'a' - 'A';
++        if (b >= 'A' && b <= 'Z') b += 'a' - 'A';
++        if (a != b) return false;
++    }
++    return true;
++}
++
++/* Every directory is opened without following links. Ancestors must be owned
++ * by this uid or root and not group/world writable. The final dir is 0700. */
++static inline int w7vis_open_private_directory(const char *path)
++{
++    char copy[PATH_MAX], *component, *next;
++    struct stat st;
++    int fd, child;
++    size_t length;
++    if (!path || path[0] != '/' || !(length = strnlen(path, sizeof(copy))) || length >= sizeof(copy)) return -1;
++    memcpy(copy, path, length + 1);
++    fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++    if (fd < 0) return -1;
++    component = copy + 1;
++    if (!*component) { close(fd); return -1; }
++    for (;;)
++    {
++        next = strchr(component, '/');
++        if (next) *next = 0;
++        if (!*component || !strcmp(component, ".") || !strcmp(component, "..")) { close(fd); return -1; }
++        child = openat(fd, component, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++        close(fd);
++        if (child < 0) return -1;
++        fd = child;
++        if (fstat(fd, &st) || !S_ISDIR(st.st_mode) || (st.st_uid != geteuid() && st.st_uid != 0) || (st.st_mode & 0022))
++        { close(fd); return -1; }
++        if (!next) break;
++        component = next + 1;
++    }
++    if (st.st_uid != geteuid() || (st.st_mode & 07777) != 0700) { close(fd); return -1; }
++    return fd;
++}
++
++static inline bool w7vis_directory_still_named(int held, const char *path)
++{
++    struct stat before, after;
++    int fresh = w7vis_open_private_directory(path);
++    bool same = fresh >= 0 && !fstat(held, &before) && !fstat(fresh, &after) &&
++        before.st_dev == after.st_dev && before.st_ino == after.st_ino;
++    if (fresh >= 0) close(fresh);
++    return same;
++}
++
++/* Single bounded metadata file. On partial/error leave evidence untouched;
++ * readers reject incomplete JSON. No truncate, replace or alternate basename. */
++static inline int w7vis_publish(int directory, const char *path, const void *bytes, size_t length)
++{
++    struct stat st;
++    const char *cursor = bytes;
++    int fd, result = -1, interruptions = 0;
++    size_t remaining = length;
++    if (!bytes || !length || length > 32768 || !w7vis_directory_still_named(directory, path)) return -1;
++    fd = openat(directory, W7VIS_RESULT_NAME, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
++    if (fd < 0) return -1;
++    if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_uid != geteuid() || st.st_nlink != 1 ||
++        (st.st_mode & 07777) != 0600) goto done;
++    while (remaining)
++    {
++        ssize_t n = write(fd, cursor, remaining);
++        if (n < 0 && errno == EINTR && interruptions++ < 8) continue;
++        if (n <= 0) goto done;
++        cursor += n;
++        remaining -= n;
++    }
++    result = 0;
++ done:
++    close(fd);
++    return result;
++}
++#endif
+--- /dev/null
++++ b/dlls/winemac.drv/visibility_snapshot.inc
+@@ -0,0 +1,121 @@
++/* Private candidate API. Include in installed-source d3dmetal_objc.m before
++ * @implementation WineMetalLayer. Private startup caller is in visibility_startup.inc.
++ * Completion receives immutable JSON bytes on a worker queue, never AppKit
++ * objects. Exactly one admitted request per host process. */
++#include "visibility_guard.h"
++#include <stdatomic.h>
++#include <time.h>
++#include <unistd.h>
++#include <libproc.h>
++
++static double w7vis_now(void)
++{
++    struct timespec t;
++    if (clock_gettime(CLOCK_MONOTONIC_RAW, &t)) return -1.0;
++    return t.tv_sec + t.tv_nsec / 1e9;
++}
++
++static NSArray *w7vis_rect(CGRect r)
++{
++    return @[@(r.origin.x), @(r.origin.y), @(r.size.width), @(r.size.height)];
++}
++
++static NSString *w7vis_identity(id object)
++{
++    return object ? [NSString stringWithFormat:@"%p", (void *)object] : @"nil";
++}
++
++static NSDictionary *w7vis_collect_main(CAMetalLayer *layer, uint64_t requestID)
++{
++    NSCAssert([NSThread isMainThread], @"visibility collector requires Cocoa main");
++    id delegate = layer.delegate;
++    NSView *view = [delegate isKindOfClass:[NSView class]] ? delegate : nil;
++    NSWindow *window = view.window;
++    NSApplication *app = NSApp;
++    NSScreen *screen = window.screen;
++    NSNumber *displayID = screen.deviceDescription[@"NSScreenNumber"];
++    struct proc_bsdinfo birth = {0};
++    BOOL haveBirth = proc_pidinfo(getpid(), PROC_PIDTBSDINFO, 0, &birth, sizeof(birth)) == sizeof(birth);
++    NSMutableDictionary *record = [NSMutableDictionary dictionaryWithDictionary:@{
++        @"schema": @1, @"requestID": @(requestID), @"pid": @(getpid()),
++        @"sampleMonotonicRawSeconds": @(w7vis_now()), @"sampleThread": @"cocoa-main",
++        @"status": @"sampled", @"phase": @"startup", @"settleDelayMs": @1000,
++        @"processScope": @{@"source": @"PEB.ProcessParameters.ImagePathName", @"windowsImagePath": @W7VIS_DS3_IMAGE}, @"coordinateSystems": @{@"windowFrame": @"AppKit-screen-points", @"viewBounds": @"view-local-points", @"drawableSize": @"pixels"},
++        @"birth": haveBirth ? @[@(birth.pbi_start_tvsec), @(birth.pbi_start_tvusec)] : (id)[NSNull null],
++        @"app": app ? @{@"active": @(app.active), @"hidden": @(app.hidden), @"running": @(app.running)} : (id)[NSNull null],
++        @"owner": @{@"layer": w7vis_identity(layer), @"delegate": w7vis_identity(delegate), @"view": w7vis_identity(view), @"superview": w7vis_identity(view.superview), @"window": w7vis_identity(window),
++            @"viewLayerMatchesRequestedLayer": @(view && view.layer == layer), @"viewAttachedToWindow": @(window != nil),
++            @"wineMetalView": @(view && [view isKindOfClass:NSClassFromString(@"WineMetalView")]),
++            @"wineContentSuperview": @(view.superview && [view.superview isKindOfClass:NSClassFromString(@"WineContentView")])},
++        @"layer": @{@"bounds": w7vis_rect(layer.bounds), @"hidden": @(layer.hidden), @"opacity": @(layer.opacity),
++            @"contentsScale": @(layer.contentsScale), @"drawableSize": @[@(layer.drawableSize.width), @(layer.drawableSize.height)],
++            @"framebufferOnly": @(layer.framebufferOnly), @"displaySyncEnabled": @(layer.displaySyncEnabled), @"opaque": @(layer.opaque)},
++        @"view": view ? @{@"bounds": w7vis_rect(view.bounds), @"frame": w7vis_rect(view.frame), @"hidden": @(view.hidden),
++            @"hiddenOrHasHiddenAncestor": @(view.hiddenOrHasHiddenAncestor), @"alphaValue": @(view.alphaValue)} : (id)[NSNull null],
++        @"window": window ? @{@"windowNumber": @(window.windowNumber), @"frame": w7vis_rect(window.frame),
++            @"visible": @(window.visible), @"miniaturized": @(window.miniaturized), @"onActiveSpace": @(window.onActiveSpace),
++            @"occlusionState": @(window.occlusionState), @"keyWindow": @(window.keyWindow), @"mainWindow": @(window.mainWindow),
++            @"hidesOnDeactivate": @(window.hidesOnDeactivate), @"alphaValue": @(window.alphaValue), @"level": @(window.level),
++            @"screenDisplayID": displayID ?: (id)[NSNull null]} : (id)[NSNull null]
++    }];
++    return record;
++}
++
++/* latestMonotonicRawSeconds uses this host's CLOCK_MONOTONIC_RAW. A timeout
++ * stops interpretation, not queue execution: the copied block can remain
++ * queued until Wine's request source runs or the process exits. */
++__attribute__((visibility("default")))
++int macdrv_request_metal_visibility_v1(CAMetalLayer *layer, uint64_t requestID,
++                                     double latestMonotonicRawSeconds,
++                                     void (^completion)(NSData *))
++{
++    static atomic_bool admitted = ATOMIC_VAR_INIT(false);
++    double now = w7vis_now();
++    bool expected = false;
++    if (!layer || !completion || !isfinite(latestMonotonicRawSeconds) || now < 0 ||
++        latestMonotonicRawSeconds <= now || latestMonotonicRawSeconds > now + 2.0 ||
++        !atomic_compare_exchange_strong(&admitted, &expected, true)) return 0;
++    /* OnMainThreadAsync copies this block. Its object/block captures retain
++     * layer and completion. No stack output pointer crosses this boundary. */
++    OnMainThreadAsync(^{
++        @autoreleasepool
++        {
++            NSData *data = nil;
++            @try
++            {
++                NSDictionary *record;
++                double sampled = w7vis_now();
++                if (sampled < 0 || sampled > latestMonotonicRawSeconds)
++                    record = @{@"schema": @1, @"requestID": @(requestID), @"pid": @(getpid()), @"phase": @"startup", @"status": @"expired-before-main-sample"};
++                else
++                {
++                    record = w7vis_collect_main(layer, requestID);
++                    if (w7vis_now() > latestMonotonicRawSeconds)
++                        record = @{@"schema": @1, @"requestID": @(requestID), @"pid": @(getpid()), @"phase": @"startup", @"status": @"expired-during-main-sample"};
++                }
++                /* Nonfinite AppKit/Metal geometry is not valid JSON. Never
++                 * allow validation or serialization exceptions onto main. */
++                if (![NSJSONSerialization isValidJSONObject:record])
++                    record = @{@"schema": @1, @"requestID": @(requestID), @"pid": @(getpid()), @"phase": @"startup", @"status": @"invalid-main-sample-json"};
++                data = [NSJSONSerialization dataWithJSONObject:record options:0 error:NULL];
++            }
++            @catch (id exception)
++            {
++                (void)exception;
++                /* Allocation/serialization can fail even for the fallback.
++                 * Missing output is UNKNOWN; no exception escapes this task. */
++                @try
++                {
++                    NSDictionary *fallback = @{@"schema": @1, @"requestID": @(requestID), @"pid": @(getpid()), @"phase": @"startup", @"status": @"main-sample-or-serialization-exception"};
++                    data = [NSJSONSerialization dataWithJSONObject:fallback options:0 error:NULL];
++                }
++                @catch (id fallbackException) { (void)fallbackException; data = nil; }
++            }
++            if (data && data.length <= 32768)
++                dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
++                    @autoreleasepool { completion(data); }
++                });
++        }
++    });
++    return 1;
++}
+--- /dev/null
++++ b/dlls/winemac.drv/visibility_startup.inc
+@@ -0,0 +1,48 @@
++/* Included only by d3dmetal_objc.m after visibility_snapshot.inc. */
++#include "visibility_guard.h"
++static atomic_int w7vis_process_scope = ATOMIC_VAR_INIT(0);
++static atomic_bool w7vis_startup_admitted = ATOMIC_VAR_INIT(false);
++
++/* Called before native view creation on the actual Wine renderer thread.
++ * ImagePathName bytes come from its PEB, never an inherited executable env. */
++void macdrv_visibility_set_image_v1(const uint16_t *image, size_t bytes)
++{
++    int expected = 0;
++    int scope = w7vis_exact_ds3_image(image, bytes) ? 1 : -1;
++    (void)atomic_compare_exchange_strong(&w7vis_process_scope, &expected, scope);
++}
++
++static void w7vis_startup_from_layer(CAMetalLayer *layer)
++{
++    bool expected = false;
++    const char *configured;
++    NSString *directory;
++    double started;
++    if (atomic_load(&w7vis_process_scope) != 1 || atomic_load(&w7vis_startup_admitted)) return;
++    configured = getenv("VIBEWINE_DS3_VISIBILITY_DIR");
++    if (!configured || !*configured) return;
++    if (!atomic_compare_exchange_strong(&w7vis_startup_admitted, &expected, true)) return;
++    if (strnlen(configured, PATH_MAX) >= PATH_MAX) return;
++    directory = [NSString stringWithUTF8String:configured];
++    started = w7vis_now();
++    if (!directory || started < 0) return;
++    /* The copied delayed block retains the exact renderer-owned layer. There
++     * is no AppKit read here and no per-frame I/O or synchronous main wait. */
++    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC),
++                   dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
++        @autoreleasepool
++        {
++            const char *path = [directory fileSystemRepresentation];
++            int dirfd = w7vis_open_private_directory(path);
++            double now = w7vis_now();
++            double deadline = fmin(started + 3.0, now + 1.99);
++            if (dirfd < 0) return;
++            if (now < 0 || now >= started + 3.0) { close(dirfd); return; }
++            int accepted = macdrv_request_metal_visibility_v1(layer, 1, deadline, ^(NSData *data) {
++                (void)w7vis_publish(dirfd, [directory fileSystemRepresentation], data.bytes, data.length);
++                close(dirfd);
++            });
++            if (!accepted) close(dirfd);
++        }
++    });
++}

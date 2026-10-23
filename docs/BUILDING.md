@@ -52,17 +52,24 @@ fixtures, verify ABI/link compatibility, then separately test launch, resolution
 fullscreen exit, repeat launch and controlled frame presentation. No CI badge here
 means those interactive or native GPU checks passed.
 
-## This source checkpoint
+## Evidence by source checkpoint
 
 The pinned Wine component passed reduced-dependency module compilation for
 native winemac, ntdll and win32u, and i386/x86_64 PE oleacc and winemac modules.
 This is not a complete production-feature Wine runtime build.
 
-The pinned DXMT component passed compilation of 75 PE translation units and the
-Metal helper, focused display-mode fixtures, native sanitizer checks and syntax
-checks. The matched Meson build also compiled and linked the PE, native Metal
-and AIRCONV components; the built command-line tool passed its help invocation.
-These build checks do not establish a complete production-feature Wine runtime,
-combined-runtime acceptance, game behavior or performance improvement. Neither
-source checkpoint was installed into the working game runtime as part of this
-workspace migration.
+The current DXMT production source corresponds to the locally audited matched
+build recorded in [DXMT provenance](provenance/dxmt.md). Its complete Meson build
+compiled/linked the PE, native Metal, AIRCONV and Metal-helper components; the
+compiler command-line tool passed its help invocation. Subsequent isolated GPU
+checks, private installation and ordinary-launch observations are listed in
+[status](STATUS.md). Public equivalents retain the same code; publication-only
+documentation changes do not rerun those builds.
+
+Those results do not establish a full production-feature Wine rebuild or
+measured FPS improvement. The test runtime retained Wine artifacts from multiple
+source/build revisions. [Exact source patches](../patches/runtime-2026-10-23/README.md)
+and [Wine provenance](provenance/wine.md) record their separate bases, configured
+dependency requirements and composite NTDLL limitations. Apply/check those patches
+only in a disposable checkout of the named base; they are not a single blind
+patch queue for the stable Wine pin.

@@ -26,6 +26,8 @@ measurement method, and before/after results. -->
 ## Sources and assistance
 
 <!-- Imported/adapted code: source URL, revision if known, license, adaptations.
+Identify upstream import / adapted upstream / local change / unknown origin;
+link or update the relevant docs/PATCHES.md provenance entry.
 Mention substantial AI assistance and what you reviewed/tested yourself.
 Use N/A if neither applies. Preserve existing component notices. -->
 

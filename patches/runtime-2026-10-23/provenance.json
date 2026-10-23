@@ -1,0 +1,427 @@
+{
+  "schemaVersion": 1,
+  "verifiedDate": "2026-10-23",
+  "scope": "Source patches only; retained five-module experimental runtime is composite, not a whole-component rebuild",
+  "sourceRepository": "https://github.com/SlopSurfer4444/VibeWine",
+  "winemac": {
+    "patch": "winemac.patch",
+    "patchSha256": "7dcb8102b1006dfe8ecb1ed9042b1408cace5aed4c3824fd2514e7b1e5d64b56",
+    "baseCommit": "7469fcf53c4f537dfe305e961bffb0495d7b750d",
+    "baseUrl": "https://github.com/SlopSurfer4444/VibeWine/tree/7469fcf53c4f537dfe305e961bffb0495d7b750d",
+    "retainedSourceCommit": "4e6b235421bf3ded37b08ca12928e1998285c390",
+    "retainedBaselineCommit": "407e2d1c0a21e3aacf0259424e3636246ec149ed",
+    "retainedSourcePath": "source/winemac.drv",
+    "destinationPath": "dlls/winemac.drv",
+    "changedFiles": [
+      {
+        "path": "dlls/winemac.drv/ax_window_identity.inc",
+        "change": "modified",
+        "baseSha256": "dc32fd06b058bd879431d01fe0d5636158f73b6e5aff088c5184b3fa695ef639",
+        "sha256": "cd831472d21154c597c74e4fc3dd81078ef4440cc144191e774e94ec2e708f51",
+        "bytes": 2300
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_event.m",
+        "change": "modified",
+        "baseSha256": "8a363b9db1dc14e5742ce9bedf32dd965200513c3434a99de7345a3ff35cfc2f",
+        "sha256": "f89908766edbeaf2e86c5c20ecfbd5d05fd8dde49a19512e8e6ccf0aecfe726c",
+        "bytes": 25003
+      },
+      {
+        "path": "dlls/winemac.drv/d3dmetal.c",
+        "change": "modified",
+        "baseSha256": "ad50918b2feb432d2abcb04d1d54a9d58e0a599edb222a6ea4b028e02f7c84ba",
+        "sha256": "a57f4c03a8a9df0c73ede6cf8c56eaf60008fb36a711a89b26564db540f3cc77",
+        "bytes": 16154
+      },
+      {
+        "path": "dlls/winemac.drv/d3dmetal_objc.m",
+        "change": "modified",
+        "baseSha256": "6a2f914b8d1ece300170e388716bd6c26cf52d222aa9f32aac8a203e3b9f3976",
+        "sha256": "f4a07a4b956ca94d98010aec0d5bf4503e028ea4565c5453ee41996396b437e9",
+        "bytes": 3668
+      },
+      {
+        "path": "dlls/winemac.drv/drawable_phase_diag.h",
+        "change": "added",
+        "baseSha256": null,
+        "sha256": "6001cb3cd3d7e20fd275d714b20ff1b6521c135a7875380788111f299c825aa8",
+        "bytes": 4612
+      },
+      {
+        "path": "dlls/winemac.drv/visibility_guard.h",
+        "change": "added",
+        "baseSha256": null,
+        "sha256": "2712d9894b5a1b7432bf237dde2da25260737e7354496500a6f6d68e5bad1170",
+        "bytes": 3829
+      },
+      {
+        "path": "dlls/winemac.drv/visibility_snapshot.inc",
+        "change": "added",
+        "baseSha256": null,
+        "sha256": "daf3feb2ec3de6ebc800ce86f5da121d00376a18ff3eb5f22491dc083dae39f3",
+        "bytes": 7238
+      },
+      {
+        "path": "dlls/winemac.drv/visibility_startup.inc",
+        "change": "added",
+        "baseSha256": null,
+        "sha256": "9bcaea58d3e29918be3512473dae13d3407cac78969a548d4329f79cae790d9f",
+        "bytes": 2263
+      }
+    ],
+    "completeResultSubtree": [
+      {
+        "path": "dlls/winemac.drv/.gitattributes",
+        "sha256": "f82b99b04a647026fbb2fdb8501237ec9c1e3abb5647d9f690fbbe25f8139e77",
+        "bytes": 28
+      },
+      {
+        "path": "dlls/winemac.drv/Makefile.in",
+        "sha256": "8ccca0e204038a5e208681069952617fcfb23cb976b92d43c05fd1cbe84a077d",
+        "bytes": 793
+      },
+      {
+        "path": "dlls/winemac.drv/ax_application.inc",
+        "sha256": "55c01c44accc0f08a5684708b01d1829715951c84fc3268e9134dea71d3e8d1f",
+        "bytes": 1538
+      },
+      {
+        "path": "dlls/winemac.drv/ax_native.inc",
+        "sha256": "8aa926387620ab3c56925c732c5733c0616d2e83dc7e0521812417286ae97552",
+        "bytes": 29993
+      },
+      {
+        "path": "dlls/winemac.drv/ax_protocol.h",
+        "sha256": "804caecef7d9c03cd927a28a6180d9cda666c080044c1322ffed789cb6246e70",
+        "bytes": 2808
+      },
+      {
+        "path": "dlls/winemac.drv/ax_provider.inc",
+        "sha256": "8f2fd1f5f865cb0e2271dd98b45b6fcaca1fafe20b29382e8e3a63a5c861027c",
+        "bytes": 29055
+      },
+      {
+        "path": "dlls/winemac.drv/ax_validation.h",
+        "sha256": "0499269832ec21419ce226da691b5844c2d1a64942740a713ca32c8f4570937c",
+        "bytes": 3403
+      },
+      {
+        "path": "dlls/winemac.drv/ax_window_identity.inc",
+        "sha256": "cd831472d21154c597c74e4fc3dd81078ef4440cc144191e774e94ec2e708f51",
+        "bytes": 2300
+      },
+      {
+        "path": "dlls/winemac.drv/ax_window_root_policy.h",
+        "sha256": "277350620f0012958bb380a7042cd3d2397d1e91e4eba5e8bcb7aaca8bbe91ab",
+        "bytes": 2142
+      },
+      {
+        "path": "dlls/winemac.drv/clipboard.c",
+        "sha256": "00ccc294b01f809f983fd258ec34e51fd92d857f1e236b0d22a1e4e4e5120018",
+        "bytes": 48687
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_app.h",
+        "sha256": "0469113ead868bb8c936198a653057954fdf3d19327dbfb28b37e98f9b3f1753",
+        "bytes": 5608
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_app.m",
+        "sha256": "5a15a9203341190f54fced6c7d9758561cd83383972e3bf796ba26ccd996791b",
+        "bytes": 127244
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_clipboard.m",
+        "sha256": "6ac9cf79857ef3f8ce5fb329033092254ed5a1097a34772c09b5c9754424ae49",
+        "bytes": 8420
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_cursorclipping.h",
+        "sha256": "55305632801cded83ec9c464e340a931fd109088e2eed064f32297242192d0e2",
+        "bytes": 2329
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_cursorclipping.m",
+        "sha256": "082d079412a955cf96c1e948a5a8c1921daba7cab21f92ecf2259a2688c4347d",
+        "bytes": 17823
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_display.m",
+        "sha256": "9e08e154f14bd09fc6d478133d7245e1a4fa9f72491d8a8257ac0203c1c212e1",
+        "bytes": 34366
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_event.h",
+        "sha256": "a55f0e8c6aa5c80ab2713b9c74b6ca5ed526582d10e380caea2168d99f9a8bc2",
+        "bytes": 2112
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_event.m",
+        "sha256": "f89908766edbeaf2e86c5c20ecfbd5d05fd8dde49a19512e8e6ccf0aecfe726c",
+        "bytes": 25003
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_icon_utils.h",
+        "sha256": "02e28cfa6044c8d556f62fbbf846c75eb70fe20f848451476e84991447c2dfa5",
+        "bytes": 1079
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_icon_utils.m",
+        "sha256": "04edd067b4d42437b4fa028d438b2d54865e1ee60501bba692880692457ec568",
+        "bytes": 7361
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_main.m",
+        "sha256": "4993bcb0bf7af9635626cc0f9f966b4f9b712dcc3e7d224b1c24b4d9e08afbcb",
+        "bytes": 7222
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_opengl.h",
+        "sha256": "e3c7c3d0e371faa6e3ef29ff2350ffd42dea6caf1a0b65a6a085296790f5ff11",
+        "bytes": 1086
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_opengl.m",
+        "sha256": "8e01a5804fa5e6655b5e6a3b36e6e29235d57c88ce5cb2c81e18e6a66188c9a1",
+        "bytes": 10796
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_status_item.m",
+        "sha256": "ae3d0b54ba46785539d1ec7c61870fc01056475f9a0c39d44f5f69c01dab5bc0",
+        "bytes": 9404
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_window.h",
+        "sha256": "8ae092be881770e36f5ca46a3d12cde545a2790fab4c7ffbe732e5cfd58f6286",
+        "bytes": 3315
+      },
+      {
+        "path": "dlls/winemac.drv/cocoa_window.m",
+        "sha256": "0155888fb32b4d8524010fd8a1b67b9ae3aad668dea91f9839acf640b0e8e861",
+        "bytes": 147564
+      },
+      {
+        "path": "dlls/winemac.drv/d3dmetal.c",
+        "sha256": "a57f4c03a8a9df0c73ede6cf8c56eaf60008fb36a711a89b26564db540f3cc77",
+        "bytes": 16154
+      },
+      {
+        "path": "dlls/winemac.drv/d3dmetal_objc.h",
+        "sha256": "6eeb595910f4dd495786b3d206d54e6859edbcf234b267b4245849479639eb56",
+        "bytes": 1007
+      },
+      {
+        "path": "dlls/winemac.drv/d3dmetal_objc.m",
+        "sha256": "f4a07a4b956ca94d98010aec0d5bf4503e028ea4565c5453ee41996396b437e9",
+        "bytes": 3668
+      },
+      {
+        "path": "dlls/winemac.drv/display.c",
+        "sha256": "1e231cd5036f3139e09dd4a9e59bd4675dfb6d2faac35814b5c4ac3f39e3cfa8",
+        "bytes": 41528
+      },
+      {
+        "path": "dlls/winemac.drv/dllmain.c",
+        "sha256": "20b56ace57f87d73f70803d049b00324577fe7bc4aa2a267cff83cb399bb8296",
+        "bytes": 16134
+      },
+      {
+        "path": "dlls/winemac.drv/drawable_phase_diag.h",
+        "sha256": "6001cb3cd3d7e20fd275d714b20ff1b6521c135a7875380788111f299c825aa8",
+        "bytes": 4612
+      },
+      {
+        "path": "dlls/winemac.drv/event.c",
+        "sha256": "cb8344a2d76db2263365d1913262dc8105ca8409b71f8f09f3eaa1e4e76f4329",
+        "bytes": 17315
+      },
+      {
+        "path": "dlls/winemac.drv/gdi.c",
+        "sha256": "d96e80a17413a11fed94aee493756c6e3b8a277b29dabb463b726c91e667b92f",
+        "bytes": 8876
+      },
+      {
+        "path": "dlls/winemac.drv/image.c",
+        "sha256": "ffeb126cf88eed076b961fcb5f387a276722d6a2d98bf919dae9cfd03015c8ec",
+        "bytes": 9968
+      },
+      {
+        "path": "dlls/winemac.drv/keyboard.c",
+        "sha256": "5007b53ce6f2caf36dd0063aa1898624495c3442756ac8c396b126039b4f69de",
+        "bytes": 74434
+      },
+      {
+        "path": "dlls/winemac.drv/macdrv.h",
+        "sha256": "b54bb9ee52afcc8684d6761471ce075c9cb2470a216a958b11027e3e76e86e0f",
+        "bytes": 15485
+      },
+      {
+        "path": "dlls/winemac.drv/macdrv_cocoa.h",
+        "sha256": "63792e5b5acfc51b70c9147e5349af98ead37f3acd452f0ed1e3c49601ef845e",
+        "bytes": 21017
+      },
+      {
+        "path": "dlls/winemac.drv/macdrv_main.c",
+        "sha256": "6661999f5843849ef5e3ba26a83b760ff5c6ffeb3fb500bc3fad599dd8bdcbc6",
+        "bytes": 22759
+      },
+      {
+        "path": "dlls/winemac.drv/macdrv_res.h",
+        "sha256": "75809aefe47769005c61d274a2192a2553f3fc0442d9f1a5ce1e298908bef909",
+        "bytes": 1576
+      },
+      {
+        "path": "dlls/winemac.drv/mouse.c",
+        "sha256": "496d65c2a40ba5560b0dfab586e33e51ed9558b8669e8923692597bcc7a08e59",
+        "bytes": 31882
+      },
+      {
+        "path": "dlls/winemac.drv/opengl.c",
+        "sha256": "91a56243f9e7c978bd340f438b7ed53d83b83190ff0a896ac5f36b2e8ba4fa2a",
+        "bytes": 107388
+      },
+      {
+        "path": "dlls/winemac.drv/opengl_bcdec.h",
+        "sha256": "d781e6de37a4b3180ad61cd1067d37c380d57052e1abe99a35b7d5e6cfa4c608",
+        "bytes": 70997
+      },
+      {
+        "path": "dlls/winemac.drv/surface.c",
+        "sha256": "f99c41502bb8d29c164283f0586bd4ec7e933148448904dadbe82e972fb7fb7a",
+        "bytes": 8379
+      },
+      {
+        "path": "dlls/winemac.drv/systray.c",
+        "sha256": "a6e7144ef3d7ba40a235b72833a58c627ee9ed95c0cee711211c91b23ae16bd4",
+        "bytes": 11375
+      },
+      {
+        "path": "dlls/winemac.drv/unixlib.h",
+        "sha256": "7ea99ee6d84a05793a5733d56f12fcb8b700dbb57270fb1c2887f18f73c09d44",
+        "bytes": 2787
+      },
+      {
+        "path": "dlls/winemac.drv/visibility_guard.h",
+        "sha256": "2712d9894b5a1b7432bf237dde2da25260737e7354496500a6f6d68e5bad1170",
+        "bytes": 3829
+      },
+      {
+        "path": "dlls/winemac.drv/visibility_snapshot.inc",
+        "sha256": "daf3feb2ec3de6ebc800ce86f5da121d00376a18ff3eb5f22491dc083dae39f3",
+        "bytes": 7238
+      },
+      {
+        "path": "dlls/winemac.drv/visibility_startup.inc",
+        "sha256": "9bcaea58d3e29918be3512473dae13d3407cac78969a548d4329f79cae790d9f",
+        "bytes": 2263
+      },
+      {
+        "path": "dlls/winemac.drv/vulkan.c",
+        "sha256": "80e8ef619ef5d3335f120c635560750e09284ff4fc3950968be811adaf35705c",
+        "bytes": 4969
+      },
+      {
+        "path": "dlls/winemac.drv/wave7_display_edr.inc",
+        "sha256": "7bda0774837744b5809c78b666b77b377e40d12e68b2d003f4ea8edf07def3da",
+        "bytes": 2858
+      },
+      {
+        "path": "dlls/winemac.drv/wave7_main_executor.inc",
+        "sha256": "5acf6562156681ca6766e14c759f63162140d860e5dc91367d628bc413772898",
+        "bytes": 4413
+      },
+      {
+        "path": "dlls/winemac.drv/window.c",
+        "sha256": "9b6ecd3db0c625e440025bd43e3197b852fb16304ea8e77e7725813300c827be",
+        "bytes": 73886
+      },
+      {
+        "path": "dlls/winemac.drv/winemac.rc",
+        "sha256": "aa2af15506e2b452381ee64f897d25143f665b49f559633f0dd686c04291751e",
+        "bytes": 1830
+      }
+    ],
+    "installedArtifact": "winemac.so",
+    "installedSha256": "c73bfc3cba57b00b7df902db10faa7c19231414cec31c96b889a0799a79736a2",
+    "buildRelationship": "Two replacement Objective-C objects linked with retained donor objects, followed by ad-hoc signing; no full engine rebuild"
+  },
+  "msync": {
+    "patch": "msync.patch",
+    "patchSha256": "f436f8db627296ed0c58fd7ace62ec7b1776769286dc5541f73f5509ef629e13",
+    "baseCommit": "0b4261775ea2016db16d7a77aa1e3586c808073f",
+    "baseUrl": "https://github.com/SlopSurfer4444/VibeWine/tree/0b4261775ea2016db16d7a77aa1e3586c808073f",
+    "retainedSourceCommit": "611fe80cdfb09377f94c505d09dad962c6bee2e3",
+    "fixCommit": "c5f9649ba8d4eeb35d7d13c716468c740fdd9b6f",
+    "retainedSourcePath": "ntdll/wave7/source/unix/msync.c",
+    "changedFiles": [
+      {
+        "path": "dlls/ntdll/unix/msync.c",
+        "change": "modified",
+        "baseSha256": "30dd83ed51240bfaf206bd16a6b765c6dfe748fba10265306a122c3281588cda",
+        "sha256": "2f29d50b13855701d87791d9af3cc49984e184bbdee4b0b789111486deb4cb28",
+        "bytes": 38262
+      }
+    ],
+    "installedArtifact": "ntdll.so",
+    "installedSha256": "82f690172760ab61cb538702a41367b888beea96869ceded781e581fef103702",
+    "unsignedSha256": "5cf4e51c3c31e1d6b4b08e9789801c87a49b7b8e43deffe345e0e52c66207a65",
+    "buildRelationship": "Network build-v4 frozen objects/configured headers plus one replacement msync.c object; matched-g18 relink and g19 ad-hoc signing; not a full rebuild of retainedSourceCommit"
+  },
+  "verification": {
+    "method": "git apply --check and git apply in disposable scratch containing only 50 base driver files and one network-base msync.c; resulting exact path set and SHA-256 matched all 54 retained driver files and retained msync.c",
+    "appliedPatches": [
+      "winemac.patch",
+      "msync.patch"
+    ],
+    "winemacResultFiles": 54,
+    "msyncResultFiles": 1,
+    "scratchRemoved": true,
+    "buildPerformed": false,
+    "runtimeChanged": false
+  },
+  "licenses": {
+    "license": "LGPL-2.1-or-later; retained upstream per-file notices apply",
+    "texts": [
+      {
+        "path": "LICENSE",
+        "sha256": "ae025f125a5d639f0f7abe5146efa1e3d7453cc10b744b2910806fa3f46626ef"
+      },
+      {
+        "path": "COPYING.LIB",
+        "sha256": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c"
+      }
+    ],
+    "authorsUrl": "https://github.com/SlopSurfer4444/VibeWine/blob/7469fcf53c4f537dfe305e961bffb0495d7b750d/AUTHORS"
+  },
+  "limitations": [
+    "Source reconstruction was verified, not a binary rebuild",
+    "Original private source histories and raw build/signing receipts are not included",
+    "Toolchain identities, prior donor objects, configured headers and complete dependency packaging are not supplied by these patches",
+    "Separate XInput and network experimental histories provide their own source; these patches do not merge or select those histories",
+    "No installation, activation, game behavior, network repair, freeze repair or performance acceptance is implied"
+  ],
+  "relatedRetainedModules": [
+    {
+      "artifact": "xinput1_3.dll",
+      "sha256": "01836e174719a8704413afe38928c4cba009c84dd8985ea36878e920df6c6eda",
+      "sourceCommit": "fbe0e3de434aa611b352aae661eacf87c4ee2f85",
+      "sourceUrl": "https://github.com/SlopSurfer4444/VibeWine/tree/fbe0e3de434aa611b352aae661eacf87c4ee2f85",
+      "relationship": "Separate process-local XInput expiry experiment"
+    },
+    {
+      "artifact": "ws2_32.so",
+      "sha256": "997c4ae12397a92a2aa43390a72b72b563f3630039dc451916cfcbf8e5857481",
+      "sourceCommit": "0b4261775ea2016db16d7a77aa1e3586c808073f",
+      "sourceUrl": "https://github.com/SlopSurfer4444/VibeWine/tree/0b4261775ea2016db16d7a77aa1e3586c808073f",
+      "relationship": "Network build-v4, matched PE/Unix module group"
+    },
+    {
+      "artifact": "ws2_32.dll",
+      "sha256": "1bc4236fbf8e0658e8fa5776181b2e9e63f298fab00a14314546f5b3158ff52a",
+      "sourceCommit": "0b4261775ea2016db16d7a77aa1e3586c808073f",
+      "sourceUrl": "https://github.com/SlopSurfer4444/VibeWine/tree/0b4261775ea2016db16d7a77aa1e3586c808073f",
+      "relationship": "Network build-v4, paired Unix bridge ordinal requires matching ws2_32.so and instrumented Unix ntdll"
+    }
+  ]
+}

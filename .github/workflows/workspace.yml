@@ -17,6 +17,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tools/gameplay/session.test.mjs
       - run: python3 -m unittest discover -s tests/workspace
       - run: python3 scripts/workspace.py check --metadata-only
       - run: python3 scripts/workspace.py init
