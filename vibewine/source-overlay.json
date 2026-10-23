@@ -1399,6 +1399,21 @@
       "source": "integrated-wave-20261023/source-contract/vibewine/INTEGRATED_WAVE_20261023.md",
       "destination": "vibewine/INTEGRATED_WAVE_20261023.md",
       "sha256": "56e9403ef5295d80beccae35b63271d8010d3a86498060a9b176ba0014508891"
+    },
+    {
+      "source": "integrated-wave-20261023/makedep-inc/tools/makedep.c",
+      "destination": "tools/makedep.c",
+      "sha256": "05be45f927efb01a5e11f0c438c5bbca40845a6ae48b1087c0542d1060e77931"
+    },
+    {
+      "source": "integrated-wave-20261023/makedep-inc/vibewine/tests/makedep-inc/run.py",
+      "destination": "vibewine/tests/makedep-inc/run.py",
+      "sha256": "ea2e65284ea2f8fe2a5231d81aa067ce64a2fd46ab77be88e1907df944b0fac6"
+    },
+    {
+      "source": "integrated-wave-20261023/makedep-inc/vibewine/tests/makedep-inc/README.md",
+      "destination": "vibewine/tests/makedep-inc/README.md",
+      "sha256": "a3c62b0b2c199c85e72a045328df3c87e92d2840659e7c04c6020fa0b7c1a9f3"
     }
   ]
 }

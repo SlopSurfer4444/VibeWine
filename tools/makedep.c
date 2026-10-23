@@ -1239,6 +1239,7 @@ static const struct
     { ".c",   parse_c_file },
     { ".h",   parse_c_file },
     { ".inl", parse_c_file },
+    { ".inc", parse_c_file },
     { ".l",   parse_c_file },
     { ".m",   parse_c_file },
     { ".rh",  parse_c_file },
