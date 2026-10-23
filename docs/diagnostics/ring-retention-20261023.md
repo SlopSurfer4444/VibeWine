@@ -37,6 +37,20 @@ and a concurrent producer/collector. Independent review found no material
 lifetime issue; the integration owner reran translated sanitized regressions.
 No DS3 game was launched to verify this patch.
 
+A separate 69-translation-unit DLL was built cleanly on the exact active
+renderer predecessor source, changing only this header. The header is identical
+to the committed component patch. Import/export names and ordinals and embedded
+Metal helper bytes are unchanged. The sandboxed hardware copy guest passed
+3,824 checks, 1,309 queries and 512 byte-exact snapshots with actual candidate
+module mapping verified. Its private server exited; the game's existing Steam
+and Wine-server identities remained unchanged. These checks exercise public
+copy/ownership correctness, not direct pool counts or gameplay.
+
+The full component branch is newer than that runtime chain: a separate attempted
+whole-component build was rejected at link time for newer heap APIs absent from
+the existing native bridge. Its partial outputs were not activated. The narrow
+candidate remains unactivated too; the original generation is still selected.
+
 ## Captured stalls remain unresolved
 
 Human gameplay with the preceding staging and dynamic retention fixes still
