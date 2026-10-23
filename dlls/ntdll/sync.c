@@ -881,6 +881,7 @@ NTSTATUS WINAPI RtlWaitOnAddress( const void *addr, const void *cmp, SIZE_T size
 {
     struct futex_queue *queue = get_futex_queue( addr );
     struct futex_entry entry;
+    BOOL queued = FALSE;
     NTSTATUS ret;
 
     TRACE("addr %p cmp %p size %#Ix timeout %s\n", addr, cmp, size, debugstr_timeout( timeout ));
@@ -909,13 +910,21 @@ NTSTATUS WINAPI RtlWaitOnAddress( const void *addr, const void *cmp, SIZE_T size
 
     ret = NtWaitForAlertByThreadId( NULL, timeout );
 
-    /* We may have already been removed by a call to RtlWakeAddressSingle() or RtlWakeAddressAll(). */
-    if (entry.addr)
+    /* We may have already been removed by a call to RtlWakeAddressSingle() or RtlWakeAddressAll().
+     * A timeout must check under the lock whether a waker has claimed this entry. */
+    if (ret == STATUS_TIMEOUT || entry.addr)
     {
         spin_lock( &queue->lock );
-        if (entry.addr)
+        if ((queued = entry.addr != NULL))
             list_remove( &entry.entry );
         spin_unlock( &queue->lock );
+    }
+
+    if (ret == STATUS_TIMEOUT && !queued)
+    {
+        /* A waker dequeued us while the wait timed out, but may still have its alert buffered.
+         * Take that alert before returning, or it would end this thread's next wait early. */
+        ret = NtWaitForAlertByThreadId( NULL, NULL );
     }
 
     TRACE("returning %#lx\n", ret);

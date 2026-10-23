@@ -60,3 +60,40 @@ ordered overlay hashes, including these production deltas and their source
 fixtures/documentation. The original archive identity is preserved. No compiled
 binaries, configured headers, personal paths, raw traces or private receipts are
 published. Temporary fixture outputs are removed by their runners.
+
+## Follow-up: formerly deferred candidates
+
+Follow-up base: `d2237a9a82d9960360ce8400242ddeae6646c347`. This extends the
+source selection above without changing installed runtime selection.
+
+| Source / original authorship | Change and adaptation | Evidence / limit |
+| --- | --- | --- |
+| Jason Eggleston, [Proton-GE `98efe1cd`](https://github.com/GloriousEggroll/proton-ge-custom/commit/98efe1cdefd7fc2f7ffb34044c194e046d739d6e) | Consume the promised in-flight address alert when timeout races a waker that already dequeued the waiter. Decide queue ownership under the lock on every timeout; preserve backend drain errors. | Six deterministic races per backend, real Darwin `kqueue` event retention/drain, unchanged-path controls, ASan/UBSan and exact baseline failures. Alert allocation/table lifecycle, integrated Wine and independent raw-alert races are outside this check. |
+| kageroumado, [Dormison `3e77a112`](https://github.com/kageroumado/dormison/commit/3e77a1125ef897378f3f869ff5b2eaf0c44a58aa); original co-author Claude Fable 5.1 `<noreply@anthropic.com>` | Lower inactive topmost-window floor below the Dock; preserve active-window promotion. | Actual complete level/activation methods with native AppKit panels and CoreGraphics level/order checks: 35 assertions, exactly eight expected baseline failures. Lifecycle state is injected; no real focus/Spaces/fullscreen transition or Dock-click acceptance. |
+| Gabe Zimbric, [Metal-view lifetime `0dad72df`](https://github.com/gzimbric/wine-arm64-macos/commit/0dad72df204142a2f276495af5baaf4d932ea91f) | Adapt deferred hierarchy teardown while preserving our exclusive producer lease: retire the lease and layer delegate synchronously, retain native hierarchy through preceding main-GCD work, reject acquisition after terminal disposal. | Actual production methods with real AppKit/QuartzCore objects, native and translated sanitizer checks, three exact baseline hierarchy failures and a terminal-guard mutation. Covers earlier FIFO work, not arbitrary later/private Metal-HUD callbacks. |
+| [Gcenx/macports-wine recipe at `850f5330`](https://github.com/Gcenx/macports-wine/blob/850f5330ed500a87bdcf8441763ad6cf4109aedc/emulators/wine-stable/files/0001-win32u-Enable-host-Vulkan-portability-enumeration.diff); original author not specified | When the host supports portability enumeration, request both extension and flag while preserving existing flags. | Actual conversion function, real Wine Vulkan headers and eight host-contract cases under sanitizers; baseline fails exactly six checks. Optional Vulkan/MoltenVK route only: current tested Wine uses `--without-vulkan` and DXMT. No live loader/device acceptance or current DS3 benefit. |
+
+The GE patch header reports `jegglest/wine@dee180fa836108dcb61c520708721b8bed85ca42`
+as its original source; that original commit was not independently retrievable.
+The source recipe and these adaptations remain individually attributed; no shared
+Metal-client lease or private SkyLight subsystem was imported.
+
+```sh
+python3 vibewine/tests/address-wait/run.py --sanitize
+python3 vibewine/tests/address-wait/run.py --revision d2237a9a82d9960360ce8400242ddeae6646c347 --expect-regression --sanitize
+python3 vibewine/tests/vulkan-portability/run.py
+python3 vibewine/tests/vulkan-portability/run.py --revision d2237a9a82d9960360ce8400242ddeae6646c347 --expect-regression
+# Logged-in macOS WindowServer required; reviewed fixtures create only their own
+# hidden/nonactivating native objects, without changing user focus or Spaces:
+python3 vibewine/tests/native-window-levels/check.py
+python3 vibewine/tests/metal-view-lifetime/run.py
+python3 vibewine/tests/metal-view-lifetime/run.py --baseline
+python3 vibewine/tests/metal-view-lifetime/run.py --mutation missing-terminal-guard
+```
+
+Detailed extraction boundaries, timeout/error controls and remaining limitations
+live beside each fixture. The complete modified synchronization and native-driver
+translation units also pass syntax checks against retained configured headers.
+These are not fresh full builds, installation, real game behavior or FPS results.
+The two newer swapchain autorelease wrappers remain excluded: their donor ABI
+differs and matching caller/main-block pools already cover our legacy wrappers.

@@ -1,0 +1,439 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* Production wait/wake/Unix alert functions are inserted verbatim. Only native
+ * syscall, thread-identity, allocation and scheduling seams are supplied here. */
+#define _POSIX_C_SOURCE 200809L
+#ifdef TEST_KQUEUE
+#define HAVE_KQUEUE
+#include <sys/event.h>
+#include <unistd.h>
+#else
+#define USE_FUTEX
+#endif
+#include <assert.h>
+#include <errno.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include "wine/list.h"
+
+typedef int32_t LONG;
+typedef int32_t NTSTATUS;
+typedef uint32_t DWORD, ULONG;
+typedef uint64_t ULONG64, ULONGLONG;
+typedef int64_t LONGLONG;
+typedef uint16_t USHORT;
+typedef uint8_t UCHAR;
+typedef uintptr_t ULONG_PTR, DWORD_PTR;
+typedef size_t SIZE_T;
+typedef void *HANDLE;
+typedef int BOOL;
+typedef struct { LONGLONG QuadPart; } LARGE_INTEGER;
+#define WINAPI
+#define TRUE 1
+#define FALSE 0
+#define STATUS_SUCCESS ((NTSTATUS)0)
+#define STATUS_TIMEOUT ((NTSTATUS)0x102)
+#define STATUS_ALERTED ((NTSTATUS)0x101)
+#define STATUS_INVALID_PARAMETER ((NTSTATUS)0xc000000d)
+#define STATUS_INVALID_CID ((NTSTATUS)0xc000000b)
+#define STATUS_INVALID_HANDLE ((NTSTATUS)0xc0000008)
+#define TIMEOUT_INFINITE INT64_MIN
+#define TICKSPERSEC 10000000
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#define TRACE(...) do {} while (0)
+#define FIXME(...) do {} while (0)
+#define ERR(...) do {} while (0)
+
+static _Thread_local DWORD current_tid;
+static _Thread_local unsigned int entry_lookups;
+static _Thread_local unsigned int lock_lookups;
+static _Thread_local struct { struct { HANDLE UniqueThread; } ClientId; } teb;
+union tid_alert_entry { LONG futex; int kq; };
+static union tid_alert_entry alerts[3];
+static pthread_mutex_t control = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t changed = PTHREAD_COND_INITIALIZER;
+static struct
+{
+    int race, hold_delivery, inject_error, ordinary, pause_cleanup, syscall_error;
+    int initial_entered, allow_timeout, delivery_blocked, release_delivery;
+    int cleanup_blocked, release_cleanup;
+    int drain_entered, first_done, allow_second, waker_done;
+    int first_wait_calls, drain_wait_calls, pending_after;
+    NTSTATUS first, second;
+    ULONG address, other;
+} schedule;
+
+static DWORD GetCurrentThreadId(void) { return current_tid; }
+#define NtCurrentTeb() (teb.ClientId.UniqueThread = (HANDLE)(ULONG_PTR)current_tid, &teb)
+static void YieldProcessor(void) { __asm__ __volatile__("" ::: "memory"); }
+static LONG InterlockedCompareExchange(LONG *p, LONG value, LONG compare)
+{
+    if (current_tid == 1 && schedule.pause_cleanup && ++lock_lookups == 2)
+    {
+        pthread_mutex_lock(&control);
+        schedule.cleanup_blocked = 1;
+        pthread_cond_broadcast(&changed);
+        while (!schedule.release_cleanup) pthread_cond_wait(&changed, &control);
+        pthread_mutex_unlock(&control);
+    }
+    __atomic_compare_exchange_n(p, &compare, value, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return compare;
+}
+static LONG InterlockedExchange(LONG *p, LONG value)
+{
+    return __atomic_exchange_n(p, value, __ATOMIC_SEQ_CST);
+}
+static BOOL is_alert_tid_valid(HANDLE tid)
+{
+    return (ULONG_PTR)tid > 0 && (ULONG_PTR)tid < ARRAY_SIZE(alerts);
+}
+static union tid_alert_entry *get_tid_alert_entry(HANDLE tid)
+{
+    assert(is_alert_tid_valid(tid));
+    if (current_tid == 1 && schedule.inject_error && ++entry_lookups == 2)
+        return NULL;
+    if (current_tid == 2 && schedule.hold_delivery)
+    {
+        pthread_mutex_lock(&control);
+        schedule.delivery_blocked = 1;
+        pthread_cond_broadcast(&changed);
+        while (!schedule.release_delivery) pthread_cond_wait(&changed, &control);
+        pthread_mutex_unlock(&control);
+    }
+    return &alerts[(ULONG_PTR)tid];
+}
+static void NtQuerySystemTime(LARGE_INTEGER *now)
+{
+    struct timespec value;
+    assert(!clock_gettime(CLOCK_REALTIME, &value));
+    now->QuadPart = (LONGLONG)value.tv_sec * TICKSPERSEC + value.tv_nsec / 100;
+}
+
+/* Inject a kernel timeout at the requested schedule. Real production Unix
+ * NtWaitForAlertByThreadId does all alert-flag consumption and NTSTATUS mapping;
+ * no address-wait or alert logic is reimplemented by this syscall seam. */
+#ifdef USE_FUTEX
+static int futex_wait(LONG *futex, LONG compare, const struct timespec *timeout)
+{
+    (void)compare;
+    pthread_mutex_lock(&control);
+    if (schedule.race && !schedule.initial_entered)
+    {
+        assert(timeout);
+        schedule.initial_entered = 1;
+        ++schedule.first_wait_calls;
+        pthread_cond_broadcast(&changed);
+        while (!schedule.allow_timeout) pthread_cond_wait(&changed, &control);
+        pthread_mutex_unlock(&control);
+        errno = ETIMEDOUT;
+        return -1;
+    }
+    if (timeout)
+    {
+        ++schedule.first_wait_calls;
+        pthread_mutex_unlock(&control);
+        errno = ETIMEDOUT;
+        return -1;
+    }
+    if (schedule.race) { schedule.drain_entered = 1; ++schedule.drain_wait_calls; }
+    else { schedule.initial_entered = 1; ++schedule.first_wait_calls; }
+    pthread_cond_broadcast(&changed);
+    while (!__atomic_load_n(futex, __ATOMIC_SEQ_CST)) pthread_cond_wait(&changed, &control);
+    pthread_mutex_unlock(&control);
+    return 0;
+}
+static void futex_wake_one(LONG *futex)
+{
+    (void)futex;
+    pthread_mutex_lock(&control);
+    pthread_cond_broadcast(&changed);
+    pthread_mutex_unlock(&control);
+}
+#else
+/* All kqueue operations reach the native kernel. Only the first timeout's
+ * delivery back to production code is delayed, after the real zero poll has
+ * already returned 0. The promised NOTE_TRIGGER can then arrive before queue
+ * cleanup resumes, without fabricating a kernel timeout or alert result. */
+static int fixture_kevent(int kq, const struct kevent *changes, int nchanges,
+                          struct kevent *events, int nevents, const struct timespec *timeout)
+{
+    if (nchanges || !nevents)
+    {
+        int result = kevent(kq, changes, nchanges, events, nevents, timeout);
+        assert(!result); /* Production NtAlert ignores errors; this test must not. */
+        return result;
+    }
+    pthread_mutex_lock(&control);
+    if (schedule.race && !schedule.initial_entered)
+    {
+        assert(timeout && !timeout->tv_sec && !timeout->tv_nsec);
+        int result = kevent(kq, changes, nchanges, events, nevents, timeout);
+        assert(!result); /* A real native timeout, before any selected waker starts. */
+        schedule.initial_entered = 1;
+        ++schedule.first_wait_calls;
+        pthread_cond_broadcast(&changed);
+        while (!schedule.allow_timeout) pthread_cond_wait(&changed, &control);
+        pthread_mutex_unlock(&control);
+        return result;
+    }
+    if (!timeout)
+    {
+        if (schedule.race) { schedule.drain_entered = 1; ++schedule.drain_wait_calls; }
+        else { schedule.initial_entered = 1; ++schedule.first_wait_calls; }
+        pthread_cond_broadcast(&changed);
+    }
+    pthread_mutex_unlock(&control);
+    /* Use a bad argument for one real syscall, preserving the owned valid fd. */
+    int result = kevent(schedule.syscall_error && !timeout ? -1 : kq,
+                        changes, nchanges, events, nevents, timeout);
+    if (result == 1) assert(events[0].ident == 1 && events[0].filter == EVFILT_USER);
+    if (timeout && !result)
+    {
+        pthread_mutex_lock(&control);
+        ++schedule.first_wait_calls;
+        pthread_mutex_unlock(&control);
+    }
+    return result;
+}
+#define kevent(...) fixture_kevent(__VA_ARGS__)
+#endif
+
+/* PRODUCTION_UNIX */
+#ifdef TEST_KQUEUE
+#undef kevent
+#endif
+/* PRODUCTION_ADDRESS */
+
+static int pending_alert(void)
+{
+#ifdef USE_FUTEX
+    return __atomic_load_n(&alerts[1].futex, __ATOMIC_SEQ_CST);
+#else
+    struct kevent event;
+    const struct timespec zero = {0};
+    int result = kevent(alerts[1].kq, NULL, 0, &event, 1, &zero);
+    assert(result >= 0);
+    return result; /* Used only after the required wait; EV_CLEAR consumes a hit. */
+#endif
+}
+
+static void await(int *field)
+{
+    struct timespec deadline;
+    assert(!clock_gettime(CLOCK_REALTIME, &deadline));
+    deadline.tv_sec += 3;
+    pthread_mutex_lock(&control);
+    while (!*field)
+        if (pthread_cond_timedwait(&changed, &control, &deadline) == ETIMEDOUT)
+        { fprintf(stderr, "SCHEDULE_TIMEOUT\n"); abort(); }
+    pthread_mutex_unlock(&control);
+}
+static void permit(int *field)
+{
+    pthread_mutex_lock(&control);
+    *field = 1;
+    pthread_cond_broadcast(&changed);
+    pthread_mutex_unlock(&control);
+}
+static void *waiter(void *unused)
+{
+    LARGE_INTEGER zero = {0};
+    ULONG compare = 0;
+    (void)unused;
+    current_tid = 1;
+    entry_lookups = 0;
+    lock_lookups = 0;
+    NTSTATUS status = RtlWaitOnAddress(&schedule.address, &compare, sizeof(compare),
+                                     schedule.ordinary ? NULL : &zero);
+    pthread_mutex_lock(&control);
+    schedule.first = status;
+    schedule.first_done = 1;
+    pthread_cond_broadcast(&changed);
+    while (!schedule.allow_second) pthread_cond_wait(&changed, &control);
+    pthread_mutex_unlock(&control);
+    /* Exercise an actual second RtlWaitOnAddress on an unrelated address.
+     * It must time out; a leaked alert makes production NtWait return ALERTED. */
+    schedule.second = RtlWaitOnAddress(&schedule.other, &compare, sizeof(compare), &zero);
+    schedule.pending_after = pending_alert();
+    return NULL;
+}
+static void *waker(void *all)
+{
+    current_tid = 2;
+    if (all) RtlWakeAddressAll(&schedule.address);
+    else RtlWakeAddressSingle(&schedule.address);
+    permit(&schedule.waker_done);
+    return NULL;
+}
+static void reset(void)
+{
+    memset(&schedule, 0, sizeof(schedule));
+#ifdef TEST_KQUEUE
+    static int initialized;
+    if (initialized)
+        for (unsigned int i = 1; i < ARRAY_SIZE(alerts); ++i) assert(!close(alerts[i].kq));
+#endif
+    memset(alerts, 0, sizeof(alerts));
+#ifdef TEST_KQUEUE
+    /* Match production get_tid_alert_entry's native registration exactly;
+     * ownership/allocation of the small fixed table remains a fixture seam. */
+    const struct kevent init_event = {
+        .ident = 1, .filter = EVFILT_USER, .flags = EV_ADD | EV_CLEAR,
+        .fflags = 0, .data = 0, .udata = NULL
+    };
+    for (unsigned int i = 1; i < ARRAY_SIZE(alerts); ++i)
+    {
+        alerts[i].kq = kqueue();
+        assert(alerts[i].kq >= 0);
+        assert(!kevent(alerts[i].kq, &init_event, 1, NULL, 0, NULL));
+    }
+    initialized = 1;
+#endif
+    memset(futex_queues, 0, sizeof(futex_queues));
+    current_tid = 1;
+    entry_lookups = 0;
+    lock_lookups = 0;
+}
+
+static int race_test(const char *name, int all, int delayed)
+{
+    pthread_t wait_thread, wake_thread;
+    reset();
+    schedule.race = 1;
+    schedule.hold_delivery = !!delayed;
+    schedule.pause_cleanup = delayed == 2;
+    assert(!pthread_create(&wait_thread, NULL, waiter, NULL));
+    await(&schedule.initial_entered);
+    if (schedule.pause_cleanup)
+    {
+        permit(&schedule.allow_timeout);
+        await(&schedule.cleanup_blocked);
+    }
+    assert(!pthread_create(&wake_thread, NULL, waker, all ? &schedule : NULL));
+    if (delayed) await(&schedule.delivery_blocked);
+    else await(&schedule.waker_done);
+    if (schedule.pause_cleanup) permit(&schedule.release_cleanup);
+    else permit(&schedule.allow_timeout);
+    if (delayed)
+    {
+        struct timespec deadline;
+        assert(!clock_gettime(CLOCK_REALTIME, &deadline));
+        deadline.tv_sec += 3;
+        pthread_mutex_lock(&control);
+        while (!schedule.first_done && !schedule.drain_entered)
+            if (pthread_cond_timedwait(&changed, &control, &deadline) == ETIMEDOUT)
+            { fprintf(stderr, "NO_TIMEOUT_OR_DRAIN\n"); abort(); }
+        pthread_mutex_unlock(&control);
+        permit(&schedule.release_delivery);
+    }
+    await(&schedule.waker_done);
+    await(&schedule.first_done);
+    permit(&schedule.allow_second);
+    assert(!pthread_join(wake_thread, NULL));
+    assert(!pthread_join(wait_thread, NULL));
+    int failed = schedule.first != STATUS_SUCCESS || schedule.second != STATUS_TIMEOUT || schedule.pending_after;
+    printf("%s first=%#x unrelated=%#x pending=%d drain_syscalls=%d %s\n", name,
+           (unsigned)schedule.first, (unsigned)schedule.second, schedule.pending_after,
+           schedule.drain_wait_calls, failed ? "REGRESSION" : "PASS");
+    return failed;
+}
+
+static void controls(void)
+{
+    LARGE_INTEGER zero = {0};
+    ULONG64 value = 0, same = 0, different = 1;
+    reset();
+    for (SIZE_T size = 1; size <= 8; size *= 2)
+    {
+        assert(RtlWaitOnAddress(&value, &different, size, &zero) == STATUS_SUCCESS);
+        assert(!schedule.first_wait_calls);
+        assert(RtlWaitOnAddress(&value, &same, size, &zero) == STATUS_TIMEOUT);
+        assert(schedule.first_wait_calls == 1);
+        schedule.first_wait_calls = 0;
+    }
+    assert(RtlWaitOnAddress(&value, &same, 3, &zero) == STATUS_INVALID_PARAMETER);
+    assert(!schedule.first_wait_calls);
+    RtlWakeAddressSingle(&value); RtlWakeAddressAll(&value);
+    RtlWakeAddressSingle(NULL); RtlWakeAddressAll(NULL);
+    assert(!pending_alert());
+    /* A raw alert is allowed to wake a still-queued caller; no drain follows. */
+    assert(NtAlertThreadByThreadId((HANDLE)(ULONG_PTR)1) == STATUS_SUCCESS);
+    assert(RtlWaitOnAddress(&value, &same, sizeof(value), &zero) == STATUS_SUCCESS);
+    assert(!pending_alert() && !schedule.first_wait_calls);
+    puts("controls mismatch/timeout sizes=1,2,4,8 invalid-size empty-wake raw-alert PASS");
+    /* Both production backends coalesce multiple alerts into one retrieval. */
+    assert(NtAlertThreadByThreadId((HANDLE)(ULONG_PTR)1) == STATUS_SUCCESS);
+    assert(NtAlertThreadByThreadId((HANDLE)(ULONG_PTR)1) == STATUS_SUCCESS);
+    assert(NtWaitForAlertByThreadId(NULL, &zero) == STATUS_ALERTED);
+    assert(NtWaitForAlertByThreadId(NULL, &zero) == STATUS_TIMEOUT);
+    puts("controls alert coalescing one retrieval then timeout PASS");
+    for (int all = 0; all < 2; ++all)
+    {
+        pthread_t wait_thread, wake_thread;
+        reset();
+        schedule.ordinary = 1;
+        assert(!pthread_create(&wait_thread, NULL, waiter, NULL));
+        await(&schedule.initial_entered);
+        assert(!pthread_create(&wake_thread, NULL, waker, all ? &schedule : NULL));
+        await(&schedule.waker_done);
+        await(&schedule.first_done);
+        permit(&schedule.allow_second);
+        assert(!pthread_join(wake_thread, NULL));
+        assert(!pthread_join(wait_thread, NULL));
+        assert(schedule.first == STATUS_SUCCESS && schedule.second == STATUS_TIMEOUT);
+        assert(!schedule.drain_wait_calls && !schedule.pending_after);
+        printf("ordinary %s wake success, no second infinite wait PASS\n", all ? "all" : "single");
+    }
+}
+
+static void drain_error_test(int syscall_error)
+{
+    pthread_t wait_thread, wake_thread;
+    reset();
+    schedule.race = schedule.hold_delivery = 1;
+    schedule.syscall_error = syscall_error;
+    schedule.inject_error = !syscall_error;
+    assert(!pthread_create(&wait_thread, NULL, waiter, NULL));
+    await(&schedule.initial_entered);
+    assert(!pthread_create(&wake_thread, NULL, waker, NULL));
+    await(&schedule.delivery_blocked);
+    permit(&schedule.allow_timeout);
+    await(&schedule.first_done);
+    assert(schedule.first == (syscall_error ? STATUS_INVALID_HANDLE : STATUS_INVALID_CID));
+    permit(&schedule.release_delivery);
+    await(&schedule.waker_done);
+    permit(&schedule.allow_second);
+    assert(!pthread_join(wake_thread, NULL));
+    assert(!pthread_join(wait_thread, NULL));
+    /* A failed backend drain cannot promise consumption. The error must be
+     * visible; this extra test wait consumes the unclaimed buffered alert. */
+    assert(schedule.second == STATUS_SUCCESS && !schedule.pending_after);
+    puts(syscall_error ? "drain native kevent failure propagates STATUS_INVALID_HANDLE PASS" :
+                        "drain backend failure propagates STATUS_INVALID_CID PASS");
+}
+
+int main(void)
+{
+    int regressions = 0;
+    controls();
+    regressions += race_test("single/deferred", 0, 1);
+    regressions += race_test("all/deferred", 1, 1);
+    regressions += race_test("single/pending", 0, 0);
+    regressions += race_test("all/pending", 1, 0);
+    regressions += race_test("single/cleanup-lock-race", 0, 2);
+    regressions += race_test("all/cleanup-lock-race", 1, 2);
+    if (regressions)
+    {
+        fprintf(stderr, "ADDRESS_WAIT_REGRESSION cases=%d\n", regressions);
+        return 42;
+    }
+    drain_error_test(0);
+#ifdef TEST_KQUEUE
+    drain_error_test(1);
+#endif
+    puts("ADDRESS_WAIT_PASS");
+    return 0;
+}

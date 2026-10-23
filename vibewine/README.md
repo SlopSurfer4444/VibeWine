@@ -4,7 +4,10 @@ This branch is the complete vendor Wine source tree, with VibeWine changes appli
 
 The 2026-10-23 development source adds selected Wine, Proton-GE and Highball
 backports for clipboard ownership, SRW wake avoidance, handle-close lifetime and
-MSync registration cleanup. [Exact sources, checks and limitations](UPSTREAM_BACKPORTS.md)
+MSync registration cleanup. A deeper follow-up adds address-wait timeout handling,
+inactive topmost-window ordering, an adapted Metal-view lifetime fix and
+conditional portability enumeration for optional Vulkan-enabled builds.
+[Exact sources, checks and limitations](UPSTREAM_BACKPORTS.md)
 are recorded separately from the older module-build evidence below. These source
 imports do not install or switch an existing runtime.
 
@@ -34,4 +37,4 @@ General native-window, accessibility, ABI and synchronization changes belong her
 
 A clean out-of-tree configure and compile of this integrated tree succeeded for x86_64 Unix `ntdll.so`, `winemac.so` (including the `win32u.so` dependency), and i386/x86_64 PE `oleacc.dll` and `winemac.drv`. The compile used the reduced dependency flags above (`--without-freetype --without-gnutls`). Bison 3.8.2 must be on PATH for both configure and make; the system Bison was too old in an initial invocation. This is a module build check, not a whole Wine distribution build or a live game/ABI/runtime acceptance. No produced binaries are tracked or installed.
 
-Run `python3 vibewine/verify_source.py` to check 11,105 source files against the archive manifest and ordered current overlays. Historical vendor whitespace and one existing extra blank line in `ax_window_identity.inc` are retained byte-for-byte rather than mixed into the integration delta.
+Run `python3 vibewine/verify_source.py` to check every source file against the archive manifest and ordered current overlays. Historical vendor whitespace and one existing extra blank line in `ax_window_identity.inc` are retained byte-for-byte rather than mixed into the integration delta.

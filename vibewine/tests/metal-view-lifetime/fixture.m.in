@@ -1,0 +1,153 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later
+ * Real unshown AppKit/QuartzCore hierarchy. No game or user window is used.
+ * The injected acquisition, retirement, disposal and removal bodies are production source.
+ * The fixture Metal-view initializer uses CAMetalLayer without a GPU device/drawable;
+ * WineWindow's unrelated graphics callbacks are no-ops. */
+#import <AppKit/AppKit.h>
+#import <QuartzCore/QuartzCore.h>
+#import <dispatch/dispatch.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+@protocol MTLDevice @end
+static void OnMainThread(dispatch_block_t block) { block(); }
+typedef void *macdrv_metal_view, *macdrv_view;
+static unsigned views_created, views_destroyed, content_destroyed, windows_destroyed, failures, callbacks;
+#define CHECK(test, name) do { if (!(test)) { fprintf(stderr,"FAIL %s\n",name); failures++; } } while(0)
+@interface WineWindow:NSWindow
+@property BOOL closing;
+-(void)windowDidDrawContent;
+-(void)updateForGLSubviews;
+@end
+@implementation WineWindow
+-(void)windowDidDrawContent {}
+-(void)updateForGLSubviews {}
+-(void)dealloc { windows_destroyed++; [super dealloc]; }
+@end
+@class WineMetalView;
+@interface WineContentView:NSView { @public WineMetalView *_metalView; BOOL _disposing, _cachedHasGLDescendantValid, _cachedHasGLDescendant; }
+-(WineMetalView*)newMetalViewWithDevice:(id<MTLDevice>)device;
+-(void)retireMetalView:(WineMetalView*)view;
+-(BOOL)prepareForDisposal;
+-(void)invalidateHasGLDescendant;
+@end
+@interface WineMetalView:NSView
+-(id)initWithFrame:(NSRect)frame device:(id<MTLDevice>)device;
+@end
+@implementation WineMetalView
+-(id)initWithFrame:(NSRect)frame device:(id<MTLDevice>)device {
+ (void)device; if((self=[super initWithFrame:frame])) { views_created++; self.wantsLayer=YES; self.layer=[CAMetalLayer layer]; } return self;
+}
+-(void)dealloc { views_destroyed++; [super dealloc]; }
+@end
+@implementation WineContentView
+/* @RETIRE@ */
+/* @PREPARE@ */
+/* @WILL_REMOVE@ */
+-(void)invalidateHasGLDescendant {}
+-(void)dealloc { content_destroyed++; [super dealloc]; }
+/* @ACQUIRE@ */
+@end
+/* @RELEASE@ */
+/* @DISPOSE@ */
+
+static WineWindow *make_window(WineContentView **content) {
+ WineWindow *window=[[WineWindow alloc] initWithContentRect:NSMakeRect(-5000,-5000,32,32) styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:YES];
+ window.releasedWhenClosed=NO;
+ NSView *root=[[NSView alloc] initWithFrame:NSMakeRect(0,0,32,32)]; window.contentView=root;
+ *content=[[WineContentView alloc] initWithFrame:NSMakeRect(0,0,32,32)]; [root addSubview:*content]; [root release];
+ CHECK(!window.visible,"window remained unshown"); return window;
+}
+int main(void) { @autoreleasepool {
+ WineContentView *content; WineWindow *window=make_window(&content);
+ id<MTLDevice> device=(id<MTLDevice>)[NSObject new];
+ WineMetalView *old=[content newMetalViewWithDevice:device];
+ CHECK(old && old.window==window,"acquired attached native generation");
+ CHECK(![content newMetalViewWithDevice:device],"reject overlapping producer");
+ dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool {
+   callbacks++; CHECK(![content newMetalViewWithDevice:device],"callback cannot overlap replacement producer");
+   CHECK(old.window==window,"earlier HUD-like block retains window association");
+   CHECK(old.layer.delegate==nil,"retired layer delegate detached");
+ }});
+ macdrv_view_release_metal_view(old);
+ CHECK(!content->_metalView,"lease synchronously relinquished");
+ CHECK(old.layer.delegate==nil,"delegate synchronously detached");
+ CHECK(!old.superview || old.hidden,"retired generation synchronously hidden");
+ WineMetalView *fresh=[content newMetalViewWithDevice:device];
+ CHECK(fresh && fresh != old,"immediate reacquisition uses distinct generation");
+ CHECK(content->_metalView == fresh,"new generation owns lease");
+ dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool {
+   CHECK(content->_metalView==fresh,"old retirement preserves new lease");
+   CHECK(!old.superview,"old generation detached after earlier callback");
+   macdrv_view_release_metal_view(fresh);
+ }});
+ // Separate terminal-disposal case, while a native client still retains Metal view.
+ WineContentView *terminal; WineWindow *terminal_window=make_window(&terminal);
+ WineMetalView *held=[terminal newMetalViewWithDevice:device];
+ uintptr_t terminal_window_id=(uintptr_t)terminal_window;
+ dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool {
+   callbacks++; CHECK((uintptr_t)held.window==terminal_window_id,"terminal disposal preserves prior callback hierarchy");
+   CHECK(held.layer.delegate==nil,"terminal disposal detaches delegate synchronously");
+ }});
+ [terminal retain];
+ macdrv_dispose_view(terminal);
+ CHECK(![terminal newMetalViewWithDevice:device],"reject acquisition after terminal disposal");
+ [terminal release];
+
+ // Drop original window ownership before queued cleanup. close must never show it.
+ [terminal_window close]; [terminal_window release];
+ // Third case: already-retired child followed by disposal before main queue drains.
+ WineContentView *both; WineWindow *both_window=make_window(&both);
+ WineMetalView *retired=[both newMetalViewWithDevice:device];
+ uintptr_t both_window_id=(uintptr_t)both_window;
+ dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool {
+   callbacks++; CHECK((uintptr_t)retired.window==both_window_id,"retired generation survives subsequent container disposal");
+ }});
+ macdrv_view_release_metal_view(retired);
+ [both retain];
+ macdrv_dispose_view(both);
+ WineMetalView *unexpected=[both newMetalViewWithDevice:device];
+ CHECK(!unexpected,"reject retired-container acquisition after terminal disposal");
+ if(unexpected) macdrv_view_release_metal_view(unexpected);
+ [both release];
+ [both_window close]; [both_window release];
+ // Detached older native generation may not clear a replacement producer's lease.
+ WineContentView *detached; WineWindow *detached_window=make_window(&detached);
+ WineMetalView *earlier=[detached newMetalViewWithDevice:device];
+ [earlier removeFromSuperview];
+ WineMetalView *replacement=[detached newMetalViewWithDevice:device];
+ macdrv_view_release_metal_view(earlier);
+ CHECK(detached->_metalView==replacement,"detached old generation preserves replacement lease");
+ CHECK(![detached newMetalViewWithDevice:nil],"nil device is rejected");
+ detached_window.closing=YES;
+ CHECK(![detached newMetalViewWithDevice:device],"closing window rejects producer");
+ detached_window.closing=NO;
+ macdrv_view_release_metal_view(replacement);
+ macdrv_dispose_view(detached);
+ [detached_window close]; [detached_window release];
+ WineContentView *no_window=[[WineContentView alloc] initWithFrame:NSZeroRect];
+ CHECK(![no_window newMetalViewWithDevice:device],"missing window rejects producer");
+ macdrv_dispose_view(no_window);
+ WineContentView *no_metal; WineWindow *plain_window=make_window(&no_metal);
+ [no_metal retain];
+ macdrv_dispose_view(no_metal);
+ CHECK(!no_metal.superview,"non-Metal content detaches synchronously");
+ [no_metal release]; [plain_window close]; [plain_window release];
+ // FIFO marker waits until earlier source-driven retirement blocks execute.
+ dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool {
+   CHECK(callbacks==3,"all earlier callbacks executed");
+   CHECK(!held.window,"terminal client sees detached hierarchy after deferred cleanup");
+   macdrv_view_release_metal_view(held);
+   macdrv_dispose_view(content);
+   [window close]; [window release];
+   [(id)device release];
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100000000), dispatch_get_main_queue(), ^{ @autoreleasepool {
+     CHECK(views_created==views_destroyed,"balanced native view ownership");
+     CHECK(content_destroyed==6,"all content views destroyed");
+     CHECK(windows_destroyed==5,"retained windows released");
+     printf("candidate=%d callbacks=%u views=%u/%u content=%u windows=%u failures=%u\n",CANDIDATE,callbacks,views_created,views_destroyed,content_destroyed,windows_destroyed,failures);
+     exit(failures ? 1 : 0);
+   }});
+ }});
+}
+[[NSRunLoop mainRunLoop] run]; }

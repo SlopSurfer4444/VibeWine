@@ -1,0 +1,198 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later
+ * Local native API-contract regression; generated production fragments retain
+ * their original Wine copyright and license notice below.
+ */
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "wine/vulkan_driver.h"
+
+#define FIXME(...) ((void)0)
+#define TRACE(...) ((void)0)
+
+struct mempool
+{
+    void *allocation;
+    size_t size;
+    unsigned calls;
+    int fail;
+};
+
+static void *mem_alloc(struct mempool *pool, size_t size)
+{
+    pool->calls++;
+    pool->size = size;
+    if (pool->fail) return NULL;
+    if (pool->allocation) abort();
+    return pool->allocation = malloc(size);
+}
+
+static BOOL external_memory;
+static BOOL use_external_memory(void) { return external_memory; }
+static unsigned map_calls;
+static void map_instance_extensions(struct vulkan_instance_extensions *extensions)
+{
+    map_calls++;
+    /* Model the driver's Win32 -> native surface mapping. The complete
+     * converter must still remove the unsupported Windows surface extension. */
+    if (extensions->has_VK_KHR_win32_surface)
+        extensions->has_VK_EXT_metal_surface = 1;
+}
+static const struct vulkan_driver_funcs test_driver = { .p_map_instance_extensions = map_instance_extensions };
+static const struct vulkan_driver_funcs *driver_funcs = &test_driver;
+static struct vulkan_funcs vulkan_funcs;
+
+/* PRODUCTION */
+
+static unsigned failures, cases;
+#define CHECK(test, name) do { if (!(test)) { fprintf(stderr, "FAIL %s/%s\n", label, name); failures++; } } while (0)
+
+static unsigned extension_count(const VkInstanceCreateInfo *info, const char *name)
+{
+    unsigned count = 0;
+    for (uint32_t i = 0; i < info->enabledExtensionCount; i++)
+        if (!strcmp(info->ppEnabledExtensionNames[i], name)) count++;
+    return count;
+}
+
+/* A strict stand-in for the loader's published enumeration contract, not a
+ * substitute for a real MoltenVK loader/device test. Both inputs are necessary. */
+static unsigned enumerate_portability_devices(const VkInstanceCreateInfo *info)
+{
+    return !!((info->flags & VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
+              && extension_count(info, "VK_KHR_portability_enumeration") == 1);
+}
+
+static void initialize(struct instance *instance, struct mempool *pool, VkInstanceCreateInfo *info)
+{
+    memset(instance, 0, sizeof(*instance));
+    memset(pool, 0, sizeof(*pool));
+    memset(info, 0, sizeof(*info));
+    memset(&vulkan_funcs, 0, sizeof(vulkan_funcs));
+    info->sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    list_init(&instance->utils_messengers);
+    list_init(&instance->report_callbacks);
+    map_calls = 0;
+    external_memory = FALSE;
+    cases++;
+}
+
+static void supported(const char *label, VkInstanceCreateFlags initial_flags)
+{
+    struct instance instance;
+    struct mempool pool;
+    VkInstanceCreateInfo info;
+    initialize(&instance, &pool, &info);
+    info.flags = initial_flags;
+    vulkan_funcs.host_extensions.has_VK_KHR_portability_enumeration = 1;
+    CHECK(convert_instance_create_info(&pool, &info, &instance) == VK_SUCCESS, "result");
+    CHECK(extension_count(&info, "VK_KHR_portability_enumeration") == 1, "extension");
+    CHECK(info.flags == (initial_flags | VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR), "flag");
+    CHECK(enumerate_portability_devices(&info) == 1, "portability-device");
+    CHECK(extension_count(&info, "VK_KHR_external_semaphore_capabilities") == 1, "existing-extension");
+    CHECK(map_calls == 1 && pool.calls == 1, "host-seams");
+    free(pool.allocation);
+}
+
+int main(void)
+{
+    struct instance instance;
+    struct mempool pool;
+    VkInstanceCreateInfo info;
+    const char *label;
+    const char *sentinel[] = { "client-sentinel" };
+
+    supported("supported", 0);
+    supported("existing-flags", 0x40);
+
+    label = "absent";
+    initialize(&instance, &pool, &info);
+    CHECK(convert_instance_create_info(&pool, &info, &instance) == VK_SUCCESS, "result");
+    CHECK(!extension_count(&info, "VK_KHR_portability_enumeration"), "extension-not-added");
+    CHECK(!info.flags && !enumerate_portability_devices(&info), "flag-not-added");
+    free(pool.allocation);
+
+    label = "already-requested";
+    initialize(&instance, &pool, &info);
+    vulkan_funcs.host_extensions.has_VK_KHR_portability_enumeration = 1;
+    instance.obj.extensions.has_VK_KHR_portability_enumeration = 1;
+    info.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR | 0x40;
+    CHECK(convert_instance_create_info(&pool, &info, &instance) == VK_SUCCESS, "result");
+    CHECK(extension_count(&info, "VK_KHR_portability_enumeration") == 1, "no-duplicate");
+    CHECK(info.flags == (VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR | 0x40), "flags-preserved");
+    CHECK(enumerate_portability_devices(&info) == 1, "portability-device");
+    info.flags &= ~VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    CHECK(!enumerate_portability_devices(&info), "mock-rejects-name-only");
+    info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    info.enabledExtensionCount = 0;
+    CHECK(!enumerate_portability_devices(&info), "mock-rejects-flag-only");
+    free(pool.allocation);
+
+    label = "explicit-layers";
+    initialize(&instance, &pool, &info);
+    vulkan_funcs.host_extensions.has_VK_KHR_portability_enumeration = 1;
+    info.enabledLayerCount = 1;
+    info.flags = 0x40;
+    info.ppEnabledExtensionNames = sentinel;
+    CHECK(convert_instance_create_info(&pool, &info, &instance) == VK_ERROR_LAYER_NOT_PRESENT, "result");
+    CHECK(map_calls == 0 && pool.calls == 0, "no-host-work");
+    CHECK(info.flags == 0x40 && info.ppEnabledExtensionNames == sentinel, "output-preserved");
+
+    label = "allocation-failure";
+    initialize(&instance, &pool, &info);
+    vulkan_funcs.host_extensions.has_VK_KHR_portability_enumeration = 1;
+    pool.fail = 1;
+    info.ppEnabledExtensionNames = sentinel;
+    info.enabledExtensionCount = 1;
+    CHECK(convert_instance_create_info(&pool, &info, &instance) == VK_ERROR_OUT_OF_HOST_MEMORY, "result");
+    CHECK(info.ppEnabledExtensionNames == sentinel && info.enabledExtensionCount == 1, "output-preserved");
+    CHECK(pool.calls == 1 && pool.size == sizeof(instance.obj.extensions) * 8 * sizeof(char *), "allocation-size");
+
+    label = "surface-external-memory";
+    initialize(&instance, &pool, &info);
+    instance.obj.extensions.has_VK_KHR_win32_surface = 1;
+    external_memory = TRUE;
+    CHECK(convert_instance_create_info(&pool, &info, &instance) == VK_SUCCESS, "result");
+    CHECK(!extension_count(&info, "VK_KHR_win32_surface"), "no-win32-surface");
+    CHECK(extension_count(&info, "VK_EXT_metal_surface") == 1, "native-surface-mapping");
+    CHECK(extension_count(&info, "VK_KHR_get_physical_device_properties2") == 1, "properties");
+    CHECK(extension_count(&info, "VK_KHR_external_memory_capabilities") == 1, "memory");
+    free(pool.allocation);
+
+    label = "debug-callback-chain";
+    initialize(&instance, &pool, &info);
+    {
+        struct list utils_pending, reports_pending;
+        struct vulkan_debug_utils_messenger messenger = {0};
+        struct vulkan_debug_report_callback callback = {0};
+        VkDebugReportCallbackCreateInfoEXT report_info = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT, .pUserData = &callback };
+        VkDebugUtilsMessengerCreateInfoEXT utils_info = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, .pNext = &report_info, .pUserData = &messenger };
+        list_init(&utils_pending);
+        list_init(&reports_pending);
+        list_add_tail(&utils_pending, &messenger.entry);
+        list_add_tail(&reports_pending, &callback.entry);
+        info.pNext = &utils_info;
+        instance.obj.extensions.has_VK_EXT_debug_utils = 1;
+        instance.obj.extensions.has_VK_EXT_debug_report = 1;
+        CHECK(convert_instance_create_info(&pool, &info, &instance) == VK_SUCCESS, "result");
+        CHECK(list_empty(&utils_pending) && list_empty(&reports_pending), "pending-removed");
+        CHECK(list_head(&instance.utils_messengers) == &messenger.entry, "utils-transferred");
+        CHECK(list_head(&instance.report_callbacks) == &callback.entry, "reports-transferred");
+        CHECK(messenger.instance == &instance.obj && callback.instance == &instance.obj, "instance-retargeted");
+        CHECK(instance.objects.compare == vulkan_object_compare, "debug-tree-initialized");
+        CHECK(!pthread_rwlock_destroy(&instance.objects_lock), "lock-initialized");
+    }
+    free(pool.allocation);
+
+    if (failures)
+    {
+        printf("VULKAN_PORTABILITY_REGRESSION failures=%u cases=%u\n", failures, cases);
+        return 42;
+    }
+    printf("VULKAN_PORTABILITY_PASS cases=%u\n", cases);
+    return 0;
+}

@@ -1,0 +1,300 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+#import <AppKit/AppKit.h>
+#import <CoreGraphics/CoreGraphics.h>
+#include <stdio.h>
+
+/* Only dependencies outside the extracted methods are controlled. NSApplication,
+ * NSPanel, WindowServer ordering, setLevel/orderFront/orderBack remain native. */
+enum { TOPMOST_FLOAT_INACTIVE_NONE, TOPMOST_FLOAT_INACTIVE_NONFULLSCREEN, TOPMOST_FLOAT_INACTIVE_ALL };
+static int topmost_float_inactive = TOPMOST_FLOAT_INACTIVE_NONFULLSCREEN;
+static BOOL captured, hiddenSeam;
+static unsigned failures, checks, refreshCalls;
+static void macdrv_refresh_display_edr_main(void) { refreshCalls++; }
+
+@interface FixtureApplication : NSApplication
+@end
+@implementation FixtureApplication
+- (BOOL)isHidden { return hiddenSeam || [super isHidden]; }
+@end
+
+@interface WineApplicationController : NSObject
+{
+    BOOL beenActive;
+    BOOL forceNextMouseMoveAbsolute;
+}
++ (instancetype)sharedController;
+- (BOOL)areDisplaysCaptured;
+- (void)adjustWindowLevels:(BOOL)active;
+- (void)adjustWindowLevels;
+- (void)applicationWillResignActive:(NSNotification *)notification;
+- (void)applicationDidBecomeActive:(NSNotification *)notification;
+- (void)realizeLatentDisplayModes;
+- (void)updateFullscreenWindows;
+- (void)unminimizeWindowIfNoneVisible;
+- (void)sendDisplaysChanged:(BOOL)force;
+@end
+
+@interface WineWindow : NSPanel
+{
+    BOOL fullscreen;
+    BOOL floating;
+    BOOL minimizedSeam;
+    BOOL inactiveSpaceSeam;
+}
+@property BOOL floating;
+@property BOOL fullscreen;
+@property BOOL minimizedSeam;
+@property BOOL inactiveSpaceSeam;
+- (NSInteger)minimumLevelForActive:(BOOL)active;
+@end
+@implementation WineWindow
+@synthesize floating, fullscreen, minimizedSeam, inactiveSpaceSeam;
+- (BOOL)canBecomeKeyWindow { return NO; }
+- (BOOL)canBecomeMainWindow { return NO; }
+- (BOOL)isMiniaturized { return minimizedSeam || [super isMiniaturized]; }
+- (BOOL)isOnActiveSpace { return !inactiveSpaceSeam && [super isOnActiveSpace]; }
+/* PRODUCTION_MINIMUM */
+@end
+
+@implementation WineApplicationController
++ (instancetype)sharedController
+{
+    static WineApplicationController *controller;
+    if (!controller) controller = [WineApplicationController new];
+    return controller;
+}
+- (BOOL)areDisplaysCaptured { return captured; }
+- (void)realizeLatentDisplayModes {}
+- (void)updateFullscreenWindows {}
+- (void)unminimizeWindowIfNoneVisible {}
+- (void)sendDisplaysChanged:(BOOL)force {}
+/* PRODUCTION_CONTROLLER */
+@end
+
+static void check(BOOL condition, const char *name)
+{
+    checks++;
+    printf("%s %s\n", condition ? "OK" : "FAIL", name);
+    failures += !condition;
+}
+
+static NSArray *nativeOrder(void)
+{
+    return [NSWindow windowNumbersWithOptions:0];
+}
+
+static BOOL before(NSWindow *front, NSWindow *back)
+{
+    NSArray *order = nativeOrder();
+    NSUInteger a = [order indexOfObject:@([front windowNumber])];
+    NSUInteger b = [order indexOfObject:@([back windowNumber])];
+    return a != NSNotFound && b != NSNotFound && a < b;
+}
+
+static NSInteger serverLevel(NSWindow *window)
+{
+    [NSApp updateWindows];
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
+    NSArray *info = (NSArray *)CGWindowListCopyWindowInfo(kCGWindowListOptionIncludingWindow, (CGWindowID)window.windowNumber);
+    NSInteger result = NSIntegerMin;
+    for (NSDictionary *entry in info)
+        if ([entry[(id)kCGWindowNumber] integerValue] == window.windowNumber)
+            result = [entry[(id)kCGWindowLayer] integerValue];
+    printf("SERVER_LEVEL expected=%ld actual=%ld\n", (long)window.level, (long)result);
+    [info release];
+    return result;
+}
+
+static WineWindow *makeWindow(BOOL floatingValue)
+{
+    WineWindow *window = [[WineWindow alloc] initWithContentRect:NSMakeRect(2, 2, 1, 1)
+        styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
+        backing:NSBackingStoreBuffered defer:NO];
+    window.floating = floatingValue;
+    window.hidesOnDeactivate = NO;
+    window.releasedWhenClosed = NO;
+    window.ignoresMouseEvents = YES;
+    window.opaque = NO;
+    window.backgroundColor = [NSColor clearColor];
+    window.alphaValue = 1.0;
+    window.hasShadow = NO;
+    return window;
+}
+
+static void place(WineWindow *window, NSInteger level)
+{
+    window.minimizedSeam = NO;
+    window.inactiveSpaceSeam = NO;
+    window.fullscreen = NO;
+    [window setLevel:level];
+    [window orderFrontRegardless];
+}
+
+int main(void)
+{
+    @autoreleasepool
+    {
+        pid_t originalFront = [[[NSWorkspace sharedWorkspace] frontmostApplication] processIdentifier];
+        [FixtureApplication sharedApplication];
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+        [NSApp finishLaunching];
+        CFDictionaryRef session = CGSessionCopyCurrentDictionary();
+        if (![NSScreen screens].count || !session)
+        {
+            if (session) CFRelease(session);
+            fputs("NATIVE_WINDOW_SERVER_UNAVAILABLE\n", stderr);
+            return 77;
+        }
+        CFRelease(session);
+        WineApplicationController *controller = [WineApplicationController sharedController];
+        WineWindow *normalBack = makeWindow(NO), *normalFront = makeWindow(NO);
+        WineWindow *floatBack = makeWindow(YES), *floatFront = makeWindow(YES);
+        WineWindow *mini = makeWindow(YES), *otherSpace = makeWindow(YES), *unordered = makeWindow(YES);
+        NSPanel *foreign = [[NSPanel alloc] initWithContentRect:NSMakeRect(2, 2, 1, 1)
+            styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
+            backing:NSBackingStoreBuffered defer:NO];
+        foreign.alphaValue = 1;
+        foreign.opaque = NO;
+        foreign.backgroundColor = [NSColor clearColor];
+        foreign.ignoresMouseEvents = YES;
+        foreign.releasedWhenClosed = NO;
+        [foreign setLevel:NSNormalWindowLevel + 1];
+        [foreign orderFrontRegardless];
+        place(normalBack, NSNormalWindowLevel);
+        place(normalFront, NSNormalWindowLevel);
+        place(floatBack, NSNormalWindowLevel);
+        place(floatFront, NSNormalWindowLevel);
+        check(!NSApp.active && !NSApp.keyWindow && !NSApp.mainWindow, "fixture-never-activates");
+        check(before(floatFront, floatBack) && before(normalFront, normalBack), "native-initial-order");
+
+        [controller applicationDidBecomeActive:nil];
+        check(floatBack.level == kCGDockWindowLevel + 1 && floatFront.level == kCGDockWindowLevel + 1,
+              "active-floating-above-dock");
+        check(normalBack.level == NSNormalWindowLevel && normalFront.level == NSNormalWindowLevel,
+              "active-normal-level");
+        check(before(floatFront, floatBack) && before(floatBack, normalFront) && before(normalFront, normalBack),
+              "active-native-order-preserved");
+        check(serverLevel(floatFront) == floatFront.level, "active-native-server-level");
+
+        [controller applicationWillResignActive:nil];
+        check(floatBack.level < kCGDockWindowLevel && floatFront.level < kCGDockWindowLevel,
+              "inactive-below-dock-windowed");
+        check(before(floatFront, floatBack) && before(floatBack, normalFront) && before(normalFront, normalBack),
+              "inactive-native-order-preserved");
+        check(serverLevel(floatFront) == floatFront.level && serverLevel(normalBack) == NSNormalWindowLevel,
+              "inactive-native-server-level");
+        check(foreign.level == NSNormalWindowLevel + 1, "foreign-nonwine-level-unchanged");
+
+        normalBack.fullscreen = YES;
+        [controller applicationDidBecomeActive:nil];
+        check(normalBack.level == NSStatusWindowLevel + 1 && normalFront.level == normalBack.level,
+              "active-fullscreen-promotes-front-normal");
+        check(floatBack.level == NSStatusWindowLevel + 2 && floatFront.level == floatBack.level,
+              "active-fullscreen-floating-above-normal");
+        check(before(floatFront, floatBack) && before(floatBack, normalFront) && before(normalFront, normalBack),
+              "active-fullscreen-native-order-preserved");
+        [controller applicationWillResignActive:nil];
+        check(floatBack.level < kCGDockWindowLevel && normalBack.level == NSNormalWindowLevel,
+              "inactive-below-dock-normal-fullscreen");
+
+        normalBack.fullscreen = NO;
+        floatBack.fullscreen = YES;
+        [controller applicationDidBecomeActive:nil];
+        check(floatBack.level == NSStatusWindowLevel + 2 && floatFront.level == floatBack.level,
+              "active-floating-fullscreen-level");
+        [controller applicationWillResignActive:nil];
+        check(floatBack.level < kCGDockWindowLevel && floatFront.level < kCGDockWindowLevel,
+              "inactive-below-dock-floating-fullscreen");
+
+        captured = YES;
+        [controller applicationDidBecomeActive:nil];
+        check(normalBack.level == CGShieldingWindowLevel() + 1 && floatBack.level == CGShieldingWindowLevel() + 2,
+              "active-captured-levels");
+        [controller applicationWillResignActive:nil];
+        check(floatBack.level < kCGDockWindowLevel && normalBack.level == NSNormalWindowLevel,
+              "inactive-below-dock-captured-state");
+        captured = NO;
+        floatBack.fullscreen = NO;
+
+        /* AppKit may propagate level changes to children. The real complete
+         * method must still repair native levels/order in both directions. */
+        [normalBack addChildWindow:normalFront ordered:NSWindowAbove];
+        [controller adjustWindowLevels:YES];
+        check(normalFront.parentWindow == normalBack && before(normalFront, normalBack), "active-normal-child-native-order");
+        [controller adjustWindowLevels:NO];
+        check(normalFront.parentWindow == normalBack && before(normalFront, normalBack), "inactive-normal-child-native-order");
+        [normalBack removeChildWindow:normalFront];
+        [normalBack setLevel:floatBack.level];
+        [floatBack addChildWindow:normalBack ordered:NSWindowAbove];
+        [controller adjustWindowLevels:YES];
+        check(normalBack.parentWindow == floatBack && before(normalBack, floatBack), "active-floating-parent-native-order");
+        [controller adjustWindowLevels:NO];
+        check(normalBack.parentWindow == floatBack && before(normalBack, floatBack), "inactive-floating-parent-native-order");
+        [floatBack removeChildWindow:normalBack];
+
+        /* Repair a stale native level after changing the Windows topmost bit. */
+        normalFront.floating = YES;
+        [controller adjustWindowLevels:NO];
+        check(normalFront.level == floatFront.level && before(normalFront, normalBack), "floating-toggle-promotes-native-window");
+        normalFront.floating = NO;
+        [controller adjustWindowLevels:NO];
+        check(normalFront.level == NSNormalWindowLevel && before(floatFront, normalFront), "floating-toggle-demotes-native-window");
+
+        [mini setLevel:100]; mini.minimizedSeam = YES;
+        [otherSpace setLevel:101]; otherSpace.minimizedSeam = YES; otherSpace.inactiveSpaceSeam = YES;
+        [unordered setLevel:102];
+        [controller adjustWindowLevels:NO];
+        check(mini.level == floatFront.level, "minimized-current-space-uses-visible-float-floor");
+        check(otherSpace.level == 101 && unordered.level == 102, "other-space-minimized-seam-and-unordered-unchanged");
+        place(mini, mini.level);
+        [controller adjustWindowLevels:NO];
+        check(before(mini, floatFront) && mini.level == floatFront.level, "unminimize-seam-native-order");
+
+        /* The Dock sentinel is our own noninteractive panel, not the user's Dock. */
+        [foreign setLevel:kCGDockWindowLevel];
+        [controller adjustWindowLevels:NO];
+        check(before(foreign, floatFront), "inactive-below-dock-sentinel-order");
+        [controller adjustWindowLevels:YES];
+        check(before(floatFront, foreign), "active-own-dock-sentinel-order");
+        [controller adjustWindowLevels:NO];
+
+        /* No visible Wine window: existing minimized minimum (YES) is retained. */
+        for (WineWindow *window in @[normalBack, normalFront, floatBack, floatFront, mini])
+            [window orderOut:nil];
+        mini.minimizedSeam = YES;
+        mini.fullscreen = YES;
+        [controller adjustWindowLevels:NO];
+        check(mini.level == NSStatusWindowLevel + 2, "minimized-fullscreen-existing-active-minimum");
+        mini.minimizedSeam = NO;
+        [mini orderFrontRegardless];
+        [controller adjustWindowLevels:NO];
+        check(mini.level == NSFloatingWindowLevel,
+              "inactive-below-dock-restored-fullscreen");
+        mini.fullscreen = NO;
+        place(floatFront, floatFront.level);
+        [controller adjustWindowLevels:NO];
+
+        hiddenSeam = YES;
+        NSInteger heldLevel = floatFront.level;
+        [controller adjustWindowLevels:YES];
+        check(floatFront.level == heldLevel, "hidden-guard");
+        hiddenSeam = NO;
+        [controller adjustWindowLevels];
+        check(floatFront.level == heldLevel, "native-inactive-wrapper");
+        check(!NSApp.active && !NSApp.keyWindow && !NSApp.mainWindow &&
+              [[[NSWorkspace sharedWorkspace] frontmostApplication] processIdentifier] == originalFront,
+              "focus-and-frontmost-app-preserved");
+        check(refreshCalls == 4, "complete-activation-callback-exercised");
+
+        for (NSWindow *window in @[normalBack, normalFront, floatBack, floatFront, mini, otherSpace, unordered, foreign])
+        {
+            [window orderOut:nil];
+            [window close];
+            [window release];
+        }
+        printf("NATIVE_WINDOW_LEVELS_CHECKS=%u\n", checks);
+        if (!failures) puts("NATIVE_WINDOW_LEVELS_PASS");
+        else printf("NATIVE_WINDOW_LEVELS_EXPECTED_BASELINE_FAILURES=%u\n", failures);
+        return failures ? 42 : 0;
+    }
+}

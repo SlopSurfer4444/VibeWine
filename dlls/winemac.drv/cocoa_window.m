@@ -395,6 +395,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     int backingSize[2];
 
     WineMetalView *_metalView;
+    BOOL _disposing;
 
 @public void *d3dmetal_client_surface;   /* CW HACK 22435 */
 }
@@ -409,6 +410,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     - (void) wine_setBackingSize:(const int*)newBackingSize;
 
     - (WineMetalView*) newMetalViewWithDevice:(id<MTLDevice>)device;
+    - (void) retireMetalView:(WineMetalView*)view;
+    - (BOOL) prepareForDisposal;
 
 @end
 
@@ -744,7 +747,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
            new native object; its owning reference pins that generation even
            if the HWND is destroyed or its numeric value is reused. */
         WineWindow* window = (WineWindow*)self.window;
-        if (_metalView || !device || !window || window.closing) return nil;
+        if (_disposing || _metalView || !device || !window || window.closing) return nil;
 
         WineMetalView* view = [[WineMetalView alloc] initWithFrame:[self bounds] device:device];
         if (!view) return nil;
@@ -756,6 +759,28 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         [(WineWindow*)self.window windowDidDrawContent];
 
         return _metalView;
+    }
+
+    - (void) retireMetalView:(WineMetalView*)view
+    {
+        /* Relinquish the producer lease synchronously. Deferred removal of an
+           older native generation must never clear a replacement's lease. */
+        if (_metalView == view) _metalView = nil;
+    }
+
+    - (BOOL) prepareForDisposal
+    {
+        BOOL hasMetalView = NO;
+        _disposing = YES;
+        /* Retired generations remain children until the main queue drains.
+           Include them even after the exclusive producer lease was released. */
+        for (NSView* child in self.subviews)
+            if ([child isKindOfClass:[WineMetalView class]])
+            {
+                child.layer.delegate = nil;
+                hasMetalView = YES;
+            }
+        return hasMetalView;
     }
 
     - (void) setLayerRetinaProperties:(BOOL)mode
@@ -3955,9 +3980,24 @@ void macdrv_dispose_view(macdrv_view v)
         [nc removeObserver:view
                       name:NSApplicationDidChangeScreenParametersNotification
                     object:NSApp];
-        [view removeFromSuperview];
-        [view release];
-        [window updateForGLSubviews];
+        BOOL hasMetalView = [view prepareForDisposal];
+        void (^dispose)(void) = ^{
+            [view removeFromSuperview];
+            [view release];
+            [window updateForGLSubviews];
+        };
+        if (hasMetalView && window)
+        {
+            /* Earlier main-queue users of a layer's former delegate may need
+               its window. Hold the hierarchy through those FIFO predecessors,
+               including when the C caller closes/releases the window now. */
+            [window retain];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                dispose();
+                [window release];
+            });
+        }
+        else dispose();
     });
 }
 }
@@ -4142,8 +4182,28 @@ void macdrv_view_release_metal_view(macdrv_metal_view v)
 {
     WineMetalView* view = (WineMetalView*)v;
     OnMainThread(^{
-        [view removeFromSuperview];
-        [view release];
+        view.layer.delegate = nil;
+        if ([view.superview isKindOfClass:[WineContentView class]])
+            [(WineContentView*)view.superview retireMetalView:view];
+        [view setHidden:YES];
+        NSWindow* window = view.window;
+        if (window)
+        {
+            /* Stop new delegate work and release the lease immediately, but
+               keep earlier main-queue callbacks attached to their window.
+               This covers FIFO predecessors, not arbitrary later callbacks. */
+            [window retain];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [view removeFromSuperview];
+                [view release];
+                [window release];
+            });
+        }
+        else
+        {
+            [view removeFromSuperview];
+            [view release];
+        }
     });
 }
 

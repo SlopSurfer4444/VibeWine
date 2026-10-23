@@ -996,6 +996,129 @@
       "sha256": "3fddeacfd88c08cd562f92c008da2b300afc17771abd8a3326e768ad39de8171",
       "origin": "local regression/documentation for attributed source backports",
       "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "https://github.com/GloriousEggroll/proton-ge-custom/commit/98efe1cdefd7fc2f7ffb34044c194e046d739d6e",
+      "destination": "dlls/ntdll/sync.c",
+      "sha256": "5f62eb1a7f9fbaddd5ae5cc10159954a348fbbf09492515fc6a7e31c12a1cb21",
+      "originCommit": "98efe1cdefd7fc2f7ffb34044c194e046d739d6e",
+      "adaptation": "timeout ownership decided under queue lock; consume claimed in-flight alert and preserve drain errors",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "https://github.com/kageroumado/dormison/commit/3e77a1125ef897378f3f869ff5b2eaf0c44a58aa",
+      "destination": "dlls/winemac.drv/cocoa_app.m",
+      "sha256": "ae3440635569a60c74854812ae506d0265aebaa07c21e6b3d9da6b766c0d5037",
+      "originCommit": "3e77a1125ef897378f3f869ff5b2eaf0c44a58aa",
+      "adaptation": "inactive topmost floor below Dock; active floor unchanged",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "https://github.com/gzimbric/wine-arm64-macos/commit/0dad72df204142a2f276495af5baaf4d932ea91f",
+      "destination": "dlls/winemac.drv/cocoa_window.m",
+      "sha256": "c5139c58cb9c6a017787824ed138490084c67726f700985f65c8374d59723fb7",
+      "originCommit": "0dad72df204142a2f276495af5baaf4d932ea91f",
+      "adaptation": "deferred hierarchy teardown adapted to exclusive producer lease and terminal container guard",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "https://github.com/Gcenx/macports-wine/blob/850f5330ed500a87bdcf8441763ad6cf4109aedc/emulators/wine-stable/files/0001-win32u-Enable-host-Vulkan-portability-enumeration.diff",
+      "destination": "dlls/win32u/vulkan.c",
+      "sha256": "ba200ffd2a058800cfedbeef6cefea8495022c3e1e7f37e16ecc5230168df164",
+      "originCommit": "850f5330ed500a87bdcf8441763ad6cf4109aedc",
+      "adaptation": "enable portability enumeration extension and flag only when advertised by host",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/UPSTREAM_BACKPORTS.md",
+      "destination": "vibewine/UPSTREAM_BACKPORTS.md",
+      "sha256": "9d7b46a39ce1cf3a02166be14864462d3d0c99f863ab2eb88f5adf3a876d9a67",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/address-wait/README.md",
+      "destination": "vibewine/tests/address-wait/README.md",
+      "sha256": "ef8d943eeb78d0487fae50f6698d13997196d02c3431e348a17641ad48048850",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/address-wait/fixture.c.in",
+      "destination": "vibewine/tests/address-wait/fixture.c.in",
+      "sha256": "dd5cc1d43ab80b2f75cfc5327c1a8adc3b455d9d00471395745279b451e178a5",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/address-wait/run.py",
+      "destination": "vibewine/tests/address-wait/run.py",
+      "sha256": "61f63a91ca49705204cee5e5f063477f79829d8fbc715317dbf3be8e6e1ed6e0",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/native-window-levels/README.md",
+      "destination": "vibewine/tests/native-window-levels/README.md",
+      "sha256": "3a7d800a9d8f18db874387803f58676829f81330af5c7bd5ae6cc3a401664eae",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/native-window-levels/check.py",
+      "destination": "vibewine/tests/native-window-levels/check.py",
+      "sha256": "45428ba67b6cf69bbab19e04764aa9f9fe87c0e1edd3a2e46d5be9a499b12c6c",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/native-window-levels/fixture.m.in",
+      "destination": "vibewine/tests/native-window-levels/fixture.m.in",
+      "sha256": "422adc69b05a0a39d56e0568afc56b9f2f1fcd2703f6b0a1d73a244ee40c18d0",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/metal-view-lifetime/README.md",
+      "destination": "vibewine/tests/metal-view-lifetime/README.md",
+      "sha256": "561d8331c4905c33d12103d085466c345be58ecb7927d540f95c510e98ed07ae",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/metal-view-lifetime/fixture.m.in",
+      "destination": "vibewine/tests/metal-view-lifetime/fixture.m.in",
+      "sha256": "b244826c946da81d54ca7df226f8da44a7fb89a248df9a7824b148ecb5b133b5",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/metal-view-lifetime/run.py",
+      "destination": "vibewine/tests/metal-view-lifetime/run.py",
+      "sha256": "d41ddc0b4b597becf72ab84a954fe38b1e5161594cf1144d856cb19aab61f1c0",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/vulkan-portability/README.md",
+      "destination": "vibewine/tests/vulkan-portability/README.md",
+      "sha256": "181f8b87d450babb2a46b4cc4a212cff25266b0b2b1659139e469472c0ba2ef1",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/vulkan-portability/fixture.c.in",
+      "destination": "vibewine/tests/vulkan-portability/fixture.c.in",
+      "sha256": "d073c90ab6e40ff5bf5c4c49fd78bbc878c7726235a41b315e6ba8a3f79a1c6e",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
+    },
+    {
+      "source": "vibewine/tests/vulkan-portability/run.py",
+      "destination": "vibewine/tests/vulkan-portability/run.py",
+      "sha256": "88da29ae789ae857b6aa449594ea3f6a7b69f2000c8c53daccc200ef521134e1",
+      "origin": "local regression/documentation for attributed source backports",
+      "integrationDate": "2026-10-23"
     }
   ]
 }
