@@ -5,7 +5,7 @@
 #include "thread.hpp"
 #include "util_math.hpp"
 #include <mutex>
-#include <queue>
+#include <list>
 
 namespace dxmt {
 
@@ -44,7 +44,9 @@ private:
     return {allocation.block, offset};
   };
 
-  std::queue<Allocation> fifo;
+  // Aging and erasing completed entries must preserve references to surviving
+  // blocks, including a current tail being populated by the producer.
+  std::list<Allocation> fifo;
   mutex mutex_;
   Allocator allocator_;
 };
@@ -174,6 +176,7 @@ RingBumpState<Allocator, BlockSize, mutex>::allocate(
       break;
     }
     latest.last_used_seq_id = seq_id;
+    latest.inc_time_to_live = 0;
     return suballocate(latest, size, alignment);
   }
   return suballocate(
@@ -188,20 +191,35 @@ template <typename Allocator, size_t BlockSize, class mutex>
 void
 RingBumpState<Allocator, BlockSize, mutex>::free_blocks(uint64_t coherent_id) {
   std::lock_guard<mutex> lock(mutex_);
-  while (!fifo.empty()) {
-    auto &front = fifo.front();
-    if (front.last_used_seq_id > coherent_id)
+  if (coherent_id == -1ull) {
+    fifo.clear();
+    return;
+  }
+  auto warm = fifo.end();
+  for (auto it = fifo.begin(); it != fifo.end(); ++it) {
+    if (it->last_used_seq_id > coherent_id)
       break;
-    auto expired = (coherent_id - front.last_used_seq_id) > kStagingBlockLifetime ||
-                   front.inc_time_to_live > kStagingBlockLifetime || coherent_id == -1ull;
-    auto adhoc = front.total_size != BlockSize;
-    if (expired || adhoc) {
-      // can be deallocated
-      fifo.pop();
+    if (it->total_size == BlockSize)
+      warm = it;
+  }
+  for (auto it = fifo.begin(); it != fifo.end();) {
+    if (it->last_used_seq_id > coherent_id)
+      break;
+    auto expired = (coherent_id - it->last_used_seq_id) > kStagingBlockLifetime ||
+                   it->inc_time_to_live > kStagingBlockLifetime;
+    auto adhoc = it->total_size != BlockSize;
+    if (adhoc || (expired && it != warm)) {
+      // Completion protects GPU/CPU users. Keep one warm standard block, but
+      // never let that reserve protect the rest of a completed high-water burst.
+      it = fifo.erase(it);
       continue;
     }
-    front.inc_time_to_live++;
-    break;
+    // An initializer's coherent sequence can stop after an upload burst. Age
+    // every completed block together and saturate instead of wrapping around.
+    // Check expiration first to preserve the existing >300-call grace boundary.
+    if (it->inc_time_to_live <= kStagingBlockLifetime)
+      it->inc_time_to_live++;
+    ++it;
   }
 };
 
@@ -214,21 +232,21 @@ RingBumpState<Allocator, BlockSize, mutex>::allocate_or_reuse_block(
     auto &front = fifo.front();
     if (front.last_used_seq_id < coherent_id) {
       if (front.total_size != BlockSize) {
-        fifo.pop();
+        fifo.pop_front();
         continue;
       } else if (front.total_size >= block_size) {
         front.last_used_seq_id = seq_id;
         front.allocated_size = 0;
         front.inc_time_to_live = 0;
-        fifo.push(std::move(front));
-        fifo.pop();
+        fifo.push_back(std::move(front));
+        fifo.pop_front();
         return fifo.back();
       }
       WARN("forced to allocate new block of size ", block_size);
     }
     break;
   }
-  fifo.push({
+  fifo.push_back({
       .allocated_size = 0,
       .total_size = block_size,
       .last_used_seq_id = seq_id,
