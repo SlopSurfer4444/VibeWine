@@ -3,9 +3,12 @@
 Last reconciled: **2026-10-23**. This describes a private macOS test installation
 and source published for inspection. It is not a downloadable binary release.
 
-The workspace development pins now include [six selected source backports](integrations/fork-review-20261023.md)
-from Wine, Proton-GE, Highball and DXMT. Their focused regressions are separate
-from the earlier installed-bundle evidence below. No newly matched runtime build
+The workspace development pins now include [selected source backports](integrations/fork-review-20261023.md)
+from Wine, Proton-GE, Highball, Dormison, macOS forks and DXMT. The follow-up
+adds address-wait timeout handling, inactive window ordering, deferred Metal-view
+teardown, SM50 ownership and optional Vulkan portability enumeration. Their
+focused regressions are separate from the earlier installed-bundle evidence
+below. No newly matched runtime build
 or activation of these backports has occurred. Compiler output uses epoch 2 in
 development; the installed matched bundle retains epoch 1.
 

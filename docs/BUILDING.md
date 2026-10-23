@@ -68,6 +68,12 @@ documentation changes do not rerun those builds.
 
 The newer development pins select [upstream and fork source fixes](integrations/fork-review-20261023.md).
 Their component notes document focused source/CPU regressions and syntax checks.
+The deeper follow-up also checks real Darwin `kqueue` timeout races, native
+AppKit window levels and Metal-view FIFO ownership, and the actual SM50 public
+converter API. Native window fixtures require a logged-in WindowServer and fail
+when it is unavailable; the hosted workflow does not claim those GUI checks.
+SM50 tests require the separately provisioned LLVM14/support build. Optional
+Vulkan enumeration has a host-contract fixture, not a live MoltenVK loader test.
 These do not extend the old full-build result to a new runtime: a newly matched
 compiler, PE libraries, native bridge and helper build, dependency checks and
 runtime acceptance remain required before activation.

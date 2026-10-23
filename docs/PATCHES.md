@@ -19,6 +19,9 @@ or a claim that every feature is enabled in the installed test runtime.
 | Metrics and presentation probes | Local tooling / experiments | Explicit test/capture use | [Telemetry](../tools/telemetry/README.md), [experiments](../experiments/README.md) |
 | Clipboard ownership, SRW wake avoidance, reentrant handle close and MSync registration cleanup | Selected Wine, Proton-GE and Highball patches | General source backports; not installed by this integration | [Fork audit and exact upstream revisions](integrations/fork-review-20261023.md) |
 | Hull relative indexing and four context lock entries | DXMT upstream backports | General compiler/context correctness; development cache epoch 2 | [Source audit](integrations/fork-review-20261023.md), [component checks](../components/dxmt/docs/upstream-backports-20261023.md) |
+| Address-wait timeout race, inactive topmost ordering and Metal-view teardown | Adapted Proton-GE, Dormison and gzimbric patches | General source fixes; exclusive Metal producer lease preserved; not installed | [Follow-up audit](integrations/fork-review-20261023.md), [Wine checks](../components/wine/vibewine/UPSTREAM_BACKPORTS.md) |
+| SM50 error/partial-shader ownership | Adapted DXMT upstream `39625fa9` subset | General compiler CPU API correctness; API 26 / epoch 2 unchanged | [Component source and 22-case regression](../components/dxmt/docs/upstream-backports-20261023.md) |
+| Vulkan portability enumeration | Gcenx macports-wine recipe | Conditional host capability for optional Vulkan/MoltenVK builds; no current DS3/DXMT effect | [Follow-up audit](integrations/fork-review-20261023.md) |
 
 ## Which source represents the installed test?
 

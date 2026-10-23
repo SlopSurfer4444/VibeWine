@@ -50,6 +50,10 @@ jobs:
       - run: python3 components/wine/vibewine/verify_source.py
       - run: python3 components/wine/vibewine/tests/backports.py
       - run: python3 components/wine/vibewine/tests/msync_registration.py --source-dir components/wine
+      - run: python3 components/wine/vibewine/tests/address-wait/run.py --sanitize
+      - run: python3 components/wine/vibewine/tests/address-wait/run.py --revision d2237a9a82d9960360ce8400242ddeae6646c347 --expect-regression --sanitize
+      - run: python3 components/wine/vibewine/tests/vulkan-portability/run.py
+      - run: python3 components/wine/vibewine/tests/vulkan-portability/run.py --revision d2237a9a82d9960360ce8400242ddeae6646c347 --expect-regression
       - run: python3 tests/vibewine/compile_regressions.py
         working-directory: components/dxmt
       - run: python3 tests/vibewine/context-locks/run.py --sanitize
