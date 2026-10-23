@@ -9,6 +9,28 @@
 #include <string>
 namespace dxmt::cs2trace {
 inline uint64_t now() {return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();}
+// Process-lifetime policy: changing the environment after first use cannot mix
+// event coverage within one producer. Empty preserves the existing full stream.
+enum class Profile : uint32_t { Full=0, CompileWaits=1, Invalid=2 };
+inline Profile profile() {
+ static const auto value=[] {
+  auto text=env::getEnvVar("DXMT_CS2_TRACE_PROFILE");
+  return text.empty()?Profile::Full:text=="compile-waits"?Profile::CompileWaits:Profile::Invalid;
+ }();return value;
+}
+inline bool profileAllows(uint32_t type) {
+ switch(profile()) {
+  case Profile::Full:return true;
+  // Retain compiler readiness/compilation/PSO, archive, bounded task/persistence
+  // probes and checked cache timings. No draw, frame, Present, Map/GetData API,
+  // GPU chunk, presentation-feedback or completion-finish event stream.
+  case Profile::CompileWaits:return type==3 || type==4 || type==5 || type==17 || type==19 ||
+    (type>=80 && type<=89) || type==93 || type==94;
+  case Profile::Invalid:return false;
+ }
+ return false;
+}
+inline uint32_t detailLimit();
 inline Header* buffer() {
  static Header *result=[]()->Header* {
   std::string path=env::getEnvVar("DXMT_CS2_TRACE_DIR"); if(path.empty())return nullptr;
@@ -25,10 +47,36 @@ inline Header* buffer() {
  }();
  return result;
 }
-inline uint32_t generation() {auto h=buffer();if(!h)return 0;auto word=std::atomic_ref<uint64_t>(h->control).load(std::memory_order_relaxed);return controlState(word)==CaptureState::Open?controlGeneration(word):0;}
+inline std::atomic<uint32_t>& profileMetadataGeneration() {static std::atomic<uint32_t> value{0};return value;}
+inline void profileMetadataAdmitted(Header *h,uint32_t gen) {
+ if(profile()==Profile::Full)return; // Default event behavior stays unchanged.
+ auto &last=profileMetadataGeneration();auto prior=last.load(std::memory_order_relaxed);
+ if(prior==gen || !last.compare_exchange_strong(prior,gen,std::memory_order_relaxed))return;
+ // Type 95 is v2 additive metadata, not a timing scope. Schema/object=1,
+ // flags=1 compile-waits or 2 invalid/fail-closed; detail0=detail budget,
+ // detail1=lifetime capacity. One marker per admitted generation, outside the
+ // detailed-probe budget. Even invalid profiles remain explicitly observable.
+ auto t=now();writeAdmittedEvent(h,gen,95,t,t,1,uint32_t(profile()),detailLimit(),Capacity,GetCurrentThreadId());
+}
+inline void profileMetadata(Header *h,uint32_t gen) {
+ if(profile()==Profile::Full || !h || !gen || profileMetadataGeneration().load(std::memory_order_relaxed)==gen)return;
+ if(!admit(h,gen))return;
+ struct Exit {Header *h;~Exit(){releaseWriter(h);}} exit{h};
+ profileMetadataAdmitted(h,gen);
+}
+inline uint32_t generation() {
+ auto h=buffer();if(!h)return 0;auto word=std::atomic_ref<uint64_t>(h->control).load(std::memory_order_relaxed);
+ auto gen=controlState(word)==CaptureState::Open?controlGeneration(word):0;
+ if(gen)profileMetadata(h,gen);
+ return gen;
+}
 inline bool configured() {static bool value=!env::getEnvVar("DXMT_CS2_TRACE_DIR").empty();return value;}
 inline void record(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64_t object=0,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
  if(!gen)return;
+ if(profile()!=Profile::Full) {
+  profileMetadata(buffer(),gen);
+  if(!profileAllows(type))return;
+ }
  writeEvent(buffer(),gen,type,start,end,object,flags,detail0,detail1,GetCurrentThreadId());
 }
 // Process-lifetime monotonic birth identities; assigned once per object.
@@ -50,12 +98,16 @@ inline DetailToken beginDetail(uint64_t owner) {
 }
 inline void detailRecord(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64_t object,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
  if(!gen || !detailLimit())return;
+ // Filter before budget admission: excluded finish probes must not consume the
+ // bounded compiler/persistence evidence budget or trigger its cap marker.
+ if(!profileAllows(type)) {profileMetadata(buffer(),gen);return;}
  static DetailBudget budget;
  auto active=generation();
  if(!active)return; // Ordinary capture-boundary incompleteness remains explicit.
  auto h=buffer();
  if(!h || !admit(h,active))return;
  struct Exit {Header *h;~Exit(){releaseWriter(h);}} exit{h};
+ profileMetadataAdmitted(h,active);
  auto publish=[&](uint32_t event,uint64_t a,uint64_t b,uint64_t identity,uint32_t result,uint64_t p0,uint64_t p1) {
   writeAdmittedEvent(h,active,event,a,b,identity,result,p0,p1,GetCurrentThreadId());
  };
