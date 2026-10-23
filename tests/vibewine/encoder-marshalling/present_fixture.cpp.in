@@ -1,0 +1,273 @@
+#include "Metal.hpp"
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <functional>
+#include <string>
+#include <vector>
+
+static const char *scenario;
+#define CHECK(condition) do { if (!(condition)) { \
+  std::fprintf(stderr, "%s:%d: %s\n", scenario, __LINE__, #condition); std::exit(1); } } while (0)
+namespace cs2trace {
+struct Scope { unsigned type; uint64_t object; ~Scope() { CHECK(type == 12 && object != 0); } };
+static unsigned failures;
+static uint64_t revision;
+static uint32_t status;
+inline uint64_t now() { return 100; }
+inline void record(uint32_t generation, unsigned type, uint64_t start, uint64_t end,
+                   uint64_t serial, uint32_t flags, uint64_t a, uint64_t b) {
+  CHECK(generation == 23 && type == 77 && start == 100 && end == 100 && serial == 67 && b == 0);
+  ++failures; revision = a; status = flags;
+}
+}
+namespace dxmt {
+@METADATA@
+class Presenter {
+public:
+  @CONFIGURATION@
+  bool checked_layer_configuration_ = true;
+  uint64_t encoded_configuration_revision_ = 0;
+  WMT::MetalLayer layer_;
+  uint64_t swapchain_serial_ = 67;
+  WMT::MetalDrawable encodeCommands(
+      WMT::CommandBuffer, WMT::Texture, const PresentationConfiguration &, DXMTPresentMetadata, uint32_t,
+      std::function<void(WMT::RenderCommandEncoder)> &&,
+      std::function<void(WMT::RenderCommandEncoder)> &&);
+};
+@FUNCTION@
+}
+
+constexpr obj_handle_t LAYER = 11, BUFFER = 13, SOURCE = 17, DRAWABLE = 19, TARGET = 23,
+                       ENCODER = 29, GAMMA = 31, BLIT = 37, SCALE = 41, WAIT = 43, UPDATE = 47;
+struct Record {
+  unsigned type{};
+  std::array<uint64_t, 6> fields{};
+  std::vector<unsigned char> payload;
+  bool operator==(const Record &) const = default;
+};
+static std::vector<Record> records;
+static std::vector<unsigned> batch_sizes;
+static std::vector<std::string> events;
+static uint64_t source_width, source_height, target_width, target_height;
+static WMTPixelFormat target_format;
+static obj_handle_t drawable_result, texture_result, encoder_result;
+static unsigned applies, acquires, encoders, ends, waits, updates;
+static bool reply_checked;
+static uint32_t apply_status;
+static uint64_t expected_revision;
+static WMTLayerProps expected_props;
+static WMTColorSpace expected_colorspace;
+
+extern "C" void NSObject_retain(obj_handle_t) {}
+extern "C" void NSObject_release(obj_handle_t) {}
+extern "C" uint64_t MTLCommandBuffer_property(obj_handle_t value, WMTCommandBufferProperty property) {
+  CHECK(uint32_t(property) == W7LA_PROPERTY);
+  auto &request = *reinterpret_cast<W7LARequest *>(uintptr_t(value));
+  CHECK(request.size == sizeof(request) && request.version == W7LA_VERSION);
+  if (!reply_checked) return 0; // Old donor's unknown-property behavior.
+  if (request.op == W7LA_APPLY) {
+    ++applies; events.push_back("apply");
+    CHECK(request.layer == LAYER && request.config_revision == expected_revision);
+    const auto &p = request.configuration;
+    CHECK(p.device == expected_props.device && p.contents_scale == expected_props.contents_scale);
+    CHECK(p.drawable_width == expected_props.drawable_width && p.drawable_height == expected_props.drawable_height);
+    CHECK(p.opaque == expected_props.opaque && p.framebuffer_only == expected_props.framebuffer_only);
+    CHECK(p.display_sync_enabled == expected_props.display_sync_enabled);
+    CHECK(p.pixel_format == uint32_t(expected_props.pixel_format) && p.colorspace == uint32_t(expected_colorspace));
+    request.status = apply_status;
+  } else {
+    CHECK(request.op == W7LA_QUERY); request.status = W7LA_OK;
+  }
+  return W7LA_REPLY;
+}
+extern "C" obj_handle_t MetalLayer_nextDrawable(obj_handle_t layer) {
+  CHECK(layer == LAYER); ++acquires; events.push_back("acquire"); return drawable_result;
+}
+extern "C" obj_handle_t MetalDrawable_texture(obj_handle_t drawable) {
+  CHECK(drawable == DRAWABLE); return texture_result;
+}
+extern "C" WMTPixelFormat MTLTexture_pixelFormat(obj_handle_t texture) {
+  CHECK(texture == TARGET); return target_format;
+}
+extern "C" uint64_t MTLTexture_width(obj_handle_t texture) {
+  CHECK(texture == SOURCE || texture == TARGET); return texture == TARGET ? target_width : source_width;
+}
+extern "C" uint64_t MTLTexture_height(obj_handle_t texture) {
+  CHECK(texture == SOURCE || texture == TARGET); return texture == TARGET ? target_height : source_height;
+}
+extern "C" obj_handle_t MTLCommandBuffer_renderCommandEncoder(obj_handle_t buffer, WMTRenderPassInfo *info) {
+  CHECK(buffer == BUFFER); ++encoders; events.push_back("encoder");
+  CHECK(info->colors[0].texture == TARGET && info->colors[0].load_action == WMTLoadActionDontCare);
+  CHECK(info->colors[0].store_action == WMTStoreActionStore && info->colors[0].resolve_texture == 0);
+  CHECK(info->depth.texture == 0 && info->stencil.texture == 0 && info->visibility_buffer == 0);
+  for (unsigned i = 1; i < 8; ++i) CHECK(info->colors[i].texture == 0);
+  return encoder_result;
+}
+extern "C" void MTLCommandEncoder_endEncoding(obj_handle_t encoder) {
+  CHECK(encoder == ENCODER); ++ends; events.push_back("end");
+}
+extern "C" void MTLRenderCommandEncoder_encodeCommands(obj_handle_t encoder, const wmtcmd_base *head) {
+  CHECK(encoder == ENCODER && head);
+  unsigned count = 0;
+  for (auto p = head; p; p = reinterpret_cast<const wmtcmd_base *>(p->next.ptr)) {
+    CHECK(++count <= 8); // Reject cycles and unintended command tails.
+    Record r; r.type = p->type;
+    switch (p->type) {
+    case WMTRenderCommandWaitForFence:
+    case WMTRenderCommandUpdateFence: {
+      auto q = reinterpret_cast<const wmtcmd_render_fence_op *>(p);
+      r.fields[0] = q->fence; r.fields[1] = q->stages;
+      events.push_back(p->type == WMTRenderCommandWaitForFence ? "wait" : "update"); break;
+    }
+    case WMTRenderCommandSetFragmentTexture: {
+      auto q = reinterpret_cast<const wmtcmd_render_settexture *>(p);
+      r.fields[0] = q->texture; r.fields[1] = q->index; events.push_back("texture"); break;
+    }
+    case WMTRenderCommandSetFragmentBytes: {
+      auto q = reinterpret_cast<const wmtcmd_render_setbytes *>(p);
+      r.fields[0] = q->length; r.fields[1] = q->index;
+      CHECK(q->length == 12 && q->bytes.ptr != 0);
+      const auto bytes = reinterpret_cast<const unsigned char *>(q->bytes.ptr);
+      r.payload.assign(bytes, bytes + q->length); // Consume stack metadata inside the actual synchronous thunk.
+      events.push_back("bytes"); break;
+    }
+    case WMTRenderCommandSetPSO: {
+      auto q = reinterpret_cast<const wmtcmd_render_setpso *>(p);
+      r.fields[0] = q->pso; events.push_back("pso"); break;
+    }
+    case WMTRenderCommandSetViewports: {
+      auto q = reinterpret_cast<const wmtcmd_render_setviewports *>(p);
+      CHECK(q->viewport_count == 1 && q->viewports.ptr != 0);
+      r.fields[0] = q->viewport_count;
+      const auto bytes = reinterpret_cast<const unsigned char *>(q->viewports.ptr);
+      r.payload.assign(bytes, bytes + sizeof(WMTViewport)); // Consume viewport before the stack frame returns.
+      events.push_back("viewport"); break;
+    }
+    case WMTRenderCommandDraw: {
+      auto q = reinterpret_cast<const wmtcmd_render_draw *>(p);
+      r.fields = {q->primitive_type, q->vertex_start, q->vertex_count, q->instance_count, q->base_instance, 0};
+      events.push_back("draw"); break;
+    }
+    default: CHECK(false);
+    }
+    records.push_back(r);
+  }
+  batch_sizes.push_back(count);
+}
+
+using Presenter = dxmt::Presenter;
+static const dxmt::DXMTPresentMetadata metadata{0.8f, 1234.f, 567.f};
+static constexpr auto wait_stages = WMTRenderStages(WMTRenderStageVertex | WMTRenderStageFragment);
+static constexpr auto update_stages = WMTRenderStages(WMTRenderStageFragment | WMTRenderStageTile);
+static void wait_fences(WMT::RenderCommandEncoder encoder) {
+  ++waits; WMT::Fence f; f.handle = WAIT; encoder.waitForFence(f, wait_stages);
+}
+static void update_fences(WMT::RenderCommandEncoder encoder) {
+  ++updates; WMT::Fence f; f.handle = UPDATE; encoder.updateFence(f, update_stages);
+}
+static Presenter::PresentationConfiguration configuration(uint64_t revision = 7, bool gamma = false) {
+  Presenter::PresentationConfiguration c{};
+  c.revision = revision; c.layer_props.device = 101; c.layer_props.contents_scale = 2;
+  // Deliberately unlike the acquired drawable. Geometry must use the actual texture.
+  c.layer_props.drawable_width = 4096; c.layer_props.drawable_height = 2160;
+  c.layer_props.opaque = true; c.layer_props.framebuffer_only = false; c.layer_props.display_sync_enabled = true;
+  c.layer_props.pixel_format = WMTPixelFormatBGRA8Unorm; c.colorspace = WMTColorSpaceSRGB;
+  c.gamma_lut_texture.handle = gamma ? GAMMA : 0; c.present_blit.handle = BLIT; c.present_scale.handle = SCALE;
+  return c;
+}
+static void reset(const char *name, const Presenter::PresentationConfiguration &c) {
+  scenario = name; records.clear(); batch_sizes.clear(); events.clear();
+  source_width = target_width = 1920; source_height = target_height = 1080;
+  target_format = WMTPixelFormatBGRA8Unorm;
+  drawable_result = DRAWABLE; texture_result = TARGET; encoder_result = ENCODER;
+  applies = acquires = encoders = ends = waits = updates = 0;
+  reply_checked = true; apply_status = W7LA_OK;
+  expected_revision = c.revision; expected_props = c.layer_props; expected_colorspace = c.colorspace;
+  cs2trace::failures = 0;
+}
+static WMT::MetalDrawable invoke(Presenter &p, const Presenter::PresentationConfiguration &c, unsigned generation = 23) {
+  WMT::CommandBuffer buffer; buffer.handle = BUFFER; WMT::Texture backbuffer; backbuffer.handle = SOURCE;
+  return p.encodeCommands(buffer, backbuffer, c, metadata, generation, wait_fences, update_fences);
+}
+static Presenter presenter() { Presenter p; p.layer_.handle = LAYER; return p; }
+static void empty_result(WMT::MetalDrawable result, unsigned expected_acquires, unsigned expected_encoders) {
+  CHECK(!result && records.empty() && batch_sizes.empty());
+  CHECK(!waits && !updates && !ends && acquires == expected_acquires && encoders == expected_encoders);
+}
+// Historical control reconstructs only the old six wrapper calls. All guard,
+// acquisition, configuration, dimensions, fences, and failure behavior above come
+// from the extracted whole production method, not a copied candidate list.
+static void wrapper_control(const Presenter::PresentationConfiguration &c, obj_handle_t pipeline) {
+  WMT::RenderCommandEncoder e; e.handle = ENCODER;
+  WMT::Texture back; back.handle = SOURCE; WMT::RenderPipelineState pso; pso.handle = pipeline;
+  const WMTViewport viewport{0, 0, double(target_width), double(target_height), 0, 1};
+  wait_fences(e);
+  e.setFragmentTexture(back, 0); e.setFragmentTexture(c.gamma_lut_texture, 1);
+  e.setFragmentBytes(&metadata, sizeof(metadata), 0); e.setRenderPipelineState(pso);
+  e.setViewport(viewport); e.drawPrimitives(WMTPrimitiveTypeTriangle, 0, 3);
+  update_fences(e); e.endEncoding();
+}
+static void success(const char *name, bool gamma, uint64_t sw, uint64_t sh, uint64_t tw, uint64_t th) {
+  auto c = configuration(7, gamma); reset(name, c); auto p = presenter();
+  source_width = sw; source_height = sh; target_width = tw; target_height = th;
+  CHECK(invoke(p, c).handle == DRAWABLE);
+  CHECK(p.encoded_configuration_revision_ == c.revision && applies == 1 && acquires == 1 && encoders == 1);
+  CHECK(waits == 1 && updates == 1 && ends == 1 && cs2trace::failures == 0);
+  CHECK((batch_sizes == std::vector<unsigned>{1, 6, 1}));
+  CHECK((events == std::vector<std::string>{"apply", "acquire", "encoder", "wait", "texture", "texture",
+                                           "bytes", "pso", "viewport", "draw", "update", "end"}));
+  CHECK(records.size() == 8);
+  CHECK(records[0].fields[0] == WAIT && records[0].fields[1] == wait_stages);
+  CHECK(records[1].fields[0] == SOURCE && records[1].fields[1] == 0);
+  CHECK(records[2].fields[0] == (gamma ? GAMMA : 0) && records[2].fields[1] == 1);
+  CHECK(records[3].fields[0] == sizeof(metadata) && records[3].fields[1] == 0);
+  CHECK(records[3].payload.size() == sizeof(metadata));
+  CHECK(std::memcmp(records[3].payload.data(), &metadata, sizeof(metadata)) == 0);
+  const auto expected_pso = sw == tw && sh == th ? BLIT : SCALE;
+  CHECK(records[4].fields[0] == expected_pso);
+  WMTViewport viewport{}; std::memcpy(&viewport, records[5].payload.data(), sizeof(viewport));
+  CHECK(viewport.originX == 0 && viewport.originY == 0 && viewport.width == tw && viewport.height == th);
+  CHECK(viewport.znear == 0 && viewport.zfar == 1);
+  CHECK((records[6].fields == std::array<uint64_t, 6>{WMTPrimitiveTypeTriangle, 0, 3, 1, 0, 0}));
+  CHECK(records[7].fields[0] == UPDATE && records[7].fields[1] == update_stages);
+  const auto actual = records; records.clear(); batch_sizes.clear();
+  wrapper_control(c, expected_pso);
+  CHECK(actual == records && batch_sizes == std::vector<unsigned>(8, 1));
+  std::printf("%s:passed:production-six-command-batch-equals-old-wrappers\n", name);
+}
+int main() {
+  success("matched_null_gamma", false, 1920, 1080, 1920, 1080);
+  success("matched_gamma", true, 1280, 720, 1280, 720);
+  success("scaled_width_gamma", true, 1280, 1080, 1920, 1080);
+  success("scaled_height_null_gamma", false, 1920, 720, 1920, 1080);
+  success("acquired_size_over_requested_layer_size", true, 4096, 2160, 853, 479);
+  auto c = configuration();
+  { reset("unsupported_checked_config", c); auto p = presenter(); reply_checked = false;
+    p.checked_layer_configuration_ = WMT::MetalLayer::supportsCheckedConfiguration();
+    CHECK(!p.checked_layer_configuration_); empty_result(invoke(p, c), 0, 0); CHECK(!applies); }
+  for (auto status : {W7LA_UNSUPPORTED, W7LA_REJECTED, W7LA_FAILED}) {
+    reset("apply_failure", c); auto p = presenter(); p.encoded_configuration_revision_ = 99; apply_status = status;
+    empty_result(invoke(p, c), 0, 0); CHECK(applies == 1 && p.encoded_configuration_revision_ == 0);
+    CHECK(cs2trace::failures == 1 && cs2trace::revision == c.revision && cs2trace::status == uint32_t(status));
+    std::printf("apply_status_%u:passed:no-acquisition-or-encoding\n", unsigned(status));
+  }
+  { reset("apply_failure_trace_disabled", c); auto p = presenter(); apply_status = W7LA_FAILED;
+    empty_result(invoke(p, c, 0), 0, 0); CHECK(cs2trace::failures == 0); }
+  { auto p = presenter(); reset("revision_first_apply", c); CHECK(invoke(p, c)); CHECK(applies == 1);
+    reset("revision_cached", c); CHECK(invoke(p, c)); CHECK(applies == 0);
+    auto changed = configuration(8, true); reset("revision_changed_apply_failure", changed); apply_status = W7LA_FAILED;
+    empty_result(invoke(p, changed), 0, 0); CHECK(p.encoded_configuration_revision_ == 0);
+    reset("revision_previous_requires_reapply_after_failure", c); CHECK(invoke(p, c)); CHECK(applies == 1);
+    reset("revision_retry_changed_succeeds", changed); CHECK(invoke(p, changed));
+    CHECK(applies == 1 && p.encoded_configuration_revision_ == 8);
+    std::puts("revision-cache-failure-invalidation-and-retry:passed"); }
+  { reset("no_drawable", c); auto p = presenter(); drawable_result = 0; empty_result(invoke(p, c), 1, 0); }
+  { reset("no_texture", c); auto p = presenter(); texture_result = 0; empty_result(invoke(p, c), 1, 0); }
+  { reset("format_mismatch", c); auto p = presenter(); target_format = WMTPixelFormatRGBA16Float; empty_result(invoke(p, c), 1, 0); }
+  { reset("zero_width", c); auto p = presenter(); target_width = 0; empty_result(invoke(p, c), 1, 0); }
+  { reset("zero_height", c); auto p = presenter(); target_height = 0; empty_result(invoke(p, c), 1, 0); }
+  { reset("nil_encoder", c); auto p = presenter(); encoder_result = 0; empty_result(invoke(p, c), 1, 1); }
+  std::puts("unsupported-config-no-drawable-no-texture-format-zero-geometry-nil-encoder:passed:no-draw-update-end");
+  std::puts("CPU-stub-only:passed:no-Metal-link-device-GPU-window-or-runtime-execution");
+}

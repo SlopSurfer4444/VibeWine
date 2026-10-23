@@ -10,6 +10,7 @@
 #include <variant>
 #include <functional>
 #include "cs2_recipe.hpp"
+#include "dxmt_persistence.hpp"
 
 struct MTL_COMPILED_SHADER {
   /**
@@ -191,13 +192,17 @@ using ShaderVariant =
 
 class ThreadpoolWork {
 public:
+  // Dependencies may be observed before their own submit. Identity is immutable
+  // for the task lifetime; only submission generation crosses scheduler locks.
+  const uint64_t task_trace_serial = cs2trace::newSerial();
+  std::atomic<uint32_t> task_trace_generation{0};
   virtual ~ThreadpoolWork() {}
   virtual ThreadpoolWork *RunThreadpoolWork() = 0;
   virtual bool GetIsDone() = 0;
   virtual void SetIsDone(bool state) = 0;
   // Called by the worker before SetIsDone. Returned work owns its data and
   // must remain valid after this task is destroyed.
-  virtual std::function<void()> TakePostCompletionWork() { return {}; }
+  virtual post_completion_work TakePostCompletionWork() { return {}; }
 };
 
 class CompiledShader : public ThreadpoolWork {
@@ -223,7 +228,7 @@ public:
   virtual void dump() = 0;
 
   virtual WMT::Reference<WMT::DispatchData> find_cached_variant(Sha1Digest &key) = 0;
-  virtual void update_cached_variant(Sha1Digest &key, WMT::DispatchData data) = 0;
+  virtual post_completion_work make_cached_variant_write(Sha1Digest key, WMT::DispatchData data, uint64_t bytes) = 0;
 };
 
 template <typename Variant>

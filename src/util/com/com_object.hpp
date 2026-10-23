@@ -98,11 +98,13 @@ public:
     uint32_t refPrivate = --m_refPrivate;
     if (unlikely(!refPrivate)) {
       m_refPrivate += 0x80000000;
-      delete this;
+      Destroy();
     }
   }
 
 protected:
+  virtual void Destroy() { delete this; }
+
   std::atomic<uint32_t> m_refCount = {1ul};
   std::atomic<uint32_t> m_refPrivate = {1ul};
 };

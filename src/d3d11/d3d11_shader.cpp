@@ -94,14 +94,16 @@ public:
         return this;
       }
 
-      shader_->update_cached_variant(variant_digest_, lib_data);
-
+      const auto cache_bytes = bitcode.Size;
       SM50DestroyBitcode(compile_result);
       function_ = library.newFunction(func_name.c_str());
 
       if (function_ == nullptr) {
         ERR("Failed to create MTLFunction: ", func_name);
         shader_->dump();
+      } else {
+        pending_cache_data_ = std::move(lib_data);
+        pending_cache_bytes_ = cache_bytes;
       }
     }
 
@@ -112,6 +114,14 @@ public:
 
   void SetIsDone(bool state) { ready_.store(state); }
 
+  post_completion_work TakePostCompletionWork() override {
+    if (!pending_cache_data_)
+      return {};
+    auto work = shader_->make_cached_variant_write(variant_digest_, pending_cache_data_, pending_cache_bytes_);
+    pending_cache_data_ = {};
+    return work;
+  }
+
 private:
   SM50_SHADER_COMMON_DATA sm50_common;
   Proc proc;
@@ -121,6 +131,8 @@ private:
   Sha1Digest variant_digest_;
   std::atomic_bool ready_;
   WMT::Reference<WMT::Function> function_;
+  WMT::Reference<WMT::DispatchData> pending_cache_data_;
+  uint64_t pending_cache_bytes_ = 0;
 };
 
 template <>

@@ -73,6 +73,14 @@ CommandQueue::CommandQueue(WMT::Device device) :
 }
 
 CommandQueue::~CommandQueue() {
+  ShutdownAndJoin();
+}
+
+void
+CommandQueue::ShutdownAndJoin() {
+  std::lock_guard<dxmt::mutex> lock(shutdown_mutex_);
+  if (shutdown_complete_)
+    return;
   cs2trace::ApiScope trace_shutdown(47,traceSerial());
   trace_shutdown.result=0;
   TRACE("Destructing command queue");
@@ -89,6 +97,7 @@ CommandQueue::~CommandQueue() {
     chunk.reset();
   };
   event_listener_thread.join();
+  shutdown_complete_ = true;
   TRACE("Destructed command queue");
 }
 
@@ -243,8 +252,25 @@ CommandQueue::WaitForFinishThread() {
     if (chunk.signal_frame_latency_fence_ != ~0ull)
       frame_latency_fence_.signal(chunk.signal_frame_latency_fence_);
 
+    // Readback destruction publishes query data before the CPU coherence fence.
+    // Keep the birth identities before reset; detailed probes use CPU steady
+    // time only and share the opt-in generation budget with compiler probes.
+    const auto trace_gen = cs2trace::detailLimit() ? chunk.trace_generation : 0;
+    const auto trace_frame = chunk.frame_;
+    const auto readback_start = trace_gen ? cs2trace::now() : 0;
+    chunk.readback = {};
+    if (trace_gen)
+      cs2trace::detailRecord(trace_gen,90,readback_start,cs2trace::now(),traceSerial(),0,internal_seq,trace_frame);
     chunk.reset();
+    if (trace_gen) {
+      auto t = cs2trace::now();
+      cs2trace::detailRecord(trace_gen,91,t,t,traceSerial(),0,internal_seq,trace_frame);
+    }
     cpu_coherent.signal(internal_seq);
+    if (trace_gen) {
+      auto t = cs2trace::now();
+      cs2trace::detailRecord(trace_gen,92,t,t,traceSerial(),0,internal_seq,trace_frame);
+    }
     chunk_ongoing.fetch_sub(1, std::memory_order_release);
     chunk_ongoing.notify_one();
 

@@ -437,41 +437,45 @@ _MTLCommandBuffer_renderCommandEncoder(void *obj) {
   struct unixcall_generic_obj_uint64_obj_ret *params = obj;
   struct WMTRenderPassInfo *info = (struct WMTRenderPassInfo *)params->arg;
   MTLRenderPassDescriptor *descriptor = [[MTLRenderPassDescriptor alloc] init];
+  MTLRenderPassColorAttachmentDescriptorArray *colors = descriptor.colorAttachments;
   for (unsigned i = 0; i < 8; i++) {
-    descriptor.colorAttachments[i].clearColor = MTLClearColorMake(
+    MTLRenderPassColorAttachmentDescriptor *color = colors[i];
+    color.clearColor = MTLClearColorMake(
         info->colors[i].clear_color.r, info->colors[i].clear_color.g, info->colors[i].clear_color.b,
         info->colors[i].clear_color.a
     );
-    descriptor.colorAttachments[i].level = info->colors[i].level;
-    descriptor.colorAttachments[i].slice = info->colors[i].slice;
-    descriptor.colorAttachments[i].depthPlane = info->colors[i].depth_plane;
-    descriptor.colorAttachments[i].texture = (id<MTLTexture>)info->colors[i].texture;
-    descriptor.colorAttachments[i].loadAction = (MTLLoadAction)info->colors[i].load_action;
-    descriptor.colorAttachments[i].storeAction = (MTLStoreAction)info->colors[i].store_action;
-    descriptor.colorAttachments[i].resolveTexture = (id<MTLTexture>)info->colors[i].resolve_texture;
-    descriptor.colorAttachments[i].resolveLevel = info->colors[i].resolve_level;
-    descriptor.colorAttachments[i].resolveSlice = info->colors[i].resolve_slice;
-    descriptor.colorAttachments[i].resolveDepthPlane = info->colors[i].resolve_depth_plane;
+    color.level = info->colors[i].level;
+    color.slice = info->colors[i].slice;
+    color.depthPlane = info->colors[i].depth_plane;
+    color.texture = (id<MTLTexture>)info->colors[i].texture;
+    color.loadAction = (MTLLoadAction)info->colors[i].load_action;
+    color.storeAction = (MTLStoreAction)info->colors[i].store_action;
+    color.resolveTexture = (id<MTLTexture>)info->colors[i].resolve_texture;
+    color.resolveLevel = info->colors[i].resolve_level;
+    color.resolveSlice = info->colors[i].resolve_slice;
+    color.resolveDepthPlane = info->colors[i].resolve_depth_plane;
   }
 
   if (info->depth.texture) {
-    descriptor.depthAttachment.clearDepth = info->depth.clear_depth;
-    descriptor.depthAttachment.depthPlane = info->depth.depth_plane;
-    descriptor.depthAttachment.level = info->depth.level;
-    descriptor.depthAttachment.slice = info->depth.slice;
-    descriptor.depthAttachment.texture = (id<MTLTexture>)info->depth.texture;
-    descriptor.depthAttachment.loadAction = (MTLLoadAction)info->depth.load_action;
-    descriptor.depthAttachment.storeAction = (MTLStoreAction)info->depth.store_action;
+    MTLRenderPassDepthAttachmentDescriptor *depth = descriptor.depthAttachment;
+    depth.clearDepth = info->depth.clear_depth;
+    depth.depthPlane = info->depth.depth_plane;
+    depth.level = info->depth.level;
+    depth.slice = info->depth.slice;
+    depth.texture = (id<MTLTexture>)info->depth.texture;
+    depth.loadAction = (MTLLoadAction)info->depth.load_action;
+    depth.storeAction = (MTLStoreAction)info->depth.store_action;
   }
 
   if (info->stencil.texture) {
-    descriptor.stencilAttachment.clearStencil = info->stencil.clear_stencil;
-    descriptor.stencilAttachment.depthPlane = info->stencil.depth_plane;
-    descriptor.stencilAttachment.level = info->stencil.level;
-    descriptor.stencilAttachment.slice = info->stencil.slice;
-    descriptor.stencilAttachment.texture = (id<MTLTexture>)info->stencil.texture;
-    descriptor.stencilAttachment.loadAction = (MTLLoadAction)info->stencil.load_action;
-    descriptor.stencilAttachment.storeAction = (MTLStoreAction)info->stencil.store_action;
+    MTLRenderPassStencilAttachmentDescriptor *stencil = descriptor.stencilAttachment;
+    stencil.clearStencil = info->stencil.clear_stencil;
+    stencil.depthPlane = info->stencil.depth_plane;
+    stencil.level = info->stencil.level;
+    stencil.slice = info->stencil.slice;
+    stencil.texture = (id<MTLTexture>)info->stencil.texture;
+    stencil.loadAction = (MTLLoadAction)info->stencil.load_action;
+    stencil.storeAction = (MTLStoreAction)info->stencil.store_action;
   }
 
   descriptor.defaultRasterSampleCount = info->default_raster_sample_count;
@@ -3026,6 +3030,9 @@ NTSTATUS _CacheReader_alloc_init(void *obj);
 NTSTATUS _CacheReader_get(void *obj);
 NTSTATUS _CacheWriter_alloc_init(void *obj);
 NTSTATUS _CacheWriter_set(void *obj);
+NTSTATUS _Cache_alloc_init_checked(void *obj);
+NTSTATUS _CacheReader_get_checked(void *obj);
+NTSTATUS _CacheWriter_set_checked(void *obj);
 NTSTATUS _WMTSetMetalShaderCachePath(void *obj);
 
 const void *__wine_unix_call_funcs[] = {
@@ -3175,6 +3182,9 @@ const void *__wine_unix_call_funcs[] = {
     &_MTLDevice_newIndirectCommandBuffer,
     &_MTLDevice_newLibraryWithSource,
     &_MTLTexture_getBytes,
+    &_Cache_alloc_init_checked,
+    &_CacheReader_get_checked,
+    &_CacheWriter_set_checked,
 };
 
 #ifndef DXMT_NATIVE
@@ -3325,5 +3335,8 @@ const void *__wine_unix_call_wow64_funcs[] = {
     &_MTLDevice_newIndirectCommandBuffer,
     &_MTLDevice_newLibraryWithSource,
     &_MTLTexture_getBytes,
+    &_Cache_alloc_init_checked,
+    &_CacheReader_get_checked,
+    &_CacheWriter_set_checked,
 };
 #endif

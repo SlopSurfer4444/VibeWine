@@ -1,0 +1,205 @@
+#import <Foundation/Foundation.h>
+#include <objc/runtime.h>
+#include <sqlite3.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
+static unsigned opened = 0, closed = 0, prepared = 0, finalized = 0;
+static unsigned lock_opened = 0, lock_closed = 0;
+static int counted_open(const char *path, sqlite3 **db, int flags, const char *vfs) {
+  int result = sqlite3_open_v2(path, db, flags, vfs);
+  opened += *db != NULL;
+  return result;
+}
+static int counted_close(sqlite3 *db) {
+  int result = sqlite3_close(db);
+  assert(result == SQLITE_OK);
+  closed += db != NULL;
+  return result;
+}
+static int counted_prepare(sqlite3 *db, const char *sql, int len, sqlite3_stmt **stmt, const char **tail) {
+  int result = sqlite3_prepare_v2(db, sql, len, stmt, tail);
+  prepared += *stmt != NULL;
+  return result;
+}
+static int counted_finalize(sqlite3_stmt *stmt) {
+  int result = sqlite3_finalize(stmt);
+  finalized += stmt != NULL;
+  return result;
+}
+static int counted_fd_open(const char *path, int flags, int mode) {
+  int fd = open(path, flags, mode);
+  lock_opened += fd >= 0;
+  return fd;
+}
+static int counted_fd_close(int fd) {
+  int result = close(fd);
+  assert(!result);
+  lock_closed++;
+  return result;
+}
+
+#define sqlite3_open_v2 counted_open
+#define sqlite3_close counted_close
+#define sqlite3_prepare_v2 counted_prepare
+#define sqlite3_finalize counted_finalize
+#define open counted_fd_open
+#define close counted_fd_close
+#define DXMT_NO_PRIVATE_API
+#include "CACHE_SOURCE"
+#undef sqlite3_open_v2
+#undef sqlite3_close
+#undef sqlite3_prepare_v2
+#undef sqlite3_finalize
+#undef open
+#undef close
+
+// The exact new PE thunk bodies run against the exact native handlers, through
+// a fake dispatch boundary. No Wine process, PE loader or GPU is started.
+static uint32_t fixture_unix_call(unsigned code, void *params) {
+  switch (code) {
+  case 146: return _Cache_alloc_init_checked(params);
+  case 147: return _CacheReader_get_checked(params);
+  case 148: return _CacheWriter_set_checked(params);
+  default: assert(false); return 1;
+  }
+}
+#define WINE_UNIX_CALL(code, params) fixture_unix_call(code, params)
+// CHECKED_PE_THUNKS
+_Static_assert(sizeof(struct unixcall_cache_alloc_init) == 24, "legacy alloc layout");
+_Static_assert(sizeof(struct unixcall_cache_get) == 32, "legacy get layout");
+_Static_assert(sizeof(struct unixcall_cache_set) == 32, "legacy set layout");
+_Static_assert(sizeof(struct unixcall_cache_alloc_init_checked) == 32, "checked alloc layout");
+_Static_assert(sizeof(struct unixcall_cache_get_checked) == 40, "checked get layout");
+_Static_assert(sizeof(struct unixcall_cache_set_checked) == 40, "checked set layout");
+
+static sqlite3 *db_of(id object) {
+  Ivar ivar = class_getInstanceVariable(object_getClass(object), "_db");
+  assert(ivar);
+  return *(sqlite3 **)((char *)object + ivar_getOffset(ivar));
+}
+static void bindings_cleared(id object) {
+  sqlite3_stmt *stmt = sqlite3_next_stmt(db_of(object), NULL);
+  assert(stmt && !sqlite3_stmt_busy(stmt));
+  char *sql = sqlite3_expanded_sql(stmt);
+  assert(sql && strstr(sql, "NULL"));
+  sqlite3_free(sql);
+}
+static void sql(sqlite3 *db, const char *text) {
+  char *error = NULL;
+  int result = sqlite3_exec(db, text, NULL, NULL, &error);
+  if (result != SQLITE_OK) fprintf(stderr, "SQL failed: %s\n", error);
+  sqlite3_free(error);
+  assert(result == SQLITE_OK);
+}
+static void release_object(obj_handle_t handle) { if (handle) [(id)handle release]; }
+static dispatch_data_t checked_get(obj_handle_t reader, const char *key, uint32_t *status) {
+  return (dispatch_data_t)CacheReader_get_checked(reader, key, strlen(key), status);
+}
+
+int main(int argc, char **argv) {
+  assert(argc == 2);
+  NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+  NSString *base = [NSString stringWithUTF8String:argv[1]];
+  NSString *path = [base stringByAppendingPathComponent:@"cache.db"];
+  uint32_t status = 0xffffffff;
+  obj_handle_t writer = Cache_alloc_init_checked(path.fileSystemRepresentation, 99, 1, &status);
+  assert(writer && status == SQLITE_OK);
+  obj_handle_t reader = Cache_alloc_init_checked(path.fileSystemRepresentation, 99, 0, &status);
+  assert(reader && status == SQLITE_OK);
+  const char bytes[] = "owned payload";
+  dispatch_data_t data = dispatch_data_create(bytes, sizeof(bytes), nil, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+  assert(CacheWriter_set_checked(writer, "known", 5, (obj_handle_t)data) == SQLITE_DONE);
+  bindings_cleared((id)writer);
+  dispatch_data_t hit = checked_get(reader, "known", &status);
+  assert(hit && status == SQLITE_ROW);
+  const void *mapped = NULL; size_t length = 0;
+  dispatch_data_t flat = dispatch_data_create_map(hit, &mapped, &length);
+  assert(length == sizeof(bytes) && !memcmp(mapped, bytes, length));
+  dispatch_release(flat); dispatch_release(hit);
+  bindings_cleared((id)reader);
+  assert(!checked_get(reader, "absent", &status) && status == SQLITE_DONE);
+  // Exercise actual bind errors without allocating an oversized payload.
+  char long_key[64]; memset(long_key, 'x', sizeof(long_key));
+  int old_limit = sqlite3_limit(db_of((id)writer), SQLITE_LIMIT_LENGTH, 2);
+  uint32_t bind_status = CacheWriter_set_checked(writer, long_key, sizeof(long_key), (obj_handle_t)data);
+  assert((bind_status & 0xff) == SQLITE_TOOBIG);
+  sqlite3_limit(db_of((id)writer), SQLITE_LIMIT_LENGTH, old_limit);
+  bindings_cleared((id)writer);
+  old_limit = sqlite3_limit(db_of((id)reader), SQLITE_LIMIT_LENGTH, 2);
+  assert(!CacheReader_get_checked(reader, long_key, sizeof(long_key), &status) && (status & 0xff) == SQLITE_TOOBIG);
+  sqlite3_limit(db_of((id)reader), SQLITE_LIMIT_LENGTH, old_limit);
+  bindings_cleared((id)reader);
+  // Legacy native operations retain zero transport return and original layouts.
+  struct unixcall_cache_get legacy_get = {0};
+  legacy_get.cache = reader; legacy_get.key.ptr = "known"; legacy_get.key_length = 5;
+  assert(_CacheReader_get(&legacy_get) == 0 && legacy_get.ret_data);
+  dispatch_release((dispatch_data_t)legacy_get.ret_data);
+  struct unixcall_cache_set legacy_set = {0};
+  legacy_set.cache = writer; legacy_set.key.ptr = "known"; legacy_set.key_length = 5;
+  legacy_set.value_data = (obj_handle_t)data;
+  assert(_CacheWriter_set(&legacy_set) == 0);
+  sqlite3 *holder = NULL;
+  assert(sqlite3_open(path.fileSystemRepresentation, &holder) == SQLITE_OK);
+  sql(holder, "BEGIN IMMEDIATE");
+  uint32_t busy = CacheWriter_set_checked(writer, "busy", 4, (obj_handle_t)data);
+  assert((busy & 0xff) == SQLITE_BUSY || (busy & 0xff) == SQLITE_LOCKED);
+  bindings_cleared((id)writer);
+  assert(!checked_get(reader, "busy", &status) && status == SQLITE_DONE);
+  sql(holder, "ROLLBACK"); sqlite3_close(holder);
+  assert(CacheWriter_set_checked(writer, "busy", 4, (obj_handle_t)data) == SQLITE_DONE);
+  hit = checked_get(reader, "busy", &status); assert(hit && status == SQLITE_ROW); dispatch_release(hit);
+  // A caller may retire key/data as soon as the checked call returns.
+  dispatch_release(data); release_object(reader); release_object(writer);
+
+  // Read-side BUSY requires rollback journaling; change mode only with all
+  // cache objects closed, then hold an exclusive transaction in a second owner.
+  assert(sqlite3_open(path.fileSystemRepresentation, &holder) == SQLITE_OK);
+  sql(holder, "PRAGMA journal_mode=DELETE"); sqlite3_close(holder);
+  reader = Cache_alloc_init_checked(path.fileSystemRepresentation, 99, 0, &status);
+  assert(reader && status == SQLITE_OK);
+  assert(sqlite3_open(path.fileSystemRepresentation, &holder) == SQLITE_OK);
+  sql(holder, "BEGIN EXCLUSIVE");
+  assert(!checked_get(reader, "known", &status));
+  assert((status & 0xff) == SQLITE_BUSY || (status & 0xff) == SQLITE_LOCKED);
+  bindings_cleared((id)reader);
+  sql(holder, "ROLLBACK"); sqlite3_close(holder);
+  hit = checked_get(reader, "known", &status); assert(hit && status == SQLITE_ROW); dispatch_release(hit);
+  release_object(reader);
+
+  NSString *notdb = [base stringByAppendingPathComponent:@"notadb.db"];
+  assert([@"not a SQLite database" writeToFile:notdb atomically:NO encoding:NSUTF8StringEncoding error:nil]);
+  assert(!Cache_alloc_init_checked(notdb.fileSystemRepresentation, 99, 0, &status));
+  assert((status & 0xff) == SQLITE_NOTADB);
+  assert(!Cache_alloc_init_checked(notdb.fileSystemRepresentation, 99, 1, &status));
+  assert((status & 0xff) == SQLITE_NOTADB);
+
+  // Deliberately corrupt the sacrificial schema using SQLite itself, with all
+  // cache objects closed. Never overwrite any live database or WAL sidecar.
+  assert(sqlite3_open(path.fileSystemRepresentation, &holder) == SQLITE_OK);
+  assert(sqlite3_db_config(holder, SQLITE_DBCONFIG_DEFENSIVE, 0, NULL) == SQLITE_OK);
+  sql(holder, "PRAGMA writable_schema=ON");
+  sql(holder, "UPDATE sqlite_master SET rootpage=999999 WHERE name='cache_99'");
+  sql(holder, "PRAGMA writable_schema=OFF"); sqlite3_close(holder);
+  reader = Cache_alloc_init_checked(path.fileSystemRepresentation, 99, 0, &status);
+  if (reader) {
+    assert(!checked_get(reader, "known", &status));
+    assert((status & 0xff) == SQLITE_CORRUPT);
+    release_object(reader);
+  } else assert((status & 0xff) == SQLITE_CORRUPT);
+
+  NSString *missing = [base stringByAppendingPathComponent:@"missing.db"];
+  assert(!Cache_alloc_init_checked(missing.fileSystemRepresentation, 99, 0, &status));
+  assert((status & 0xff) == SQLITE_CANTOPEN);
+  assert(!Cache_alloc_init_checked(NULL, 99, 0, &status) && status == SQLITE_MISUSE);
+  assert(!Cache_alloc_init_checked(path.fileSystemRepresentation, 99, 2, &status) && status == SQLITE_MISUSE);
+  assert(!CacheReader_get_checked(0, "known", 5, &status) && status == SQLITE_MISUSE);
+  assert(CacheWriter_set_checked(0, "known", 5, 0) == SQLITE_MISUSE);
+  [pool drain];
+  assert(opened == closed && prepared == finalized && lock_opened == lock_closed);
+  printf("PASS actual native SQLite + exact checked PE thunk bodies: init0,hit100,miss101,busy5/locked6,corrupt11,notadb26,cantopen14,toobig18,misuse21; static-bind cleanup and legacy operations; opens=%u/closes=%u,stmts=%u/%u,lockfds=%u/%u\n",
+              opened, closed, prepared, finalized, lock_opened, lock_closed);
+}

@@ -33,6 +33,49 @@ inline void record(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64
 }
 // Process-lifetime monotonic birth identities; assigned once per object.
 inline uint64_t newSerial() {static std::atomic<uint64_t> next{1};return next.fetch_add(1,std::memory_order_relaxed);}
+// Explicit opt-in, parsed once. Empty/invalid/out-of-range means off. The cap is
+// per producer and generation across ALL detailed task/persistence/finish probes.
+inline uint32_t detailLimit() {
+ static const uint32_t value=[] {
+  auto text=env::getEnvVar("DXMT_CS2_TRACE_DETAIL_LIMIT"); uint32_t n=0;
+  if(text.empty())return 0u;
+  for(char c:text) {if(c<'0'||c>'9'||n>DetailBudget::MaxRecords/10)return 0u;n=n*10+uint32_t(c-'0');}
+  return n && n<=DetailBudget::MaxRecords ? n : 0u;
+ }();return value;
+}
+struct DetailToken { uint32_t gen=0; uint64_t serial=0,owner=0; };
+inline DetailToken beginDetail(uint64_t owner) {
+ auto gen=detailLimit()?generation():0;
+ return {gen,gen?newSerial():0,owner};
+}
+inline void detailRecord(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64_t object,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
+ if(!gen || !detailLimit())return;
+ static DetailBudget budget;
+ auto active=generation();
+ if(!active)return; // Ordinary capture-boundary incompleteness remains explicit.
+ auto h=buffer();
+ if(!h || !admit(h,active))return;
+ struct Exit {Header *h;~Exit(){releaseWriter(h);}} exit{h};
+ auto publish=[&](uint32_t event,uint64_t a,uint64_t b,uint64_t identity,uint32_t result,uint64_t p0,uint64_t p1) {
+  writeAdmittedEvent(h,active,event,a,b,identity,result,p0,p1,GetCurrentThreadId());
+ };
+ // A stale asynchronous token must never become evidence in a later capture.
+ // One budgeted marker fails that capture rather than silently joining it.
+ auto admitted=budget.claim(active,detailLimit());
+ if(admitted==DetailBudget::Result::exhausted_first) {
+  auto t=now();publish(89,t,t,0,1,detailLimit(),0);return;
+ }
+ if(admitted!=DetailBudget::Result::accepted)return;
+ if(active!=gen) {auto t=now();publish(89,t,t,0,2,gen,0);return;}
+ publish(type,start,end,object,flags,detail0,detail1);
+}
+inline void detailInstant(DetailToken token,uint32_t type,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
+ if(!token.gen)return;
+ auto t=now();detailRecord(token.gen,type,t,t,token.serial,flags,detail0,detail1);
+}
+inline void detailInterval(DetailToken token,uint32_t type,uint64_t start,uint64_t end,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
+ if(token.gen)detailRecord(token.gen,type,start,end,token.serial,flags,detail0,detail1);
+}
 struct ApiScope {
  uint32_t gen=generation(),type;uint64_t object,detail0=0,detail1=0;uint32_t result=0xffffffffu;uint64_t start=gen?now():0;
  ApiScope(uint32_t event,uint64_t identity,uint64_t arg0=0,uint64_t arg1=0):type(event),object(identity),detail0(arg0),detail1(arg1){}

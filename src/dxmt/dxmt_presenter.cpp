@@ -382,17 +382,43 @@ Presenter::encodeCommands(
   if (!encoder)
     return {};
   wait_fences(encoder);
-  encoder.setFragmentTexture(backbuffer, 0);
-  encoder.setFragmentTexture(configuration.gamma_lut_texture, 1);
+  // The bridge walks this list synchronously. Keep its metadata and viewport
+  // payloads alive until it returns; fences remain outside and in the same order.
+  wmtcmd_render_settexture source{}, gamma{};
+  wmtcmd_render_setbytes constants{};
+  wmtcmd_render_setpso pipeline{};
+  wmtcmd_render_setviewports viewport_command{};
+  wmtcmd_render_draw draw{};
+  WMTViewport viewport{0, 0, width, height, 0, 1};
 
-  encoder.setFragmentBytes(&metadata, sizeof(metadata), 0);
-  if (backbuffer.width() == (uint64_t)width && backbuffer.height() == (uint64_t)height) {
-    encoder.setRenderPipelineState(configuration.present_blit);
-  } else {
-    encoder.setRenderPipelineState(configuration.present_scale);
-  }
-  encoder.setViewport({0, 0, width, height, 0, 1});
-  encoder.drawPrimitives(WMTPrimitiveTypeTriangle, 0, 3);
+  source.type = gamma.type = WMTRenderCommandSetFragmentTexture;
+  source.texture = backbuffer;
+  source.index = 0;
+  source.next.set(&gamma);
+  gamma.texture = configuration.gamma_lut_texture;
+  gamma.index = 1;
+  gamma.next.set(&constants);
+  constants.type = WMTRenderCommandSetFragmentBytes;
+  constants.bytes.set(&metadata);
+  constants.length = sizeof(metadata);
+  constants.index = 0;
+  constants.next.set(&pipeline);
+  pipeline.type = WMTRenderCommandSetPSO;
+  pipeline.pso = backbuffer.width() == (uint64_t)width && backbuffer.height() == (uint64_t)height
+                     ? configuration.present_blit.handle : configuration.present_scale.handle;
+  pipeline.next.set(&viewport_command);
+  viewport_command.type = WMTRenderCommandSetViewports;
+  viewport_command.viewports.set(&viewport);
+  viewport_command.viewport_count = 1;
+  viewport_command.next.set(&draw);
+  draw.type = WMTRenderCommandDraw;
+  draw.primitive_type = WMTPrimitiveTypeTriangle;
+  draw.vertex_start = 0;
+  draw.vertex_count = 3;
+  draw.instance_count = 1;
+  draw.base_instance = 0;
+  draw.next.set(nullptr);
+  encoder.encodeCommands(reinterpret_cast<const wmtcmd_render_nop *>(&source));
   update_fences(encoder);
   encoder.endEncoding();
 

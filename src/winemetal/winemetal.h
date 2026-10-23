@@ -1988,6 +1988,27 @@ WINEMETAL_API obj_handle_t CacheWriter_alloc_init(const char *path, uint64_t ver
 
 WINEMETAL_API void CacheWriter_set(obj_handle_t writer, const void *key, uint64_t key_length, obj_handle_t value);
 
+// Additive checked operations require the matched PE/native bundle. Legacy
+// exports and unix-call layouts/IDs remain unchanged. Results are raw SQLite
+// codes (including extended error codes); they are not durability receipts.
+enum WMTCacheStatus : uint32_t {
+  WMTCacheStatusOK = 0,
+  WMTCacheStatusBusy = 5,
+  WMTCacheStatusLocked = 6,
+  WMTCacheStatusCorrupt = 11,
+  WMTCacheStatusMisuse = 21,
+  WMTCacheStatusNotADB = 26,
+  WMTCacheStatusRow = 100,
+  WMTCacheStatusDone = 101,
+  WMTCacheStatusUnavailable = 0xffffffffu,
+};
+WINEMETAL_API obj_handle_t Cache_alloc_init_checked(
+    const char *path, uint64_t version, uint32_t writer, uint32_t *status);
+WINEMETAL_API obj_handle_t CacheReader_get_checked(
+    obj_handle_t reader, const void *key, uint64_t length, uint32_t *status);
+WINEMETAL_API uint32_t CacheWriter_set_checked(
+    obj_handle_t writer, const void *key, uint64_t key_length, obj_handle_t value);
+
 WINEMETAL_API bool WMTSetMetalShaderCachePath(const char *path);
 
 WINEMETAL_API obj_handle_t MTLDevice_newSharedTexture(obj_handle_t device, struct WMTTextureInfo *info);

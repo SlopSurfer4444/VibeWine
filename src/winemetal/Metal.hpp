@@ -1097,6 +1097,10 @@ public:
   get(const K &key) {
     return Reference<DispatchData>(CacheReader_get(handle, reinterpret_cast<const void *>(&key), sizeof(key)));
   };
+
+  Reference<DispatchData> get_checked(const void *key, uint64_t length, uint32_t &status) {
+    return Reference<DispatchData>(CacheReader_get_checked(handle, key, length, &status));
+  }
 };
 
 class CacheWriter : public Object {
@@ -1116,6 +1120,11 @@ public:
   set(const K &key, DispatchData value) {
     set(reinterpret_cast<const void *>(&key), sizeof(key), value);
   };
+
+  template <typename K>
+  uint32_t set_checked(const K &key, DispatchData value) {
+    return CacheWriter_set_checked(handle, reinterpret_cast<const void *>(&key), sizeof(key), value);
+  }
 };
 
 inline Reference<Object>

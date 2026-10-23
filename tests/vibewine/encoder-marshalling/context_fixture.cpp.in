@@ -1,0 +1,412 @@
+// CPU-only harness. test_context.py inserts the actual production switch arms.
+#include "Metal.hpp"
+#include "dxmt_deptrack.hpp"
+#include "airconv_public.h"
+#include "ftl.hpp"
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cstring>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <tuple>
+#include <vector>
+
+struct Event {
+  const char *name;
+  std::array<uint64_t, 8> args{};
+  bool operator==(const Event &other) const {
+    return std::strcmp(name, other.name) == 0 && args == other.args;
+  }
+};
+static std::vector<Event> events;
+static std::vector<WMTRenderPassInfo> passes;
+static unsigned render_calls, compute_calls, destroyed;
+static bool nil_encoder;
+static void emit(const char *name, std::initializer_list<uint64_t> args = {}) {
+  Event e{name};
+  std::copy(args.begin(), args.end(), e.args.begin());
+  events.push_back(e);
+}
+static WMT::Buffer buffer(uint64_t h) { WMT::Buffer b; b.handle = h; return b; }
+static WMT::Texture texture(uint64_t h) { WMT::Texture t; t.handle = h; return t; }
+extern "C" void NSObject_retain(obj_handle_t) {}
+extern "C" void NSObject_release(obj_handle_t) {}
+extern "C" obj_handle_t MTLCommandBuffer_renderCommandEncoder(obj_handle_t, WMTRenderPassInfo *info) {
+  passes.push_back(*info);
+  emit("render_begin");
+  return nil_encoder ? 0 : 101;
+}
+extern "C" obj_handle_t MTLCommandBuffer_computeCommandEncoder(obj_handle_t, bool concurrent) {
+  emit("compute_begin", {concurrent}); return nil_encoder ? 0 : 102;
+}
+extern "C" obj_handle_t MTLCommandBuffer_blitCommandEncoder(obj_handle_t) {
+  emit("blit_begin"); return 103;
+}
+extern "C" void MTLCommandEncoder_endEncoding(obj_handle_t encoder) {
+  if (encoder) emit("end", {encoder});
+}
+extern "C" void MTLRenderCommandEncoder_encodeCommands(obj_handle_t encoder, const wmtcmd_base *cmd) {
+  ++render_calls;
+  unsigned visited = 0;
+  while (cmd) {
+    assert(++visited < 100);
+    if (encoder) switch (cmd->type) {
+      case WMTRenderCommandNop: break;
+      case WMTRenderCommandSetVertexBuffer:
+      case WMTRenderCommandSetFragmentBuffer:
+      case WMTRenderCommandSetObjectBuffer:
+      case WMTRenderCommandSetMeshBuffer: {
+        auto p = reinterpret_cast<const wmtcmd_render_setbuffer *>(cmd);
+        emit("render_buffer", {p->type, p->buffer, p->offset, p->index}); break;
+      }
+      case WMTRenderCommandWaitForFence:
+      case WMTRenderCommandUpdateFence: {
+        auto p = reinterpret_cast<const wmtcmd_render_fence_op *>(cmd);
+        emit("render_fence", {p->type, p->fence, p->stages}); break;
+      }
+      case WMTRenderCommandUseResource: {
+        auto p = reinterpret_cast<const wmtcmd_render_useresource *>(cmd);
+        emit("resource", {p->resource, p->usage, p->stages}); break;
+      }
+      case WMTRenderCommandMemoryBarrier: {
+        auto p = reinterpret_cast<const wmtcmd_render_memory_barrier *>(cmd);
+        emit("barrier", {p->scope, p->stages_after, p->stages_before}); break;
+      }
+      case WMTRenderCommandDraw: {
+        auto p = reinterpret_cast<const wmtcmd_render_draw *>(cmd);
+        emit("draw", {p->primitive_type, p->vertex_start, p->vertex_count, p->instance_count, p->base_instance}); break;
+      }
+      default: assert(false && "Unexpected render command");
+    }
+    cmd = reinterpret_cast<const wmtcmd_base *>(cmd->next.ptr);
+  }
+}
+extern "C" void MTLComputeCommandEncoder_encodeCommands(obj_handle_t encoder, const wmtcmd_base *cmd) {
+  ++compute_calls;
+  unsigned visited = 0;
+  while (cmd) {
+    assert(++visited < 100);
+    if (encoder) switch (cmd->type) {
+      case WMTComputeCommandNop: break;
+      case WMTComputeCommandSetBuffer: {
+        auto p = reinterpret_cast<const wmtcmd_compute_setbuffer *>(cmd);
+        emit("compute_buffer", {p->buffer, p->offset, p->index}); break;
+      }
+      case WMTComputeCommandWaitForFence:
+      case WMTComputeCommandUpdateFence: {
+        auto p = reinterpret_cast<const wmtcmd_compute_fence_op *>(cmd);
+        emit("compute_fence", {p->type, p->fence}); break;
+      }
+      default: assert(false && "Unexpected compute command");
+    }
+    cmd = reinterpret_cast<const wmtcmd_base *>(cmd->next.ptr);
+  }
+}
+extern "C" void MTLBlitCommandEncoder_encodeCommands(obj_handle_t encoder, const wmtcmd_base *cmd) {
+  for (; cmd; cmd = reinterpret_cast<const wmtcmd_base *>(cmd->next.ptr)) {
+    assert(cmd->type == WMTBlitCommandWaitForFence || cmd->type == WMTBlitCommandUpdateFence);
+    auto p = reinterpret_cast<const wmtcmd_blit_fence_op *>(cmd);
+    if (encoder) emit("blit_fence", {p->type, p->fence});
+  }
+}
+extern "C" void MTLCommandBuffer_presentDrawable(obj_handle_t, obj_handle_t drawable) {
+  emit("present", {drawable});
+}
+extern "C" void MTLCommandBuffer_presentDrawableAfterMinimumDuration(obj_handle_t, obj_handle_t drawable, double after) {
+  emit("present_after", {drawable, std::bit_cast<uint64_t>(after)});
+}
+
+namespace dxmt {
+struct View {
+  obj_handle_t handle = 0;
+  explicit operator bool() const { return handle != 0; }
+  WMT::Texture texture() const { return ::texture(handle); }
+};
+struct GSDispatchArgumentsMarshal {
+  WMT::Buffer draw_arguments; uint64_t draw_arguments_va, max_object_threadgroups;
+  WMT::Buffer dispatch_arguments_buffer; uint64_t dispatch_arguments_va;
+  uint32_t vertex_count_per_warp;
+};
+struct TSDispatchArgumentsMarshal {
+  WMT::Buffer draw_arguments; uint64_t draw_arguments_va, max_object_threadgroups;
+  WMT::Buffer dispatch_arguments_buffer; uint64_t dispatch_arguments_va;
+  uint32_t control_point_count, patch_per_group;
+};
+struct ColorData {
+  View attachment; WMTLoadAction load_action{}; WMTStoreAction store_action{};
+  uint16_t level = 0, slice = 0; uint32_t depth_plane = 0; WMTClearColor clear_color{};
+  View resolve_attachment; uint16_t resolve_level = 0, resolve_slice = 0; uint32_t resolve_depth_plane = 0;
+};
+struct DepthData {
+  View attachment; WMTLoadAction load_action{}; WMTStoreAction store_action{};
+  uint16_t level = 0, slice = 0; uint32_t depth_plane = 0; double clear_depth = 0;
+};
+struct StencilData {
+  View attachment; WMTLoadAction load_action{}; WMTStoreAction store_action{};
+  uint16_t level = 0, slice = 0; uint32_t depth_plane = 0; uint32_t clear_stencil = 0;
+};
+struct EncoderData { FenceSet fence_wait, fence_update; };
+struct RenderEncoderData : EncoderData {
+  std::array<ColorData, 8> colors; DepthData depth; StencilData stencil;
+  uint8_t default_raster_sample_count = 1;
+  uint16_t render_target_array_length = 1;
+  uint32_t render_target_height = 1080, render_target_width = 1920;
+  bool use_visibility_result = false, use_emulated_so = false, use_geometry = false, use_tessellation = false;
+  WMT::Buffer allocated_argbuf = buffer(201);
+  FenceSet fence_wait_vertex, fence_update_vertex;
+  std::vector<GSDispatchArgumentsMarshal> gs_arg_marshal_tasks;
+  std::vector<TSDispatchArgumentsMarshal> ts_arg_marshal_tasks;
+  wmtcmd_render_nop cmd_head{}; wmtcmd_render_draw draw{};
+  ~RenderEncoderData() { ++destroyed; }
+};
+struct ComputeEncoderData : EncoderData {
+  WMT::Buffer allocated_argbuf = buffer(202);
+  wmtcmd_compute_nop cmd_head{}; wmtcmd_compute_setbuffer body{};
+  ~ComputeEncoderData() { ++destroyed; }
+};
+struct DXMTPresentMetadata { float edr_scale, max_content_luminance, max_display_luminance; };
+struct Presenter {
+  struct PresentationConfiguration { uint64_t revision; };
+  uint64_t result = 0;
+  WMT::MetalDrawable encodeCommands(WMT::CommandBuffer, WMT::Texture, const PresentationConfiguration &config,
+      DXMTPresentMetadata, uint32_t generation,
+      std::function<void(WMT::RenderCommandEncoder)> &&wait,
+      std::function<void(WMT::RenderCommandEncoder)> &&update) {
+    emit("present_encode", {config.revision, generation});
+    WMT::MetalDrawable drawable; drawable.handle = result;
+    if (result) { WMT::RenderCommandEncoder encoder; encoder.handle = 104; wait(encoder); update(encoder); }
+    return drawable;
+  }
+  void observePresentation(WMT::MetalDrawable drawable, uint64_t frame, uint64_t revision, uint32_t generation) {
+    emit("observe", {drawable.handle, frame, revision, generation});
+  }
+};
+struct PresentData : EncoderData {
+  Presenter *presenter;
+  std::shared_ptr<const Presenter::PresentationConfiguration> configuration;
+  WMT::Texture backbuffer = texture(203); DXMTPresentMetadata metadata{1, 1000, 600};
+  double after = 0; uint64_t frame_id = 10; uint32_t trace_generation = 11;
+  ~PresentData() { ++destroyed; }
+};
+struct Visibility { WMT::Buffer visibility_result_heap = buffer(204); };
+struct Readbacks { std::unique_ptr<Visibility> visibility = std::make_unique<Visibility>(); };
+struct Queue {
+  alignas(16) std::array<unsigned char, 8192> memory{};
+  std::tuple<void *, WMT::Buffer, uint64_t> AllocateArgumentBuffer(uint64_t seq, size_t bytes) {
+    assert(seq == 7 && bytes <= memory.size());
+    std::fill(memory.begin(), memory.end(), 0xa5);
+    return {memory.data(), buffer(205), 32};
+  }
+};
+struct Emulated {
+  Queue &queue;
+  void MarshalGSDispatchArguments(WMT::RenderCommandEncoder, WMT::Buffer b, uint64_t offset) {
+    struct Task { uint64_t src, dst, cap; uint32_t vertices, end; };
+    auto tasks = reinterpret_cast<const Task *>(queue.memory.data());
+    assert(b.handle == 205 && offset == 32);
+    for (unsigned i = 0; i < 2; ++i) {
+      assert(tasks[i].src == 1000 + i && tasks[i].dst == 2000 + i && tasks[i].cap == 3000 + i);
+      assert(tasks[i].vertices == 32 + i && tasks[i].end == (i == 1));
+    }
+    emit("marshal_gs");
+  }
+  void MarshalTSDispatchArguments(WMT::RenderCommandEncoder, WMT::Buffer b, uint64_t offset) {
+    struct Task { uint64_t src, dst, cap; uint16_t points, patches; uint32_t end; };
+    auto tasks = reinterpret_cast<const Task *>(queue.memory.data());
+    assert(b.handle == 205 && offset == 32);
+    for (unsigned i = 0; i < 2; ++i) {
+      assert(tasks[i].src == 4000 + i && tasks[i].dst == 5000 + i && tasks[i].cap == 6000 + i);
+      assert(tasks[i].points == 3 + i && tasks[i].patches == 4 + i && tasks[i].end == (i == 1));
+    }
+    emit("marshal_ts");
+  }
+};
+struct Harness {
+  Queue queue_; uint64_t seq_id_ = 7;
+  std::array<WMT::Fence, 256> fence_pool_;
+  Harness() { for (unsigned i = 0; i < fence_pool_.size(); ++i) fence_pool_[i].handle = 100 + i; }
+  void render(RenderEncoderData *input) {
+    void *current = input;
+    WMT::CommandBuffer cmdbuf; cmdbuf.handle = 100;
+    Readbacks readbacks; Emulated emulated_cmd{queue_};
+    switch (0) { /* RENDER_ARM */ }
+  }
+  void compute(ComputeEncoderData *input) {
+    void *current = input;
+    WMT::CommandBuffer cmdbuf; cmdbuf.handle = 100;
+    switch (0) { /* COMPUTE_ARM */ }
+  }
+  void present(PresentData *input) {
+    void *current = input;
+    WMT::CommandBuffer cmdbuf; cmdbuf.handle = 100;
+    switch (0) { /* PRESENT_ARM */ }
+  }
+};
+} // namespace dxmt
+
+static void reset() { events.clear(); passes.clear(); render_calls = compute_calls = destroyed = 0; }
+static dxmt::RenderEncoderData *make_render(unsigned flags) {
+  using namespace dxmt;
+  auto d = new RenderEncoderData;
+  d->use_geometry = flags & 1; d->use_tessellation = flags & 2; d->use_emulated_so = flags & 4;
+  d->use_visibility_result = flags & 8;
+  d->default_raster_sample_count = 4;
+  d->render_target_array_length = 2;
+  for (unsigned i : {0, 2, 7}) {
+    auto &c = d->colors[i]; c.attachment.handle = 300 + i;
+    c.load_action = WMTLoadActionClear; c.store_action = WMTStoreActionStoreAndMultisampleResolve;
+    c.level = i + 1; c.slice = i + 2; c.depth_plane = i + 3;
+    c.clear_color = {0.1 + i, 0.2 + i, 0.3 + i, 0.4 + i};
+    c.resolve_attachment.handle = 400 + i; c.resolve_level = i + 4;
+    c.resolve_slice = i + 5; c.resolve_depth_plane = i + 6;
+  }
+  d->depth.attachment.handle = 500; d->depth.load_action = WMTLoadActionLoad;
+  d->depth.store_action = WMTStoreActionStore; d->depth.level = 2; d->depth.slice = 3;
+  d->depth.depth_plane = 4; d->depth.clear_depth = 0.75;
+  d->stencil.attachment.handle = 500; d->stencil.load_action = WMTLoadActionClear;
+  d->stencil.store_action = WMTStoreActionDontCare; d->stencil.level = 5; d->stencil.slice = 6;
+  d->stencil.depth_plane = 7; d->stencil.clear_stencil = 123;
+  d->fence_wait.set(1); d->fence_wait.set(2); d->fence_wait_vertex.set(2); d->fence_wait_vertex.set(3);
+  d->fence_update.set(4); d->fence_update.set(5); d->fence_update_vertex.set(5); d->fence_update_vertex.set(6);
+  if (d->use_geometry) for (unsigned i = 0; i < 2; ++i)
+    d->gs_arg_marshal_tasks.push_back({buffer(600 + i), 1000 + i, 3000 + i, buffer(700 + i), 2000 + i, 32 + i});
+  if (d->use_tessellation) for (unsigned i = 0; i < 2; ++i)
+    d->ts_arg_marshal_tasks.push_back({buffer(800 + i), 4000 + i, 6000 + i, buffer(900 + i), 5000 + i, 3 + i, 4 + i});
+  d->cmd_head.type = WMTRenderCommandNop; d->cmd_head.next.set(&d->draw);
+  d->draw.type = WMTRenderCommandDraw; d->draw.next.set(nullptr);
+  d->draw.primitive_type = WMTPrimitiveTypeTriangle; d->draw.vertex_start = 9;
+  d->draw.vertex_count = 12; d->draw.instance_count = 2; d->draw.base_instance = 3;
+  return d;
+}
+static void check_pass(const WMTRenderPassInfo &p, unsigned flags) {
+  assert(p.default_raster_sample_count == 4 && p.render_target_array_length == 2);
+  assert(p.render_target_width == 1920 && p.render_target_height == 1080);
+  assert(p.visibility_buffer == ((flags & 8) ? 204 : 0));
+  for (unsigned i = 0; i < 8; ++i) {
+    const auto &c = p.colors[i];
+    if (i != 0 && i != 2 && i != 7) {
+      assert(c.texture == 0 && c.resolve_texture == 0 && c.clear_color.a == 1);
+      continue;
+    }
+    assert(c.texture == 300 + i && c.resolve_texture == 400 + i);
+    assert(c.level == i + 1 && c.slice == i + 2 && c.depth_plane == i + 3);
+    assert(c.resolve_level == i + 4 && c.resolve_slice == i + 5 && c.resolve_depth_plane == i + 6);
+    assert(c.load_action == WMTLoadActionClear && c.store_action == WMTStoreActionStoreAndMultisampleResolve);
+    assert(c.clear_color.r == 0.1 + i && c.clear_color.g == 0.2 + i && c.clear_color.b == 0.3 + i && c.clear_color.a == 0.4 + i);
+  }
+  assert(p.depth.texture == 500 && p.depth.level == 2 && p.depth.slice == 3 && p.depth.depth_plane == 4);
+  assert(p.depth.clear_depth == 0.75 && p.depth.load_action == WMTLoadActionLoad && p.depth.store_action == WMTStoreActionStore);
+  assert(p.stencil.texture == 500 && p.stencil.level == 5 && p.stencil.slice == 6 && p.stencil.depth_plane == 7);
+  assert(p.stencil.clear_stencil == 123 && p.stencil.load_action == WMTLoadActionClear && p.stencil.store_action == WMTStoreActionDontCare);
+}
+int main() {
+  using namespace dxmt;
+  Harness h;
+  for (unsigned flags = 0; flags < 16; ++flags) {
+    for (bool fail : {false, true}) {
+      reset(); nil_encoder = fail;
+      auto d = make_render(flags); h.render(d); ::operator delete(d);
+      assert(destroyed == 1 && passes.size() == 1); check_pass(passes[0], flags);
+      if (fail) {
+        std::vector<Event> expected = {{"render_begin"}};
+        if (flags & 1) expected.push_back({"marshal_gs"});
+        if (flags & 2) expected.push_back({"marshal_ts"});
+        assert(events == expected);
+        continue;
+      }
+      std::vector<Event> bindings;
+      for (const auto &e : events) if (!std::strcmp(e.name, "render_buffer")) bindings.push_back(e);
+      std::vector<Event> expected;
+      auto b = [&](unsigned type, unsigned index) { expected.push_back({"render_buffer", {type, 201, 0, index}}); };
+      b(WMTRenderCommandSetVertexBuffer, SM50_BINDING_INDEX_VERTEX_BUFFER);
+      b(WMTRenderCommandSetVertexBuffer, SM50_BINDING_INDEX_CONSTANT_BUFFER);
+      b(WMTRenderCommandSetVertexBuffer, SM50_BINDING_INDEX_ARGUMENT_TABLE);
+      if (flags & 4) b(WMTRenderCommandSetVertexBuffer, SM50_BINDING_INDEX_STREAM_OUTPUT0);
+      b(WMTRenderCommandSetFragmentBuffer, SM50_BINDING_INDEX_CONSTANT_BUFFER);
+      b(WMTRenderCommandSetFragmentBuffer, SM50_BINDING_INDEX_ARGUMENT_TABLE);
+      if (flags & 3) {
+        b(WMTRenderCommandSetObjectBuffer, SM50_BINDING_INDEX_VERTEX_BUFFER);
+        b(WMTRenderCommandSetObjectBuffer, SM50_BINDING_INDEX_DRAW_ARGUMENTS);
+        if (flags & 2) { b(WMTRenderCommandSetObjectBuffer, SM50_BINDING_INDEX_CONSTANT_BUFFER2); b(WMTRenderCommandSetObjectBuffer, SM50_BINDING_INDEX_ARGUMENT_TABLE2); }
+        b(WMTRenderCommandSetObjectBuffer, SM50_BINDING_INDEX_CONSTANT_BUFFER);
+        b(WMTRenderCommandSetObjectBuffer, SM50_BINDING_INDEX_ARGUMENT_TABLE);
+        b(WMTRenderCommandSetMeshBuffer, SM50_BINDING_INDEX_CONSTANT_BUFFER);
+        b(WMTRenderCommandSetMeshBuffer, SM50_BINDING_INDEX_ARGUMENT_TABLE);
+      }
+      assert(bindings == expected);
+      // Duplicated fence IDs must retain the production stage precedence.
+      const std::vector<Event> waits = {
+        {"render_fence", {WMTRenderCommandWaitForFence, 101, WMTRenderStageFragment}},
+        {"render_fence", {WMTRenderCommandWaitForFence, 102, WMTRenderStagePreRaster}},
+        {"render_fence", {WMTRenderCommandWaitForFence, 103, WMTRenderStagePreRaster}}};
+      assert(std::equal(waits.begin(), waits.end(), events.begin() + 1));
+      assert(std::equal(expected.begin(), expected.end(), events.begin() + 1 + waits.size()));
+      const std::vector<Event> updates = {
+        {"render_fence", {WMTRenderCommandUpdateFence, 104, WMTRenderStageFragment}},
+        {"render_fence", {WMTRenderCommandUpdateFence, 105, WMTRenderStageFragment}},
+        {"render_fence", {WMTRenderCommandUpdateFence, 106, WMTRenderStagePreRaster}}, {"end", {101}}};
+      assert(std::equal(updates.begin(), updates.end(), events.end() - updates.size()));
+      auto draw = std::find_if(events.begin(), events.end(), [](const auto &e) { return !std::strcmp(e.name, "draw"); });
+      assert(draw != events.end() && draw->args[1] == 9 && draw->args[2] == 12 && draw->args[3] == 2 && draw->args[4] == 3);
+      auto barrier = std::find_if(events.begin(), events.end(), [](const auto &e) { return !std::strcmp(e.name, "barrier"); });
+      if (flags & 3) {
+        assert(barrier != events.end() && barrier < draw);
+        assert(barrier->args[0] == WMTBarrierScopeBuffers && barrier->args[1] == WMTRenderStageVertex);
+        assert(barrier->args[2] == (WMTRenderStageVertex | WMTRenderStageMesh | WMTRenderStageObject));
+      } else assert(barrier == events.end());
+      auto gs = std::find_if(events.begin(), events.end(), [](const auto &e) { return !std::strcmp(e.name, "marshal_gs"); });
+      auto ts = std::find_if(events.begin(), events.end(), [](const auto &e) { return !std::strcmp(e.name, "marshal_ts"); });
+      if (flags & 1) assert(gs != events.end() && gs < barrier); else assert(gs == events.end());
+      if (flags & 2) assert(ts != events.end() && ts < barrier); else assert(ts == events.end());
+      if ((flags & 3) == 3) assert(gs < ts);
+      // Setup has exactly one bridge call, irrespective of feature flags.
+      unsigned optional_calls = ((flags & 1) ? 4 : 0) + ((flags & 2) ? 4 : 0) + ((flags & 3) ? 1 : 0);
+      assert(render_calls == 8 + optional_calls);
+    }
+  }
+  for (bool fail : {false, true}) {
+    reset(); nil_encoder = fail;
+    auto d = new ComputeEncoderData;
+    d->fence_wait.set(1); d->fence_update.set(2);
+    d->cmd_head.type = WMTComputeCommandNop; d->cmd_head.next.set(&d->body);
+    d->body.type = WMTComputeCommandSetBuffer; d->body.next.set(nullptr);
+    d->body.buffer = 999; d->body.offset = 16; d->body.index = 9;
+    h.compute(d); ::operator delete(d);
+    assert(destroyed == 1 && compute_calls == 4);
+    if (fail) { assert(events.size() == 1); continue; }
+    const std::vector<Event> expected = {
+      {"compute_begin", {1}}, {"compute_fence", {WMTComputeCommandWaitForFence, 101}},
+      {"compute_buffer", {202, 0, SM50_BINDING_INDEX_CONSTANT_BUFFER}},
+      {"compute_buffer", {202, 0, SM50_BINDING_INDEX_ARGUMENT_TABLE}},
+      {"compute_buffer", {999, 16, 9}}, {"compute_fence", {WMTComputeCommandUpdateFence, 102}}, {"end", {102}}};
+    assert(events == expected);
+  }
+  nil_encoder = false;
+  for (bool config : {false, true}) for (bool drawable : {false, true}) for (double after : {0.0, 0.02}) {
+    reset(); Presenter presenter; presenter.result = drawable ? 303 : 0;
+    auto d = new PresentData; d->presenter = &presenter; d->after = after;
+    if (config) d->configuration = std::make_shared<Presenter::PresentationConfiguration>(Presenter::PresentationConfiguration{42});
+    d->fence_wait.set(1); d->fence_update.set(2);
+    h.present(d); ::operator delete(d); assert(destroyed == 1);
+    std::vector<Event> expected;
+    if (config) expected.push_back({"present_encode", {42, 11}});
+    if (config && drawable) {
+      expected.push_back({"render_fence", {WMTRenderCommandWaitForFence, 101, WMTRenderStageFragment}});
+      expected.push_back({"render_fence", {WMTRenderCommandUpdateFence, 102, WMTRenderStageFragment}});
+    }
+    expected.push_back({"observe", {config && drawable ? 303u : 0u, 10, config ? 42u : 0u, 11}});
+    if (config && drawable) {
+      if (after > 0) expected.push_back({"present_after", {303, std::bit_cast<uint64_t>(after)}});
+      else expected.push_back({"present", {303}});
+    } else {
+      expected.push_back({"blit_begin"});
+      expected.push_back({"blit_fence", {WMTBlitCommandWaitForFence, 101}});
+      expected.push_back({"blit_fence", {WMTBlitCommandUpdateFence, 102}});
+      expected.push_back({"end", {103}});
+    }
+    assert(events == expected);
+  }
+  std::cout << "PASS: production render/compute/Present arms; 16 GS/TS/SO/visibility combinations, MRT/depth/stencil/MSAA fields, stage precedence, nil encoders, fallback fences and present timing. CPU only.\n";
+}

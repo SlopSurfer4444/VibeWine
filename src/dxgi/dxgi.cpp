@@ -2,8 +2,23 @@
 #include "log/log.hpp"
 #include "util_env.hpp"
 #include "winemetal.h"
+#include "wsi_platform_win32.hpp"
+#include <atomic>
 #include <mutex>
 #include <utility>
+
+// One allocator in DXGI serves the separately linked D3D11/D3D12 WSI copies.
+// Reserve zero and the maximum value; saturation never reuses a capture token.
+static std::atomic<ULONG_PTR> nextFullscreenToken{1};
+extern "C" HANDLE __stdcall DXMTAllocateFullscreenToken() {
+  ULONG_PTR value = nextFullscreenToken.load(std::memory_order_relaxed);
+  while (value != ~ULONG_PTR(0)) {
+    if (nextFullscreenToken.compare_exchange_weak(value, value + 1,
+                                                 std::memory_order_relaxed))
+      return reinterpret_cast<HANDLE>(value);
+  }
+  return nullptr;
+}
 
 namespace dxmt {
 Logger Logger::s_instance("dxgi.log");

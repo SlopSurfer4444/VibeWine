@@ -2,6 +2,7 @@
 
 #include "Metal.hpp"
 #include "rc/util_rc_ptr.hpp"
+#include "thread.hpp"
 #include "wsi_platform.hpp"
 #include <atomic>
 #include <cassert>
@@ -87,13 +88,15 @@ public:
   }
   void
   decRef() {
-    if (refcount_.fetch_sub(1u, std::memory_order_release) == 1u)
+    if (refcount_.fetch_sub(1u, std::memory_order_acq_rel) == 1u)
       delete this;
   }
 
   void
   begin(uint64_t seqId, unsigned offset) {
+    std::lock_guard<dxmt::mutex> lock(mutex_);
     accumulated_value_ = 0;
+    seq_id_issued = 0;
     seq_id_begin = seqId;
     occlusion_counter_begin = offset;
     seq_id_end = ~0uLL;
@@ -102,6 +105,7 @@ public:
 
   void
   end(uint64_t seqId, unsigned offset) {
+    std::lock_guard<dxmt::mutex> lock(mutex_);
     seq_id_end = seqId;
     occlusion_counter_end = offset;
     if (seq_id_begin == seq_id_end && occlusion_counter_begin == occlusion_counter_end) {
@@ -110,18 +114,21 @@ public:
   }
 
   uint64_t queryEndAt() {
+    std::lock_guard<dxmt::mutex> lock(mutex_);
     return seq_id_end;
   };
 
   void
   issue(uint64_t seqId, uint64_t const *readbackBuffer, unsigned numResults) {
+    std::lock_guard<dxmt::mutex> lock(mutex_);
     assert(seqId >= seq_id_begin);
     assert(seqId <= seq_id_end);
-    uint64_t const *start = seqId == seq_id_begin ? readbackBuffer + occlusion_counter_begin : readbackBuffer;
-    uint64_t const *end = seqId == seq_id_end ? readbackBuffer + occlusion_counter_end : readbackBuffer + numResults;
+    unsigned start = seqId == seq_id_begin ? occlusion_counter_begin : 0;
+    unsigned end = seqId == seq_id_end ? occlusion_counter_end : numResults;
     assert(start <= end);
+    assert(end <= numResults);
     while (start != end) {
-      accumulated_value_ += *start;
+      accumulated_value_ += readbackBuffer[start];
       start++;
     }
     seq_id_issued = seqId;
@@ -129,7 +136,8 @@ public:
 
   bool
   getValue(uint64_t *value) {
-    if (seq_id_end <= seq_id_issued) {
+    std::lock_guard<dxmt::mutex> lock(mutex_);
+    if (seq_id_end != ~0uLL && seq_id_end <= seq_id_issued) {
       *value = accumulated_value_;
       return true;
     }
@@ -138,6 +146,7 @@ public:
 
   void
   reset() {
+    std::lock_guard<dxmt::mutex> lock(mutex_);
     accumulated_value_ = 0;
     seq_id_begin = ~0uLL;
     occlusion_counter_begin = ~0uLL;
@@ -147,6 +156,11 @@ public:
   };
 
 private:
+  // Encoder metadata and finish-thread accumulation are one state. Never take
+  // the device mutex here: API callers may hold it while waiting for the GPU.
+  // Each in-flight API generation owns a distinct Rc query; reset/rebegin is
+  // only valid after that query's readbacks have retired.
+  dxmt::mutex mutex_;
   uint64_t accumulated_value_ = 0;
   uint64_t seq_id_begin = ~0uLL;
   uint64_t occlusion_counter_begin = ~0uLL;
@@ -164,6 +178,9 @@ public:
       seq_id(seq_id),
       num_results(num_results),
       queries(queries) {
+        // Empty chunks still retire query sequence IDs, but need no GPU buffer.
+        if (!num_results)
+          return;
         visibility_result_heap_info.options = WMTResourceHazardTrackingModeUntracked;
         visibility_result_heap_info.memory.set(nullptr);
 #ifdef __i386__
@@ -187,7 +204,7 @@ public:
   uint64_t seq_id;
   uint64_t num_results;
   std::vector<Rc<VisibilityResultQuery>> queries;
-  WMTBufferInfo visibility_result_heap_info;
+  WMTBufferInfo visibility_result_heap_info = {};
   WMT::Reference<WMT::Buffer> visibility_result_heap;
 };
 
@@ -203,26 +220,27 @@ public:
   }
   void
   decRef() {
-    if (refcount_.fetch_sub(1u, std::memory_order_release) == 1u)
+    if (refcount_.fetch_sub(1u, std::memory_order_acq_rel) == 1u)
       delete this;
   }
 
   bool
   getValue(uint64_t *value) {
-    if (cached_value_ == ~0ull)
+    auto sampled_data = cached_value_.load(std::memory_order_acquire);
+    if (sampled_data == ~0ull)
       return false;
 
-    *value = cached_value_;
+    *value = sampled_data;
     return true;
   }
 
   void
   issue(uint64_t sampled_data) {
-    cached_value_ = sampled_data;
+    cached_value_.store(sampled_data, std::memory_order_release);
   }
 
 private:
-  uint64_t cached_value_ = ~0ull;
+  std::atomic<uint64_t> cached_value_ = {~0ull};
   std::atomic<uint32_t> refcount_ = {0u};
 };
 

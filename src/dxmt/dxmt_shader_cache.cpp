@@ -1,6 +1,7 @@
 #include "dxmt_shader_cache.hpp"
 #include "util_env.hpp"
 #include "util_string.hpp"
+#include "../d3d11/cs2_trace.hpp"
 
 namespace dxmt {
 
@@ -19,6 +20,7 @@ ShaderCache::getInstance(WMTMetalVersion version) {
 }
 
 ShaderCache::ShaderCache(WMTMetalVersion metal_version) {
+  trace_serial_ = cs2trace::newSerial();
   if (env::getEnvVar("DXMT_SHADER_CACHE") == "0")
     return;
   std::string path;
@@ -29,8 +31,31 @@ ShaderCache::ShaderCache(WMTMetalVersion metal_version) {
     path = str::format("dxmt/", env::getExeName(), "/");
   }
   path += str::format("shaders_", (unsigned int)metal_version, ".db");
-  scache_writer_ = WMT::CacheWriter::alloc_init(path.c_str(), kDXMTShaderCacheVersion);
-  scache_reader_ = WMT::CacheReader::alloc_init(path.c_str(), kDXMTShaderCacheVersion);
+  const auto initialize = [&](uint32_t writer) {
+    const auto trace = cs2trace::beginDetail(trace_serial_);
+    const auto start = trace.gen ? cs2trace::now() : 0;
+    uint32_t status = WMTCacheStatusUnavailable;
+    auto result = Cache_alloc_init_checked(path.c_str(), kDXMTShaderCacheVersion, writer, &status);
+    if (trace.gen)
+      cs2trace::detailRecord(trace.gen, 94, start, cs2trace::now(), trace_serial_, status, trace.serial, 0);
+    return result;
+  };
+  writer_state_->writer = WMT::Reference<WMT::CacheWriter>(initialize(1));
+  scache_reader_ = WMT::Reference<WMT::CacheReader>(initialize(0));
+}
+
+WMT::Reference<WMT::DispatchData>
+ShaderCache::read(const void *key, uint64_t length) {
+  if (!scache_reader_)
+    return {};
+  std::lock_guard<dxmt::mutex> lock(scache_reader_mutex_);
+  const auto trace = cs2trace::beginDetail(trace_serial_);
+  const auto start = trace.gen ? cs2trace::now() : 0;
+  uint32_t status = WMTCacheStatusUnavailable;
+  auto data = scache_reader_.get_checked(key, length, status);
+  if (trace.gen)
+    cs2trace::detailRecord(trace.gen, 93, start, cs2trace::now(), trace_serial_, status, trace.serial, 0);
+  return data;
 }
 
 } // namespace dxmt

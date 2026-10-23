@@ -140,11 +140,18 @@ bool setWindowMode(HMONITOR hMonitor, HWND hWindow, const WsiMode &mode) {
 
 static constexpr WCHAR fullscreenStateProperty[] = L"DXMTFullscreenState";
 
-static bool ownsFullscreenState(HWND window, const DXMTWindowState *state) {
-  return ::IsWindow(window) && state->captured && state->owner == window &&
-      ::GetPropW(window, fullscreenStateProperty) == reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(state));
+
+static bool ownsFullscreenState(HWND window, const DXMTWindowState *state, HANDLE token) {
+  return token && state->capture_token == token && ::IsWindow(window) &&
+      state->captured && state->owner == window &&
+      ::GetPropW(window, fullscreenStateProperty) == token;
 }
 
+static void retireFullscreenCapture(DXMTWindowState *state, HANDLE token) {
+  // A synchronous callback may already have recaptured this same storage.
+  if (state->capture_token == token)
+    *state = {};
+}
 
 bool enterFullscreenMode(HMONITOR hMonitor, HWND hWindow,
                          DXMTWindowState *pState,
@@ -160,11 +167,14 @@ bool enterFullscreenMode(HMONITOR hMonitor, HWND hWindow,
       !getWindowLongChecked(hWindow, GWL_EXSTYLE, &saved.exstyle))
     return false;
 
-  // Do not steal another swapchain's cleanup obligation on this window.
-  if (::GetPropW(hWindow, fullscreenStateProperty) ||
-      !::SetPropW(hWindow, fullscreenStateProperty, reinterpret_cast<HANDLE>(pState)))
+  // Do not steal another capture or mutate the window/state if IDs are exhausted.
+  if (::GetPropW(hWindow, fullscreenStateProperty))
+    return false;
+  const HANDLE token = DXMTAllocateFullscreenToken();
+  if (!token || !::SetPropW(hWindow, fullscreenStateProperty, token))
     return false;
   saved.owner = hWindow;
+  saved.capture_token = token;
   saved.captured = true;
   *pState = saved;
 
@@ -174,36 +184,40 @@ bool enterFullscreenMode(HMONITOR hMonitor, HWND hWindow,
   escape.PrivateDriverDataSize = sizeof(rect);
   escape.hContext = HandleToUlong(hWindow);
   pState->present_rect_pending = true;
-  if (!ownsFullscreenState(hWindow, pState) || D3DKMTEscape(&escape) != 0)
+  if (!ownsFullscreenState(hWindow, pState, token) || D3DKMTEscape(&escape) != 0 ||
+      !ownsFullscreenState(hWindow, pState, token))
     return false;
 
-  if (!ownsFullscreenState(hWindow, pState) ||
-      !setWindowLongChecked(hWindow, GWL_STYLE, saved.style & ~WS_OVERLAPPEDWINDOW))
+  if (!ownsFullscreenState(hWindow, pState, token) ||
+      !setWindowLongChecked(hWindow, GWL_STYLE, saved.style & ~WS_OVERLAPPEDWINDOW) ||
+      !ownsFullscreenState(hWindow, pState, token))
     return false;
   pState->style_pending = true;
   pState->position_pending = true;
 
-  if (!ownsFullscreenState(hWindow, pState) ||
-      !setWindowLongChecked(hWindow, GWL_EXSTYLE, saved.exstyle & ~WS_EX_OVERLAPPEDWINDOW))
+  if (!ownsFullscreenState(hWindow, pState, token) ||
+      !setWindowLongChecked(hWindow, GWL_EXSTYLE, saved.exstyle & ~WS_EX_OVERLAPPEDWINDOW) ||
+      !ownsFullscreenState(hWindow, pState, token))
     return false;
   pState->exstyle_pending = true;
 
-  if (!ownsFullscreenState(hWindow, pState) ||
+  if (!ownsFullscreenState(hWindow, pState, token) ||
       !::SetWindowPos(hWindow, HWND_TOPMOST, rect.left, rect.top,
                      rect.right - rect.left, rect.bottom - rect.top,
                      SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE))
     return false;
   // SetWindowPos can synchronously dispatch code that destroys the HWND.
-  return ownsFullscreenState(hWindow, pState);
+  return ownsFullscreenState(hWindow, pState, token);
 }
 
 bool leaveFullscreenMode(HWND hWindow, DXMTWindowState *pState,
                          bool restoreCoordinates) {
   if (!pState->captured)
     return true;
-  if (!ownsFullscreenState(hWindow, pState)) {
+  const HANDLE token = pState->capture_token;
+  if (!ownsFullscreenState(hWindow, pState, token)) {
     // The original window is gone; never restore an HWND recycled for another.
-    *pState = {};
+    retireFullscreenCapture(pState, token);
     return true;
   }
 
@@ -214,34 +228,42 @@ bool leaveFullscreenMode(HWND hWindow, DXMTWindowState *pState,
     LONG current = 0;
     if (!getWindowLongChecked(hWindow, GWL_STYLE, &current)) {
       success = false;
+    } else if (!ownsFullscreenState(hWindow, pState, token)) {
+      retireFullscreenCapture(pState, token);
+      return true;
     } else if ((current & ~WS_VISIBLE) != (pState->style & ~(WS_VISIBLE | WS_OVERLAPPEDWINDOW))) {
       pState->style_pending = false;
-    } else if (ownsFullscreenState(hWindow, pState) &&
-               setWindowLongChecked(hWindow, GWL_STYLE, pState->style)) {
+    } else if (ownsFullscreenState(hWindow, pState, token) &&
+               setWindowLongChecked(hWindow, GWL_STYLE, pState->style) &&
+               ownsFullscreenState(hWindow, pState, token)) {
       pState->style_pending = false;
     } else {
       success = false;
     }
   }
-  if (!ownsFullscreenState(hWindow, pState)) {
-    *pState = {};
+  if (!ownsFullscreenState(hWindow, pState, token)) {
+    retireFullscreenCapture(pState, token);
     return true;
   }
   if (pState->exstyle_pending) {
     LONG current = 0;
     if (!getWindowLongChecked(hWindow, GWL_EXSTYLE, &current)) {
       success = false;
+    } else if (!ownsFullscreenState(hWindow, pState, token)) {
+      retireFullscreenCapture(pState, token);
+      return true;
     } else if ((current & ~WS_EX_TOPMOST) != (pState->exstyle & ~(WS_EX_TOPMOST | WS_EX_OVERLAPPEDWINDOW))) {
       pState->exstyle_pending = false;
-    } else if (ownsFullscreenState(hWindow, pState) &&
-               setWindowLongChecked(hWindow, GWL_EXSTYLE, pState->exstyle)) {
+    } else if (ownsFullscreenState(hWindow, pState, token) &&
+               setWindowLongChecked(hWindow, GWL_EXSTYLE, pState->exstyle) &&
+               ownsFullscreenState(hWindow, pState, token)) {
       pState->exstyle_pending = false;
     } else {
       success = false;
     }
   }
-  if (!ownsFullscreenState(hWindow, pState)) {
-    *pState = {};
+  if (!ownsFullscreenState(hWindow, pState, token)) {
+    retireFullscreenCapture(pState, token);
     return true;
   }
   if (pState->present_rect_pending) {
@@ -251,13 +273,13 @@ bool leaveFullscreenMode(HWND hWindow, DXMTWindowState *pState,
     escape.pPrivateDriverData = &empty;
     escape.PrivateDriverDataSize = sizeof(empty);
     escape.hContext = HandleToUlong(hWindow);
-    if (D3DKMTEscape(&escape) == 0)
+    if (D3DKMTEscape(&escape) == 0 && ownsFullscreenState(hWindow, pState, token))
       pState->present_rect_pending = false;
     else
       success = false;
   }
-  if (!ownsFullscreenState(hWindow, pState)) {
-    *pState = {};
+  if (!ownsFullscreenState(hWindow, pState, token)) {
+    retireFullscreenCapture(pState, token);
     return true;
   }
   if (pState->position_pending) {
@@ -268,35 +290,40 @@ bool leaveFullscreenMode(HWND hWindow, DXMTWindowState *pState,
     if (::SetWindowPos(hWindow,
                       (pState->exstyle & WS_EX_TOPMOST) ? HWND_TOPMOST : HWND_NOTOPMOST,
                       rect.left, rect.top, rect.right - rect.left,
-                      rect.bottom - rect.top, flags))
+                      rect.bottom - rect.top, flags) &&
+        ownsFullscreenState(hWindow, pState, token))
       pState->position_pending = false;
     else
       success = false;
   }
 
+  if (!ownsFullscreenState(hWindow, pState, token)) {
+    retireFullscreenCapture(pState, token);
+    return true;
+  }
   if (!pState->style_pending && !pState->exstyle_pending &&
       !pState->present_rect_pending && !pState->position_pending) {
-    if (ownsFullscreenState(hWindow, pState)) {
+    if (ownsFullscreenState(hWindow, pState, token)) {
       ::RemovePropW(hWindow, fullscreenStateProperty);
-      if (::GetPropW(hWindow, fullscreenStateProperty) == reinterpret_cast<HANDLE>(pState))
+      if (::GetPropW(hWindow, fullscreenStateProperty) == token)
         return false;
     }
-    *pState = {};
+    retireFullscreenCapture(pState, token);
   }
   return success;
 }
 
 bool detachFullscreenState(HWND hWindow, const DXMTWindowState *pState) {
-  // Only remove this object's token. Destroyed/recycled windows and a marker
+  const HANDLE token = pState->capture_token;
+  // Only remove this capture's token. Destroyed/recycled windows and a marker
   // installed by another owner must not be modified during terminal cleanup.
-  if (!::IsWindow(hWindow) || ::GetPropW(hWindow, fullscreenStateProperty) !=
-      reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(pState)))
+  if (!token || !::IsWindow(hWindow) ||
+      ::GetPropW(hWindow, fullscreenStateProperty) != token)
     return true;
   ::RemovePropW(hWindow, fullscreenStateProperty);
   // Removal failure must be visible; never claim the physical mutations were
   // restored, or delete a replacement marker installed during an API callback.
-  return ::GetPropW(hWindow, fullscreenStateProperty) !=
-      reinterpret_cast<HANDLE>(const_cast<DXMTWindowState *>(pState));
+  return ::GetPropW(hWindow, fullscreenStateProperty) != token;
 }
 
 static bool displayCaptureCleanupComplete() {
@@ -364,8 +391,15 @@ bool isWindow(HWND hWindow) { return ::IsWindow(hWindow); }
 
 bool updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow,
                             bool forceTopmost) {
+  // Snapshot this capture generation, independently of state storage lifetime.
+  // Reentrant leave/reenter on a recycled HWND receives a fresh opaque token.
+  const HANDLE owner = ::GetPropW(hWindow, fullscreenStateProperty);
+  const auto ownsWindow = [&] {
+    return owner && ::IsWindow(hWindow) &&
+        ::GetPropW(hWindow, fullscreenStateProperty) == owner;
+  };
   RECT bounds = {};
-  if (!::IsWindow(hWindow) || !wsi::getDesktopCoordinates(hMonitor, &bounds))
+  if (!ownsWindow() || !wsi::getDesktopCoordinates(hMonitor, &bounds))
     return false;
 
   D3DKMT_ESCAPE escape = {};
@@ -373,7 +407,7 @@ bool updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow,
   escape.pPrivateDriverData = &bounds;
   escape.PrivateDriverDataSize = sizeof(bounds);
   escape.hContext = HandleToUlong(hWindow);
-  if (D3DKMTEscape(&escape) != 0 || !::IsWindow(hWindow))
+  if (!ownsWindow() || D3DKMTEscape(&escape) != 0 || !ownsWindow())
     return false;
 
   // The fullscreen capture retains position/present-rect cleanup after a
@@ -384,7 +418,7 @@ bool updateFullscreenWindow(HMONITOR hMonitor, HWND hWindow,
                        SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE)
       : ::MoveWindow(hWindow, bounds.left, bounds.top, bounds.right - bounds.left,
                      bounds.bottom - bounds.top, TRUE);
-  return positioned && ::IsWindow(hWindow);
+  return positioned && ownsWindow();
 }
 
 bool isForeground(HWND hWindow) {

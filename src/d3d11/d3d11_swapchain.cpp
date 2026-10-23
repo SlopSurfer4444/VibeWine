@@ -30,6 +30,7 @@
 #include <iterator>
 #include <string_view>
 #include <cfloat>
+#include <cstring>
 #include <format>
 
 /**
@@ -1285,15 +1286,28 @@ public:
   HRESULT STDMETHODCALLTYPE SetHDRMetaData(DXGI_HDR_METADATA_TYPE Type,
                                            UINT Size,
                                            void *pMetaData) override {
-                                            return S_OK;
     if (Type == DXGI_HDR_METADATA_TYPE_NONE) {
+      if (Size != 0)
+        return E_INVALIDARG;
       presenter->changeHDRMetadata(nullptr);
       return S_OK;
     }
     if (Type == DXGI_HDR_METADATA_TYPE_HDR10) {
-      if (Size != sizeof(WMTHDRMetadata))
+      if (Size != sizeof(DXGI_HDR_METADATA_HDR10) || !pMetaData)
         return E_INVALIDARG;
-      presenter->changeHDRMetadata(reinterpret_cast<const WMTHDRMetadata *>(pMetaData));
+      // The API payload need not be aligned and is not a WMTHDRMetadata object.
+      // Copy it before conversion; the presenter owns a further locked copy and
+      // publishes immutable per-frame state rather than retaining caller bytes.
+      DXGI_HDR_METADATA_HDR10 metadata;
+      std::memcpy(&metadata, pMetaData, sizeof(metadata));
+      const WMTHDRMetadata converted = {
+          {metadata.RedPrimary[0], metadata.RedPrimary[1]},
+          {metadata.GreenPrimary[0], metadata.GreenPrimary[1]},
+          {metadata.BluePrimary[0], metadata.BluePrimary[1]},
+          {metadata.WhitePoint[0], metadata.WhitePoint[1]},
+          metadata.MaxMasteringLuminance, metadata.MinMasteringLuminance,
+          metadata.MaxContentLightLevel, metadata.MaxFrameAverageLightLevel};
+      presenter->changeHDRMetadata(&converted);
       return S_OK;
     }
     return DXGI_ERROR_UNSUPPORTED;

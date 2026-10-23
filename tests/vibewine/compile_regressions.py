@@ -88,8 +88,9 @@ namespace_code = archive[start:end]
 shader_version = next(line for line in cache.splitlines()
                       if line.startswith('constexpr ') and 'kDXMTShaderCacheVersion =' in line)
 cache_cpp = (source / 'src/dxmt/dxmt_shader_cache.cpp').read_text()
-assert 'CacheWriter::alloc_init(path.c_str(), kDXMTShaderCacheVersion)' in cache_cpp
-assert 'CacheReader::alloc_init(path.c_str(), kDXMTShaderCacheVersion)' in cache_cpp
+assert 'Cache_alloc_init_checked(path.c_str(), kDXMTShaderCacheVersion, writer, &status)' in cache_cpp
+assert 'Reference<WMT::CacheWriter>(initialize(1))' in cache_cpp
+assert 'Reference<WMT::CacheReader>(initialize(0))' in cache_cpp
 backend = (source / 'src/winemetal/unix/cache.c').read_text()
 assert 'version:(uint64_t)version' in backend
 assert '@"cache_%llu", version' in backend
@@ -158,6 +159,6 @@ int main() {
   old.update("cs2-pso-archive-v1", 18);
   assert(current::archive() != old.bytes);
   assert(current::archive() == current::archive());
-  std::cout << "PASS shared shader-table/PSO 64-bit key; local/upstream revisions; legacy separation; no ABI change\n";
+  std::cout << "PASS shared shader-table/PSO 64-bit key; local/upstream revisions; legacy separation; no compiler ABI change\n";
 }
 ''')

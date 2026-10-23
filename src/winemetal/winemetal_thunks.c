@@ -1331,3 +1331,49 @@ MTLTexture_getBytes(
   params.bytes_per_image = bytes_per_image;
   UNIX_CALL(145, &params);
 }
+
+
+WINEMETAL_API obj_handle_t
+Cache_alloc_init_checked(const char *path, uint64_t version, uint32_t writer, uint32_t *status) {
+  struct unixcall_cache_alloc_init_checked params = {0};
+  WMT_MEMPTR_SET(params.path, path);
+  params.version = version;
+  params.writer = writer;
+  params.ret_status = WMTCacheStatusUnavailable;
+  if (WINE_UNIX_CALL(146, &params)) {
+    params.ret_cache = 0;
+    params.ret_status = WMTCacheStatusUnavailable;
+  }
+  if (status)
+    *status = params.ret_status;
+  return params.ret_cache;
+}
+
+WINEMETAL_API obj_handle_t
+CacheReader_get_checked(obj_handle_t reader, const void *key, uint64_t length, uint32_t *status) {
+  struct unixcall_cache_get_checked params = {0};
+  params.cache = reader;
+  WMT_MEMPTR_SET(params.key, key);
+  params.key_length = length;
+  params.ret_status = WMTCacheStatusUnavailable;
+  if (WINE_UNIX_CALL(147, &params)) {
+    params.ret_data = 0;
+    params.ret_status = WMTCacheStatusUnavailable;
+  }
+  if (status)
+    *status = params.ret_status;
+  return params.ret_data;
+}
+
+WINEMETAL_API uint32_t
+CacheWriter_set_checked(obj_handle_t writer, const void *key, uint64_t key_length, obj_handle_t value) {
+  struct unixcall_cache_set_checked params = {0};
+  params.cache = writer;
+  WMT_MEMPTR_SET(params.key, key);
+  params.key_length = key_length;
+  params.value_data = value;
+  params.ret_status = WMTCacheStatusUnavailable;
+  if (WINE_UNIX_CALL(148, &params))
+    return WMTCacheStatusUnavailable;
+  return params.ret_status;
+}

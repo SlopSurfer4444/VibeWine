@@ -2,6 +2,8 @@
 
 #include "thread.hpp"
 #include "util_win32_compat.h"
+#include "dxmt_persistence.hpp"
+#include <algorithm>
 #include <atomic>
 #include <functional>
 #include <queue>
@@ -13,14 +15,14 @@ template <typename Task> struct task_trait {
   Task run_task(Task task);
   bool get_done(Task task);
   void set_done(Task task);
-  std::function<void()> take_post_completion(Task task);
+  post_completion_work take_post_completion(Task task);
 };
 
 template <typename Task> class task_scheduler {
 public:
   void submit(Task task);
 
-  task_scheduler();
+  explicit task_scheduler(bool backlog_growth = false);
   ~task_scheduler();
 
   uint64_t
@@ -28,8 +30,21 @@ public:
     return running.load(std::memory_order_relaxed);
   }
 
+  bounded_persistence::statistics get_persistence_statistics() { return persistence_.snapshot(); }
+
 private:
+  static uint64_t new_trace_owner() {
+    if constexpr (requires { task_trait<Task>::new_trace_owner(); }) return task_trait<Task>::new_trace_owner();
+    return 0;
+  }
+  work_trace trace_for(Task task, bool initialize = false) {
+    if constexpr (requires { task_trait<Task>{}.trace(task, trace_owner_, initialize); })
+      return task_trait<Task>{}.trace(task, trace_owner_, initialize);
+    return {};
+  }
+  const uint64_t trace_owner_ = new_trace_owner();
   void worker_func();
+  void grow_locked();
 
   dxmt::mutex worker_mutex_;
   dxmt::condition_variable worker_cond_;
@@ -45,10 +60,13 @@ private:
   std::atomic_uint64_t running = 0;
   uint64_t threads;
   uint64_t max_threads;
+  const bool backlog_growth_;
+  bounded_persistence persistence_;
 };
 
-template <typename Task> task_scheduler<Task>::task_scheduler() {
-  max_threads = dxmt::thread::hardware_concurrency() * 2;
+template <typename Task> task_scheduler<Task>::task_scheduler(bool backlog_growth)
+    : backlog_growth_(backlog_growth) {
+  max_threads = std::max<uint64_t>(2, uint64_t(dxmt::thread::hardware_concurrency()) * 2);
   workers_.reserve(max_threads);
   threads = 2;
 
@@ -72,6 +90,37 @@ template <typename Task> task_scheduler<Task>::~task_scheduler() {
   }
 
   workers_.clear();
+  // Compile workers have stopped producing detached writes. Cancel optional
+  // queued writes and join the active write before task/cache dependencies die.
+  persistence_.shutdown();
+}
+
+template <typename Task>
+void task_scheduler<Task>::grow_locked() {
+  // Called only under worker_mutex_. No vector mutation is allowed after close:
+  // the destructor then iterates and joins workers_ without this mutex.
+  if (destroyed.load())
+    return;
+  const auto runnable = task_queue_.size() + task_continuation_queue_.size();
+  auto idle = threads - running.load(std::memory_order_relaxed);
+  if (backlog_growth_) {
+    while (runnable > idle && threads < max_threads) {
+      try {
+        workers_.emplace_back([this] { worker_func(); });
+      } catch (...) {
+        // Existing workers can drain the queue if an optional expansion fails.
+        break;
+      }
+      threads++;
+      idle++;
+    }
+  } else if (!idle && threads < max_threads) {
+    try {
+      workers_.emplace_back([this] { worker_func(); });
+      threads++;
+    } catch (...) {
+    }
+  }
 }
 
 template <typename Task>
@@ -82,6 +131,9 @@ task_scheduler<Task>::worker_func() {
   SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
   while (!destroyed.load()) {
     Task task;
+    work_trace trace;
+    uint32_t observed_workers = 0;
+    uint64_t observed_depth = 0;
     {
       std::unique_lock<dxmt::mutex> lock(worker_mutex_);
 
@@ -103,46 +155,65 @@ task_scheduler<Task>::worker_func() {
       } else {
         break;
       }
+      // Reserve this worker under the same lock as queue admission/growth.
+      running.fetch_add(1, std::memory_order_relaxed);
+      trace = trace_for(task);
+      observed_workers = uint32_t(threads);
+      observed_depth = task_queue_.size() + task_continuation_queue_.size();
     }
-    running.fetch_add(1, std::memory_order_relaxed);
     while (true) {
+      trace.emit(81, observed_workers, trace_owner_, observed_depth);
       Task continuation = task_trait.run_task(task);
       if (continuation == task) {
         // Detach ownership before ready publication can let consumers retire
         // the task. The returned work must never retain a raw task pointer.
-        auto post_completion = task_trait.take_post_completion(task);
+        post_completion_work post_completion;
+        try {
+          post_completion = task_trait.take_post_completion(task);
+        } catch (...) {
+          // Even failure to allocate an optional write must publish readiness.
+        }
         {
           std::unique_lock<dxmt::mutex> lock(deps_mutex_);
           auto range = task_continuation_.equal_range(continuation);
           for (auto itr = range.first; itr != range.second; ++itr) {
+            auto dependent = trace_for(itr->second);
+            dependent.emit(83, 0, trace.serial, trace_owner_);
             continuation_buffer.push_back(itr->second);
           }
           task_continuation_.erase(range.first, range.second);
+          trace.emit(84, 0, trace_owner_, 0);
           task_trait.set_done(continuation);
         }
-        {
-          std::unique_lock<dxmt::mutex> lock(worker_mutex_);
-          for (auto &task : continuation_buffer) {
-            task_continuation_queue_.push(task);
-          }
-        }
-        worker_cond_.notify_all();
-        continuation_buffer.clear();
-        // Persistence may block this worker, but not the dependency graph or
-        // runnable queue. Worker join also joins this owned completion work.
+        // Admission is bounded and does not execute I/O or wait for capacity.
+        // The callable owns its state independently of ready consumers.
         if (post_completion)
-          post_completion();
+          post_completion.trace = trace;
+        if (post_completion)
+          persistence_.try_submit(std::move(post_completion));
       } else {
         std::unique_lock<dxmt::mutex> lock(deps_mutex_);
         // spurious dependency
+        auto dependency = trace_for(continuation);
+        trace.emit(82, 0, dependency.serial, trace_owner_);
         if (task_trait.get_done(continuation)) {
+          trace.emit(83, 0, dependency.serial, trace_owner_);
           continue;
         }
         task_continuation_.insert({continuation, task});
       }
       break;
     }
-    running.fetch_sub(1, std::memory_order_relaxed);
+    {
+      std::unique_lock<dxmt::mutex> lock(worker_mutex_);
+      for (auto &continuation : continuation_buffer)
+        task_continuation_queue_.push(continuation);
+      continuation_buffer.clear();
+      running.fetch_sub(1, std::memory_order_relaxed);
+      if (backlog_growth_)
+        grow_locked();
+    }
+    worker_cond_.notify_all();
   }
 };
 
@@ -156,12 +227,14 @@ task_scheduler<Task>::submit(Task task) {
     return;
   task_queue_.push(task);
 
-  if (running.load(std::memory_order_relaxed) == threads && threads < max_threads) {
-    workers_.emplace_back([this]() { worker_func(); });
-    threads++;
-  }
+  grow_locked();
+  auto trace = trace_for(task, true);
+  trace.emit(80, uint32_t(threads), trace_owner_, task_queue_.size() + task_continuation_queue_.size());
 
-  worker_cond_.notify_one();
+  if (backlog_growth_)
+    worker_cond_.notify_all();
+  else
+    worker_cond_.notify_one();
 }
 
 }; // namespace dxmt

@@ -116,7 +116,9 @@ xcrun = find_program('xcrun')
 
 metalir_generator = generator(xcrun,
   output    : [ '@BASENAME@.air'],
-  arguments : [ '-sdk', 'macosx', 'metal', '-o', '@OUTPUT@', '-c', '@INPUT@', '@EXTRA_ARGS@'],
+  arguments : [ '-sdk', 'macosx', 'metal',
+    '-fmodules-cache-path=' + meson.project_build_root() / 'metal-module-cache',
+    '-o', '@OUTPUT@', '-c', '@INPUT@', '@EXTRA_ARGS@'],
 )
 
 metallib_generator = generator(xcrun,

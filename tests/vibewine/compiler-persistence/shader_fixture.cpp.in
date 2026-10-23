@@ -1,0 +1,125 @@
+#include "mocks.hpp"
+#include "dxmt_tasks.hpp"
+#include "dxmt_shader_cache.hpp"
+#include <cstring>
+#include <iostream>
+#include <string>
+
+#define ERR(...) do {} while (false)
+namespace WMT {
+struct String { std::string getUTF8String() { return "injected cache/compiler error"; } };
+struct Error { bool failed = false; explicit operator bool() const { return failed; } String description() { return {}; } };
+struct Function { bool valid = false; explicit operator bool() const { return valid; }
+  bool operator==(std::nullptr_t) const { return !valid; } };
+inline std::atomic<bool> fail_library{false}, fail_function{false};
+inline std::atomic<bool> fail_cached_library{false};
+struct Library {
+  bool valid = true;
+  explicit operator bool() const { return valid; }
+  Function newFunction(const char *) { return {!fail_function}; }
+};
+struct Device { Library newLibrary(DispatchData, Error &error) {
+  error.failed = fail_library || fail_cached_library.exchange(false); return {!error.failed};
+} };
+inline Reference<DispatchData> MakeDispatchData(void *, uint64_t) { return DispatchData{std::make_shared<int>(42)}; }
+}
+
+struct SM50_SHADER_COMMON_DATA { unsigned type, metal_version, flags; void *next; };
+using SM50_SHADER_METAL_VERSION = unsigned;
+inline constexpr unsigned SM50_SHADER_COMMON = 1;
+struct FakeBitcode { int data = 42; };
+using sm50_bitcode_t = FakeBitcode *;
+struct SM50_COMPILED_BITCODE { void *Data; uint64_t Size; };
+inline std::atomic<unsigned> destroyed_bitcode{0};
+inline void SM50GetCompiledBitcode(sm50_bitcode_t input, SM50_COMPILED_BITCODE *output) { *output = {&input->data, 4}; }
+inline void SM50DestroyBitcode(sm50_bitcode_t input) { delete input; destroyed_bitcode++; }
+
+namespace dxmt {
+struct Sha1Digest { unsigned value = 0; };
+struct Sha1HashState { template <typename T> void update(const T &) {} Sha1Digest final() { return {}; } };
+inline unsigned getGlobalShaderFlag() { return 0; }
+struct MTL_COMPILED_SHADER {
+  WMT::Function Function;
+  Sha1Digest CacheKey;
+  struct { Sha1Digest source, variant, cache_key; unsigned metal_version; char function[128]{}; } ingredient;
+};
+struct MTLD3D11Device {
+  struct DXMTDevice { unsigned metalVersion() { return 320; } };
+  DXMTDevice GetDXMTDevice() { return {}; }
+  WMT::Device GetMTLDevice() { return {}; }
+};
+struct ThreadpoolWork {
+  virtual ~ThreadpoolWork() = default;
+  virtual ThreadpoolWork *RunThreadpoolWork() = 0;
+  virtual bool GetIsDone() = 0;
+  virtual void SetIsDone(bool) = 0;
+  virtual post_completion_work TakePostCompletionWork() { return {}; }
+};
+struct CompiledShader : ThreadpoolWork { virtual bool GetShader(MTL_COMPILED_SHADER *) = 0; };
+struct Shader {
+  ShaderCache &cache;
+  Sha1Digest digest;
+  bool cache_hit = false;
+  unsigned dumps = 0;
+  const Sha1Digest &sha1() { return digest; }
+  WMT::Reference<WMT::DispatchData> find_cached_variant(Sha1Digest &) {
+    return cache_hit ? WMT::DispatchData{std::make_shared<int>(42)} : WMT::DispatchData{};
+  }
+  post_completion_work make_cached_variant_write(Sha1Digest, WMT::DispatchData data, uint64_t bytes) {
+    return cache.makeWrite(std::make_pair(17, 23), data, bytes);
+  }
+  void dump() { dumps++; }
+};
+using ManagedShader = Shader *;
+namespace cs2lab { struct CompileTimer { const char *kind; const char *name; bool cache_hit = false; }; }
+ShaderCache::ShaderCache(WMTMetalVersion) { writer_state_->writer = WMT::CacheWriter{fake_writer}; }
+
+// EXACT_GENERAL_SHADER_TASK
+
+template <> struct task_trait<ThreadpoolWork *> {
+  ThreadpoolWork *run_task(ThreadpoolWork *task) { return task->RunThreadpoolWork(); }
+  bool get_done(ThreadpoolWork *task) { return task->GetIsDone(); }
+  void set_done(ThreadpoolWork *task) { task->SetIsDone(true); }
+  post_completion_work take_post_completion(ThreadpoolWork *task) { return task->TakePostCompletionWork(); }
+};
+}
+
+int main() {
+  for (unsigned failure = 0; failure < 6; failure++) {
+    fake_writer = std::make_shared<FakeWriterState>();
+    fake_writer->hold = true;
+    dxmt::ShaderCache cache(0);
+    dxmt::Shader shader{cache};
+    shader.cache_hit = failure == 4 || failure == 5;
+    dxmt::MTLD3D11Device device;
+    WMT::fail_library = failure == 2;
+    WMT::fail_function = failure == 3;
+    WMT::fail_cached_library = failure == 5;
+    std::atomic<unsigned> compile_calls{0};
+    auto proc = [failure, &compile_calls](const char *, SM50_SHADER_COMMON_DATA *) -> sm50_bitcode_t {
+      compile_calls++;
+      return failure == 1 ? nullptr : new FakeBitcode;
+    };
+    dxmt::GeneralShaderCompileTask<decltype(proc)> task(&device, &shader, std::move(proc), "test", {});
+    dxmt::task_scheduler<dxmt::ThreadpoolWork *> scheduler;
+    scheduler.submit(&task);
+    until([&] { return task.GetIsDone(); });
+    dxmt::MTL_COMPILED_SHADER result{};
+    assert(task.GetShader(&result));
+    assert(bool(result.Function) == (failure == 0 || failure == 4 || failure == 5));
+    assert(compile_calls == (failure == 4 ? 0u : 1u));
+    if (failure == 0 || failure == 5) {
+      until([&] { return fake_writer->entered.load(); });
+      // Native cache I/O remains blocked after source task readiness. The task
+      // has detached its payload; no fallback or failure write is admitted.
+      assert(scheduler.get_persistence_statistics().items == 1);
+      fake_writer->release = true;
+      until([&] { return scheduler.get_persistence_statistics().completed == 1; });
+    } else {
+      assert(scheduler.get_persistence_statistics().accepted == 0);
+    }
+  }
+  assert(destroyed_bitcode == 4);
+  std::cout << "PASS exact GeneralShaderCompileTask: ready before blocked persistence, success-only writes, "
+               "compile/library/function errors, warm hit, rejected-cache compile fallback and bitcode lifetime\n";
+}

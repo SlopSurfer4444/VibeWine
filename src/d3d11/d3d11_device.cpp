@@ -25,6 +25,7 @@
 #include <memory>
 #include "d3d11_4.h"
 #include "util_win32_compat.h"
+#include "device_retirement.hpp"
 
 namespace dxmt {
 
@@ -1136,7 +1137,11 @@ public:
 
   MTLD3D11DXGIDevice(std::unique_ptr<Device> &&device, IMTLDXGIAdapter *adapter,
                      D3D_FEATURE_LEVEL feature_level, UINT feature_flags)
-      : adapter_(adapter), device(std::move(device)),
+      :
+#ifdef _WIN32
+        retirement_(this, &Retire),
+#endif
+        adapter_(adapter), device(std::move(device)),
         cmd_queue_(this->device->queue()),
         d3d11_device_(this, adapter, feature_level, feature_flags,
                       *this->device.get()) {
@@ -1305,6 +1310,20 @@ public:
   D3DKMT_HANDLE STDMETHODCALLTYPE GetLocalD3DKMT() final { return local_kmt_; }
 
 private:
+#ifdef _WIN32
+  void Destroy() override { retirement_.submit(); }
+
+  static void Retire(void *object) noexcept {
+    auto *self = static_cast<MTLD3D11DXGIDevice *>(object);
+    // Compilation workers, PSOs and command-list storage must remain alive
+    // until encoding, GPU completion and callback destruction have finished.
+    self->d3d11_device_.context_->WaitUntilGPUIdle();
+    self->cmd_queue_.ShutdownAndJoin();
+    delete self;
+  }
+
+  DeviceRetirement retirement_;
+#endif
   Com<IMTLDXGIAdapter> adapter_;
   D3DKMT_HANDLE local_kmt_ = 0;
   std::unique_ptr<Device> device;

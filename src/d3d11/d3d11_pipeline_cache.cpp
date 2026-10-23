@@ -59,12 +59,22 @@ private:
 };
 
 template <> struct task_trait<ThreadpoolWork *> {
+  static uint64_t new_trace_owner() { return cs2trace::newSerial(); }
+  work_trace trace(ThreadpoolWork *task, uint64_t owner, bool initialize) {
+    if (initialize) {
+      task->task_trace_generation.store(cs2trace::detailLimit() ? cs2trace::generation() : 0, std::memory_order_release);
+    }
+    return {task->task_trace_generation.load(std::memory_order_acquire), task->task_trace_serial, owner, cs2trace::now,
+        [](const work_trace &t, uint32_t type, uint64_t start, uint64_t end, uint32_t flags, uint64_t a, uint64_t b) {
+          cs2trace::detailRecord(t.gen, type, start, end, t.serial, flags, a, b);
+        }};
+  }
   ThreadpoolWork *run_task(ThreadpoolWork *task) {
     return task->RunThreadpoolWork();
   }
   bool get_done(ThreadpoolWork *task) { return task->GetIsDone(); }
   void set_done(ThreadpoolWork *task) { task->SetIsDone(true); }
-  std::function<void()> take_post_completion(ThreadpoolWork *task) {
+  post_completion_work take_post_completion(ThreadpoolWork *task) {
     return task->TakePostCompletionWork();
   }
 };
@@ -151,15 +161,11 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
 #endif
 
     virtual WMT::Reference<WMT::DispatchData> find_cached_variant(Sha1Digest &variant_digest) final {
-      auto reader = cache->scache_.getReader();
-      if (reader)
-        return reader->get(std::make_pair(sha1_, variant_digest));
-      return {};
+      return cache->scache_.find(std::make_pair(sha1_, variant_digest));
     };
-    virtual void update_cached_variant(Sha1Digest &variant_digest, WMT::DispatchData data) final {
-      auto writer = cache->scache_.getWriter();
-      if (writer)
-        writer->set(std::make_pair(sha1_, variant_digest), data);
+    virtual post_completion_work make_cached_variant_write(
+        Sha1Digest variant_digest, WMT::DispatchData data, uint64_t bytes) final {
+      return cache->scache_.makeWrite(std::make_pair(sha1_, variant_digest), data, bytes);
     }
   };
 
@@ -473,7 +479,8 @@ public:
       scache_(ShaderCache::getInstance(pDevice->GetDXMTDevice().metalVersion())),
       device(pDevice),
       blend_states(pDevice),
-      so_layouts(pDevice) {
+      so_layouts(pDevice),
+      scheduler_(env::getEnvVar("DXMT_SCHEDULER_BACKLOG_GROWTH") == "1") {
     if (cs2lab::enabled())
       Logger::info(str::format("CS2LAB build=early-compile-v1 early_compile=", cs2lab::earlyCompile()));
   };

@@ -121,15 +121,21 @@ public:
     ready_.notify_all();
   }
 
-  std::function<void()> TakePostCompletionWork() override {
+  post_completion_work TakePostCompletionWork() override {
     if (!archive_pending_.archive && !cs2recipe::enabled(recipe_))
       return {};
     // The worker may publish ready and run continuations before this executes.
     // Keep the archive reference, path and recipe independent of this object.
-    return [pending = std::move(archive_pending_), recipe = recipe_]() mutable {
+    // Metal exposes no resident-size query for an opaque archive. Reserve its
+    // existing maximum serialized entry size and separately bound object count.
+    const auto archive_objects = archive_pending_.archive ? 1u : 0u;
+    const auto charge = sizeof(recipe_) + archive_pending_.path.size() +
+                        (archive_objects ? cs2archive::MaxEntry : 0);
+    return {[pending = std::move(archive_pending_), recipe = recipe_]() mutable {
+      auto pool = WMT::MakeAutoreleasePool();
       pending.save();
       cs2recipe::save(recipe);
-    };
+    }, charge, archive_objects, post_completion_work::cost_kind::opaque_reservation};
   }
 
 private:

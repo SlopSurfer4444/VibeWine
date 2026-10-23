@@ -339,6 +339,34 @@ struct unixcall_cache_set {
   obj_handle_t value_data;
 };
 
+// New operations only; never append fields to the legacy cache parameter ABI.
+struct unixcall_cache_alloc_init_checked {
+  struct WMTConstMemoryPointer path;
+  uint64_t version;
+  uint32_t writer;
+  uint32_t ret_status;
+  obj_handle_t ret_cache;
+};
+struct unixcall_cache_get_checked {
+  obj_handle_t cache;
+  struct WMTConstMemoryPointer key;
+  uint64_t key_length;
+  obj_handle_t ret_data;
+  uint32_t ret_status;
+  uint32_t reserved;
+};
+struct unixcall_cache_set_checked {
+  obj_handle_t cache;
+  struct WMTConstMemoryPointer key;
+  uint64_t key_length;
+  obj_handle_t value_data;
+  uint32_t ret_status;
+  uint32_t reserved;
+};
+STATIC_ASSERT(sizeof(struct unixcall_cache_alloc_init_checked) == 32);
+STATIC_ASSERT(sizeof(struct unixcall_cache_get_checked) == 40);
+STATIC_ASSERT(sizeof(struct unixcall_cache_set_checked) == 40);
+
 struct unixcall_setmetalcachepath {
   struct WMTConstMemoryPointer path;
   uint64_t ret_success;

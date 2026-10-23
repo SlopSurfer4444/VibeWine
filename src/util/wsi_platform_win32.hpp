@@ -12,15 +12,20 @@
 
 #include <windows.h>
 
+// Internal PE import from the matching DXGI DLL. Both D3D11 and D3D12 utility
+// copies must share one nonreusing capture-token allocator.
+extern "C" HANDLE __stdcall DXMTAllocateFullscreenToken();
+
 namespace dxmt::wsi {
 
 /**
  * \brief Impl-dependent state
  */
 struct DXMTWindowState {
-  // A window property binds this snapshot to this HWND generation. Destroying
-  // a window removes its properties, so handle reuse cannot consume old state.
+  // An opaque, process-unique token binds this capture generation to the HWND.
+  // It is never a state address: leave/reenter and address reuse get fresh tokens.
   HWND owner = nullptr;
+  HANDLE capture_token = nullptr;
   bool captured = false;
   bool style_pending = false;
   bool exstyle_pending = false;

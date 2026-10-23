@@ -180,6 +180,8 @@ private:
   CpuFence cpu_coherent;
   CpuFence frame_latency_fence_;
   std::atomic_bool stopped;
+  dxmt::mutex shutdown_mutex_;
+  bool shutdown_complete_ = false;
 
   std::array<CommandChunk, kCommandChunkCount> chunks;
   uint64_t encoder_seq = 1;
@@ -220,6 +222,11 @@ public:
   CommandQueue(WMT::Device device);
 
   ~CommandQueue();
+
+  // The device retirement worker calls this while its context/cache/pools are
+  // still alive. Never call from one of this queue's workers. The destructor's
+  // second call is harmless, and concurrent external calls wait for the join.
+  void ShutdownAndJoin();
 
   CommandChunk *
   CurrentChunk() {
