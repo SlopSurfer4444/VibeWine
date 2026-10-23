@@ -19,6 +19,7 @@ def compile_run(name, code):
         subprocess.run([
             os.environ.get("CXX", "clang++"), "-std=c++20", "-O1", "-g",
             "-fsanitize=address,undefined", "-ftrivial-auto-var-init=pattern",
+            "-I", str(source / "src/airconv"),
             str(cpp), "-o", str(exe),
         ], check=True)
         subprocess.run([str(exe)], check=True, timeout=10,
@@ -81,11 +82,38 @@ archive = (source / 'src/d3d11/cs2_pipeline_archive.hpp').read_text()
 start = archive.index('  Sha1HashState h;')
 end = archive.index('  h.update(vs);', start)
 namespace_code = archive[start:end]
-compile_run('archive_namespace', r'''
+# Exercise each actual consumer with different compatibility generations. The
+# shared header is compiled as-is; only the value visible to consumer extracts
+# is varied. Both database endpoints must pass the shader table version intact.
+shader_version = next(line for line in cache.splitlines()
+                      if line.startswith('constexpr ') and 'kDXMTShaderCacheVersion =' in line)
+cache_cpp = (source / 'src/dxmt/dxmt_shader_cache.cpp').read_text()
+assert 'CacheWriter::alloc_init(path.c_str(), kDXMTShaderCacheVersion)' in cache_cpp
+assert 'CacheReader::alloc_init(path.c_str(), kDXMTShaderCacheVersion)' in cache_cpp
+backend = (source / 'src/winemetal/unix/cache.c').read_text()
+assert 'version:(uint64_t)version' in backend
+assert '@"cache_%llu", version' in backend
+compat_header = source / 'src/util/compiler_cache_compat.hpp'
+variants = ''
+for name, version, epoch in [('current', 'AIRCONV_VERSION', 'kVibeWineCompilerCacheEpoch'),
+                             ('next_local', 'AIRCONV_VERSION', 'kVibeWineCompilerCacheEpoch + 1'),
+                             ('next_upstream', 'AIRCONV_VERSION + 1', 'kVibeWineCompilerCacheEpoch'),
+                             ('wide', '0xffffffffu', '0xffffffffu')]:
+    variants += ('namespace ' + name + ' {\n'
+                 'constexpr uint64_t kDXMTCompilerCacheCompatibility = '
+                 'dxmt::makeCompilerCacheCompatibility(' + version + ', ' + epoch + ');\n'
+                 + shader_version + '\n'
+                 'std::vector<unsigned char> archive() {\n' + namespace_code
+                 + '  return h.bytes;\n}\n}\n')
+compile_run('compiler_cache_compatibility', r'''
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
+#include <type_traits>
 #include <vector>
+#include "''' + str(compat_header) + r'''"
+using dxmt::kVibeWineCompilerCacheEpoch;
 struct Sha1HashState {
   std::vector<unsigned char> bytes;
   void update(const void *p, size_t n) {
@@ -94,22 +122,40 @@ struct Sha1HashState {
   }
   template<class T> void update(const T &x) { update(&x, sizeof(x)); }
 };
-#define AIRCONV_VERSION 26
-std::vector<unsigned char> current() {
-''' + namespace_code + r'''
-  return h.bytes;
-}
-#undef AIRCONV_VERSION
-#define AIRCONV_VERSION 27
-std::vector<unsigned char> next() {
-''' + namespace_code + r'''
-  return h.bytes;
+''' + variants + r'''
+uint64_t serialized_version(const std::vector<unsigned char> &bytes) {
+  constexpr size_t prefix_size = sizeof("cs2-pso-archive-v2") - 1;
+  assert(bytes.size() == prefix_size + sizeof(uint64_t));
+  uint64_t version;
+  std::memcpy(&version, bytes.data() + prefix_size, sizeof(version));
+  return version;
 }
 int main() {
-  assert(current() != next());
+  static_assert(std::is_same_v<decltype(current::kDXMTShaderCacheVersion), const uint64_t>);
+  static_assert(sizeof(current::kDXMTShaderCacheVersion) == 8);
+  static_assert(dxmt::kDXMTCompilerCacheCompatibility == current::kDXMTShaderCacheVersion);
+  static_assert((current::kDXMTShaderCacheVersion >> 32) == AIRCONV_VERSION);
+  static_assert(uint32_t(current::kDXMTShaderCacheVersion) == kVibeWineCompilerCacheEpoch);
+  static_assert(wide::kDXMTShaderCacheVersion == UINT64_MAX);
+  static_assert(dxmt::makeCompilerCacheCompatibility(0x80000000u, 0) == (uint64_t(1) << 63));
+  static_assert(dxmt::makeCompilerCacheCompatibility(0, 0xffffffffu) == 0xffffffffULL);
+  assert(current::kDXMTShaderCacheVersion != next_local::kDXMTShaderCacheVersion);
+  assert(current::kDXMTShaderCacheVersion != next_upstream::kDXMTShaderCacheVersion);
+  assert(current::kDXMTShaderCacheVersion != AIRCONV_VERSION);
+  assert(current::archive() != next_local::archive());
+  assert(current::archive() != next_upstream::archive());
+  assert(serialized_version(current::archive()) == current::kDXMTShaderCacheVersion);
+  assert(serialized_version(next_local::archive()) == next_local::kDXMTShaderCacheVersion);
+  assert(serialized_version(next_upstream::archive()) == next_upstream::kDXMTShaderCacheVersion);
+  assert(serialized_version(wide::archive()) == wide::kDXMTShaderCacheVersion);
+  Sha1HashState legacy;
+  legacy.update("cs2-pso-archive-v2", sizeof("cs2-pso-archive-v2") - 1);
+  legacy.update(uint32_t(AIRCONV_VERSION));
+  assert(current::archive() != legacy.bytes);
   Sha1HashState old;
   old.update("cs2-pso-archive-v1", 18);
-  assert(current() != old.bytes);
-  assert(current() == current());
+  assert(current::archive() != old.bytes);
+  assert(current::archive() == current::archive());
+  std::cout << "PASS shared shader-table/PSO 64-bit key; local/upstream revisions; legacy separation; no ABI change\n";
 }
 ''')

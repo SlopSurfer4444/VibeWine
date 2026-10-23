@@ -1,12 +1,12 @@
 #pragma once
 #include "Metal.hpp"
 #include "thread.hpp"
-#include "airconv_public.h"
+#include "compiler_cache_compat.hpp"
 #include <utility>
 
 namespace dxmt {
 
-constexpr int kDXMTShaderCacheVersion = AIRCONV_VERSION;
+constexpr uint64_t kDXMTShaderCacheVersion = kDXMTCompilerCacheCompatibility;
 
 class ShaderCache {
 public:

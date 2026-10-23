@@ -1,6 +1,6 @@
 #pragma once
 #include "Metal.hpp"
-#include "airconv_public.h"
+#include "compiler_cache_compat.hpp"
 #include "cs2_trace.hpp"
 #include "sha1/sha1_util.hpp"
 #include "util_env.hpp"
@@ -54,9 +54,9 @@ inline Sha1Digest key(WMT::Device device,const WMTRenderPipelineInfo &i,
   constexpr char archive_namespace[] = "cs2-pso-archive-v2";
   h.update(archive_namespace, sizeof(archive_namespace) - 1);
   // Shader source/variant hashes do not change when AIRCONV output changes.
-  // Match the compiler-owned compatibility version used by the shader cache.
-  constexpr uint32_t compiler_version = AIRCONV_VERSION;
-  h.update(compiler_version);
+  // Share the shader database's full compatibility key, including local output
+  // changes that retain the upstream AIRCONV API version.
+  h.update(kDXMTCompilerCacheCompatibility);
   h.update(vs);h.update(ps);
   h.update(device.registryID());
   uint64_t major=0,minor=0,patch=0;WMTGetOSVersion(&major,&minor,&patch);
