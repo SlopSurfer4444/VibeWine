@@ -13,7 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compile-commands', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--negative-ref', default='2902c0de',
+    parser.add_argument('--negative-ref', default='12a7ebf1ddf0689d1f054ccb02b1e30d4c5fe6e5',
                         help='Guard revision missing the production API declaration')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]

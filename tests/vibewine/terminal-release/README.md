@@ -57,7 +57,8 @@ python3 tests/vibewine/terminal-release/compile_production.py \
 ```
 
 This redirects object and dependency outputs away from the shared build. It
-requires revision `2902c0de` to fail specifically for the absent API declaration,
+requires public revision `12a7ebf1` (the exact-tree equivalent of local
+`2902c0de`) to fail specifically for the absent API declaration,
 then requires the current TU to compile and reference the direct NTDLL import.
 The production file supplies the BOOLEAN/WINAPI declaration because some
 MinGW `winternl.h` versions omit it. The Windows fixture header deliberately
