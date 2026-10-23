@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "metadata-sanitized-public-equivalents",
+  "alreadyPublicBase": "80f1d010a229f1c62e91e59113a67d21cb5c16e2",
+  "auditedBuildSource": "5cf1662beee80e428810a49f0d5564569884b1bb",
+  "publicEquivalentTip": "e063c4a8e6053d0aab0320c58ce6c0bd98aa4002",
+  "mapping": [
+    {
+      "auditedLocalCommit": "44800cafedf849aa6f03e05a01698e9016cb6e22",
+      "publicCommit": "44029f84b230283c79ae51265f907d7695a8713c",
+      "tree": "7c23f810fe703adf0c985c2a5630d129c93ace62",
+      "subject": "Reclaim aged completed staging allocations without invalidating queued names"
+    },
+    {
+      "auditedLocalCommit": "68ef6024f77a546082a64c2e2ee0a11131b2d805",
+      "publicCommit": "39027b5d750e9a93958406149481142360e2ea61",
+      "tree": "ba8420330721a04e15fe6f4e675a6aa54b9b738f",
+      "subject": "Preserve headless GPU copy regression for staging allocation lifetime"
+    },
+    {
+      "auditedLocalCommit": "6f21900cb2539449eb450d26bd04505d8e3926a2",
+      "publicCommit": "a5ad261e80902319c0115a58e6d73e263809f535",
+      "tree": "a0f5d9e312bc41b0544a20371f4db82e0c4b00dc",
+      "subject": "Reclaim aged completed dynamic resource allocations with ownership regressions"
+    },
+    {
+      "auditedLocalCommit": "bd107f63a816c76c79e1452e0b606412a7c3476d",
+      "publicCommit": "f9ab5e3a765ad7dee93c8aa4d0fe2269727a5ede",
+      "tree": "57aa0d152c1685fb38239a96368c8b4266683d4e",
+      "subject": "Reclaim completed ring blocks together after idle grace"
+    },
+    {
+      "auditedLocalCommit": "8e6eef9a7957a9c49c05d0354a568309a1360f23",
+      "publicCommit": "ce8921f3efe50ade9c6e3977530d94d6c067151e",
+      "tree": "95ef36dd6f3ed5af5cf14d18c51538e140b6b368",
+      "subject": "Preserve native DS3 behavior in matched DXMT bundle"
+    },
+    {
+      "auditedLocalCommit": "5cf1662beee80e428810a49f0d5564569884b1bb",
+      "publicCommit": "e063c4a8e6053d0aab0320c58ce6c0bd98aa4002",
+      "tree": "c195ee00ab8072a3a142c0fad0a59d97f50a112d",
+      "subject": "Namespace persisted compiler output with local compatibility epoch"
+    }
+  ],
+  "verification": "Every mapped commit has the exact same Git tree as its audited local counterpart. Original author names/dates/messages, upstream ancestry and source license notices are preserved. Local email metadata uses the public GitHub account identity. Original local source history and prior build identities remain unchanged.",
+  "limits": "This map establishes source tree equality, not a new build or performance result. Later publication-only documentation commits may follow the equivalent tip."
+}

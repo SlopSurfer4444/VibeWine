@@ -9,14 +9,19 @@ Run from the repository root:
 ```sh
 python3 tests/vibewine/dynamic-retention/run.py --sanitize
 python3 tests/vibewine/dynamic-retention/run.py --arch x86_64 --sanitize
-python3 tests/vibewine/dynamic-retention/run.py --source-ref 68ef6024 --expect-retained-baseline --sanitize
-python3 tests/vibewine/dynamic-retention/run.py --source-ref 68ef6024 --expect-retained-baseline --arch x86_64 --sanitize
+python3 tests/vibewine/dynamic-retention/run.py --source-ref 39027b5d --expect-retained-baseline --sanitize
+python3 tests/vibewine/dynamic-retention/run.py --source-ref 39027b5d --expect-retained-baseline --arch x86_64 --sanitize
 ```
+
+Baseline refs above use the public equivalents recorded in
+[`docs/PUBLICATION.json`](../../../docs/PUBLICATION.json). Their source trees
+match the audited local predecessors; unpublished local revision IDs are not
+required in a fresh public clone.
 
 The baseline check asserts that 33 allocations remain after 1000 completed rename cycles. Running the corrected suite against that old source must fail:
 
 ```sh
-python3 tests/vibewine/dynamic-retention/run.py --source-ref 68ef6024 --sanitize
+python3 tests/vibewine/dynamic-retention/run.py --source-ref 39027b5d --sanitize
 ```
 
 Reclamation is lazy on a subsequent `allocate`, keeps one coherent allocation reserved for the caller, and drops only excess FIFO references aged at least 300 completed sequences. Current and command-list-owned names are outside that FIFO. Surviving external `Rc` references continue to hold their allocations. The change introduces no GPU waits and does not free incomplete entries. Idle resources without further allocation calls retain their pool until destruction; this fixture does not establish a DS3 memory magnitude or freeze repair.

@@ -8,8 +8,13 @@ change a runtime. Native and translated runs support ASan/UBSan.
 ```sh
 python3 tests/vibewine/ring-retention/run.py --sanitize
 python3 tests/vibewine/ring-retention/run.py --arch x86_64 --sanitize
-python3 tests/vibewine/ring-retention/run.py --source-ref 6f21900c --expect-retained-baseline --sanitize
+python3 tests/vibewine/ring-retention/run.py --source-ref a5ad261e --expect-retained-baseline --sanitize
 ```
+
+Baseline refs above use the public equivalents recorded in
+[`docs/PUBLICATION.json`](../../../docs/PUBLICATION.json). Their source trees
+match the audited local predecessors; unpublished local revision IDs are not
+required in a fresh public clone.
 
 Without `--expect-retained-baseline`, the old ref must fail the new bound.
 Baseline mode establishes ten completed standard blocks still retained after

@@ -44,7 +44,17 @@ This establishes compilation and linking of the coordinated candidate, not insta
 
 ## Coherent bundle bridge port (2026-10-23)
 
-The port starts at component `bd107f63a816c76c79e1452e0b606412a7c3476d`.
+The audited port starts at local build-source component
+`bd107f63a816c76c79e1452e0b606412a7c3476d`; its public equivalent is
+`f9ab5e3a765ad7dee93c8aa4d0fe2269727a5ede`.
+[`PUBLICATION.json`](PUBLICATION.json) maps the six previously unpublished
+local revisions to public commits with identical source trees and preserved
+author names/dates/messages. Machine-local email metadata is replaced,
+the publication committer uses the public account identity, and original revision
+trailers are added. Public publication IDs are distinct from
+the original build receipt identities; upstream ancestry and license notices
+remain unchanged. Publication-only documentation updates may follow the mapped
+equivalent tip.
 Behavioral reference is the native bridge in source commit
 `1eb6b43f21a96b62045700f94831522cab6600bc`, signed bridge SHA-256
 `7f7b1553b481266a975755b00ed96e47dc4e3e3c1e928a6ea8ca18bc8485f820`.
