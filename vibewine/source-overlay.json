@@ -1414,6 +1414,31 @@
       "source": "integrated-wave-20261023/makedep-inc/vibewine/tests/makedep-inc/README.md",
       "destination": "vibewine/tests/makedep-inc/README.md",
       "sha256": "a3c62b0b2c199c85e72a045328df3c87e92d2840659e7c04c6020fa0b7c1a9f3"
+    },
+    {
+      "source": "integrated-wave-20261023/terminal-sigquit-reentry/dlls/ntdll/unix/thread.c",
+      "destination": "dlls/ntdll/unix/thread.c",
+      "sha256": "707f4efd6b9aeb6f519dbe916b87b921761e61f2c9b8bb0b7e8c5b390fe05e22"
+    },
+    {
+      "source": "integrated-wave-20261023/terminal-sigquit-reentry/vibewine/tests/thread-exit/run.py",
+      "destination": "vibewine/tests/thread-exit/run.py",
+      "sha256": "b557707151904f67fda16041887e6143c8b5ab9294f70e1fb29b65286216bf64"
+    },
+    {
+      "source": "integrated-wave-20261023/terminal-sigquit-reentry/vibewine/tests/thread-exit/fixture.c.in",
+      "destination": "vibewine/tests/thread-exit/fixture.c.in",
+      "sha256": "0bdef5959850db308bdd1fae76561e03743e7790b3ac3934366dc77c6037ebb9"
+    },
+    {
+      "source": "integrated-wave-20261023/terminal-sigquit-reentry/vibewine/tests/thread-exit/README.md",
+      "destination": "vibewine/tests/thread-exit/README.md",
+      "sha256": "2b10daa32693e96320aba3918f41722e1f71520caf7c65acb14b4ad373339eea"
+    },
+    {
+      "source": "integrated-wave-20261023/terminal-sigquit-reentry/vibewine/INTEGRATED_WAVE_20261023.md",
+      "destination": "vibewine/INTEGRATED_WAVE_20261023.md",
+      "sha256": "93a622a09e9efcc27694a9a0d32b9fb8994361983dab6c3db1ba5ce1448f9820"
     }
   ]
 }

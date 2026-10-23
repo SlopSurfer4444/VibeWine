@@ -57,3 +57,23 @@ These are policy limits with explicit source caps; no automatic deletion service
 is installed. Active producers, user data, saves, caches, credentials and unknown
 objects are excluded from cleanup. Summary/source evidence is retained with its
 issue while material findings remain unresolved.
+
+## Terminal-thread shutdown follow-up
+
+Both `abort_thread` and normal `exit_thread` now block SIGQUIT locally before
+their one terminal thread-count decrement. The global server/RPC signal mask is
+unchanged. A real pipe EOF or normal worker retirement followed by a real
+thread-directed SIGQUIT at each of the five actual descriptor-close boundaries
+previously reentered `abort_thread`, decremented twice and could terminate the
+host with zero while a live main thread intended status 20. The exact production
+bodies are exercised by `vibewine/tests/thread-exit/run.py`; the native fixture
+keeps the server mask, atomics, descriptor cleanup and pthread exit, substituting
+only Wine-specific GS/TEB access and host platform dependencies.
+
+Baseline: 40 injected regressions plus 16 expected controls. Candidate: 224 native
+and 112 ASAN/UBSAN cases passed, including main-thread mask preservation, all
+five FD closes, normal worker status and legitimate pre-retirement SIGQUIT. The
+integration owner independently repeated 28 candidate cases. These controlled
+results establish the race, not the cause of an earlier GPU-guest status mismatch
+or a gameplay/FPS improvement. Matched Wine PE/native execution remains a separate
+acceptance step.

@@ -1494,12 +1494,22 @@ GPT_ABI_WRAPPER( NtCreateThreadEx );
 
 #endif
 
+static void block_exit_signals(void)
+{
+    sigset_t block_set = server_block_set;
+
+    /* SIGQUIT must not enter abort_thread after a terminal thread count decrement. */
+    sigaddset( &block_set, SIGQUIT );
+    pthread_sigmask( SIG_BLOCK, &block_set, NULL );
+}
+
+
 /***********************************************************************
  *           abort_thread
  */
 void abort_thread( int status )
 {
-    pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
+    block_exit_signals();
     if (InterlockedDecrement( &nb_threads ) <= 0) abort_process( status );
     pthread_exit_wrapper( status );
 }
@@ -1522,7 +1532,7 @@ static DECLSPEC_NORETURN void exit_thread( int status )
     static void *prev_teb;
     TEB *teb;
 
-    pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
+    block_exit_signals();
 
     if (InterlockedDecrement( &nb_threads ) <= 0) exit_process( status );
 
