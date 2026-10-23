@@ -396,10 +396,12 @@ struct DXMTTSDispatchMarshal {
 
     device DXMTDispatchArguments& output = task.dispatch_arguments_out;
 
-    uint patch_count_per_instance = task.draw_arguments.x / (uint)task.control_point_count;
-    uint x = (patch_count_per_instance - 1) / task.patch_per_group + 1;
-    if ((task.draw_arguments.x * task.draw_arguments.y) == 0 ||
-        x * task.draw_arguments.y > task.max_object_threadgroups) {
+    uint patch_count_per_instance = task.control_point_count
+        ? task.draw_arguments.x / (uint)task.control_point_count : 0;
+    uint x = (patch_count_per_instance && task.patch_per_group)
+        ? (patch_count_per_instance - 1) / task.patch_per_group + 1 : 0;
+    if (!x || !task.draw_arguments.y ||
+        (ulong)x * (ulong)task.draw_arguments.y > task.max_object_threadgroups) {
       output.x = 0;
       output.y = 0;
       output.z = 0;
@@ -432,9 +434,10 @@ struct DXMTGSDispatchMarshal {
 
     device DXMTDispatchArguments& output = task.dispatch_arguments_out;
 
-    uint x = (task.draw_arguments.x - 1) / task.vertex_count_per_warp + 1;
-    if ((task.draw_arguments.x * task.draw_arguments.y) == 0 ||
-        x * task.draw_arguments.y > task.max_object_threadgroups) {
+    uint x = (task.draw_arguments.x && task.vertex_count_per_warp)
+        ? (task.draw_arguments.x - 1) / task.vertex_count_per_warp + 1 : 0;
+    if (!x || !task.draw_arguments.y ||
+        (ulong)x * (ulong)task.draw_arguments.y > task.max_object_threadgroups) {
       output.x = 0;
       output.y = 0;
       output.z = 0;

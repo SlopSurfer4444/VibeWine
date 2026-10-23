@@ -56,6 +56,7 @@ static uint64_t w7la_dispatch(struct W7LARequest *request)
                 layer.pixelFormat = to_metal_pixel_format((enum WMTPixelFormat)config.pixel_format);
                 layer.colorspace = color;
                 layer.wantsExtendedDynamicRangeContent = WMT_COLORSPACE_IS_HDR(config.colorspace);
+                w7ds_apply_aspect_fit_main(layer);
                 w7ds_refresh_layer_main(layer);
                 completed = true;
             } @catch (id exception) {

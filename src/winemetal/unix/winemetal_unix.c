@@ -18,6 +18,8 @@ typedef int NTSTATUS;
 #define STATUS_UNSUCCESSFUL 0xC0000001
 #include "wave7_feedback.inc"
 #include "wave7_display_snapshot.inc"
+#include "wave7_acquire_diag.inc"
+#include "wave7_ds3_profile.inc"
 
 /* The native Wine request source is serviced in its nested query-wait mode.
  * Raw main GCD dispatch is retained only for older native compatibility. */
@@ -1619,7 +1621,15 @@ _MetalDrawable_texture(void *obj) {
 static NTSTATUS
 _MetalLayer_nextDrawable(void *obj) {
   struct unixcall_generic_obj_obj_ret *params = obj;
+  if (w7ds_should_skip_drawable((CAMetalLayer *)params->handle)) {
+    params->ret = 0;
+    w7ad_skip_occluded();
+    return STATUS_SUCCESS;
+  }
+  struct W7ADSample sample = w7ad_begin();
   params->ret = (obj_handle_t)[(CAMetalLayer *)params->handle nextDrawable];
+  w7ad_end(sample, (uintptr_t)params->handle, (uintptr_t)params->ret);
+  if (params->ret) w7ds_did_acquire_drawable((CAMetalLayer *)params->handle);
   return STATUS_SUCCESS;
 }
 
@@ -1650,6 +1660,7 @@ _MetalLayer_setProps(void *obj) {
     layer.displaySyncEnabled = props->display_sync_enabled;
     layer.drawableSize = CGSizeMake(props->drawable_width, props->drawable_height);
     layer.pixelFormat = to_metal_pixel_format(props->pixel_format);
+    w7ds_apply_aspect_fit_main(layer);
     w7ds_refresh_layer_main(layer);
   });
   return applied ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;

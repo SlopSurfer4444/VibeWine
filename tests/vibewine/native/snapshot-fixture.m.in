@@ -44,6 +44,12 @@ static void drain_async(void) { for(;;) { pthread_mutex_lock(&async_lock); if(!a
 #define NSWindowDidChangeBackingPropertiesNotification @"backing"
 #define NSWindowDidResizeNotification @"resize"
 #define NSWindowWillCloseNotification @"close"
+#define NSWindowOcclusionStateVisible (1UL<<1)
+#define NSWindowDidChangeOcclusionStateNotification @"NSWindowDidChangeOcclusionStateNotification"
+#define NSWindowDidMiniaturizeNotification @"NSWindowDidMiniaturizeNotification"
+#define NSWindowDidDeminiaturizeNotification @"NSWindowDidDeminiaturizeNotification"
+#define NSApplicationDidHideNotification @"NSApplicationDidHideNotification"
+#define NSApplicationDidUnhideNotification @"NSApplicationDidUnhideNotification"
 
 typedef int NTSTATUS;
 #define STATUS_SUCCESS 0
@@ -81,17 +87,25 @@ static NSArray* fake_screens;
 - (double)maximumPotentialExtendedDynamicRangeColorComponentValue { CHECK_MAIN(); return potential; }
 - (double)maximumReferenceExtendedDynamicRangeColorComponentValue { CHECK_MAIN(); return reference; }
 @end
-@interface NSWindow : NSObject { @public NSScreen* fakeScreen; }
+@interface NSWindow : NSObject { @public NSScreen* fakeScreen; BOOL fakeVisible,fakeMini; NSUInteger fakeOcclusion; }
 @property(readonly) NSScreen* screen;
+@property(readonly,getter=isVisible) BOOL visible;
+@property(readonly,getter=isMiniaturized) BOOL miniaturized;
+@property(readonly) NSUInteger occlusionState;
 @end
 @implementation NSWindow
+- (BOOL)isVisible { CHECK_MAIN(); return fakeVisible; }
+- (BOOL)isMiniaturized { CHECK_MAIN(); return fakeMini; }
+- (NSUInteger)occlusionState { CHECK_MAIN(); return fakeOcclusion; }
 - (NSScreen*)screen { CHECK_MAIN(); return fakeScreen; }
 @end
-@interface NSView : NSObject { @public NSWindow* fakeWindow; }
+@interface NSView : NSObject { @public NSWindow* fakeWindow; BOOL fakeHidden; }
 @property(readonly) NSWindow* window;
+- (BOOL)isHiddenOrHasHiddenAncestor;
 @end
 @implementation NSView
 - (NSWindow*)window { CHECK_MAIN(); return fakeWindow; }
+- (BOOL)isHiddenOrHasHiddenAncestor { CHECK_MAIN(); return fakeHidden; }
 @end
 @interface CAMetalLayer : NSObject {
  id _device, _delegate;

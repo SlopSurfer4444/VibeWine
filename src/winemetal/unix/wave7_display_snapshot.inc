@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <objc/runtime.h>
 #include <dlfcn.h>
+#include <stdlib.h>
+#include <time.h>
 
 bool GetDisplayColorGamut(ColorSyncProfileRef profile, struct WMTDisplayDescription *desc_out);
 NSScreen *GetNSScreenForDisplayID(CGDirectDisplayID display_id);
@@ -14,6 +16,9 @@ struct W7DSLayerSnapshot {
   struct WMTEDRValue edr;
   CGDirectDisplayID display_id;
   BOOL display_valid;
+  BOOL visibility_known, occluded;
+  BOOL window_visible;
+  uint64_t visibility_observed_ns;
 };
 struct W7DSDisplayState {
   struct W7DSDisplayState *next;
@@ -49,19 +54,24 @@ static NSHashTable *w7ds_layers, *w7ds_closed_windows;
 @public
   struct W7DSLayerSnapshot snapshot;
   BOOL ready, refresh_queued;
+@package
+  BOOL acquired_drawable;
+  id visibility_window; /* runtime-managed weak storage; main-only access */
+@public
   id device_owner;
 }
 @end
 @implementation W7DSLayerState
 - (id)init {
   if ((self = [super init])) {
+    objc_storeWeak(&visibility_window,nil);
     snapshot.props.contents_scale = 1.0;
     snapshot.edr.maximum_edr_color_component_value = 1.0;
     snapshot.edr.maximum_potential_edr_color_component_value = 1.0;
   }
   return self;
 }
-- (void)dealloc { [device_owner release]; [super dealloc]; }
+- (void)dealloc { objc_storeWeak(&visibility_window,nil); [device_owner release]; [super dealloc]; }
 @end
 
 static void w7ds_default_description(struct WMTDisplayDescription *desc) {
@@ -106,6 +116,48 @@ static void w7ds_refresh_layer_main(CAMetalLayer *layer);
 static void w7ds_refresh_description_main(CGDirectDisplayID display_id);
 static void w7ds_prime_displays_main(void);
 
+/* Experimental presentation-only admission. Unknown state and the first
+ * successful drawable always pass; no AppKit query or main wait is done here.
+ * Associated state belongs to the actual layer, not a reusable pointer key. */
+static BOOL w7ds_skip_occluded_enabled;
+#define W7DS_VISIBILITY_REFRESH_NS UINT64_C(250000000)
+#define W7DS_VISIBILITY_EXPIRE_NS UINT64_C(1000000000)
+static uint64_t w7ds_visibility_now(void) {
+  struct timespec time;
+  if (clock_gettime(CLOCK_MONOTONIC_RAW,&time) || time.tv_sec<0 || time.tv_nsec<0 || time.tv_nsec>=1000000000 ||
+      (uint64_t)time.tv_sec>(UINT64_MAX-(uint64_t)time.tv_nsec)/UINT64_C(1000000000)) return 0;
+  return (uint64_t)time.tv_sec*UINT64_C(1000000000)+(uint64_t)time.tv_nsec;
+}
+static void __attribute__((constructor)) w7ds_occlusion_init(void) {
+  const char *mode=getenv("DXMT_SKIP_OCCLUDED_DRAWABLES");
+  w7ds_skip_occluded_enabled=mode && !strcmp(mode,"1");
+}
+static BOOL w7ds_should_skip_drawable(CAMetalLayer *layer) {
+  if (!w7ds_skip_occluded_enabled || !layer) return NO;
+  uint64_t now=w7ds_visibility_now();
+  pthread_mutex_lock(&w7ds_lock);
+  W7DSLayerState *state=objc_getAssociatedObject(layer,&w7ds_layer_key);
+  uint64_t observed=state ? state->snapshot.visibility_observed_ns : 0;
+  BOOL clock_valid=now && observed && now>=observed;
+  uint64_t age=clock_valid ? now-observed : UINT64_MAX;
+  BOOL schedule=state && state->ready && clock_valid && age>=W7DS_VISIBILITY_REFRESH_NS && !state->refresh_queued;
+  if (schedule) state->refresh_queued=YES;
+  BOOL skip=state && state->ready && state->acquired_drawable &&
+            state->snapshot.visibility_known && state->snapshot.occluded && age<W7DS_VISIBILITY_EXPIRE_NS;
+  pthread_mutex_unlock(&w7ds_lock);
+  /* Healthy main servicing refreshes stable occlusion without forcing a native
+   * probe. If main cannot refresh before hard expiry, allow recovery work. */
+  if (schedule) dispatch_async(dispatch_get_main_queue(), ^{ w7ds_refresh_layer_main(layer); });
+  return skip;
+}
+static void w7ds_did_acquire_drawable(CAMetalLayer *layer) {
+  if (!w7ds_skip_occluded_enabled || !layer) return;
+  pthread_mutex_lock(&w7ds_lock);
+  W7DSLayerState *state=objc_getAssociatedObject(layer,&w7ds_layer_key);
+  if (state) state->acquired_drawable=YES;
+  pthread_mutex_unlock(&w7ds_lock);
+}
+
 @interface W7DSObserver : NSObject
 - (void)changed:(NSNotification *)notification;
 @end
@@ -149,6 +201,11 @@ static BOOL w7ds_setup_main(void) {
                           NSWindowDidChangeScreenNotification,NSWindowDidChangeBackingPropertiesNotification,
                           NSWindowDidResizeNotification,NSWindowWillCloseNotification])
     [center addObserver:w7ds_observer selector:@selector(changed:) name:name object:nil];
+  if (w7ds_skip_occluded_enabled)
+    for (NSString *name in @[NSWindowDidChangeOcclusionStateNotification,NSWindowDidMiniaturizeNotification,
+                            NSWindowDidDeminiaturizeNotification,NSApplicationDidHideNotification,
+                            NSApplicationDidUnhideNotification])
+      [center addObserver:w7ds_observer selector:@selector(changed:) name:name object:nil];
   pthread_mutex_lock(&w7ds_lock);
   w7ds_observer_ready=YES;
   pthread_mutex_unlock(&w7ds_lock);
@@ -212,6 +269,22 @@ static BOOL w7ds_prime_layer_main(CAMetalLayer *layer) {
   value.edr.maximum_potential_edr_color_component_value=1.0;
   id delegate=layer.delegate;
   NSWindow *window=[delegate isKindOfClass:[NSView class]] ? [(NSView *)delegate window] : nil;
+  id previous_window=nil;
+  if (w7ds_skip_occluded_enabled && window) {
+    previous_window=[objc_loadWeak(&state->visibility_window) retain];
+    objc_storeWeak(&state->visibility_window,window);
+    /* A hidden client-view ancestor may need the WineMetalLayer event hook to
+     * activate the new surface. Let it run rather than gating on old content. */
+    value.visibility_known=![(NSView *)delegate isHiddenOrHasHiddenAncestor];
+    value.window_visible=window.visible;
+    value.occluded=[w7ds_closed_windows containsObject:window] || !window.visible || window.miniaturized ||
+        !(window.occlusionState & NSWindowOcclusionStateVisible);
+    value.visibility_observed_ns=w7ds_visibility_now();
+  } else if (w7ds_skip_occluded_enabled) {
+    previous_window=[objc_loadWeak(&state->visibility_window) retain];
+    objc_storeWeak(&state->visibility_window,nil);
+    value.visibility_observed_ns=w7ds_visibility_now();
+  }
   NSScreen *screen=window && ![w7ds_closed_windows containsObject:window] ? window.screen : nil;
   NSNumber *number=screen.deviceDescription[@"NSScreenNumber"];
   if (number) {
@@ -222,12 +295,15 @@ static BOOL w7ds_prime_layer_main(CAMetalLayer *layer) {
   }
   pthread_mutex_lock(&w7ds_lock);
   id old_device=state->device_owner;
+  if (w7ds_skip_occluded_enabled && (previous_window!=window ||
+      (!state->snapshot.window_visible && value.window_visible))) state->acquired_drawable=NO;
   state->device_owner=device;
   state->snapshot=value; state->ready=YES; state->refresh_queued=NO;
   struct W7DSDisplayState *display=value.display_valid ? w7ds_display_locked(value.display_id,YES) : NULL;
   BOOL needs_description=display && !display->description_ready;
   pthread_mutex_unlock(&w7ds_lock);
   [old_device release];
+  [previous_window release];
   [state release];
   if (needs_description) w7ds_refresh_description_main(value.display_id);
   return YES;
