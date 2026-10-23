@@ -9,6 +9,12 @@
 #include "assert.h"
 #include "string.h"
 
+#ifdef _WIN32
+/* Not declared by all MinGW winternl.h versions. This is a direct NTDLL
+ * import, with the same BOOLEAN/WINAPI ABI as Wine's declaration. */
+NTSYSAPI BOOLEAN WINAPI RtlDllShutdownInProgress(void);
+#endif
+
 #ifdef NDEBUG
 #define UNIX_CALL(code, params) WINE_UNIX_CALL(code, params)
 #else

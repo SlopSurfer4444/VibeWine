@@ -4,7 +4,6 @@
 #define TERMINAL_RELEASE_FIXTURE_UNIXLIB_H
 #ifdef _WIN32
 #include <winternl.h>
-NTSYSAPI BOOLEAN NTAPI RtlDllShutdownInProgress(void);
 #else
 typedef int NTSTATUS;
 unsigned char RtlDllShutdownInProgress(void);

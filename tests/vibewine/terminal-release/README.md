@@ -47,6 +47,23 @@ the real shutdown flag at the sampled application's problematic release.
 
 ## Real Windows lifecycle probe
 
+First compile the production translation unit with the real Meson header paths
+and compiler flags, without this directory's substitute `wineunixlib.h`:
+
+```sh
+python3 tests/vibewine/terminal-release/compile_production.py \
+  --compile-commands /absolute/meson-build/compile_commands.json \
+  --output /absolute/evidence/production-compile
+```
+
+This redirects object and dependency outputs away from the shared build. It
+requires revision `2902c0de` to fail specifically for the absent API declaration,
+then requires the current TU to compile and reference the direct NTDLL import.
+The production file supplies the BOOLEAN/WINAPI declaration because some
+MinGW `winternl.h` versions omit it. The Windows fixture header deliberately
+does not supply that declaration. Neither a seam-only test nor successful
+compilation of the separate lifecycle DLL proves production header coverage.
+
 Compile with the already-reviewed LLVM-MinGW toolchain; this does not run Wine:
 
 ```sh

@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include "wineunixlib.h"
 
+/* This probe queries the real phase independently of the production TU. */
+NTSYSAPI BOOLEAN WINAPI RtlDllShutdownInProgress(void);
 extern void NSObject_release(uint64_t object);
 static const uint64_t expected = 0x123456789abcdef0;
 static unsigned int native_calls;
