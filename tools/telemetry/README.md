@@ -41,6 +41,67 @@ exhausted, use a fresh producer/session through its normal lifecycle; never rese
 counters under a live producer. `stop` verifies admitted-writer quiescence, not
 that all asynchronous native callbacks have completed.
 
+## Opt-in compiler/wait coverage profile
+
+Set `DXMT_CS2_TRACE_PROFILE=compile-waits` **before starting the producer** for
+a short discriminating compiler experiment. The selection is parsed once and
+fixed for that producer's lifetime. An empty/unset value preserves the existing
+full stream and emits no new profile marker. Every other nonempty value,
+including `full`, case changes or surrounding whitespace, fails closed: ordinary
+records are suppressed and event 95 reports `invalid-fail-closed`. Restart through
+the normal producer lifecycle to change profiles; rearming does not change it.
+
+`compile-waits` keeps only types **3, 4, 5, 17, 19, 80–89, 93 and 94**. These are
+pipeline readiness waits, shader compilation/cache-hit indication, PSO creation,
+archive lookup/serialization, detailed scheduling/dependencies/readiness,
+persistence admission/locking/write timing and checked cache get/init. Types
+80–89/93–94 still require an explicit valid `DXMT_CS2_TRACE_DETAIL_LIMIT` and share
+its existing cap; excluded events do not consume that budget. Existing 100 us
+duration censoring on 3/5/19 remains. Cache get timing begins after acquiring its
+reader mutex, so it cannot measure that mutex's wait.
+
+The profile excludes every other kind: **1/2** legacy CPU Present cadence,
+**6–16** frame/encode/drawable scopes, **20–25** chunk/GPU/frame joins,
+**30–33** other synchronization/reason probes, **40–49** API/teardown scopes
+(including the high-rate Map event 42), **61/62** configuration,
+**70–78** native presentation feedback and **90–92** completion/finish probes.
+Unknown/future kinds are excluded. This is compiler attribution coverage; it
+cannot supply displayed/gameplay FPS or all sources of waiting. Retain an
+independent frame observer and explicit phase labels when comparing hitches.
+
+One event **95** identifies each observed generation of a nondefault producer,
+even when its first event attempts are filtered. It uses the existing v2 event
+layout and real writer admission/quiescence protocol. Object=1 is the profile
+metadata schema; flags=1 means `compile-waits`, flags=2 means invalid/fail-closed;
+p0 is the configured detailed record limit, p1 is the lifetime capacity 131072.
+Start=end is a CPU steady-clock instant; it is not a duration or performance
+metric. This single marker is outside the detailed record budget and consumes
+one ordinary lifetime slot per generation. The decoder names it explicitly;
+invalid, malformed, duplicate or coverage-contaminated metadata returns decode
+status 3 and makes profile acceptance fail. Historical generations are excluded
+before validating the current generation. A valid metadata-only capture supplies
+no selected-event evidence and is marked unusable by analysis. A stream without
+95 remains `unspecified-full-or-legacy`, never a claim that full coverage was
+independently verified.
+
+The profile reduces event volume from excluded probes; it does **not** reset the
+append-only file, increase 131072 slots, guarantee 30–60 seconds (or ten minutes),
+remove all instrumentation overhead, or establish a performance improvement.
+Keep capture admission/tail reserves and loss checks. Events 3/4/5/17/19 and the
+profile marker are outside the detailed cap and still consume lifetime capacity.
+Use the existing private-session owner, byte caps, TTL and active/recovery holds
+below; this extension starts no additional producer or raw-data store.
+
+Focused offline regression:
+
+```sh
+python3 tools/telemetry/test_trace_profile.py
+```
+
+It compiles the exact production producer header with the existing portable
+Windows mapping seam, checks actual `record`/`detailRecord` and scope emitters,
+and exercises the identity-bound native binary decoder. It launches no game.
+
 ## Interpretation
 
 Strict native-presented cadence requires one valid event each of types 71, 72

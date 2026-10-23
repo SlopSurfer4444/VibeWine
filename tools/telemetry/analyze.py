@@ -20,6 +20,35 @@ def uint32(v):
     if v>=2**32:raise ValueError('expected native uint32 field')
     return v
 
+def producer_profile_analysis(events,summary):
+    """Profile metadata is coverage policy, never a frame-performance metric."""
+    markers=[e for e in events if e['type']==95]
+    if not markers:
+        failed=summary.get('producer_profile_policy_valid') is False
+        return {'name':'unspecified-full-or-legacy','metadata_observed':False,'policy_valid':not failed,'capture_usable':not failed,
+                'failures':['decoder_profile_policy_invalid'] if failed else [],'limits':['No profile marker: full/legacy behavior is unspecified, not independently verified.']}
+    failures=[]
+    if len(markers)!=1:failures.append('duplicate_profile_metadata')
+    marker=markers[0]
+    valid=marker['object']==1 and marker['flags'] in (1,2) and marker['start']==marker['end'] and marker['padding0']<=32768 and marker['padding1']==CAPACITY
+    if not valid:failures.append('malformed_profile_metadata')
+    name='compile-waits' if marker['flags']==1 else 'invalid-fail-closed' if marker['flags']==2 else 'unknown'
+    if marker['flags']==2:failures.append('invalid_producer_profile_fail_closed')
+    keep={3,4,5,17,19,93,94}|set(range(80,90))
+    excluded=[e['index'] for e in events if e['type']!=95 and e['type'] not in keep]
+    if marker['flags']==1 and excluded:failures.append('excluded_event_in_compile_waits_profile')
+    if summary.get('producer_profile_policy_valid') is False:failures.append('decoder_profile_policy_invalid')
+    count=sum(e['type']!=95 for e in events)
+    return {'name':name,'metadata_observed':True,'metadata_event_index':marker['index'],'metadata_count':len(markers),
+            'schema':marker['object'],'detail_limit':marker['padding0'],'lifetime_capacity':marker['padding1'],
+            'policy_valid':not failures,'capture_usable':not failures and count>0,'failures':failures,
+            'selected_event_count':count,'excluded_event_indices':excluded,
+            'limits':['Profile is parsed once per producer lifetime; captured event 95 describes this generation.',
+                      'compile-waits excludes CPU Present cadence, native feedback and GPU chunk streams; this data cannot produce gameplay/displayed FPS.',
+                      'Events 3/5/19 retain the existing 100 us duration censoring; missing events are not proof of zero waits/work.',
+                      'The fixed append-only 131072 slots and detailed record cap remain; no capture duration or performance gain is guaranteed.',
+                      'A metadata-only capture contains no selected-event evidence.']}
+
 def sync_analysis(events,chunkrows,rejected):
     """Observed CPU scopes and identity-only reason joins; never infer missing cost."""
     joined={(c['queue'],c['chunk']):c for c in chunkrows}
@@ -88,7 +117,7 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
         for k in ['generation','type','thread','flags']:uint32(e[k])
         if e['generation']!=gen or e['index']>=CAPACITY or e['index'] in seen:raise ValueError('generation/index mismatch or duplicate')
         seen.add(e['index'])
-        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|set(range(80,95))|{17,19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76,77,78} else 'unknown'
+        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|set(range(80,96))|{17,19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76,77,78} else 'unknown'
         if e.get('clock_domain')!=expected:raise ValueError('clock domain mismatch')
     rejected=defaultdict(int); cadence=[]; presentations=defaultdict(list);intervals=defaultdict(list)
     for e in events:
@@ -146,7 +175,11 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
         chunkrows.append({'queue':queue,'chunk':seq,'frame':frame,'completion_status':status,'included_in_successful_aggregates':status==4,'swapchain_if_unambiguous':attribution,'publish_to_encode_ms':q/1e6,'encode_setup_commit_ms':a/1e6,'commit_to_cpu_completion_observation_ms':c/1e6,'gpu_duration_ms':None if gd is None else gd/1e6})
     sync=sync_analysis(events,chunkrows,rejected)
     detailed=detail_analysis(events,summary,chunkrows,rejected)
+    producer_profile=producer_profile_analysis(events,summary)
     quality=[]
+    if not producer_profile['capture_usable']:
+        quality.append('producer_profile_invalid_or_no_selected_evidence')
+        detailed['capture_usable']=False
     if summary.get('inconclusive_window') is not False:quality.append('decoder_snapshot_inconclusive')
     for k in ['dropped_before','dropped_after','uncommitted_reserved']:
         if uint(summary.get(k,0)):quality.append(k)
@@ -166,7 +199,7 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
     quality.append('scopes_or_gpu_chunks_crossing_stop_are_not_complete')
     wave7=wave7_analysis(events,summary,rejected,stats,expected_dimensions,expected_revision)
     if not wave7["strict_acceptance"]["capture_identity_quality_ok"]:quality.append("unidentified_native_feedback_records")
-    return {'schema':2,'generation':gen,'decoder_identity':summary.get('identity'),'scope':'observed immutable snapshot only; displayed cadence only from valid native presented feedback; no FPS gain inference','wave7':wave7,
+    return {'schema':2,'generation':gen,'decoder_identity':summary.get('identity'),'scope':'observed immutable snapshot only; displayed cadence only from valid native presented feedback; no FPS gain inference','producer_profile':producer_profile,'wave7':wave7,
       'quality_limits':quality,'rejections':dict(rejected),'cpu_present_streams':cadence,'queue_chunk_metrics':{'joined_chunks':len(chunkrows),'successful_completed_chunks':sum(c['completion_status']==4 for c in chunkrows),'publish_to_encode':stats(queuewait),'encode_setup_commit':stats(encodecommit),'commit_to_cpu_completion_observation':stats(completion),'gpu_command_buffer_durations':stats(gpu)},'chunks':chunkrows,
       'full_api_boundaries':api,'sync_probes':sync,'detailed_probes':detailed,'interpretation':['GPU duration uses native GPU end-start only; never subtract CPU and GPU epochs.','GPU durations may overlap and must not be summed as GPU busy time.','No absent event is interpreted as zero cost; old scopes below 100 us are censored.','V2 queue identity uses birth serials; legacy Present body identity remains a pointer. Duplicate chunk keys are rejected.','Missing boundary chunks and frame ownership prevent complete-frame GPU attribution.']}
 

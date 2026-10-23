@@ -57,8 +57,19 @@ static uint64_t recordBudget(const char *arg) {
 }
 static const char *clockDomain(uint32_t type) {
   if(type==24)return "native_gpu_ns";
-  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=94))return "cpu_steady_ns";
+  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=95))return "cpu_steady_ns";
   return "unknown";
+}
+static const char *profileName(uint32_t flags) {
+  return flags==1?"compile-waits":flags==2?"invalid-fail-closed":"unknown";
+}
+static bool profileMarkerValid(const trace::Decoded &e) {
+  return e.object==1 && (e.flags==1 || e.flags==2) && e.start==e.end &&
+    e.padding0<=dxmt::cs2trace::DetailBudget::MaxRecords && e.padding1==trace::Capacity;
+}
+static bool compileWaitsType(uint32_t type) {
+  return type==3 || type==4 || type==5 || type==17 || type==19 ||
+    (type>=80 && type<=89) || type==93 || type==94;
 }
 int main(int argc,char **argv) {
   try {
@@ -85,9 +96,16 @@ int main(int argc,char **argv) {
     }
     if(argc==5 && std::string(argv[1])=="decode") {
       uint32_t gen=generation(argv[3]);trace::Mapping m(argv[2],false,argv[4]);auto s=trace::decode(m,gen);
+      const trace::Decoded *profile=nullptr;unsigned profileMarkers=0;
+      for(const auto &e:s.events)if(e.type==95){profile=&e;profileMarkers++;}
+      bool profileValid=!profileMarkers || (profileMarkers==1 && profileMarkerValid(*profile) && profile->flags==1);
+      if(profile && profile->flags==1)for(const auto &e:s.events)
+        if(e.type!=95 && !compileWaitsType(e.type))profileValid=false;
+      const auto profileLabel=!profileMarkers?"unspecified-full-or-legacy":profileMarkers==1 && profileMarkerValid(*profile)?profileName(profile->flags):"malformed-profile-metadata";
       for(const auto &e:s.events) {
         std::cout<<"{\"kind\":\"event\",\"index\":"<<e.index<<",\"generation\":"<<e.generation<<",\"type\":"<<e.type<<",\"thread\":"<<e.thread<<",\"flags\":"<<e.flags<<",\"object\":"<<e.object<<",\"start\":"<<e.start<<",\"end\":"<<e.end<<",\"padding0\":"<<e.padding0<<",\"padding1\":"<<e.padding1<<",\"clock_domain\":"<<json(clockDomain(e.type))<<",\"duration_ns\":";
-        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && probe::valid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
+        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && probe::valid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
+        if(e.type==95)std::cout<<",\"event_name\":\"Producer trace profile\",\"producer_profile\":"<<json(profileName(e.flags))<<",\"profile_schema\":"<<e.object<<",\"profile_metadata_valid\":"<<(profileMarkerValid(e)?"true":"false")<<",\"detail_limit\":"<<e.padding0<<",\"lifetime_capacity\":"<<e.padding1;
         if(e.type==71){
           const double seconds=std::bit_cast<double>(e.padding1);
           const bool positive=std::isfinite(seconds)&&seconds>0;
@@ -101,8 +119,8 @@ int main(int argc,char **argv) {
           else{std::cout<<",\"queue\":"<<e.padding0<<",\"call_frame\":"<<e.padding1;if(e.type==31)std::cout<<",\"async_pointer\":"<<e.object;else std::cout<<",\"awaited_sequence\":"<<e.object;}}
         std::cout<<"}\n";
       }
-      std::cout<<"{\"kind\":\"summary\",\"identity\":"<<json(m.binding)<<",\"generation\":"<<gen<<",\"events\":"<<s.events.size()<<",\"committed_all_generations\":"<<s.committed<<",\"wrong_generation\":"<<s.wrongGeneration<<",\"next_before_reserved\":"<<s.nextBefore<<",\"next_after_reserved\":"<<s.nextAfter<<",\"dropped_before\":"<<s.droppedBefore<<",\"dropped_after\":"<<s.droppedAfter<<",\"uncommitted_reserved\":"<<s.uncommitted<<",\"counters_changed\":"<<(s.countersChanged?"true":"false")<<",\"inconclusive_window\":"<<(s.inconclusive?"true":"false")<<",\"producer_quiescence_verified\":"<<(s.structurallyComplete?"true":"false")<<",\"structurally_complete\":"<<(s.structurallyComplete?"true":"false")<<",\"boundary_rejected_total\":"<<s.boundaryRejected<<",\"all_operations_complete\":false,\"protocol_version\":2,\"live_pid_verified\":false,\"bridge_verified\":false}\n";
-      return s.inconclusive?3:0;
+      std::cout<<"{\"kind\":\"summary\",\"identity\":"<<json(m.binding)<<",\"generation\":"<<gen<<",\"events\":"<<s.events.size()<<",\"committed_all_generations\":"<<s.committed<<",\"wrong_generation\":"<<s.wrongGeneration<<",\"next_before_reserved\":"<<s.nextBefore<<",\"next_after_reserved\":"<<s.nextAfter<<",\"dropped_before\":"<<s.droppedBefore<<",\"dropped_after\":"<<s.droppedAfter<<",\"uncommitted_reserved\":"<<s.uncommitted<<",\"counters_changed\":"<<(s.countersChanged?"true":"false")<<",\"inconclusive_window\":"<<((s.inconclusive || !profileValid)?"true":"false")<<",\"producer_profile\":"<<json(profileLabel)<<",\"producer_profile_marker_count\":"<<profileMarkers<<",\"producer_profile_policy_valid\":"<<(profileValid?"true":"false")<<",\"producer_quiescence_verified\":"<<(s.structurallyComplete?"true":"false")<<",\"structurally_complete\":"<<(s.structurallyComplete?"true":"false")<<",\"boundary_rejected_total\":"<<s.boundaryRejected<<",\"all_operations_complete\":false,\"protocol_version\":2,\"live_pid_verified\":false,\"bridge_verified\":false}\n";
+      return (s.inconclusive || !profileValid)?3:0;
     }
     std::cerr<<"Usage:\n  cs2trace clock-sample\n  cs2trace new-session ABS_ROOT\n  cs2trace inspect ABS_FILE\n  cs2trace arm ABS_FILE GENERATION DEV:INODE PLANNED_RECORDS TAIL_RESERVE\n  cs2trace stop ABS_FILE GENERATION DEV:INODE\n  cs2trace decode ABS_FILE GENERATION DEV:INODE\n";return 2;
   } catch(const std::exception &e) {std::cerr<<"cs2trace: "<<e.what()<<"\n";return 1;}

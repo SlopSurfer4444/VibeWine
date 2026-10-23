@@ -5,6 +5,24 @@ This is a direction for contributions, not a release promise. Start with the
 
 ## Active integrated wave — 23 October 2026
 
+### Focused follow-up — 24 October 2026
+
+The owner accepted a focused exit, frame-hitch and scene-metrics pass after a
+play session that felt usable under background load. Keep the current playable
+runtime as the comparison/recovery candidate; saves, caches, VPN and unrelated
+applications remain outside the change. Root owns integration, Git indexes and
+live installation. The older W8 checkpoint remains open.
+
+| ID | Required result | Current evidence / next acceptance |
+| --- | --- | --- |
+| F1 | Terminal native cleanup avoids the observed host-lock path while preserving ordinary release and library unload | Source/build accepted: process-detach-aware Metal release passes native old-fail/new-pass, real NTDLL normal/unload/terminal controls and matched GPU regressions; installed game exit/relaunch remains pending |
+| F2 | Genuine menu/loading/gameplay/exit labels and complete, low-perturbation recording | Source accepted: PID/birth-bound phase CLI and bounded offline joins pass 26 focused checks and genuine saved-stream replay; collector default sampling disabled with 19 local adapter tests. New live phase labels remain pending |
+| F3 | Attribute CPU/wait/paging hitches before changing compiler/cache policy | Source/build accepted: opt-in compile/wait profile excludes high-rate draw/Map events, names its coverage and retains writer/generation bounds. 178 telemetry checks pass. Host paging/CPU latency observed; labeled cold/warm attribution and numerical gain remain pending |
+
+Accept this follow-up only against the changed source, focused negative controls,
+matched build and applicable runtime checks. No game-only workaround or FPS gain
+is implied by source tests. Keep any unmet live comparison visibly pending.
+
 The owner requested maximum useful macOS integration, frame-time improvement and
 autonomous DS3 testing in one end-to-end wave. This section is the current shared
 plan, authorized by the owner's subsequent go-ahead. Activation is not an
