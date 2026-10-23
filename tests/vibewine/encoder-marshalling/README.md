@@ -24,8 +24,9 @@ Wine/DXMT runtime, game, window or Metal device is used:
   recording Objective-C objects. It verifies all eight slots and eleven setters,
   MRT/MSAA resolve fields, depth/stencil, visibility, sample count, array length,
   dimensions, tile guards, nil encoder/command buffer returns and descriptor
-  lifetime. Its expanded-getter control records 264 color dispatches versus 97
-  for the candidate; missing-field and bad-return controls must fail.
+  lifetime. It executes the actual optimized and build-only reference branches:
+  264 color dispatches versus 97 for the optimized path. Missing-field and
+  bad-return controls must fail in both modes.
 - `test_context.py` executes the production render, compute and Present switch
   arms using the real `Metal.hpp` wrappers and `FenceSet`. It covers sixteen
   GS/TS/stream-output/visibility combinations, maximum setup capacity, MRT and
@@ -38,6 +39,51 @@ Wine/DXMT runtime, game, window or Metal device is used:
   and scaled dimensions, actual acquired geometry, null/non-null gamma, metadata,
   viewport/draw fields, fences, configuration application/failure/retry, missing
   drawable/texture, bad format, zero geometry and nil encoder.
+
+All three fixtures compile the undefined default, explicit optimized (`0`) and
+reference (`1`) macro variants. The undefined default and explicit optimized
+selection take the same branch and produce equal observations. The reference
+uses the actual historical wrappers/getter expressions, not a synthetic extra
+loop over newly batched commands; both modes must satisfy the same goldens.
+
+## Corrected build-only W4 references
+
+The Meson combo option `vibewine_perf_reference` defaults to `none`:
+
+| Option value | `DXMT_PERF_REF_W4_GETTERS` | `DXMT_PERF_REF_W4_BATCHING` |
+| --- | --- | --- |
+| `none` (default) | 0 | 0 |
+| `w4` | 1 | 1 |
+| `getters` | 1 | 0 |
+| `batching` | 0 | 1 |
+
+Configure fresh matched builds with `-Dvibewine_perf_reference=none` and
+`-Dvibewine_perf_reference=w4`; the two partial modes support narrower
+attribution. The PERF block emits the same explicit selection for host and
+native C/C++, including the Objective-C native bridge. Verify these arguments
+and option values in each frozen build's metadata. Do not mix a PE from one
+generation with another generation's native bridge.
+
+These controls are compile-time only: there is no new environment/configuration
+switch. Both modes retain the current query/publication/retirement fixes, owned
+bounded persistence and shutdown, WSI/HDR behavior, checked bridge interfaces,
+node layout, shader flags and compiler cache epoch. Only W4 getter repetition
+and fixed-command call grouping differ. Fence/stage masks, actual drawable
+geometry, configuration and failure handling stay shared. W3 is unchanged.
+
+The wiring fixture extracts the real option and PERF block into a temporary
+minimal cross project, configures all four values plus the omitted default, and
+checks four generated compile commands (host/native C/C++) for every mode:
+
+```sh
+python3 tests/vibewine/encoder-marshalling/test_reference_modes.py \
+  --meson /absolute/reviewed/bin/meson \
+  --cross-file /absolute/reviewed/cross-win64.ini
+```
+
+Supply `--ninja` if its reviewed path is not adjacent to Meson. This performs
+temporary configuration and Meson's CPU compiler sanity checks only; it never
+invokes Ninja, builds DXMT, executes PE output or touches a shared build.
 
 All three checks use address/undefined-behavior sanitizers and warnings as errors.
 The fixtures replace platform objects and command sinks; they do not prove the

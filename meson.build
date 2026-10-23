@@ -139,6 +139,18 @@ if dxmt_debug
 add_project_arguments('-DDXMT_DEBUG=1', language: 'cpp')
 endif
 
+# Corrected performance controls change only call grouping/getter repetition.
+# Emit the same selection for PE and native C/C++; ABI/cache versions stay shared.
+vibewine_perf_reference = get_option('vibewine_perf_reference')
+vibewine_perf_defines = [
+  '-DDXMT_PERF_REF_W4_GETTERS=' + (vibewine_perf_reference in ['w4', 'getters']).to_int().to_string(),
+  '-DDXMT_PERF_REF_W4_BATCHING=' + (vibewine_perf_reference in ['w4', 'batching']).to_int().to_string(),
+]
+add_project_arguments(vibewine_perf_defines, language: ['c', 'cpp'])
+if dxmt_crossbuild
+  add_project_arguments(vibewine_perf_defines, language: ['c', 'cpp'], native: true)
+endif
+
 add_project_arguments('-DDXMT_PAGE_SIZE=4096', language: 'cpp')
 
 dxmt_version = vcs_tag(

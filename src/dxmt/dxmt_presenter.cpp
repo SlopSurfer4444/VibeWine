@@ -382,6 +382,18 @@ Presenter::encodeCommands(
   if (!encoder)
     return {};
   wait_fences(encoder);
+#if defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING
+  // Build-only reference: the same commands through individual wrappers.
+  encoder.setFragmentTexture(backbuffer, 0);
+  encoder.setFragmentTexture(configuration.gamma_lut_texture, 1);
+  encoder.setFragmentBytes(&metadata, sizeof(metadata), 0);
+  if (backbuffer.width() == (uint64_t)width && backbuffer.height() == (uint64_t)height)
+    encoder.setRenderPipelineState(configuration.present_blit);
+  else
+    encoder.setRenderPipelineState(configuration.present_scale);
+  encoder.setViewport({0, 0, width, height, 0, 1});
+  encoder.drawPrimitives(WMTPrimitiveTypeTriangle, 0, 3);
+#else
   // The bridge walks this list synchronously. Keep its metadata and viewport
   // payloads alive until it returns; fences remain outside and in the same order.
   wmtcmd_render_settexture source{}, gamma{};
@@ -419,6 +431,7 @@ Presenter::encodeCommands(
   draw.base_instance = 0;
   draw.next.set(nullptr);
   encoder.encodeCommands(reinterpret_cast<const wmtcmd_render_nop *>(&source));
+#endif
   update_fences(encoder);
   encoder.endEncoding();
 

@@ -30,18 +30,24 @@ def main():
         fixture = fixture.replace(marker, switch_arm(source, name, next_name))
     with tempfile.TemporaryDirectory(prefix="encoder-context-") as tmp:
         cpp = Path(tmp) / "fixture.cpp"
-        binary = Path(tmp) / "fixture"
         cpp.write_text(fixture)
-        subprocess.run([
-            "xcrun", "clang++", "-std=c++20", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
-            "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
-            "-I" + str(REPO / "src/winemetal"), "-I" + str(REPO / "src/dxmt"),
-            "-I" + str(REPO / "src/util"), "-I" + str(REPO / "src/airconv"),
-            "-I" + str(REPO / "include"),
-            str(cpp), "-o", str(binary),
-        ], check=True, timeout=90)
-        subprocess.run([str(binary)], check=True, timeout=30,
-                       env=dict(os.environ, ASAN_OPTIONS="detect_leaks=0"))
+        observations = {}
+        for name, flags in (("default", []), ("optimized", ["-DDXMT_PERF_REF_W4_BATCHING=0"]),
+                            ("reference", ["-DDXMT_PERF_REF_W4_BATCHING=1"])):
+            binary = Path(tmp) / name
+            subprocess.run([
+                "xcrun", "clang++", "-std=c++20", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
+                "-fsanitize=address,undefined", "-fno-sanitize-recover=all", *flags,
+                "-I" + str(REPO / "src/winemetal"), "-I" + str(REPO / "src/dxmt"),
+                "-I" + str(REPO / "src/util"), "-I" + str(REPO / "src/airconv"),
+                "-I" + str(REPO / "include"),
+                str(cpp), "-o", str(binary),
+            ], check=True, timeout=90)
+            run = subprocess.run([str(binary)], check=True, timeout=30, capture_output=True, text=True,
+                                 env=dict(os.environ, ASAN_OPTIONS="detect_leaks=0"))
+            observations[name] = run.stdout
+            print(name + ": " + run.stdout.strip())
+        assert observations["default"] == observations["optimized"]
     print("source_sha256=" + hashlib.sha256(path.read_bytes()).hexdigest())
 
 

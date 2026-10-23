@@ -971,6 +971,28 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
           [&](auto id) { encoder.waitForFence(fence_pool_[id], WMTRenderStagePreRaster); },
           [&](auto id) { encoder.waitForFence(fence_pool_[id], WMTRenderStageFragment); }
       );
+#if defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING
+      // Build-only reference: preserve the historical individual wrapper calls.
+      encoder.setVertexBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_VERTEX_BUFFER);
+      encoder.setVertexBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_CONSTANT_BUFFER);
+      encoder.setVertexBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_ARGUMENT_TABLE);
+      if (data->use_emulated_so)
+        encoder.setVertexBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_STREAM_OUTPUT0);
+      encoder.setFragmentBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_CONSTANT_BUFFER);
+      encoder.setFragmentBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_ARGUMENT_TABLE);
+      if (data->use_geometry || data->use_tessellation) {
+        encoder.setObjectBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_VERTEX_BUFFER);
+        encoder.setObjectBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_DRAW_ARGUMENTS);
+        if (data->use_tessellation) {
+          encoder.setObjectBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_CONSTANT_BUFFER2);
+          encoder.setObjectBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_ARGUMENT_TABLE2);
+        }
+        encoder.setObjectBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_CONSTANT_BUFFER);
+        encoder.setObjectBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_ARGUMENT_TABLE);
+        encoder.setMeshBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_CONSTANT_BUFFER);
+        encoder.setMeshBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_ARGUMENT_TABLE);
+      }
+#else
       // Fixed setup is consumed synchronously before any marshal task or draw.
       // Five basic bindings, eight GS/TS bindings and one stream-output binding
       // fit without heap allocation or changing the recorded command list.
@@ -1008,6 +1030,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
         bind_buffer(WMTRenderCommandSetMeshBuffer, SM50_BINDING_INDEX_ARGUMENT_TABLE);
       }
       encoder.encodeCommands(reinterpret_cast<const wmtcmd_render_nop *>(setup.data()));
+#endif
       if (data->gs_arg_marshal_tasks.size()) {
         auto task_count = data->gs_arg_marshal_tasks.size();
         struct GS_MARSHAL_TASK {
@@ -1080,6 +1103,17 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       auto data = static_cast<ComputeEncoderData *>(current);
       auto encoder = cmdbuf.computeCommandEncoder(true);
       data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id]); });
+#if defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING
+      wmtcmd_compute_setbuffer setcmd;
+      setcmd.type = WMTComputeCommandSetBuffer;
+      setcmd.next.set(nullptr);
+      setcmd.buffer = data->allocated_argbuf;
+      setcmd.offset = 0;
+      setcmd.index = SM50_BINDING_INDEX_CONSTANT_BUFFER;
+      encoder.encodeCommands(reinterpret_cast<const wmtcmd_compute_nop *>(&setcmd));
+      setcmd.index = SM50_BINDING_INDEX_ARGUMENT_TABLE;
+      encoder.encodeCommands(reinterpret_cast<const wmtcmd_compute_nop *>(&setcmd));
+#else
       std::array<wmtcmd_compute_setbuffer, 2> setup{};
       for (auto &cmd : setup) {
         cmd.type = WMTComputeCommandSetBuffer;
@@ -1091,6 +1125,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       setup[0].next.set(&setup[1]);
       setup[1].index = SM50_BINDING_INDEX_ARGUMENT_TABLE;
       encoder.encodeCommands(reinterpret_cast<const wmtcmd_compute_nop *>(setup.data()));
+#endif
       encoder.encodeCommands(&data->cmd_head);
       data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id]); });
       encoder.endEncoding();

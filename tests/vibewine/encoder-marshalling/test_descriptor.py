@@ -3,6 +3,8 @@
 
 Foundation supplies only NSObject lifetime/runtime support. Metal headers supply
 types; the fixture does not link Metal, create a device, or execute GPU work.
+The same whole production function runs with the getter reference flag undefined,
+explicitly zero, and explicitly one; only negative controls mutate its source.
 All generated programs/binaries are private temporary files removed on exit.
 """
 from pathlib import Path
@@ -51,21 +53,6 @@ def extract_function(text):
     return text[start:end]
 
 
-def expanded_getter_control(body):
-    """Undo just the hoist, preserving all current assignments and control flow."""
-    for typename, local, expression in [
-        ("MTLRenderPassColorAttachmentDescriptorArray", "colors", "descriptor.colorAttachments"),
-        ("MTLRenderPassColorAttachmentDescriptor", "color", "descriptor.colorAttachments[i]"),
-        ("MTLRenderPassDepthAttachmentDescriptor", "depth", "descriptor.depthAttachment"),
-        ("MTLRenderPassStencilAttachmentDescriptor", "stencil", "descriptor.stencilAttachment"),
-    ]:
-        body, count = re.subn(r"^\s*" + typename + r" \*" + local + r" = [^;]+;\n", "\n", body, flags=re.M)
-        assert count == 1, ("changed hoist shape", typename, count)
-        if local != "colors":
-            body = re.sub(r"^(\s*)" + local + r"\.", r"\g<1>" + expression + ".", body, flags=re.M)
-    return body
-
-
 def recording_class(name, fields, extra_ivars="", extra_properties="", extra_methods="", setter_hook=""):
     ivars = "".join(f"  {kind} v_{prop}; unsigned n_{prop};\n" for prop, kind, _ in fields)
     properties = "".join(f"@property(nonatomic, assign) {kind} {prop};\n" for prop, kind, _ in fields)
@@ -93,7 +80,7 @@ def validations(fields, target, source, enabled="1"):
     return result
 
 
-def fixture(body, wmt_types, thunk_type, expanded=False):
+def fixture(body, wmt_types, thunk_type, reference_getters=False):
     prelude = r'''
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
@@ -221,7 +208,7 @@ int main(void) { @autoreleasepool {
   run("nil_command_buffer", empty, NO, YES);
 } return 0; }
 '''
-    counters = (88, 88, 7) if expanded else (1, 8, 1)
+    counters = (88, 88, 7) if reference_getters else (1, 8, 1)
     defines = "".join(f"#define {name} {count}u\n" for name, count in zip(
         ("EXPECT_COLOR_GETTERS", "EXPECT_SLOT_GETTERS", "EXPECT_ATTACHMENT_GETTERS"), counters))
     return prelude + wmt_types + thunk_type + classes + validate + callback + body + defines + harness
@@ -236,21 +223,26 @@ def main():
     thunk_type = re.search(r"struct unixcall_generic_obj_uint64_obj_ret \{[^}]+\};", thunks).group(0)
     results = []
     with tempfile.TemporaryDirectory(prefix="dxmt-descriptor-") as scratch:
-        missing_slice = body.replace("    color.resolveSlice = info->colors[i].resolve_slice;\n", "")
+        missing_slice, deleted = re.subn(
+            r"^[ \t]+W4_COLOR_ATTACHMENT\.resolveSlice = info->colors\[i\]\.resolve_slice;\n", "", body, flags=re.M)
         corrupted_return = body.replace("  [descriptor release];", "  params->ret = 1;\n  [descriptor release];")
-        assert missing_slice != body and corrupted_return != body
-        for name, source_body, expanded, expected_error in [
-            ("candidate", body, False, None),
-            ("expanded_getter_control", expanded_getter_control(body), True, None),
-            ("missing_resolve_slice_control", missing_slice, False, "c.resolveSlice setter count"),
-            ("nil_return_corruption_control", corrupted_return, False, "encoder return including nil"),
-        ]:
+        assert deleted == 1 and corrupted_return != body
+        variants = [("default_undefined", body, None, None)]
+        for mode in (0, 1):
+            variants.extend([
+                (f"explicit_{mode}", body, mode, None),
+                (f"missing_resolve_slice_control_{mode}", missing_slice, mode, "c.resolveSlice setter count"),
+                (f"nil_return_corruption_control_{mode}", corrupted_return, mode, "encoder return including nil"),
+            ])
+        for name, source_body, mode, expected_error in variants:
             program = Path(scratch) / (name + ".m")
             binary = program.with_suffix("")
-            program.write_text(fixture(source_body, wmt_types, thunk_type, expanded))
+            program.write_text(fixture(source_body, wmt_types, thunk_type, mode == 1))
             command = ["xcrun", "clang", "-Wall", "-Wextra", "-Werror", "-O2", "-fno-objc-arc",
                        "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                        str(program), "-framework", "Foundation", "-o", str(binary)]
+            if mode is not None:
+                command.insert(2, f"-DDXMT_PERF_REF_W4_GETTERS={mode}")
             compiled = subprocess.run(command, capture_output=True, text=True, timeout=60)
             assert compiled.returncode == 0, (name, compiled.stdout, compiled.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
@@ -260,6 +252,8 @@ def main():
                 assert result.returncode != 0 and expected_error in result.stderr, (name, result.stdout, result.stderr)
             results.append({"variant": name, "expected_failure": expected_error,
                             "cases": result.stdout.splitlines(), "stderr": result.stderr})
+    by_name = {result["variant"]: result for result in results}
+    assert by_name["default_undefined"]["cases"] == by_name["explicit_0"]["cases"], "default differs from explicit optimized mode"
     print(json.dumps({"passed": True,
                       "scope": "CPU Objective-C recording fixture; no Metal device/GPU/Wine/game execution",
                       "function_sha256": hashlib.sha256(body.encode()).hexdigest(),

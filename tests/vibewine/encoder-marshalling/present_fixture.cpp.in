@@ -214,7 +214,11 @@ static void success(const char *name, bool gamma, uint64_t sw, uint64_t sh, uint
   CHECK(invoke(p, c).handle == DRAWABLE);
   CHECK(p.encoded_configuration_revision_ == c.revision && applies == 1 && acquires == 1 && encoders == 1);
   CHECK(waits == 1 && updates == 1 && ends == 1 && cs2trace::failures == 0);
+#if defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING
+  CHECK(batch_sizes == std::vector<unsigned>(8, 1));
+#else
   CHECK((batch_sizes == std::vector<unsigned>{1, 6, 1}));
+#endif
   CHECK((events == std::vector<std::string>{"apply", "acquire", "encoder", "wait", "texture", "texture",
                                            "bytes", "pso", "viewport", "draw", "update", "end"}));
   CHECK(records.size() == 8);
@@ -234,7 +238,7 @@ static void success(const char *name, bool gamma, uint64_t sw, uint64_t sh, uint
   const auto actual = records; records.clear(); batch_sizes.clear();
   wrapper_control(c, expected_pso);
   CHECK(actual == records && batch_sizes == std::vector<unsigned>(8, 1));
-  std::printf("%s:passed:production-six-command-batch-equals-old-wrappers\n", name);
+  std::printf("%s:passed:production-command-records-equal-historical-wrappers\n", name);
 }
 int main() {
   success("matched_null_gamma", false, 1920, 1080, 1920, 1080);

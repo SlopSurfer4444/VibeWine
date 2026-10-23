@@ -24,6 +24,11 @@ static std::vector<Event> events;
 static std::vector<WMTRenderPassInfo> passes;
 static unsigned render_calls, compute_calls, destroyed;
 static bool nil_encoder;
+#if defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING
+static constexpr bool reference_batching = true;
+#else
+static constexpr bool reference_batching = false;
+#endif
 static void emit(const char *name, std::initializer_list<uint64_t> args = {}) {
   Event e{name};
   std::copy(args.begin(), args.end(), e.args.begin());
@@ -361,9 +366,9 @@ int main() {
       if (flags & 1) assert(gs != events.end() && gs < barrier); else assert(gs == events.end());
       if (flags & 2) assert(ts != events.end() && ts < barrier); else assert(ts == events.end());
       if ((flags & 3) == 3) assert(gs < ts);
-      // Setup has exactly one bridge call, irrespective of feature flags.
+      // Both actual production branches must preserve the same semantic order.
       unsigned optional_calls = ((flags & 1) ? 4 : 0) + ((flags & 2) ? 4 : 0) + ((flags & 3) ? 1 : 0);
-      assert(render_calls == 8 + optional_calls);
+      assert(render_calls == 8 + optional_calls + (reference_batching ? expected.size() - 1 : 0));
     }
   }
   for (bool fail : {false, true}) {
@@ -374,7 +379,7 @@ int main() {
     d->body.type = WMTComputeCommandSetBuffer; d->body.next.set(nullptr);
     d->body.buffer = 999; d->body.offset = 16; d->body.index = 9;
     h.compute(d); ::operator delete(d);
-    assert(destroyed == 1 && compute_calls == 4);
+    assert(destroyed == 1 && compute_calls == (reference_batching ? 5 : 4));
     if (fail) { assert(events.size() == 1); continue; }
     const std::vector<Event> expected = {
       {"compute_begin", {1}}, {"compute_fence", {WMTComputeCommandWaitForFence, 101}},
