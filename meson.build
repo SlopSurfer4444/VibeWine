@@ -135,6 +135,14 @@ hexdump_generator = generator(xxd,
 
 dxmt_debug = get_option('dxmt_debug')
 
+# Keep the experiment selection identical in PE and native compilation. This
+# changes submission grouping only; the default retains the existing grouping.
+vibewine_scene_define = '-DDXMT_SCENE_SUBMISSION=' + get_option('vibewine_scene_submission').to_int().to_string()
+add_project_arguments(vibewine_scene_define, language: ['c', 'cpp'])
+if dxmt_crossbuild
+  add_project_arguments(vibewine_scene_define, language: ['c', 'cpp'], native: true)
+endif
+
 if dxmt_debug
 add_project_arguments('-DDXMT_DEBUG=1', language: 'cpp')
 endif

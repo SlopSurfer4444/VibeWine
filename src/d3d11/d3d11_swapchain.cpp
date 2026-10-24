@@ -1004,6 +1004,16 @@ public:
     if (!state.configuration)
       return E_FAIL;
 
+    // Admit exactly one logical frame before making any of its scene work
+    // visible to the GPU. The final presentation chunk owns the admission
+    // token until retirement, including missing-drawable/failure paths.
+    auto sync_state = SyncFrame(++presentation_count_);
+#if defined(DXMT_SCENE_SUBMISSION) && DXMT_SCENE_SUBMISSION
+    // Reuse Flush's dirty/promote gate: no extra empty scene chunk. Submission
+    // stays on the existing ordered queue; frame completion belongs below.
+    { cs2trace::ReasonScope reason(cs2trace::CommitReason::Present,device_->GetDXMTDevice().queue().traceSerial());
+      device_context_->Flush(); }
+#endif
     auto &cmd_queue = device_->GetDXMTDevice().queue();
     if (auto gen = cs2trace::generation()) {
       auto t = cs2trace::now();
@@ -1014,7 +1024,7 @@ public:
     if constexpr (EnableMetalFX) {
       chunk->emitcc([
         this, vsync_duration, backbuffer = backbuffer_->texture(),
-        sync_state = SyncFrame(++presentation_count_),
+        sync_state = std::move(sync_state),
         upscaled = upscaled_backbuffer_->texture(),
         scaler = this->metalfx_scaler, state = state
       ](ArgumentEncodingContext &ctx) mutable {
@@ -1033,7 +1043,7 @@ public:
     } else {
       chunk->emitcc([
         this, vsync_duration, state = state,
-        sync_state = SyncFrame(++presentation_count_),
+        sync_state = std::move(sync_state),
         backbuffer = backbuffer_->texture()
       ](ArgumentEncodingContext &ctx) mutable {
         ctx.present(backbuffer, presenter, vsync_duration, state);

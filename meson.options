@@ -9,5 +9,7 @@ option('enable_tests', type : 'boolean', value : false)
 option('enable_nvapi', type : 'boolean', value : false)
 option('enable_nvngx', type : 'boolean', value : false)
 option('enable_d3d12', type : 'boolean', value : false)
+option('vibewine_scene_submission', type : 'boolean', value : false,
+  description : 'Experimental admission-preserving scene submission before drawable acquisition')
 option('vibewine_perf_reference', type : 'combo', choices : ['none', 'w4', 'getters', 'batching'], value : 'none',
   description : 'Build-only corrected W4 performance reference; none keeps all optimizations')
