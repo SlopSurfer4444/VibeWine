@@ -29,10 +29,22 @@ Prioritize **admission-preserving early scene submission**: use the existing
 bounded queue to submit ready scene work before a blocking drawable acquisition,
 while retaining one logical frame admission and final presentation completion.
 Independent local review and ChatGPT Pro converged on this source-backed
-hypothesis. It is not implemented or performance-accepted. Require exposed GPU
+hypothesis. The opt-in implementation is committed as DXMT `91add796`, default
+off. Production-method admission/lifetime regressions, the bounded native Metal
+held-acquisition discriminator and both full matched builds pass; both matched
+PE/native variants pass all five offscreen GPU stages. The discriminator proves
+GPU work can complete during its injected acquisition gate; its queue boundary
+is an adapter, not the production worker or a displayed-FPS test. Real-game
+causal capture and controlled improvement remain pending. Require exposed GPU
 idle/late submission evidence and repeatable displayed-frame improvement without
 queue-depth, input-latency or memory regression. Extra chunks change allocation
 aging, which must be measured. See the [source path, controls and stop criteria](docs/diagnostics/focused-followup-20261024.md#next-fps-direction-admission-preserving-early-scene-submission).
+The first live baseline did not reach a stable offline world: connection-loss
+UI and inconsistent menu transitions prevented an accepted gameplay interval.
+The unchanged game ended via macOS Quit; the task-owned prefix/observer stopped.
+No experimental runtime was installed, no FPS improvement is claimed, and the
+current playable closure remains selected. Source implementation is complete;
+game performance acceptance remains open.
 This direction does not close F1–F3 or make the optional experiments mandatory.
 
 The owner requested maximum useful macOS integration, frame-time improvement and

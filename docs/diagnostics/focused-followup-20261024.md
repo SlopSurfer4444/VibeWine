@@ -87,8 +87,55 @@ does not expand these bounds. Public notes omit private bindings and raw traces.
 
 Selected on 24 October after an independent local source review and a parallel
 ChatGPT Pro consultation against workspace `14a04675`, Wine `e20af583` and DXMT
-`23608932`. This selects an experiment; no new runtime patch, rollout or FPS
-result is implied. The earlier follow-up acceptance above remains open.
+`23608932`. The source/build experiment below was subsequently implemented;
+game performance acceptance and the earlier follow-up remain open.
+
+### Implementation and verification checkpoint, 25 October
+
+DXMT `91add796` adds the build option `vibewine_scene_submission`, default
+**false**. It preserves the existing frame admission before the optional
+dirty/promote-gated Flush, reacquires the final chunk afterward, and moves the
+admission token into either final presentation callback. The bounded ring,
+logical frame advancement, final latency fence and retirement machinery are
+unchanged. Both chunks use the existing Present reason; the scene commit
+precedes event 25's final-frame binding. This is a general D3D11 experiment,
+without an executable-name or game-profile check.
+
+- Whole-production-method extraction passes 336 accepted scenarios across
+  arm64 and x86_64/Rosetta with ASan/UBSan; the old source and four connected
+  admission/ownership/grouping mutations are rejected on both architectures.
+- The separate native Metal discriminator passes eight cases per variant.
+  With its injected acquisition gate held, reference scene data stays untouched;
+  the split variant completes actual GPU work before the gate opens. Final
+  admission is retained through scene retirement. Immediate acquisition and
+  extracted nil-fallback fence operations also pass. No-Flush and omitted-fence
+  source mutations are independently rejected with their expected natural exits.
+- Both release PE/native builds use source `91add796`, the same dependencies
+  and `vibewine_perf_reference=none`; actual Meson options differ only in the
+  scene-submission boolean. Both matched closures pass all five offscreen
+  D3D11 GPU stages with independently observed module mappings and natural exit.
+
+The native discriminator has queue/presenter boundary adapters. It does not
+execute the production queue worker, actual CAMetalDrawable acquisition, scaler,
+hazard optimizer or query retirement. The offscreen D3D11 guest establishes
+covered rendering/closure compatibility, not the new swapchain path. Neither
+fixture proves exposed idle or an FPS gain in a game. See the
+[CPU regression](../../components/dxmt/tests/vibewine/scene-submission/README.md)
+and [native discriminator](../../components/dxmt/tests/vibewine/scene-submission/gpu/README.md).
+
+A baseline attempt used the unchanged installed runtime with the bounded
+per-frame observer armed before launch and automatic stack sampling disabled.
+DS3 launched and accepted visually verified title/menu commands, but repeatedly
+displayed connection-loss dialogs and returned to the title screen. Some subsequent
+poll-acknowledged commands did not visibly advance the intended menu. No stable
+offline world or gameplay benchmark was accepted; the stream must not be
+reported as gameplay or as a before/after comparison. macOS Quit ended the
+observed game process, then the owned test prefix and observer were stopped.
+No experimental game runtime was installed or enabled by this checkpoint.
+
+The switch stays off until a matched, labeled game comparison satisfies the
+causality, latency, memory and stop criteria below. The current playable build,
+game files, saves, shader caches, VPN and unrelated sessions are preserved.
 
 The current queue commits a Metal command buffer only after `chunk.encode()`
 returns (`dxmt_command_queue.cpp:180–187`). Encoding reaches the synchronous

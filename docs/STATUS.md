@@ -1,23 +1,29 @@
 # Current source, installation and checks
 
-Reconciled **24 October 2026**. This is the authoritative current checkpoint;
+Reconciled **25 October 2026**. This is the authoritative current checkpoint;
 dated snapshot documents retain their original historical claims.
 
 | Layer | Current state | What it does not establish |
 | --- | --- | --- |
-| Development source | Wine `e20af583`; DXMT `23608932` (production tree from public equivalent `14e3a6a8`, plus test-reference and documentation changes) | A component branch tip is not an installed runtime |
+| Development source | Wine `e20af583`; DXMT `e11476e3` (early scene submission in `91add796`, followed by the native GPU fixture) | A component branch tip is not an installed runtime |
 | Matched build | Selected Wine modules and matching client/server; D3D11, DXGI, D3D10Core, WineMetal PE/native and static AIRCONV; compiler cache epoch 2 | Full reproducible Wine distribution or every optional feature |
 | Installation | Selected 22-file closure installed in the owner's ordinary DS3 runtime; hash readback matched and repeated installation made no changes; prior recovery retained | This follow-up's real-game exit/relaunch or FPS acceptance |
+| New experiment | Default-off scene submission: same-source off/on release builds, 336 source-extracted admission cases, 16 native Metal adapter cases, two rejected source mutations and five offscreen D3D11 stages per variant pass | Production Present integration, exposed GPU idle, displayed FPS, input latency or memory improvement |
 | Latest correctness checks | Terminal release old-fail/new-pass controls on arm64 and Rosetta, real NTDLL lifecycle controls, production MinGW-header compilation, five offscreen GPU stages and three rejected broken controls | A cure for every game hang |
 | Latest diagnostics | 178 offline telemetry checks; process-bound observed phase labels and opt-in compiler/wait coverage; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
 | Game observations | Earlier owner reports described usable play under background load; a previous unlabeled 1080p stream was retained | Controlled before/after FPS, clean gameplay-only timing or a causal network repair |
 
-The exact locally built DXMT revision is `356cc60d500f11d59dd2cb215250b2a08b07e8ba`.
-Its [public equivalents](provenance/focused-publication-20261024.json) retain
-identical trees while excluding unpublished machine-local email metadata.
-Later test-reference and documentation changes do not change production code or imply a
-new runtime build. The private install/admission tooling and licensed retained
-engine dependencies are not distributed here.
+The **installed** graphics still correspond to local DXMT
+`356cc60d500f11d59dd2cb215250b2a08b07e8ba` and its tree-identical
+[public equivalent](provenance/focused-publication-20261024.json).
+The two new experimental builds use `91add796`; only their scene-submission
+boolean differs, with all earlier optimizations enabled. A diagnostic matched
+control package was prepared offline; neither variant was installed or promoted.
+The 25 October baseline attempt launched the unchanged installed game, observed
+menu responses and repeated connection-loss dialogs, then ended it with macOS
+Quit. No stable offline world or controlled gameplay timing was accepted.
+The task-owned prefix and observer were stopped. The private install/admission
+tooling and licensed retained engine dependencies are not distributed here.
 
 See [the focused changes and checks](diagnostics/focused-followup-20261024.md)
 and the [earlier integrated build record](diagnostics/integrated-wave-20261023.md).

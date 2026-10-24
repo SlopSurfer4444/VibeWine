@@ -7,12 +7,12 @@ windows, Retina, accessibility, game compatibility and performance you can
 measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
-**Current checkpoint: 24 October 2026.** The selected Wine/DXMT closure is
-installed in the owner's DS3 runtime; repeated installation made no changes.
-The latest follow-up adds process-shutdown-safe Metal release, an opt-in
-compiler/wait trace profile and explicit scene-label tooling. Matched builds
-and native regressions pass. Real-game exit/relaunch on this follow-up and controlled FPS
-comparisons are still pending. [Changes and checks](docs/diagnostics/focused-followup-20261024.md).
+**Current checkpoint: 25 October 2026.** The selected 24 October Wine/DXMT
+closure remains installed in the owner's DS3 runtime. New development source
+adds a default-off early scene submission experiment: matched builds, admission
+regressions and native/offscreen GPU checks pass. Game FPS, latency and memory
+comparisons remain pending; the latest game attempt did not establish a stable
+offline world. [Changes, checks and limits](docs/diagnostics/focused-followup-20261024.md).
 
 This repository distributes source, not a ready-to-install Wine runtime.
 [Selected upstream/fork backports](docs/integrations/fork-review-20261023.md),
@@ -54,7 +54,7 @@ python3 scripts/workspace.py check
 | [Telemetry](tools/telemetry/README.md) and [gameplay tools](tools/gameplay/README.md) | Analysis, bounded test control and reproducible test protocols | `main` |
 | [Experiments](experiments/README.md) | Opt-in instrumentation and native presentation probes | `main` |
 
-The workspace pins Wine `e20af583` and DXMT `23608932`. Components are pinned
+The workspace pins Wine `e20af583` and DXMT `e11476e3`. Components are pinned
 submodules hosted on branches in this same repository.
 Updating a component branch does not silently update the workspace pin. GitHub's
 main-branch ZIP omits submodule contents; use a recursive clone or the component

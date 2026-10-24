@@ -1,6 +1,6 @@
 # Patch origins and scope
 
-Audited checkpoint: **2026-10-24**. This is a source map, not an FPS leaderboard
+Audited checkpoint: **2026-10-25**. This is a source map, not an FPS leaderboard
 or a claim that every feature is enabled in the installed test runtime.
 
 | Area | Origin | Scope / default | Source and evidence |
@@ -14,6 +14,7 @@ or a claim that every feature is enabled in the installed test runtime.
 | Cursor reset | Adapted Sikarugir Wine change | General reset behavior; Mission Control delivery is a separate check | [Original revision and attribution](provenance/wine.md) |
 | Terminal Metal release | Local VibeWine correction using actual NTDLL shutdown state | General process-detach behavior; normal release/unload retained | [Focused repair, controls and install boundary](diagnostics/focused-followup-20261024.md) |
 | Compiler/wait trace profile and scene labels | Local VibeWine instrumentation and analysis | Opt-in diagnostics; no automatic scene inference or FPS claim | [Focused checks and activation gap](diagnostics/focused-followup-20261024.md), [phase contract](../tools/telemetry/SESSION_PHASES.md) |
+| Early scene submission | Local VibeWine experiment, informed by Apple guidance and independently reviewed queue behavior | General D3D11, build switch off by default; no claimed game FPS benefit | [Source and CPU controls](../components/dxmt/tests/vibewine/scene-submission/README.md), [native proof and live limits](diagnostics/focused-followup-20261024.md#implementation-and-verification-checkpoint-25-october) |
 | Server-loss MSync guard | Local patch, retained composite NTDLL build | Failure handling, not a connectivity or FPS repair | [Exact patch and bases](../patches/runtime-2026-10-23/README.md) |
 | Process-local virtual XInput | Local experimental Wine branch | Explicitly armed test input | [Wine source revisions](provenance/wine.md), [protocol](../tools/gameplay/VIRTUAL_CONTROLLER.md) |
 | Socket/readiness metadata | Local experimental Wine branch | Opt-in diagnostics, not an established server fix | [Wine provenance](provenance/wine.md) |
