@@ -23,6 +23,18 @@ Accept this follow-up only against the changed source, focused negative controls
 matched build and applicable runtime checks. No game-only workaround or FPS gain
 is implied by source tests. Keep any unmet live comparison visibly pending.
 
+### Selected next FPS experiment — 24 October 2026
+
+Prioritize **admission-preserving early scene submission**: use the existing
+bounded queue to submit ready scene work before a blocking drawable acquisition,
+while retaining one logical frame admission and final presentation completion.
+Independent local review and ChatGPT Pro converged on this source-backed
+hypothesis. It is not implemented or performance-accepted. Require exposed GPU
+idle/late submission evidence and repeatable displayed-frame improvement without
+queue-depth, input-latency or memory regression. Extra chunks change allocation
+aging, which must be measured. See the [source path, controls and stop criteria](docs/diagnostics/focused-followup-20261024.md#next-fps-direction-admission-preserving-early-scene-submission).
+This direction does not close F1–F3 or make the optional experiments mandatory.
+
 The owner requested maximum useful macOS integration, frame-time improvement and
 autonomous DS3 testing in one end-to-end wave. This section is the current shared
 plan, authorized by the owner's subsequent go-ahead. Activation is not an

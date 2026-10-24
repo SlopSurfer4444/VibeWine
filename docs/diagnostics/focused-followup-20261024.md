@@ -82,3 +82,70 @@ No new permanent service, cache purge or cleaner is introduced. Capture scopes
 reuse seven-day raw retention, a sampled 256 MiB capture cap and 30-day/4 MiB
 curated summaries, with active, analysis and recovery holds. Profile filtering
 does not expand these bounds. Public notes omit private bindings and raw traces.
+
+## Next FPS direction: admission-preserving early scene submission
+
+Selected on 24 October after an independent local source review and a parallel
+ChatGPT Pro consultation against workspace `14a04675`, Wine `e20af583` and DXMT
+`23608932`. This selects an experiment; no new runtime patch, rollout or FPS
+result is implied. The earlier follow-up acceptance above remains open.
+
+The current queue commits a Metal command buffer only after `chunk.encode()`
+returns (`dxmt_command_queue.cpp:180–187`). Encoding reaches the synchronous
+`nextDrawable()` inside `Presenter::encodeCommands()` (`dxmt_presenter.cpp:360–363`).
+`PrepareFlush()` closes the pass without submitting; Present then joins the same
+chunk before `Commit()` (`d3d11_context_imm.cpp:535–537`,
+`d3d11_swapchain.cpp:985,1012–1045`). Thus drawable acquisition can delay scene
+commands that could otherwise be submitted. Exposed GPU idle has not been proven.
+
+The first implementation slice should be an opt-in split using the existing
+queue: admit one logical frame, submit its ready scene, then encode/submit its
+final presentation. Keep `SyncFrame()` admission before the early submission,
+move the existing `SyncFrameState` RAII token into the final presentation
+chunk, advance the logical frame once and retain that chunk's latency and
+completion boundary. Both chunks share the same logical frame/capture identity. A naked additional Flush before admission is not the
+candidate: it can change frames in flight and manufacture a misleading gain.
+Preserve command/resource ordering, retained backbuffer/configuration identities,
+query/readback-before-coherence, missing-drawable completion, resize and shutdown.
+The existing bounded chunk ring must remain bounded. Submit at most one extra
+nonempty scene chunk per successful Present; retain dirty/promote gating and
+keep MetalFX disabled for the first comparison. A chunk-count cap is not a strict
+byte cap, so resource footprint remains an independent check.
+
+A discriminating baseline needs a valid clock join showing ready-but-uncommitted
+scene work overlapping exposed GPU idle during drawable acquisition. Long
+`nextDrawable()` alone can be healthy display backpressure. Use the existing
+chunk/drawable/GPU/presentation events in short bounded captures, splitting replay
+from native flush if needed. **Do not use `compile-waits`: it excludes these
+events and is not yet exposed by the installed launcher's fixed environment.**
+No new monitoring platform or unlimited trace is required.
+
+Compare alternating baseline/candidate/reversal runs in a visible, verified warm
+scene at identical render/output resolution, camera, settings, presentation policy,
+cache treatment, power and background load. Control observer overhead. Require a
+repeatable improvement in displayed frame intervals/p95/p99 or long-frame counts
+beyond run variation, without increased input latency, logical queue depth or
+memory. Stop if GPU was already busy, the wait merely moves, or extra submissions
+cost more. Additional chunks also change sequence-based allocator aging: inspect
+allocation churn and peak bytes rather than attributing all effects to overlap.
+
+Useful checked precedents are [Apple's drawable guidance](https://developer.apple.com/library/archive/documentation/3DDrawing/Conceptual/MTLBestPracticesGuide/Drawables.html)
+and [DXVK's flush-before-image-acquisition design](https://github.com/doitsujin/dxvk/blob/master/src/d3d11/d3d11_swapchain.cpp).
+These inform the design; Vulkan code is not a drop-in Metal patch.
+The next-ranked CPU candidate is precise binding invalidation after
+WRITE_DISCARD, starting with constant-buffer stage/slot dependencies. Current
+immediate/deferred paths broadly mark stages dirty; resource-table materialization
+must remain separate from mandatory access, residency and UAV-counter tracking.
+A stable view pointer does not prove an unchanged counter allocation. This is a
+fallback if submission overlap is falsified, not another part of the first patch.
+Existing [Metal residency-set primitives](https://developer.apple.com/documentation/metal/mtlresidencyset)
+are another reusable foundation if residency CPU cost is measured, but do not
+replace hazard tracking or justify indefinite pinning.
+
+Before promotion, exercise delayed/nil drawable, cross-chunk query and Map
+coherence, resource replacement, resize/occlusion, failure and normal exit/relaunch.
+A controlled native GPU fixture should distinguish actual scene completion
+while acquisition is delayed from merely recording an early CPU submit call.
+
+Low-render/fixed-output spatial MetalFX remains a separate quality/performance
+experiment for a demonstrated GPU-bound case, not a native-resolution gain.
