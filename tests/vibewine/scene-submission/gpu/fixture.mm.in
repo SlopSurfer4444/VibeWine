@@ -1,0 +1,145 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Appended to the shared CPU fixture's verbatim production methods/adapters.
+#import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <thread>
+using namespace std::chrono_literals;
+template<class F> static bool until(F f,std::chrono::milliseconds budget=3000ms) {
+  auto deadline=std::chrono::steady_clock::now()+budget;
+  do {if(f())return true;std::this_thread::sleep_for(1ms);}while(std::chrono::steady_clock::now()<deadline);
+  return f();
+}
+static void bytes(id<MTLBuffer>b,unsigned char expected) {
+  auto p=(const unsigned char*)[b contents];
+  for(unsigned i=0;i<4096;i++)require(p[i]==expected,"GPU data golden mismatch");
+}
+struct NativeBlit {
+  id<MTLBlitCommandEncoder> encoder;
+  unsigned *calls;
+  void waitForFence(id<MTLFence>f){++calls[0];[encoder waitForFence:f];}
+  void updateFence(id<MTLFence>f){++calls[1];[encoder updateFence:f];}
+  void endEncoding(){++calls[2];[encoder endEncoding];}
+};
+struct NativeCommandBuffer {
+  id<MTLCommandBuffer> buffer;
+  unsigned *calls;
+  NativeBlit blitCommandEncoder(){auto b=[buffer blitCommandEncoder];require(b!=nil,"fallback encoder allocation");return {b,calls};}
+};
+struct NativeFenceList {
+  unsigned index;
+  template<class F>void forEach(F f){f(index);}
+};
+struct NativePresentData {NativeFenceList fence_wait,fence_update;};
+static void nilFallback(id<MTLCommandBuffer>cb,id<MTLFence>upstream,id<MTLFence>downstream){
+  unsigned calls[3]={};NativeCommandBuffer cmdbuf{cb,calls};NativePresentData storage{{0},{1}};auto data=&storage;
+  id<MTLFence>fence_pool_[]={upstream,downstream};
+/* PRODUCTION_NIL_FALLBACK */
+  require(calls[0]==1&&calls[1]==1&&calls[2]==1,"fallback fence operations missing");
+}
+template<bool FX> static void one(id<MTLDevice>d,bool expectSplit,int mode) {
+  journal=Journal{};hooks=Hooks{};wsi::minimized=false;
+  Device device;Context context(device.q);Presenter presenter;Swapchain<FX>swap;
+  swap.device_=&device;swap.device_context_=&context;swap.presenter=&presenter;
+  context.ctx_state.has_dirty_op_since_last_event=true;
+  device.q.current->scene=true;
+  id<MTLCommandQueue>queue=[d newCommandQueue];id<MTLFence>fence=[d newFence],downstream=[d newFence];
+  auto options=MTLResourceStorageModeShared|MTLResourceHazardTrackingModeUntracked;
+  id<MTLBuffer>scene=[d newBufferWithLength:4096 options:options];
+  id<MTLBuffer>output=[d newBufferWithLength:4096 options:options];
+  id<MTLBuffer>fallbackConsumer=[d newBufferWithLength:4096 options:options];
+  require(queue&&fence&&downstream&&scene&&output&&fallbackConsumer,"native Metal allocation failure");
+  std::memset([scene contents],0,4096);std::memset([output contents],0,4096);
+  std::memset([fallbackConsumer contents],0,4096);
+  std::vector<id<MTLCommandBuffer>>buffers;
+  id<MTLCommandBuffer>active=nil;
+  std::atomic<bool>entered{false},open{mode==3},encoded{false};
+  std::atomic<unsigned>committed{0};
+  std::exception_ptr workerError;
+  hooks.begin_chunk=[&](bool,size_t index){
+    active=[queue commandBuffer];require(active!=nil,"command buffer allocation failure");
+    buffers.push_back(active);
+    if(device.q.submitted.at(index)->scene){
+      id<MTLBlitCommandEncoder>b=[active blitCommandEncoder];require(b!=nil,"scene blit encoder");
+      [b fillBuffer:scene range:NSMakeRange(0,4096) value:0x5a];[b updateFence:fence];[b endEncoding];
+    }
+  };
+  hooks.acquire=[&]{
+    entered.store(true,std::memory_order_release);
+    require(until([&]{return open.load(std::memory_order_acquire);},5000ms),"bounded acquire gate timeout");
+  };
+  hooks.end_chunk=[&](bool present,size_t){
+    if(present){
+      // These two adapter failures select the actual production nil fallback
+      // body. No CAMetalDrawable or native GPU error is fabricated.
+      if(mode==1||mode==2){
+        nilFallback(active,fence,downstream);
+        id<MTLBlitCommandEncoder>b=[active blitCommandEncoder];require(b!=nil,"fallback consumer encoder");
+        [b waitForFence:downstream];[b copyFromBuffer:scene sourceOffset:0 toBuffer:fallbackConsumer destinationOffset:0 size:4096];[b endEncoding];
+      }
+      else{
+        id<MTLBlitCommandEncoder>b=[active blitCommandEncoder];require(b!=nil,"final encoder");
+        [b waitForFence:fence];[b copyFromBuffer:scene sourceOffset:0 toBuffer:output destinationOffset:0 size:4096];
+        [b updateFence:fence];[b endEncoding];
+      }
+    }
+    [active commit];committed.fetch_add(1,std::memory_order_release);
+  };
+  auto start=std::chrono::steady_clock::now();
+  require(swap.Present1(0,0,nullptr)==S_OK,"production Present1 failed");
+  const size_t expected=expectSplit?2:1;
+  require(device.q.submitted.size()==expected,"production grouping does not match expected split");
+  require(journal.credit_releases==0,"credit released before encoding");
+  if(expectSplit)require(device.q.submitted[0]->signal_frame_latency_fence_==~0ull,"scene owns final frame credit");
+  require(device.q.submitted.back()->signal_frame_latency_fence_==5,"final chunk missing frame credit");
+  std::thread worker([&]{@autoreleasepool{try{
+    for(size_t i=0;i<device.q.submitted.size();i++)device.q.execute(i);
+  }catch(...){workerError=std::current_exception();}encoded.store(true,std::memory_order_release);}});
+  // Always release/join the fixture-owned worker before propagating a failure.
+  std::exception_ptr mainError;
+  try{
+    require(until([&]{return entered.load(std::memory_order_acquire)||encoded.load(std::memory_order_acquire);}),"acquire not reached");
+    if(encoded.load(std::memory_order_acquire)&&workerError)std::rethrow_exception(workerError);
+    if(mode!=3){
+      if(expectSplit){
+        require(until([&]{return committed.load(std::memory_order_acquire)>=1&&[buffers[0] status]==MTLCommandBufferStatusCompleted;}),"scene GPU did not complete while acquire held");
+        bytes(scene,0x5a);
+        device.q.retire(0);
+      }else{
+        std::this_thread::sleep_for(150ms);
+        require(committed.load()==0,"reference committed scene before acquire returned");bytes(scene,0);
+      }
+      require(journal.credit_releases==0,"final admission token released during held acquire");
+      open.store(true,std::memory_order_release);
+    }
+  }catch(...){mainError=std::current_exception();open.store(true,std::memory_order_release);}
+  worker.join();
+  if(mainError)std::rethrow_exception(mainError);
+  if(workerError)std::rethrow_exception(workerError);
+  require(committed==expected,"lost native command buffer");
+  require(until([&]{for(auto b:buffers)if([b status]<MTLCommandBufferStatusCompleted)return false;return true;}),"GPU completion timeout");
+  for(auto b:buffers)require([b status]==MTLCommandBufferStatusCompleted,"native GPU command buffer error");
+  require(journal.credit_releases==0,"token released before final retirement");
+  for(size_t i=0;i<device.q.submitted.size();i++)device.q.retire(i);
+  require(journal.credit_releases==1,"final retirement must release exactly one token");
+  bytes(scene,0x5a);bytes(output,(mode==1||mode==2)?0:0x5a);
+  if(mode==1||mode==2)bytes(fallbackConsumer,0x5a);
+  double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+  std::printf("{\"case\":\"%s\",\"metalfx_callback\":%s,\"split\":%s,\"chunks\":%zu,\"milliseconds\":%.3f,\"status\":\"pass\"}\n",
+    mode==0?"held_acquire":mode==1?"nil_drawable_adapter":mode==2?"encoder_failure_adapter":"immediate_acquire",FX?"true":"false",expectSplit?"true":"false",expected,elapsed);
+}
+int main(int argc,char**argv){
+  bool split=DXMT_SCENE_SUBMISSION;
+  if(argc==2&&std::string(argv[1])=="--expect-split")split=true;
+  else if(argc!=1){std::fprintf(stderr,"usage: probe [--expect-split]\n");return 64;}
+  std::thread([]{std::this_thread::sleep_for(25s);std::_Exit(124);}).detach();
+  try{@autoreleasepool{
+    id<MTLDevice>d=MTLCreateSystemDefaultDevice();
+    if(!d){std::puts("{\"status\":\"unsupported_no_metal_device\"}");return 2;}
+    for(int mode=0;mode<4;mode++){one<false>(d,split,mode);one<true>(d,split,mode);}
+    std::puts("{\"summary\":\"pass\",\"cases\":8}");
+  }}catch(const std::exception&e){std::fprintf(stderr,"FAIL %s\n",e.what());return 10;}
+  return 0;
+}
