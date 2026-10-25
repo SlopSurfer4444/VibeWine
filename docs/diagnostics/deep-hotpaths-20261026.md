@@ -120,12 +120,13 @@ across21 scenarios and rejects the regression control.
 
 Both fresh161-target builds passed, with eighteen boolean values matched in actual PE/native compile commands and seven artifact hashes per variant. Both variants passed five generic GPU stages, two dedicated resolve paths, four active4/8MRT/sparse/depth adjunct stages and six staging/view stages; pixel, resolve, depth, staging and view wrong-golden controls rejected. Same process birth and seven PE/native mappings were admitted per run. The lab returned to the exact baseline plan/files with no private IPC socket. Present/mip/array/3D, GS/TS GPU execution and native error validation remain open. This is a retained dependency/Wine scaffold, not a newly built complete Wine distribution.
 
-Build/GPU details and remote CI are recorded in the accompanying
-[bounded receipt](deep-hotpaths-20261026.json) after actual execution. Generic GPU
-coverage never establishes every new branch: GS/TS execution, active8MRT/sparse,
-new view/copy paths, presentation and native failure validation require their own
-observations. Installed DS3 remains on its prior selected runtime. No FPS result
-is inferred from successful builds or pixels.
+Build/GPU details are recorded in the [bounded receipt](deep-hotpaths-20261026.json).
+The targeted guests supplement generic coverage: seventeen mandatory positive
+stages per variant and five connected negative controls across thirteen
+process-bound runs. GS/TS GPU execution, mip/array/3D attachment surfaces,
+presentation and native failure validation remain separate gaps. Hosted CI is
+an additional source gate, not a GPU receipt. Installed DS3 remains on its prior
+selected runtime; no FPS result is inferred from successful builds or pixels.
 
 ## Retention
 
