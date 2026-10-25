@@ -30,7 +30,7 @@ def replace(text, before, after):
 def sources(root):
     return {p: (root/p).read_text() for p in PATHS}
 
-def generate(contents):
+def generate(contents, *, historical_render_emission=False):
     cpp, ctx, tex, helper = (contents[p] for p in PATHS)
     flush = cpp.index('ArgumentEncodingContext::flushCommands(')
     optimizer_start = cpp.find('#if defined(DXMT_DEAD_ATTACHMENT_STORES)',flush)
@@ -38,12 +38,19 @@ def generate(contents):
     optimizer_start=ordinary_start if optimizer_start < 0 else min(optimizer_start,ordinary_start)
     residency_start = cpp.find('#if defined(DXMT_PHYSICAL_RESIDENCY_DEDUP)',flush)
     hook = '' if residency_start < 0 else cpp[residency_start:cpp.index('#endif',residency_start)+len('#endif')]
+    if historical_render_emission:
+        assert residency_start >= 0, 'historical render emission requires its residency hook'
     if residency_start >= 0:
         after_hook = cpp[residency_start+len(hook):cpp.index('      data->fence_update_vertex.forEach(',residency_start)]
-        # Fusion may prepend stack setup only after this original-list dedup.
-        assert 'setup[setup_count - 1].next.set(&data->cmd_head);' in after_hook
-        assert 'encoder.encodeCommands(&data->cmd_head);' in after_hook
-        assert 'DeduplicateRenderResidency' not in after_hook
+        if historical_render_emission:
+            # Only an explicitly retained pre-fusion source may use this exact
+            # direct-encode adjacency. Current callers stay strict by default.
+            assert after_hook == '\n      encoder.encodeCommands(&data->cmd_head);\n', 'historical render emission changed'
+        else:
+            # Fusion may prepend stack setup only after this original-list dedup.
+            assert 'setup[setup_count - 1].next.set(&data->cmd_head);' in after_hook
+            assert 'encoder.encodeCommands(&data->cmd_head);' in after_hook
+            assert 'DeduplicateRenderResidency' not in after_hook
     mocks = (HERE/'mocks.hpp').read_text()
     for marker, value in {
         'TEXTURE_ALLOCATION_FLAGS': block(tex, 'enum class TextureAllocationFlag')+';',

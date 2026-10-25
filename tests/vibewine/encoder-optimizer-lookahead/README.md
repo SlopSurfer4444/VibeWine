@@ -26,6 +26,14 @@ e1772a425721b4f694a52c20ef92fff7332bafe4. A combined variant also enables the
 existing dead-store and physical-residency experiments.
 The bounded variant also compiles for the other Darwin architecture.
 
+The retained pre-fusion baseline explicitly selects the shared extractor's
+`historical_render_emission` mode. It requires the original residency hook and
+exact direct-encode adjacency. Current extraction keeps its fusion ordering
+assertions by default. Five source-generation controls reject historical input
+without explicit selection, current input in historical mode, a missing current
+splice, a duplicate historical encode, and a missing historical residency hook.
+The historical/default/explicit-off semantic output comparison remains required.
+
 Coverage includes 63/64/65/256/1024 independent renders and long Null tails, exact
 64/65-position merge boundaries, draw preservation/order, visibility participation,
 wait/update fence identities, signal/wait/timestamp barriers, a suffix merged

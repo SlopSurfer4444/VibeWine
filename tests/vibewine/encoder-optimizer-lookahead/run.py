@@ -16,8 +16,8 @@ shared = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shared)
 
 
-def program(contents):
-    generated = shared.generate(contents)
+def program(contents, *, historical_render_emission=False):
+    generated = shared.generate(contents, historical_render_emission=historical_render_emission)
     generated = generated[:generated.rindex("\nint main()")]
     assert "namespace dxmt {" in generated
     generated = generated.replace("namespace dxmt {",
@@ -33,13 +33,46 @@ def program(contents):
     return generated + "\n" + (HERE / "fixture.cpp.in").read_text()
 
 
+def check_generation_guards(current, historical):
+    # Exercise the real source qualification seam before compiling either
+    # semantic fixture. Historical admission is exact and never the default.
+    cases = [('historical-requires-opt-in', historical, False),
+             ('current-rejects-historical-mode', current, True)]
+    path = 'src/dxmt/dxmt_context.cpp'
+    missing_splice = dict(current)
+    missing_splice[path] = shared.replace(current[path],
+        'setup[setup_count - 1].next.set(&data->cmd_head);', 'setup[setup_count - 1].next.set(nullptr);')
+    cases.append(('current-missing-splice', missing_splice, False))
+    duplicate_encode = dict(historical)
+    direct = '#endif\n      encoder.encodeCommands(&data->cmd_head);\n      data->fence_update_vertex.forEach('
+    duplicate_encode[path] = shared.replace(historical[path], direct,
+        '#endif\n      encoder.encodeCommands(&data->cmd_head);\n      encoder.encodeCommands(&data->cmd_head);\n      data->fence_update_vertex.forEach(')
+    cases.append(('historical-duplicate-encode', duplicate_encode, True))
+    missing_hook = dict(historical)
+    start = historical[path].index('#if defined(DXMT_PHYSICAL_RESIDENCY_DEDUP)',
+                                  historical[path].index('ArgumentEncodingContext::flushCommands('))
+    end = historical[path].index('#endif', start) + len('#endif')
+    missing_hook[path] = historical[path][:start] + historical[path][end:]
+    cases.append(('historical-missing-hook', missing_hook, True))
+    rejected = []
+    for name, contents, historic in cases:
+        try:
+            shared.generate(contents, historical_render_emission=historic)
+        except AssertionError:
+            rejected.append(name)
+        else:
+            raise AssertionError('generation guard accepted ' + name)
+    return rejected
+
+
 def main():
     contents = shared.sources(REPO)
     original = program(contents)
     legacy_contents = dict(contents)
     legacy_contents["src/dxmt/dxmt_context.cpp"] = subprocess.check_output(
         ["git", "-C", str(REPO), "show", BASELINE_REF + ":src/dxmt/dxmt_context.cpp"], text=True)
-    legacy = program(legacy_contents)
+    legacy = program(legacy_contents, historical_render_emission=True)
+    generation_guards = check_generation_guards(contents, legacy_contents)
     disable = original.replace("if (i - j > kEncoderOptimizerThreshold)", "if (false)")
     null_bypass = shared.replace(original,
         "        if (i - j > kEncoderOptimizerThreshold)\n          break;",
@@ -80,7 +113,7 @@ def main():
             results.append({"variant": name, "exit": run.returncode, "output": output.strip()})
     assert results[0]["output"] == results[1]["output"] == results[2]["output"], "default differs from historical unbounded behavior"
     print(json.dumps({"passed": True, "scope": "CPU extracted production optimizer/relation/dependency methods; no GPU/Metal/Wine",
-                      "other_architecture_compile": other_arch,
+                      "other_architecture_compile": other_arch, "generation_guards_rejected": generation_guards,
                       "baseline_ref": BASELINE_REF,
                       "sources_sha256": {p: hashlib.sha256(c.encode()).hexdigest() for p, c in contents.items()},
                       "results": results}, indent=2))
