@@ -16,6 +16,8 @@ game FPS, latency and memory comparisons remain pending.
 [Changes, checks and limits](docs/diagnostics/fps-wave-20261025.md).
 
 This repository distributes source, not a ready-to-install Wine runtime.
+[First experimental source drop](docs/releases/2026-10-25-source-preview.md)
+includes a recursive source snapshot; GitHub's automatic ZIP omits submodules.
 [Selected upstream/fork backports](docs/integrations/fork-review-20261023.md),
 [the integrated checkpoint](docs/diagnostics/integrated-wave-20261023.md) and
 [status](docs/STATUS.md) distinguish source, builds, installation and game results.
