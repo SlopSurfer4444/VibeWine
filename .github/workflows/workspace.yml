@@ -113,3 +113,21 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/resolve-adjacency/run.py
         working-directory: components/dxmt
+      - run: python3 tests/vibewine/exact-setters/run.py --sanitize
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/staging-copy-coalescing/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/texture-view-prefix/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/observer-clocks/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/native-raster-shadow/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/semantic-blend-hash/run.py --arch arm64 --directx include/native/directx
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/shader-initialize-failure/run.py --arch arm64
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/transport-packets/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/empty-color-slots/run.py
+        working-directory: components/dxmt

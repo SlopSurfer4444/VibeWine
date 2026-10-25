@@ -1,10 +1,12 @@
 # VibeWine roadmap
 
-The [26 October hot-path wave](docs/diagnostics/hotpaths-20261026.md)
-implements command-splice/allocation/hash experiments and causal compiler
-observability. Next acceptance is trusted native presentation coverage and
-controlled A/A then A/B gameplay, with observer cost measured independently.
-The source checkpoint preserves the installed playable runtime.
+The [26 October deep round](docs/diagnostics/deep-hotpaths-20261026.md)
+closes nine source improvements and four default-off experiments with paired
+build/covered GPU evidence. The next correctness priority is the reproduced
+initializer reserve/fill/publish transaction and checked callers. The next
+measurement priorities are actual presentation binding/finite closure, consumer
+compiler dependencies and controlled A/A then A/B gameplay. Source/build success
+preserves the installed playable runtime and does not promote every experiment.
 
 This is a direction for contributions, not a release promise. Start with the
 [component source](README.md#get-the-source) and [contribution guide](CONTRIBUTING.md).

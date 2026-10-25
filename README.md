@@ -7,13 +7,13 @@ windows, Retina, accessibility, game compatibility and performance you can
 measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
-**Current checkpoint: 26 October 2026.** The new
-[hot-path and telemetry wave](docs/diagnostics/hotpaths-20261026.md) reduces
-shader lookup, allocation/copy and native command-transport work; adds exact
-compiler-stage attribution; and separates long stalls from usable timing
-coverage. General correctness repairs remain separate from default-off
-experiments. This source checkpoint is distinct from the installed DS3 runtime
-and is not a demonstrated FPS increase.
+**Current checkpoint: 26 October 2026.** The
+[deep hot-path round](docs/diagnostics/deep-hotpaths-20261026.md) adds exact-setter,
+staging-copy and texture-view work reduction, cheaper optional observation and
+four default-off native/PSO/transport experiments. Two complete matched builds
+and covered GPU readbacks pass. The round also reproduces an **unfixed initializer
+transaction defect** and records accepted/rejected follow-ups. These are general
+mechanisms; installed DS3 and gameplay FPS acceptance remain separate.
 
 The [first source drop](docs/releases/2026-10-25-source-preview.md),
 [neighbor wave](docs/integrations/neighbor-wave-20261025.md),

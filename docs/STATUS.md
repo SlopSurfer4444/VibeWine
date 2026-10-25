@@ -1,16 +1,13 @@
 # Current source, installation and checks
 
-Latest [hot-path and useful-telemetry wave](diagnostics/hotpaths-20261026.md):
-new general correctness and work-reduction source, opt-in render/compute fusion
-and packed IR growth, compiler-stage attribution and long-aggregate recovery.
-Wine remains `5d4b43e4`. The installed ten-switch renderer and DS3 launch policy
-are preserved; this wave does not establish new gameplay/FPS acceptance.
+Latest [deep hot-path round](diagnostics/deep-hotpaths-20261026.md):
+nine general changes, four additional default-off switches, focused failure and
+operation-count controls. Wine remains `5d4b43e4`. Installed ten-switch graphics
+and DS3 launch policy are preserved; no game/FPS result is inferred.
 
-The first remote hot-path CI exposed a historical-fixture qualification error:
-current fusion adjacency was incorrectly required from retained pre-fusion
-source. A test-only repair preserves strict current assertions, explicitly
-qualifies the legacy caller and adds five rejection controls. All five affected
-local suites pass; this pin contains that repair. Remote rerun is separate.
+The earlier historical-fixture qualification repair passed remote CI40241985216.
+This later source pin adds the new focused suites; its remote result is separate
+from local full builds and native GPU evidence.
 
 Reconciled **26 October 2026**. Source/build details for this wave are recorded
 in its report; dated documents retain their original historical claims.
@@ -18,7 +15,7 @@ in its report; dated documents retain their original historical claims.
 | Layer | Current state | What it does not establish |
 | --- | --- | --- |
 | Development source | Wine `5d4b43e4`; DXMT hot-path source checkpoint pinned by this hub, following `96940d73` | A component branch tip is not an installed runtime |
-| Latest source/build checks | DXMT `a21579fb`: two fresh 161-target builds, fourteen boolean switches off/on; five generic GPU stages and dedicated compute/blit resolve checks per variant, connected pixel/resolve negatives; 221 telemetry and 13 workspace tests | A new installation, SO-output GPU coverage, DS3 FPS or measured observer overhead |
+| Latest source/build checks | DXMT production `101d5ff7`: two fresh161-target builds, eighteen boolean switches off/on; seventeen generic/resolve/active-MRT/depth/staging/view GPU stages per variant; five connected negatives; nine new focused suites,221 telemetry and13 workspace tests | Installation, GS/TS GPU execution, 3D/BC/alias GPU coverage, native failure equivalence, DS3 FPS or observer overhead |
 | Source prerelease | `v0.1.0-experimental.20261025`, frozen at hub `5be9c7d6`, Wine `85864be4` / DXMT `25eff5e1`; complete recursive source archive independently matched to Git and uploaded digests | Not an installable binary distribution or a release of the later neighbor source |
 | Matched build | Both fresh 161-target DXMT variants from local `036aaae9` (public tree-equivalent `e1772a42`) with ten experiment booleans off/on; matched PE/native/helper, retained Unix NTDLL/server and LLVM 15.0.7; compiler epoch 2 off / 3 cleanup on | Full reproducible Wine distribution or every optional feature |
 | Installation | Latest ten-switch experimental DXMT installed: five graphics artifacts updated, 17 Wine artifacts retained; exact readback and no-op passed. Separate helper delivery requests fixed-output MetalFX from the ordinary DS3 icon; prior recovery retained | Stable release promotion, actual game MetalFX activation, new exit/relaunch or FPS acceptance |

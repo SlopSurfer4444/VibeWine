@@ -72,3 +72,14 @@ stand in for those prerequisites or live game acceptance. Existing exact runtime
 source patches describe the older composite baseline. Follow their named bases
 for historical reproduction, rather than applying them as a blind queue onto
 the new component pins. Controlled game performance remains pending.
+
+## Deep-round source options
+
+The [deep round](diagnostics/deep-hotpaths-20261026.md) checks eighteen boolean
+options off/on as a matched pair; four newly added options are
+`vibewine_native_raster_shadow`, `vibewine_semantic_blend_hash`,
+`vibewine_marshal_packets`, `vibewine_empty_color_slots`. All default false.
+Use the component Meson options and common PE/native map; the blend switch changes
+a private interface and cannot be mixed between separately built libraries.
+No source install or runtime selection follows automatically. The explicit
+initializer known-defect proof is intentionally outside ordinary CI acceptance.
