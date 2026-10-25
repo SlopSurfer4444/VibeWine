@@ -1,0 +1,166 @@
+#include "ftl.hpp"
+#include "Metal.hpp"
+#include "dxmt_deptrack.hpp"
+#include "observer.hpp"
+#include <algorithm>
+#include <chrono>
+#include <iostream>
+
+struct Data {
+  dxmt::FenceSet fence_wait, fence_wait_vertex, fence_update, fence_update_vertex;
+};
+using Pool = std::array<WMT::Fence, dxmt::kParityLane>;
+static __attribute__((noinline)) void baseline(Data *data, WMT::RenderCommandEncoder encoder, const Pool &fence_pool_, bool update) {
+  if (update) {
+// PRODUCTION_UPDATE
+  } else {
+// PRODUCTION_WAIT
+  }
+}
+
+// Assessment-only bounded existing-ABI packet; no new interpreter or production switch.
+// Keep a single pending event so zero/singleton never initializes the array.
+struct Packet {
+  WMT::RenderCommandEncoder encoder;
+  bool update;
+  std::array<wmtcmd_render_fence_op, 8> nodes;
+  unsigned count = 0;
+  WMT::Fence first;
+  WMTRenderStages first_stage{};
+  Packet(WMT::RenderCommandEncoder e, bool u) : encoder(e), update(u) {}
+  void set(unsigned index, WMT::Fence fence, WMTRenderStages stage) {
+    auto &node = nodes[index];
+    node.type = update ? WMTRenderCommandUpdateFence : WMTRenderCommandWaitForFence;
+    node.next.set(nullptr);
+    node.fence = fence.handle;
+    node.stages = stage;
+    if (index) nodes[index - 1].next.set(&node);
+  }
+  void append(WMT::Fence fence, WMTRenderStages stage) {
+    if (!count) {
+      first = fence;
+      first_stage = stage;
+      count = 1;
+      return;
+    }
+    if (count == 1) set(0, first, first_stage);
+    set(count++, fence, stage);
+    if (count == nodes.size()) flush();
+  }
+  void flush() {
+    if (count == 1) {
+      if (update) encoder.updateFence(first, first_stage);
+      else encoder.waitForFence(first, first_stage);
+    } else if (count) {
+      encoder.encodeCommands(reinterpret_cast<const wmtcmd_render_nop *>(nodes.data()));
+    }
+    count = 0;
+  }
+};
+static __attribute__((noinline)) void prototype(Data *data, WMT::RenderCommandEncoder encoder, const Pool &fence_pool_, bool update) {
+  // Preserve existing nil fallback, including individual wrapper invocation count.
+  if (!encoder) return baseline(data, encoder, fence_pool_, update);
+  Packet packet(encoder, update);
+  if (update) {
+// PACKET_UPDATE
+  } else {
+// PACKET_WAIT
+  }
+  packet.flush();
+}
+
+static Data make_case(unsigned count, unsigned mode) {
+  Data result;
+  for (unsigned id = 0; id < count; ++id) {
+    // Spread sparse cases over parity groups, exercise low/high lane boundaries.
+    const unsigned mapped = (id * 73 + 63) % dxmt::kParityLane;
+    if (mode != 1) result.fence_wait.set(mapped), result.fence_update_vertex.set(mapped);
+    if (mode != 0) result.fence_wait_vertex.set(mapped), result.fence_update.set(mapped);
+  }
+  return result;
+}
+static void check(Data &data, const Pool &pool, bool update, bool nil) {
+  WMT::RenderCommandEncoder encoder;
+  encoder.handle = nil ? 0 : 1;
+  reset_observer(true);
+  baseline(&data, encoder, pool, update);
+  const auto old = observed;
+  reset_observer(true);
+  prototype(&data, encoder, pool, update);
+  assert(old.events == observed.events);
+  assert(old.digest == observed.digest && old.commands == observed.commands);
+  assert(observed.calls == (nil ? old.calls : (old.calls + 7) / 8));
+  // Independent scalar oracle verifies order and overlap stage priority.
+  std::vector<FenceEvent> expected;
+  for (unsigned id = 0; id < pool.size(); ++id) {
+    auto &normal = update ? data.fence_update_vertex : data.fence_wait;
+    auto &prior = update ? data.fence_update : data.fence_wait_vertex;
+    if (!nil && (normal.test(id) || prior.test(id))) {
+      auto stage = update ? (prior.test(id) ? WMTRenderStageFragment : WMTRenderStagePreRaster)
+                          : (prior.test(id) ? WMTRenderStagePreRaster : WMTRenderStageFragment);
+      expected.push_back({update ? WMTRenderCommandUpdateFence : WMTRenderCommandWaitForFence, pool[id].handle, stage});
+    }
+  }
+  assert(expected == observed.events);
+}
+static double measure(Data &data, const Pool &pool, bool update, bool packet, unsigned iterations) {
+  WMT::RenderCommandEncoder encoder;
+  encoder.handle = 1;
+  reset_observer(false);
+  const auto start = std::chrono::steady_clock::now();
+  for (unsigned i = 0; i < iterations; ++i) {
+    if (packet) prototype(&data, encoder, pool, update);
+    else baseline(&data, encoder, pool, update);
+  }
+  return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / iterations;
+}
+int main() {
+  Pool pool;
+  for (unsigned id = 0; id < pool.size(); ++id) pool[id].handle = 1000 + id;
+  unsigned scenarios = 0;
+  for (unsigned count = 0; count <= pool.size(); ++count) for (unsigned mode = 0; mode < 3; ++mode)
+    for (bool update : {false, true}) for (bool nil : {false, true}) {
+      auto data = make_case(count, mode);
+      check(data, pool, update, nil);
+      ++scenarios;
+    }
+  // Irregular mixed masks, including overlaps, spanning all parity groups.
+  for (unsigned seed = 1; seed <= 128; ++seed) {
+    Data data;
+    uint32_t random = seed;
+    for (unsigned id = 0; id < pool.size(); ++id) {
+      random = random * 1664525u + 1013904223u;
+      if (random & 1) data.fence_wait.set(id);
+      if (random & 2) data.fence_wait_vertex.set(id);
+      if (random & 4) data.fence_update.set(id);
+      if (random & 8) data.fence_update_vertex.set(id);
+    }
+    for (bool update : {false, true}) { check(data, pool, update, false); ++scenarios; }
+  }
+  std::cout << "{\"scenarios\":" << scenarios << ",\"packet_capacity\":8,\"packet_bytes\":" << sizeof(Packet::nodes) << ",\"timings\":[";
+  bool comma = false;
+  for (unsigned count : {0u, 1u, 2u, 4u, 8u, 9u, 16u, 64u, 256u}) for (bool update : {false, true}) {
+    auto data = make_case(count, 2);
+    std::array<double, 7> a, b;
+    uint64_t digest = 0;
+    for (unsigned repeat = 0; repeat < a.size(); ++repeat) {
+      // Alternate order to reduce one-sided thermal/order bias.
+      if (repeat & 1) {
+        b[repeat] = measure(data, pool, update, true, 30000);
+        digest = observed.digest;
+        a[repeat] = measure(data, pool, update, false, 30000);
+      } else {
+        a[repeat] = measure(data, pool, update, false, 30000);
+        digest = observed.digest;
+        b[repeat] = measure(data, pool, update, true, 30000);
+      }
+      assert(observed.digest == digest);
+    }
+    std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end());
+    if (comma) std::cout << ',';
+    comma = true;
+    std::cout << "{\"count\":" << count << ",\"update\":" << update << ",\"baseline_calls\":" << count
+              << ",\"prototype_calls\":" << (count + 7) / 8 << ",\"baseline_ns\":" << a[3] << ",\"prototype_ns\":" << b[3] << '}';
+  }
+  std::cout << "]}\n";
+}

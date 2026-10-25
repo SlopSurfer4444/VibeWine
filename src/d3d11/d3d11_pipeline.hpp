@@ -57,8 +57,9 @@ template <> struct hash<MTL_GRAPHICS_PIPELINE_DESC> {
     state.add((size_t)v.GeometryShader);
     state.add((size_t)v.InputLayout);
     state.add((size_t)v.SOLayout);
-    /* don't add blend */
-    // state.add((size_t)v.BlendState);
+#if DXMT_SEMANTIC_BLEND_HASH
+    state.add(v.BlendState ? v.BlendState->PipelineHash(v.NumColorAttachments) : 0);
+#endif
     state.add((size_t)v.DepthStencilFormat);
     state.add((size_t)v.TopologyClass);
     state.add((size_t)v.IndexBufferFormat);

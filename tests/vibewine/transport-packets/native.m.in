@@ -1,0 +1,46 @@
+// Full unmodified native interpreter; Objective-C receiver is a CPU observer.
+#import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
+#include "winemetal_thunks.h"
+#include "airconv_public.h"
+#include <assert.h>
+typedef int NTSTATUS;
+#define STATUS_SUCCESS 0
+extern void fixture_event(uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t);
+extern void fixture_marshal(uint64_t,uint64_t,uint64_t);
+static uint64_t crossings,commands,sink;
+static bool capture;
+static void record(uint64_t t,uint64_t a,uint64_t b,uint64_t c,uint64_t d,uint64_t e) {
+  ++commands;sink+=t+a+b+c+d+e+1;
+  if(capture)fixture_event(t,a,b,c,d,e);
+}
+@interface FixtureEncoder : NSObject { uint64_t pipeline,arguments,argument_offset; }
+@end
+@implementation FixtureEncoder
+-(void)useResource:(id)resource usage:(MTLResourceUsage)usage stages:(MTLRenderStages)stages { record(WMTRenderCommandUseResource,(uintptr_t)resource,usage,stages,0,0); }
+-(void)setVertexBuffer:(id)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index {
+  record(WMTRenderCommandSetVertexBuffer,(uintptr_t)buffer,offset,index,0,0);
+  if(index==30) { arguments=(uintptr_t)buffer;argument_offset=offset; }
+}
+-(void)setFragmentBuffer:(id)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index { record(WMTRenderCommandSetFragmentBuffer,(uintptr_t)buffer,offset,index,0,0); }
+-(void)setObjectBuffer:(id)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index { record(WMTRenderCommandSetObjectBuffer,(uintptr_t)buffer,offset,index,0,0); }
+-(void)setMeshBuffer:(id)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index { record(WMTRenderCommandSetMeshBuffer,(uintptr_t)buffer,offset,index,0,0); }
+-(void)setRenderPipelineState:(id)value { pipeline=(uintptr_t)value;record(WMTRenderCommandSetPSO,pipeline,0,0,0,0); }
+-(void)drawPrimitives:(MTLPrimitiveType)type vertexStart:(NSUInteger)start vertexCount:(NSUInteger)count instanceCount:(NSUInteger)instances baseInstance:(NSUInteger)base {
+  record(WMTRenderCommandDraw,type,start,count,instances,base);
+  if(capture)fixture_marshal(pipeline,arguments,argument_offset);
+}
+-(void)memoryBarrierWithScope:(MTLBarrierScope)scope afterStages:(MTLRenderStages)after beforeStages:(MTLRenderStages)before { record(WMTRenderCommandMemoryBarrier,scope,before,after,0,0); }
+-(void)waitForFence:(id)fence beforeStages:(MTLRenderStages)stages { record(WMTRenderCommandWaitForFence,(uintptr_t)fence,stages,0,0,0); }
+-(void)updateFence:(id)fence afterStages:(MTLRenderStages)stages { record(WMTRenderCommandUpdateFence,(uintptr_t)fence,stages,0,0,0); }
+-(void)setVisibilityResultMode:(MTLVisibilityResultMode)mode offset:(NSUInteger)offset { record(WMTRenderCommandSetVisibilityMode,mode,offset,0,0,0); }
+-(void)endEncoding { record(1000,0,0,0,0,0); }
+@end
+// NATIVE_HANDLER
+uint64_t fixture_encoder(void) { static FixtureEncoder *encoder; if(!encoder)encoder=[FixtureEncoder new];return (uintptr_t)encoder; }
+void fixture_observer_reset(bool full) { capture=full;crossings=commands=sink=0; }
+uint64_t fixture_crossings(void) { return crossings; }
+uint64_t fixture_commands(void) { return commands; }
+uint64_t fixture_sink(void) { return sink; }
+void fixture_unix_call(unsigned opcode,void *params) { assert(opcode==38);++crossings;assert(_MTLRenderCommandEncoder_encodeCommands(params)==0); }
+void MTLCommandEncoder_endEncoding(obj_handle_t encoder) { [(id)encoder endEncoding]; }

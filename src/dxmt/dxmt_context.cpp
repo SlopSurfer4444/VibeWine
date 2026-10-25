@@ -1105,8 +1105,13 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
           tasks_data[i].max_object_threadgroups = task.max_object_threadgroups;
           tasks_data[i].vertex_count_per_warp = task.vertex_count_per_warp;
           tasks_data[i].end_of_command = 0;
+#if defined(DXMT_MARSHAL_PACKETS) && DXMT_MARSHAL_PACKETS && \
+    !(defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING)
+          emulated_cmd.UseMarshalTaskResources(encoder, task.draw_arguments, task.dispatch_arguments_buffer);
+#else
           encoder.useResource(task.draw_arguments, WMTResourceUsageRead, WMTRenderStageVertex);
           encoder.useResource(task.dispatch_arguments_buffer, WMTResourceUsageWrite, WMTRenderStageVertex);
+#endif
         }
         tasks_data[task_count - 1].end_of_command = 1;
         emulated_cmd.MarshalGSDispatchArguments(encoder, task_data_buffer, task_data_buffer_offset);
@@ -1132,8 +1137,13 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
           tasks_data[i].control_point_count = task.control_point_count;
           tasks_data[i].patch_per_group = task.patch_per_group;
           tasks_data[i].end_of_command = 0;
+#if defined(DXMT_MARSHAL_PACKETS) && DXMT_MARSHAL_PACKETS && \
+    !(defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING)
+          emulated_cmd.UseMarshalTaskResources(encoder, task.draw_arguments, task.dispatch_arguments_buffer);
+#else
           encoder.useResource(task.draw_arguments, WMTResourceUsageRead, WMTRenderStageVertex);
           encoder.useResource(task.dispatch_arguments_buffer, WMTResourceUsageWrite, WMTRenderStageVertex);
+#endif
         }
         tasks_data[task_count - 1].end_of_command = 1;
         emulated_cmd.MarshalTSDispatchArguments(encoder, task_data_buffer, task_data_buffer_offset);

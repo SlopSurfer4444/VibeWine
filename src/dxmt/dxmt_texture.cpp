@@ -97,16 +97,19 @@ TextureAllocation::free(){
 };
 
 void
-Texture::prepareAllocationViews(TextureAllocation *allocation) {
+Texture::prepareAllocationViews(TextureAllocation *allocation, unsigned index) {
   if (allocation->version_ < 1) {
     allocation->cached_view_.push_back(new TextureView(allocation));
     allocation->version_ = 1;
   }
   std::shared_lock<dxmt::shared_mutex> lock(mutex_);
-  for (unsigned version = allocation->version_; version < version_; version++) {
+  // Keep a contiguous materialized prefix, stopping at the requested view.
+  // Publish each successful append so an allocation failure resumes at the
+  // first missing descriptor without replacing or duplicating earlier views.
+  for (; allocation->version_ <= index; allocation->version_++) {
+    auto version = allocation->version_;
     allocation->cached_view_.push_back(new TextureView(allocation, version, viewDescriptors_[version]));
   }
-  allocation->version_ = version_;
 }
 
 TextureViewKey
@@ -254,8 +257,8 @@ Texture::view(TextureViewKey key) {
 
 TextureView &
 Texture::view(TextureViewKey key, TextureAllocation* allocation) {
-  if (unlikely(allocation->version_ != version_)) {
-    prepareAllocationViews(allocation);
+  if (unlikely(allocation->version_ <= key.index)) {
+    prepareAllocationViews(allocation, key.index);
   }
   return *allocation->cached_view_[key.index];
 }

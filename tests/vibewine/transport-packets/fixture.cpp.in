@@ -1,0 +1,135 @@
+// Exact production post-creation render emission and GS/TS methods.
+#include "ftl.hpp"
+#include "Metal.hpp"
+#include "winemetal_thunks.h"
+#include "airconv_public.h"
+#include "dxmt_command_constants.hpp"
+#include "dxmt_deptrack.hpp"
+#include <array>
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <iostream>
+#include <tuple>
+#include <vector>
+
+using namespace dxmt;
+extern "C" obj_handle_t fixture_encoder();
+extern "C" void fixture_observer_reset(bool);
+extern "C" uint64_t fixture_crossings();
+extern "C" uint64_t fixture_commands();
+extern "C" uint64_t fixture_sink();
+static bool recording=true;
+static std::vector<std::array<uint64_t,6>> trace;
+extern "C" void fixture_event(uint64_t t,uint64_t a,uint64_t b,uint64_t c,uint64_t d,uint64_t e) {
+  if(recording) trace.push_back({t,a,b,c,d,e});
+}
+struct MarshalTask {
+  uint64_t draw_arguments_va=101,dispatch_arguments_va=202,max_object_threadgroups=13;
+  uint32_t vertex_count_per_warp=32,control_point_count=3,patch_per_group=4;
+  WMT::Buffer draw_arguments,dispatch_arguments_buffer;
+  explicit MarshalTask(unsigned i=0) {
+    draw_arguments_va+=i*128;dispatch_arguments_va+=i*256;max_object_threadgroups+=i;
+    draw_arguments.handle=400+i*2;dispatch_arguments_buffer.handle=401+i*2;
+  }
+};
+struct Queue {
+  std::array<uint64_t,2048> mapped;
+  unsigned gs_tasks=0,ts_tasks=0;
+  auto AllocateArgumentBuffer(uint64_t seq,size_t bytes) {
+    assert(seq==7 && bytes<=sizeof(mapped));
+    WMT::Buffer buffer;buffer.handle=80;
+    return std::tuple<void *,WMT::Buffer,uint64_t>{mapped.data(),buffer,16};
+  }
+} queue_;
+extern "C" void fixture_marshal(uint64_t pipeline,uint64_t arguments,uint64_t offset) {
+  if(pipeline!=90 && pipeline!=91) return;
+  assert(arguments==80 && offset==16);
+  auto count=pipeline==90?queue_.gs_tasks:queue_.ts_tasks;
+  for(unsigned i=0;i<count;++i) {
+    const auto *p=queue_.mapped.data()+4*i;
+    assert(p[0]==101+i*128 && p[1]==202+i*256 && p[2]==13+i);
+    assert(uint32_t(p[3]>>32)==(i+1==count));
+    if(pipeline==90) assert(uint32_t(p[3])==32);
+    else assert(uint16_t(p[3])==3 && uint16_t(p[3]>>16)==4);
+  }
+}
+class Emulated {
+  WMT::RenderPipelineState gs_draw_arguments_marshal{90},ts_draw_arguments_marshal{91};
+public:
+  void fixture_pipeline_state(bool valid) { gs_draw_arguments_marshal.handle=valid?90:0;ts_draw_arguments_marshal.handle=valid?91:0; }
+// GS_METHOD
+// TS_METHOD
+// RESOURCE_METHOD
+private:
+// PACKET_METHOD
+} emulated_cmd;
+struct Data {
+  bool use_geometry=false,use_tessellation=false,use_emulated_so=false;
+  std::vector<MarshalTask> gs_arg_marshal_tasks,ts_arg_marshal_tasks;
+  FenceSet fence_wait,fence_wait_vertex,fence_update_vertex,fence_update;
+  wmtcmd_render_nop cmd_head{};
+};
+namespace passopt {
+// PRODUCTION_DEDUP
+}
+static void emit(Data *data,WMT::RenderCommandEncoder encoder,WMT::Buffer gpu_buffer_) {
+  uint64_t seq_id_=7;
+  static auto fence_pool_=[] {
+    std::array<WMT::Fence,256> fences{};
+    for(unsigned i=0;i<fences.size();++i)fences[i].handle=900+i;
+    return fences;
+  }();
+// PRODUCTION_EMISSION
+}
+static Data data_for(unsigned gs,unsigned ts) {
+  Data d;d.use_geometry=gs;d.use_tessellation=ts;
+  for(unsigned i=0;i<gs;++i)d.gs_arg_marshal_tasks.emplace_back(i);
+  for(unsigned i=0;i<ts;++i)d.ts_arg_marshal_tasks.emplace_back(i);
+  return d;
+}
+static void bench(WMT::RenderCommandEncoder encoder,WMT::Buffer buffer) {
+  recording=false;
+  constexpr unsigned iterations=12000;
+  for(unsigned tasks:{0u,1u,2u,8u,32u,129u}) {
+    auto data=data_for(tasks,0);queue_.gs_tasks=tasks;queue_.ts_tasks=0;
+    for(unsigned warm=0;warm<100;++warm)emit(&data,encoder,buffer);
+    std::vector<double> samples;
+    for(unsigned repeat=0;repeat<7;++repeat) {
+      fixture_observer_reset(false);
+      const auto begin=std::chrono::steady_clock::now();
+      for(unsigned i=0;i<iterations;++i)emit(&data,encoder,buffer);
+      const auto elapsed=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-begin).count();
+      assert(fixture_sink());
+      samples.push_back(elapsed/iterations);
+    }
+    std::sort(samples.begin(),samples.end());
+    std::cout<<"bench "<<tasks<<' '<<samples[3]<<' '<<fixture_crossings()/iterations<<' '<<fixture_commands()/iterations<<'\n';
+  }
+}
+int main(int argc,char **) {
+  WMT::RenderCommandEncoder live;live.handle=fixture_encoder();WMT::Buffer buffer;buffer.handle=33;
+  if(argc>1) { bench(live,buffer);return 0; }
+  unsigned scenario=0;
+  for(unsigned gs:{0u,1u,2u,17u,129u})for(unsigned ts:{0u,1u,2u,17u,129u})
+  for(bool valid:{false,true})for(bool fences:{false,true})for(bool so:{false,true})for(bool pipelines:{false,true}) {
+    Data data=data_for(gs,ts);data.use_emulated_so=so;emulated_cmd.fixture_pipeline_state(pipelines);
+    queue_.gs_tasks=gs;queue_.ts_tasks=ts;
+    if(fences) {
+      data.fence_wait.set(1);data.fence_wait.set(2);data.fence_wait_vertex.set(2);
+      data.fence_update_vertex.set(3);data.fence_update_vertex.set(4);data.fence_update.set(4);
+    }
+    wmtcmd_render_draw draw{};draw.type=WMTRenderCommandDraw;
+    draw.primitive_type=WMTPrimitiveTypeTriangle;draw.vertex_start=7;draw.vertex_count=12;draw.instance_count=2;draw.base_instance=9;
+    wmtcmd_render_setpso pipeline{};pipeline.type=WMTRenderCommandSetPSO;pipeline.pso=70;pipeline.next.set(&draw);
+    wmtcmd_render_setvisibilitymode visibility{};visibility.type=WMTRenderCommandSetVisibilityMode;
+    visibility.mode=WMTVisibilityResultModeCounting;visibility.offset=24;visibility.next.set(&pipeline);
+    data.cmd_head.next.set(&visibility);
+    auto encoder=live;if(!valid)encoder.handle=0;
+    trace.clear();fixture_observer_reset(true);emit(&data,encoder,buffer);
+    assert(data.cmd_head.next.get()==&visibility && visibility.next.get()==&pipeline && pipeline.next.get()==&draw && !draw.next.get());
+    std::cout<<scenario++<<' '<<gs<<' '<<ts<<' '<<fixture_crossings()<<' '<<fixture_commands()<<' '<<trace.size();
+    for(auto &e:trace)for(auto v:e)std::cout<<' '<<v;
+    std::cout<<'\n';
+  }
+}

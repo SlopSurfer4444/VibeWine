@@ -1,0 +1,312 @@
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
+#include "d3d11_1.h"
+#include "airconv_public.h"
+#include "util_hash.hpp"
+struct Counters { uint64_t eq=0, desc=0, accessor=0, hash=0, adds=0; } counters;
+#ifdef BENCHMARK
+#define COUNT(field) ((void)0)
+#else
+#define COUNT(field) (++counters.field)
+#endif
+static void counted_add(dxmt::HashState &state, size_t value) { COUNT(adds); state.add(value); }
+#include "d3d11_blend_hash.hpp"
+static void require(bool ok, const char *why) {
+  if (!ok) { std::cerr << "CONTRACT: " << why << '\n'; std::exit(1); }
+}
+struct IMTLD3D11BlendState {
+  virtual ~IMTLD3D11BlendState() = default;
+  virtual void GetDesc1(D3D11_BLEND_DESC1 *) = 0;
+  virtual size_t PipelineHash(uint32_t) const noexcept = 0;
+};
+struct Shader {};
+struct InputLayout {};
+struct IMTLD3D11StreamOutputLayout {};
+using ManagedShader = Shader *;
+using ManagedInputLayout = InputLayout *;
+using WMTPixelFormat = uint32_t;
+using WMTPrimitiveTopologyClass = uint32_t;
+// KEY
+namespace std {
+// HASH
+// EQUALITY
+// STATE_HASH
+// STATE_EQUALITY
+}
+struct State : IMTLD3D11BlendState {
+  const D3D11_BLEND_DESC1 desc_;
+  explicit State(const D3D11_BLEND_DESC1 &v) : desc_(v) {}
+  // Actual production descriptor-copy method body.
+  void GetDesc1(D3D11_BLEND_DESC1 *pDesc) final { COUNT(desc);
+// GET_DESC
+  }
+};
+struct DirectState final : State {
+  using State::State;
+  size_t PipelineHash(uint32_t count) const noexcept final {
+    COUNT(accessor);
+    D3D11_BLEND_DESC1 copy;
+    const_cast<DirectState *>(this)->GetDesc1(&copy);
+    return dxmt::hashPipelineBlend(copy, count);
+  }
+};
+using dxmt::hashPipelineBlend;
+struct OwnerState final : State {
+  const size_t pipeline_hash_;
+  explicit OwnerState(const D3D11_BLEND_DESC1 &v) : State(v), pipeline_hash_(dxmt::hashPipelineBlend(desc_, 8)) {}
+// OWNER_METHOD
+};
+struct PrefixState final : State {
+  std::array<size_t, 9> prefixes;
+  explicit PrefixState(const D3D11_BLEND_DESC1 &v) : State(v) {
+    dxmt::HashState state;
+    counted_add(state, desc_.IndependentBlendEnable);
+    counted_add(state, desc_.AlphaToCoverageEnable);
+    prefixes[0] = state;
+    for (size_t i = 0; i < 8; ++i) {
+      if (desc_.IndependentBlendEnable || i == 0) dxmt::addPipelineBlendTarget(state, desc_.RenderTarget[i]);
+      prefixes[i+1] = state;
+    }
+  }
+  size_t PipelineHash(uint32_t count) const noexcept final {
+    COUNT(accessor); return prefixes[desc_.IndependentBlendEnable ? count : 1];
+  }
+};
+static D3D11_BLEND_DESC1 normalized(D3D11_BLEND_DESC1 desc_normalized) {
+// NORMALIZATION
+  return desc_normalized;
+}
+static D3D11_BLEND_DESC1 descriptor(uint32_t i=0, bool independent=false, uint32_t count=1) {
+  D3D11_BLEND_DESC1 result{};
+  result.IndependentBlendEnable = independent;
+  for (auto &rt : result.RenderTarget) {
+    rt.BlendEnable = true; rt.LogicOpEnable = false;
+    rt.SrcBlend = D3D11_BLEND_ONE; rt.DestBlend = D3D11_BLEND_ZERO;
+    rt.SrcBlendAlpha = D3D11_BLEND_ONE; rt.DestBlendAlpha = D3D11_BLEND_ZERO;
+    rt.BlendOp = D3D11_BLEND_OP_ADD; rt.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    rt.LogicOp = D3D11_LOGIC_OP_COPY; rt.RenderTargetWriteMask = 15;
+  }
+  const D3D11_BLEND factors[] = {D3D11_BLEND_ZERO,D3D11_BLEND_ONE,D3D11_BLEND_SRC_COLOR,D3D11_BLEND_INV_SRC_COLOR,
+      D3D11_BLEND_SRC_ALPHA,D3D11_BLEND_INV_SRC_ALPHA,D3D11_BLEND_DEST_ALPHA,D3D11_BLEND_INV_DEST_ALPHA,
+      D3D11_BLEND_DEST_COLOR,D3D11_BLEND_INV_DEST_COLOR,D3D11_BLEND_SRC_ALPHA_SAT,D3D11_BLEND_BLEND_FACTOR,
+      D3D11_BLEND_INV_BLEND_FACTOR,D3D11_BLEND_SRC1_COLOR,D3D11_BLEND_INV_SRC1_COLOR,D3D11_BLEND_SRC1_ALPHA};
+  auto &target = result.RenderTarget[independent && count ? count-1 : 0];
+  target.RenderTargetWriteMask = i % 16;
+  target.SrcBlend = factors[(i / 16) % 16];
+  target.DestBlend = factors[(i / 256) % 16];
+  return result;
+}
+static MTL_GRAPHICS_PIPELINE_DESC key(IMTLD3D11BlendState *state, uint32_t count) {
+  MTL_GRAPHICS_PIPELINE_DESC result{};
+  result.BlendState = state; result.NumColorAttachments = count;
+  for (auto &format : result.ColorAttachmentFormats) format = 80;
+  result.SampleCount = 1; result.RasterizationEnabled = true;
+  return result;
+}
+__attribute__((noinline)) size_t directBlendHash(IMTLD3D11BlendState *state, uint32_t count) {
+  D3D11_BLEND_DESC1 copy;
+  state->GetDesc1(&copy);
+  return dxmt::hashPipelineBlend(copy,count);
+}
+// DIRECT_HASH
+struct CountHash {
+  bool direct = false;
+  size_t operator()(const MTL_GRAPHICS_PIPELINE_DESC &v) const noexcept {
+    COUNT(hash); return direct ? DirectHash{}(v) : std::hash<MTL_GRAPHICS_PIPELINE_DESC>{}(v);
+  }
+};
+struct CountEqual {
+  bool operator()(const MTL_GRAPHICS_PIPELINE_DESC &a, const MTL_GRAPHICS_PIPELINE_DESC &b) const {
+    COUNT(eq); return std::equal_to<MTL_GRAPHICS_PIPELINE_DESC>{}(a,b);
+  }
+};
+static void pair(const D3D11_BLEND_DESC1 &a, const D3D11_BLEND_DESC1 &b, uint32_t count, bool equal, bool sentinel=false) {
+  OwnerState x(a), y(b);
+  const auto kx=key(&x,count), ky=key(&y,count);
+  require(CountEqual{}(kx,ky) == equal && CountEqual{}(ky,kx) == equal, "expected exact comparator semantics");
+  auto hx=CountHash{}(kx), hy=CountHash{}(ky);
+  if (equal) require(hx == hy, "equal distinct-pointer keys must hash equally");
+#if DXMT_SEMANTIC_BLEND_HASH
+  if (!equal && sentinel) require(hx != hy, "selected-field bounded hash sentinel");
+#else
+  (void)sentinel;
+#endif
+#ifndef HASH_CONTROL
+  DirectState direct(a); PrefixState prefix(a);
+  require(x.PipelineHash(count) == direct.PipelineHash(count) && x.PipelineHash(count) == prefix.PipelineHash(count),
+          "candidate fingerprint equivalence");
+#endif
+  std::unordered_map<MTL_GRAPHICS_PIPELINE_DESC, int, CountHash, CountEqual> map;
+  map.emplace(kx, 3); map.emplace(ky, 7);
+  require(map.size() == (equal?1u:2u), "semantic key deduplication");
+  map.rehash(53);
+  require(map.at(kx) == 3 && map.at(ky) == (equal?3:7), "semantic lookup after rehash");
+}
+static void correctness() {
+  require(normalized(descriptor()).IndependentBlendEnable == false, "normalization default");
+  auto raw = descriptor(); raw.IndependentBlendEnable=2; raw.AlphaToCoverageEnable=-1;
+  auto norm = normalized(raw);
+  require(norm.IndependentBlendEnable==1 && norm.AlphaToCoverageEnable==1, "actual top-level BOOL normalization");
+  for (bool independent : {false,true}) for (uint32_t count=0; count<=8; ++count) {
+    auto a=descriptor(0,independent,count), b=a;
+    pair(a,b,count,true);
+    b.AlphaToCoverageEnable = true; pair(a,b,count,false,true);
+    b=a; b.IndependentBlendEnable = !independent; pair(a,b,count,false,true);
+    const uint32_t used=independent?count:1;
+    for (uint32_t target=0; target<8; ++target) {
+      b=a; b.RenderTarget[target].RenderTargetWriteMask ^= 1;
+      pair(a,b,count,target>=used,target<used);
+      // Each conditionally read blend field, selected and inactive targets.
+      for (int field=0; field<6; ++field) {
+        b=a; auto &rt=b.RenderTarget[target];
+        switch(field) {
+          case 0: rt.BlendOp=D3D11_BLEND_OP_MAX; break;
+          case 1: rt.BlendOpAlpha=D3D11_BLEND_OP_MIN; break;
+          case 2: rt.SrcBlend=D3D11_BLEND_SRC_ALPHA; break;
+          case 3: rt.SrcBlendAlpha=D3D11_BLEND_INV_SRC_ALPHA; break;
+          case 4: rt.DestBlend=D3D11_BLEND_DEST_COLOR; break;
+          default: rt.DestBlendAlpha=D3D11_BLEND_INV_DEST_COLOR;
+        }
+        pair(a,b,count,target>=used,target<used);
+        auto offa=a, offb=b; offa.RenderTarget[target].BlendEnable=0; offb.RenderTarget[target].BlendEnable=0;
+        pair(offa,offb,count,true);
+      }
+      for (BOOL flag : {0,2,-1}) {
+        b=a; b.RenderTarget[target].BlendEnable=flag;
+        pair(a,b,count,target>=used,target<used);
+      }
+      b=a; b.RenderTarget[target].LogicOpEnable=2;
+      pair(a,b,count,target>=used,target<used);
+      b=a; b.RenderTarget[target].LogicOp=D3D11_LOGIC_OP_XOR;
+      pair(a,b,count,true);
+      auto logic_a=a, logic_b=b;
+      logic_a.RenderTarget[target].BlendEnable=0; logic_b.RenderTarget[target].BlendEnable=0;
+      logic_a.RenderTarget[target].LogicOpEnable=-1; logic_b.RenderTarget[target].LogicOpEnable=-1;
+      pair(logic_a,logic_b,count,target>=used,target<used);
+      for (BOOL flag : {1,2}) {
+        auto flag_a=logic_a, flag_b=logic_a;
+        flag_a.RenderTarget[target].LogicOpEnable=flag;
+        pair(flag_a,flag_b,count,target>=used,target<used);
+      }
+    }
+  }
+  // Padding varies while every member is assigned explicitly.
+  D3D11_BLEND_DESC1 a,b;
+  std::memset(&a,0x55,sizeof(a)); std::memset(&b,0xaa,sizeof(b));
+  for (auto *v : {&a,&b}) {
+    v->IndependentBlendEnable=1; v->AlphaToCoverageEnable=0;
+    for (auto &rt:v->RenderTarget) {
+      rt.BlendEnable=0;rt.LogicOpEnable=0;rt.SrcBlend=D3D11_BLEND_ONE;rt.DestBlend=D3D11_BLEND_ZERO;
+      rt.BlendOp=D3D11_BLEND_OP_ADD;rt.SrcBlendAlpha=D3D11_BLEND_ONE;rt.DestBlendAlpha=D3D11_BLEND_ZERO;
+      rt.BlendOpAlpha=D3D11_BLEND_OP_ADD;rt.LogicOp=D3D11_LOGIC_OP_COPY;rt.RenderTargetWriteMask=15;
+    }
+  }
+  pair(a,b,8,true);
+  // Existing state-cache equality uses all 8 independent targets. PSO equality
+  // must still merge distinct canonical states differing only outside the PSO.
+  auto tail=descriptor(0,true,1); auto other=tail; other.RenderTarget[7].RenderTargetWriteMask^=1;
+  require(!std::equal_to<D3D11_BLEND_DESC1>{}(tail,other), "state cache retains differing independent tails");
+  std::unordered_map<D3D11_BLEND_DESC1,int> states;states.emplace(tail,1);states.emplace(other,2);
+  require(states.size()==2, "actual canonical state cache preserves distinct tail owners");
+  pair(tail,other,1,true);
+  other=tail;other.RenderTarget[0].BlendEnable=0;tail.RenderTarget[0].BlendEnable=0;
+  other.RenderTarget[0].BlendOp=D3D11_BLEND_OP_MAX;
+  require(std::equal_to<D3D11_BLEND_DESC1>{}(tail,other), "state cache ignores inactive fields");
+  auto null_key=key(nullptr,0);
+  require(CountEqual{}(null_key,null_key) && CountHash{}(null_key)==CountHash{}(null_key), "null shared identity remains hashable");
+  std::cout << "PASS exact comparator, all fields/conditions/counts0..8, canonical tails, raw BOOL and padding\n";
+}
+using Map=std::unordered_map<MTL_GRAPHICS_PIPELINE_DESC,uint32_t,CountHash,CountEqual>;
+static std::unique_ptr<State> make(const D3D11_BLEND_DESC1 &v, int mode) {
+  if (mode==0) return std::make_unique<DirectState>(v);
+  if (mode==1) return std::make_unique<OwnerState>(v);
+  return std::make_unique<PrefixState>(v);
+}
+static volatile uint64_t sink=0;
+__attribute__((noinline)) static uint64_t lookups(const Map &map, const std::vector<MTL_GRAPHICS_PIPELINE_DESC> &keys, size_t iterations) {
+  uint64_t checksum=0;
+  for(size_t i=0;i<iterations;++i) {
+    auto found=map.find(keys[i%keys.size()]);
+    require(found!=map.end(),"benchmark hit identity");checksum+=found->second;
+  }
+  return checksum;
+}
+static void work(int mode,bool independent,uint32_t count,uint32_t n) {
+  std::vector<std::unique_ptr<State>> owners;
+  std::vector<MTL_GRAPHICS_PIPELINE_DESC> keys;
+  counters={};
+  for(uint32_t i=0;i<n;++i) {
+    owners.push_back(make(descriptor(i,independent,count),mode));keys.push_back(key(owners.back().get(),count));
+  }
+  auto build=counters; counters={};
+  Map map(0,CountHash{bool(DXMT_SEMANTIC_BLEND_HASH && mode==0)},CountEqual{});map.reserve(n*2);
+  for(uint32_t i=0;i<n;++i) map.emplace(keys[i],i);
+  auto insertion=counters; counters={};
+  auto sum=lookups(map,keys,4096);sink=sum;
+  auto hits=counters;counters={};
+  std::unique_ptr<State> absent=make(descriptor(n+256,independent,count),mode);
+  auto missing=key(absent.get(),count);counters={};
+  auto found=map.find(missing);
+  require((found!=map.end())==(independent&&count==0),"miss/key collapse correctness");
+  auto miss=counters;
+  size_t largest=0;for(size_t i=0;i<map.bucket_count();++i) largest=std::max(largest,map.bucket_size(i));
+  std::cout << "WORK {\"mode\":"<<mode<<",\"independent\":"<<independent<<",\"attachments\":"<<count<<",\"states\":"<<n
+            <<",\"map_size\":"<<map.size()<<",\"build_adds\":"<<build.adds<<",\"insert_eq\":"<<insertion.eq
+            <<",\"hit_eq\":"<<hits.eq<<",\"hit_GetDesc1\":"<<hits.desc<<",\"hit_hash\":"<<hits.hash
+            <<",\"hit_accessor\":"<<hits.accessor<<",\"hit_blend_adds\":"<<hits.adds
+            <<",\"miss_eq\":"<<miss.eq<<",\"miss_GetDesc1\":"<<miss.desc<<",\"largest_bucket\":"<<largest;
+#ifdef BENCHMARK
+  std::array<double,5> samples{};
+  for(auto &sample:samples) {
+    auto begin=std::chrono::steady_clock::now();sink=lookups(map,keys,16384);
+    sample=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-begin).count()/16384;
+  }
+  std::sort(samples.begin(),samples.end());
+  std::cout<<",\"ns_per_hit_min\":"<<samples[0]<<",\"ns_per_hit_median\":"<<samples[2]<<",\"ns_per_hit_max\":"<<samples[4];
+#endif
+  std::cout<<"}\n";
+}
+#ifdef BENCHMARK
+static void construction(int mode, bool independent) {
+  std::array<double,5> samples{};
+  constexpr size_t n=4096;
+  for(auto &sample:samples) {
+    std::vector<std::unique_ptr<State>> owners; owners.reserve(n);
+    auto begin=std::chrono::steady_clock::now();
+    for(size_t i=0;i<n;++i) owners.push_back(make(descriptor(i,independent,8),mode));
+    sample=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-begin).count()/n;
+    uint64_t checksum=0;for(const auto &owner:owners) checksum+=owner->PipelineHash(8);sink=checksum;
+  }
+  std::sort(samples.begin(),samples.end());
+  std::cout<<"BUILD {\"mode\":"<<mode<<",\"independent\":"<<independent
+           <<",\"ns_per_state_min\":"<<samples[0]<<",\"ns_per_state_median\":"<<samples[2]<<",\"ns_per_state_max\":"<<samples[4]<<"}\n";
+}
+#endif
+int main() {
+#ifndef BENCHMARK
+  correctness();
+#endif
+  for(int mode=0;mode<3;++mode) {
+#if !DXMT_SEMANTIC_BLEND_HASH
+    if(mode!=0) continue;
+#endif
+#ifdef BENCHMARK
+    construction(mode,false);construction(mode,true);
+#endif
+    for(uint32_t n:{1u,4u,16u,64u,256u}) work(mode,false,1,n);
+    for(uint32_t count:{0u,2u,4u,8u}) work(mode,false,count,128);
+    for(uint32_t count:{0u,1u,2u,4u,8u}) work(mode,true,count,128);
+  }
+}

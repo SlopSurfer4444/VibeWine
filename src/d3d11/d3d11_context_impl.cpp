@@ -1973,11 +1973,10 @@ public:
   IASetInputLayout(ID3D11InputLayout *pInputLayout) override {
     std::lock_guard<mutex_t> lock(mutex);
 
-    if (auto expected = com_cast<IMTLD3D11InputLayout>(pInputLayout)) {
-      state_.InputAssembler.InputLayout = std::move(expected);
-    } else {
-      state_.InputAssembler.InputLayout = nullptr;
-    }
+    auto expected = com_cast<IMTLD3D11InputLayout>(pInputLayout);
+    if (state_.InputAssembler.InputLayout.ptr() == expected.ptr())
+      return;
+    state_.InputAssembler.InputLayout = std::move(expected);
     InvalidateRenderPipeline();
   }
   void
@@ -3496,6 +3495,8 @@ public:
         D3D11_ASSERT(0 && "unexpected shader object");
       }
     } else {
+      if (!ShaderStage.Shader && !NumClassInstances)
+        return;
       ShaderStage.Shader = nullptr;
     }
 
@@ -3819,14 +3820,19 @@ public:
         bool replaced = false;
         auto &entry = VertexBuffers.bind(slot, {pVertexBuffer}, replaced, !pVertexBuffer->hazardsFree());
         if (!replaced) {
+          bool changed = false;
           if (pStrides && pStrides[slot - StartSlot] != entry.Stride) {
             VertexBuffers.set_dirty(slot);
             entry.Stride = pStrides[slot - StartSlot];
+            changed = true;
           }
           if (pOffsets && pOffsets[slot - StartSlot] != entry.Offset) {
             VertexBuffers.set_dirty(slot);
             entry.Offset = pOffsets[slot - StartSlot];
+            changed = true;
           }
+          if (!changed)
+            continue;
           EmitST([=, offset = entry.Offset,
                 stride = entry.Stride](ArgumentEncodingContext &enc) mutable {
             enc.bindVertexBufferOffset(slot, offset, stride);
@@ -4013,8 +4019,20 @@ public:
             ERR("copy between staging BC texture");
             return;
           }
+          // Full tightly packed rows in distinct staging buffers are one
+          // contiguous span per image. Preserve row copies for padding,
+          // bitcasts, partial rows and aliases; image strides remain separate.
+          const auto row_bytes = cmd.SrcSize.width * cmd.DstFormat.BytesPerTexel;
+          const bool contiguous_rows = cmd.Src.Format == cmd.Dst.Format &&
+                                       cmd.SrcFormat.BytesPerTexel == cmd.DstFormat.BytesPerTexel &&
+                                       cmd.SrcOrigin.x == 0 && cmd.DstOrigin.x == 0 &&
+                                       row_bytes && row_bytes == src_->bytesPerRow && row_bytes == dst_->bytesPerRow &&
+                                       cmd.SrcSize.height <= src_->bytesPerImage / row_bytes &&
+                                       cmd.SrcSize.height <= dst_->bytesPerImage / row_bytes &&
+                                       src->buffer().handle != dst->buffer().handle;
+          const auto rows_per_copy = contiguous_rows ? cmd.SrcSize.height : 1;
           for (unsigned offset_z = 0; offset_z < cmd.SrcSize.depth; offset_z++) {
-            for (unsigned offset_y = 0; offset_y < cmd.SrcSize.height; offset_y++) {
+            for (unsigned offset_y = 0; offset_y < cmd.SrcSize.height; offset_y += rows_per_copy) {
               auto src_offset = (cmd.SrcOrigin.z + offset_z) * src_->bytesPerImage +
                                 (cmd.SrcOrigin.y + offset_y) * src_->bytesPerRow +
                                 cmd.SrcOrigin.x * cmd.SrcFormat.BytesPerTexel;
@@ -4023,7 +4041,7 @@ public:
                                 cmd.DstOrigin.x * cmd.DstFormat.BytesPerTexel;
               auto &cmdcp = enc.encodeBlitCommand<wmtcmd_blit_copy_from_buffer_to_buffer>();
               cmdcp.type = WMTBlitCommandCopyFromBufferToBuffer;
-              cmdcp.copy_length = cmd.SrcSize.width * cmd.DstFormat.BytesPerTexel;
+              cmdcp.copy_length = row_bytes * rows_per_copy;
               cmdcp.src = src->buffer();
               cmdcp.src_offset = src_sub_offset + src_offset;
               cmdcp.dst = dst->buffer();

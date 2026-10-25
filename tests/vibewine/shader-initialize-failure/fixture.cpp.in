@@ -1,0 +1,142 @@
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include "airconv_thunks.h"
+#include "sha1/sha1_util.hpp"
+static void require(bool value,const char *why) {
+  if(!value){std::cerr<<"CONTRACT: "<<why<<'\n';std::exit(1);}
+}
+enum class Mode { transport, owned_error, no_error, success, success_no_args, transport_with_error };
+static Mode mode=Mode::transport;
+struct Error {bool live=false;std::string text="fixture invalid DXBC";} owned_error;
+struct Handle {bool live=false;uint32_t serial=0;};
+static std::array<Handle,16> handles{};
+struct Counts {size_t initialize=0,message=0,free_error=0,destroy=0,arguments=0,success=0;} counts;
+static std::vector<std::string> logs;
+template<class...T> static void error_log(const T &...values) {
+  std::ostringstream stream;(stream<<...<<values);logs.push_back(stream.str());
+}
+#define ERR(...) error_log(__VA_ARGS__)
+extern "C" int32_t mock_unix(unsigned int code,void *raw) {
+  switch(code) {
+    case unix_sm50_initialize: {
+      ++counts.initialize;auto *p=static_cast<sm50_initialize_params *>(raw);
+      require(p->shader && p->reflection && p->error,"actual thunk forwards caller output addresses");
+      // This branch deliberately writes no output, exactly the transport edge.
+      if(mode==Mode::transport)return -1;
+      if(mode==Mode::owned_error || mode==Mode::transport_with_error) {
+        require(!owned_error.live,"previous error ownership closed");owned_error.live=true;
+        *p->error=&owned_error;p->ret=1;
+        return mode==Mode::transport_with_error ? -1 : 0;
+      }
+      *p->error=nullptr;
+      if(mode==Mode::no_error){p->ret=1;return 0;}
+      auto &handle=handles[counts.success];require(!handle.live,"new shader handle available");
+      handle.live=true;handle.serial=uint32_t(++counts.success);*p->shader=&handle;
+      auto *reflection=static_cast<MTL_SHADER_REFLECTION *>(p->reflection);*reflection={};
+      if(mode!=Mode::success_no_args){reflection->NumConstantBuffers=1;reflection->NumArguments=2;}
+      p->ret=0;return 0;
+    }
+    case unix_sm50_get_error_message: {
+      ++counts.message;auto *p=static_cast<sm50_get_error_message_params *>(raw);
+      require(p->error==&owned_error && owned_error.live,"message access requires a live owned error object");
+      require(p->buffer && p->buffer_size,"actual string wrapper supplies writable buffer");
+      auto size=std::min(owned_error.text.size(),p->buffer_size-1);
+      std::memcpy(p->buffer,owned_error.text.data(),size);p->buffer[size]='\0';p->ret_size=size;return 0;
+    }
+    case unix_sm50_free_error: {
+      ++counts.free_error;auto *p=static_cast<sm50_free_error_params *>(raw);
+      require(p->error==&owned_error && owned_error.live,"free requires a live owned error object exactly once");
+      owned_error.live=false;return 0;
+    }
+    case unix_sm50_get_arguments_info: {
+      ++counts.arguments;auto *p=static_cast<sm50_get_arguments_info_params *>(raw);
+      auto *handle=static_cast<Handle *>(p->shader);require(handle && handle->live,"argument read owns live shader");
+      p->constant_buffers[0]={};p->constant_buffers[0].SM50BindingSlot=11;
+      for(uint32_t i=0;i<2;++i){p->arguments[i]={};p->arguments[i].SM50BindingSlot=21+i;}
+      return 0;
+    }
+    case unix_sm50_destroy: {
+      ++counts.destroy;auto *p=static_cast<sm50_destroy_params *>(raw);
+      auto *handle=static_cast<Handle *>(p->shader);require(handle && handle->live,"destroy shader exactly once");
+      handle->live=false;return 0;
+    }
+    default: require(false,"only expected actual thunk routes execute");return -1;
+  }
+}
+namespace dxmt {
+class PipelineCache {
+public:
+  class CachedSM50Shader {
+    PipelineCache *cache;
+    sm50_shader_t shader=nullptr;
+    Sha1Digest sha1_;
+    MTL_SHADER_REFLECTION reflection_;
+    MTL_SM50_SHADER_ARGUMENT *arguments_info_buffer;
+  public:
+// CONSTRUCTOR
+// DESTRUCTOR
+    sm50_shader_t fixture_handle() const{return shader;}
+    bool fixture_arguments() const {
+      return reflection_.NumConstantBuffers==1 && reflection_.NumArguments==2 && arguments_info_buffer &&
+             arguments_info_buffer[0].SM50BindingSlot==11 && arguments_info_buffer[1].SM50BindingSlot==21 &&
+             arguments_info_buffer[2].SM50BindingSlot==22;
+    }
+    bool fixture_no_arguments() const{return !arguments_info_buffer && !reflection_.NumConstantBuffers && !reflection_.NumArguments;}
+  };
+  std::unordered_map<Sha1Digest,std::unique_ptr<CachedSM50Shader>> shaders_;
+  std::shared_mutex mutex_shares;
+// CREATE_SHADER
+};
+}
+int main() {
+  using dxmt::PipelineCache;
+  const std::array<uint8_t,4> a{1,2,3,4},b{5,6,7,8},c{9,10,11,12},d{13,14,15,16},e{17,18,19,20};
+  {
+    PipelineCache cache;
+    mode=Mode::transport;
+    require(!cache.CreateShader(a.data(),a.size()),"transport failure returns null");
+    require(counts.initialize==1 && !counts.message && !counts.free_error && !counts.arguments && cache.shaders_.empty(),
+            "untouched-output transport failure does not access error or publish shader");
+    require(logs.size()==1 && logs.back()=="Failed to initialize shader without an error object","transport fallback log");
+    mode=Mode::owned_error;
+    require(!cache.CreateShader(a.data(),a.size()),"owned native error returns null");
+    require(counts.message==1 && counts.free_error==1 && !owned_error.live,"owned error is released exactly once");
+    require(logs.size()==2 && logs.back()=="Failed to initialize shader: "+owned_error.text,"owned error message preserved");
+    require(cache.shaders_.empty() && !counts.arguments,"failed shader is never published");
+    mode=Mode::no_error;
+    require(!cache.CreateShader(a.data(),a.size()),"native failure without error returns null");
+    require(counts.message==1 && counts.free_error==1 && logs.size()==3,"null error is neither read nor freed");
+    mode=Mode::success;
+    auto *first=cache.CreateShader(a.data(),a.size());
+    require(first && first->fixture_arguments() && counts.initialize==4 && counts.arguments==1 && cache.shaders_.size()==1,"success creates and publishes actual wrapper/arguments");
+    auto snapshot=counts;auto log_count=logs.size();mode=Mode::transport;
+    require(cache.CreateShader(a.data(),a.size())==first,"warm hit returns identical shader");
+    require(counts.initialize==snapshot.initialize && counts.arguments==snapshot.arguments && logs.size()==log_count,"warm hit bypasses initializer and error routes");
+    mode=Mode::success;auto *second=cache.CreateShader(b.data(),b.size());
+    require(second && second!=first && second->fixture_handle()!=first->fixture_handle() && cache.shaders_.size()==2,"distinct actual SHA1 cache key remains independent");
+    mode=Mode::transport;require(!cache.CreateShader(c.data(),c.size()),"new transport failure returns null");
+    mode=Mode::success;auto *retried=cache.CreateShader(c.data(),c.size());
+    require(retried && retried->fixture_arguments() && cache.shaders_.size()==3,"failure is not cached and retry can publish success");
+    mode=Mode::success_no_args;auto *zero=cache.CreateShader(d.data(),d.size());
+    require(zero && zero->fixture_no_arguments() && cache.shaders_.size()==4 && counts.arguments==3,"success with zero arguments unchanged");
+    mode=Mode::transport_with_error;
+    require(!cache.CreateShader(e.data(),e.size()),"transport status with owned error returns null");
+    require(counts.message==2 && counts.free_error==2 && !owned_error.live,"owned output before transport status is not discarded");
+  }
+  require(counts.destroy==counts.success && counts.success==4,"actual wrapper destructor releases every successful native handle");
+  for(auto &handle:handles)require(!handle.live,"no retained mock shader ownership");
+  require(!owned_error.live,"no retained mock error ownership");
+  std::cout<<"PASS actual CreateShader, complete C thunk TU, SHA1, success/cache hits/retry, null and owned error routes; init="
+           <<counts.initialize<<" message="<<counts.message<<" free="<<counts.free_error<<" args="<<counts.arguments<<" destroy="<<counts.destroy<<'\n';
+}

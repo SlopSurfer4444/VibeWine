@@ -34,3 +34,15 @@ option('vibewine_render_pass_fusion', type : 'boolean', value : false,
 
 option('vibewine_compute_pass_fusion', type : 'boolean', value : false,
        description : 'Join compute setup and recorded commands in one native call')
+
+option('vibewine_native_raster_shadow', type : 'boolean', value : false,
+  description : 'Experimental per-decoder raster selector shadow; change-heavy workloads can regress')
+
+option('vibewine_semantic_blend_hash', type : 'boolean', value : false,
+  description : 'Experimental graphics PSO semantic blend hash with one cached word per blend state')
+
+option('vibewine_marshal_packets', type : 'boolean', value : false,
+  description : 'Experimental fixed GS/TS preparation and residency packets')
+
+option('vibewine_empty_color_slots', type : 'boolean', value : false,
+  description : 'Experimental canonical empty color attachment descriptor suppression')

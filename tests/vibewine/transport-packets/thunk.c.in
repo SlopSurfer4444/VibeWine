@@ -1,0 +1,4 @@
+#include "winemetal_thunks.h"
+extern void fixture_unix_call(unsigned,void *);
+#define UNIX_CALL(op,p) fixture_unix_call(op,p)
+// PE_THUNK

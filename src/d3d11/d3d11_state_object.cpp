@@ -254,7 +254,11 @@ class MTLD3D11BlendState : public ManagedDeviceChild<IMTLD3D11BlendState> {
 public:
   friend class MTLD3D11DeviceContext;
   MTLD3D11BlendState(MTLD3D11Device *device, const D3D11_BLEND_DESC1 &desc)
-      : ManagedDeviceChild<IMTLD3D11BlendState>(device), desc_(desc), d3d10_(this) {
+      : ManagedDeviceChild<IMTLD3D11BlendState>(device), desc_(desc),
+#if DXMT_SEMANTIC_BLEND_HASH
+        pipeline_hash_(hashPipelineBlend(desc_, 8)),
+#endif
+        d3d10_(this) {
     dual_source_blending_ =
         desc_.RenderTarget[0].BlendEnable &&
         (desc_.RenderTarget[0].SrcBlend >= D3D11_BLEND_SRC1_COLOR ||
@@ -314,6 +318,16 @@ public:
 
   bool IsDualSourceBlending() { return dual_source_blending_; }
 
+#if DXMT_SEMANTIC_BLEND_HASH
+  size_t PipelineHash(uint32_t num_rt) const noexcept final {
+    // One cached word covers all non-independent states and the full 8-target
+    // shape. Partial independent states hash their immutable selected prefix.
+    if (!desc_.IndependentBlendEnable || num_rt == 8)
+      return pipeline_hash_;
+    return hashPipelineBlend(desc_, num_rt);
+  }
+#endif
+
   void SetupMetalPipelineDescriptor(WMTRenderPipelineBlendInfo *info, uint32_t num_rt, uint32_t valid_rt) {
     for (unsigned rt = 0; rt < num_rt; rt++) {
       if (!(valid_rt & (1 << rt)))
@@ -357,6 +371,9 @@ public:
 private:
   const D3D11_BLEND_DESC1 desc_;
   bool dual_source_blending_;
+#if DXMT_SEMANTIC_BLEND_HASH
+  const size_t pipeline_hash_;
+#endif
   MTLD3D10BlendState d3d10_;
 };
 

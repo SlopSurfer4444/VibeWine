@@ -1,0 +1,102 @@
+// Whole production native interpreter, real ABI; CPU Objective-C receiver only.
+#import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
+#include "winemetal_thunks.h"
+#include "airconv_public.h"
+#include <array>
+#include <vector>
+#include <cstring>
+#include <iostream>
+#include <chrono>
+#include <cstdlib>
+using Bits = std::array<uint32_t,7>;
+static uint32_t bits(float v) { uint32_t r; memcpy(&r,&v,4); return r; }
+static float asfloat(uint32_t v) { float r; memcpy(&r,&v,4); return r; }
+@interface MockEncoder : NSObject {
+@public Bits state;
+@public std::vector<Bits> observations;
+@public unsigned calls, other;
+@public bool capture;
+}
+@end
+@implementation MockEncoder
+- (instancetype)init { if ((self=[super init])) { state.fill(0xdeadbeef); calls=other=0;capture=true; } return self; }
+- (void)setTriangleFillMode:(MTLTriangleFillMode)v { state[0]=v; ++calls; }
+- (void)setCullMode:(MTLCullMode)v { state[1]=v; ++calls; }
+- (void)setDepthClipMode:(MTLDepthClipMode)v { state[2]=v; ++calls; }
+- (void)setFrontFacingWinding:(MTLWinding)v { state[3]=v; ++calls; }
+- (void)setDepthBias:(float)a slopeScale:(float)b clamp:(float)c { state[4]=bits(a);state[5]=bits(b);state[6]=bits(c);++calls; }
+- (void)drawPrimitives:(MTLPrimitiveType)t vertexStart:(NSUInteger)s vertexCount:(NSUInteger)n instanceCount:(NSUInteger)i baseInstance:(NSUInteger)b { if(capture) observations.push_back(state); }
+- (void)executeCommandsInBuffer:(id<MTLIndirectCommandBuffer>)buffer withRange:(NSRange)range { state[1]=MTLCullModeFront;state[4]=bits(7.f);++other; }
+- (void)setViewports:(const MTLViewport *)p count:(NSUInteger)n { if(n!=2||!p||p[1].width!=17) std::abort(); ++other; }
+- (void)setScissorRects:(const MTLScissorRect *)p count:(NSUInteger)n { if(n!=2||!p||p[1].height!=19) std::abort(); ++other; }
+- (void)setVertexBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { ++other; }
+- (void)useResource:(id<MTLResource>)r usage:(MTLResourceUsage)u stages:(MTLRenderStages)s { ++other; }
+- (void)memoryBarrierWithScope:(MTLBarrierScope)s afterStages:(MTLRenderStages)a beforeStages:(MTLRenderStages)b { ++other; }
+@end
+using NTSTATUS=int;
+#define STATUS_SUCCESS 0
+// PRODUCTION_DECODER
+static void check(bool b) { if(!b) std::abort(); }
+struct Node {
+  alignas(16) std::array<unsigned char,256> bytes{};
+  template<class T>T &as() { static_assert(sizeof(T)<=256);return *reinterpret_cast<T *>(bytes.data()); }
+  wmtcmd_base *base() { return &as<wmtcmd_base>(); }
+};
+static Node raster(unsigned value=0) {
+  Node n;auto &r=n.as<wmtcmd_render_setrasterizerstate>();r.type=WMTRenderCommandSetRasterizerState;
+  r.fill_mode=WMTTriangleFillModeFill;r.cull_mode=WMTCullModeBack;r.depth_clip_mode=WMTDepthClipModeClip;
+  r.winding=WMTWindingCounterClockwise;r.depth_bias=asfloat(value);r.scole_scale=1.f;r.depth_bias_clamp=2.f;return n;
+}
+static Node opcode(WMTRenderCommandType type) {Node n;n.base()->type=type;return n;}
+static Node draw() {Node n=opcode(WMTRenderCommandDraw);auto &r=n.as<wmtcmd_render_draw>();r.primitive_type=WMTPrimitiveTypeTriangle;r.vertex_count=3;r.instance_count=1;return n;}
+static void decode(std::vector<Node> &nodes,MockEncoder *mock) {
+  for(size_t i=0;i<nodes.size();++i) nodes[i].base()->next.set(i+1<nodes.size()?nodes[i+1].base():nullptr);
+  unixcall_generic_obj_cmd_noret params{};params.encoder=(obj_handle_t)mock;params.cmd_head.set(nodes.empty()?nullptr:nodes[0].base());
+  check(_MTLRenderCommandEncoder_encodeCommands(&params)==STATUS_SUCCESS);
+}
+static void report(const char *name,std::vector<Node> nodes,bool split=false,bool nil_encoder=false) {
+  auto *mock=[MockEncoder new];
+  if(split) { for(auto &n:nodes){std::vector<Node> one{n};decode(one,mock);} } else decode(nodes,nil_encoder?nil:mock);
+  std::cout<<name<<' '<<mock->calls<<' '<<mock->other<<' '<<mock->observations.size();
+  for(auto &s:mock->observations) for(auto v:s)std::cout<<' '<<v;
+  std::cout<<'\n';[mock release];
+}
+int main(int argc,char **argv) { @autoreleasepool {
+  if(argc>1 && std::string(argv[1])=="bench") {
+    auto *mock=[MockEncoder new];mock->capture=false;
+    for(unsigned mode=0;mode<4;mode++) {
+      std::vector<Node> nodes{raster()};
+      if(mode) {nodes.push_back(raster());if(mode==2)nodes[1].as<wmtcmd_render_setrasterizerstate>().cull_mode=WMTCullModeFront;
+        if(mode==3){auto &r=nodes[1].as<wmtcmd_render_setrasterizerstate>();r.fill_mode=WMTTriangleFillModeLines;r.cull_mode=WMTCullModeFront;r.depth_clip_mode=WMTDepthClipModeClamp;r.winding=WMTWindingClockwise;r.depth_bias=4.f;r.scole_scale=5.f;r.depth_bias_clamp=6.f;}}
+      for(unsigned block=0;block<9;block++) {
+        auto start=std::chrono::steady_clock::now();
+        for(unsigned i=0;i<1000000;i++)decode(nodes,mock);
+        auto ns=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();
+        std::cout<<mode<<' '<<block<<' '<<ns<<'\n';
+      }
+    }
+    [mock release];return 0;
+  }
+  auto a=raster(),b=a;
+  report("empty",{});report("single",{a,draw()});report("repeat",{a,draw(),a,draw()});
+  b.as<wmtcmd_render_setrasterizerstate>().cull_mode=WMTCullModeFront;report("cull",{a,draw(),b,draw()});
+  b=raster(0x80000000);report("signedzero",{a,draw(),b,draw()});
+  a=raster(0x7fc00001);b=a;report("nanrepeat",{a,draw(),b,draw()});
+  b=raster(0x7fc00002);report("nanpayload",{a,draw(),b,draw()});
+  a=raster();b=a;b.as<wmtcmd_render_setrasterizerstate>().reserved[0]=213;report("reserved",{a,draw(),b,draw()});
+  b=a;auto &r=b.as<wmtcmd_render_setrasterizerstate>();r.fill_mode=WMTTriangleFillModeLines;r.cull_mode=WMTCullModeFront;r.depth_clip_mode=WMTDepthClipModeClamp;r.winding=WMTWindingClockwise;r.depth_bias=4.f;r.scole_scale=5.f;r.depth_bias_clamp=6.f;
+  report("allchanged",{a,draw(),b,draw()});
+  report("icb",{a,draw(),opcode(WMTRenderCommandExecuteCommandsInBuffer),draw(),a,draw()});
+  report("unknown",{a,draw(),opcode(static_cast<WMTRenderCommandType>(65535)),a,draw()});
+  report("calls",{a,a},true);report("nil",{a,draw()},false,true);
+  WMTViewport viewports[2]{};viewports[1].width=17;
+  auto vp=opcode(WMTRenderCommandSetViewports);vp.as<wmtcmd_render_setviewports>().viewport_count=2;vp.as<wmtcmd_render_setviewports>().viewports.set(viewports);
+  WMTScissorRect scissors[2]{};scissors[1].height=19;
+  auto sc=opcode(WMTRenderCommandSetScissorRects);sc.as<wmtcmd_render_setscissorrects>().rect_count=2;sc.as<wmtcmd_render_setscissorrects>().scissor_rects.set(scissors);
+  report("arraysunbind",{a,vp,sc,opcode(WMTRenderCommandSetVertexBuffer),draw(),a,draw()});
+  for(unsigned i=0;i<7;++i) {a=raster();b=a;auto &r=b.as<wmtcmd_render_setrasterizerstate>();
+    switch(i){case 0:r.fill_mode=WMTTriangleFillModeLines;break;case 1:r.cull_mode=WMTCullModeFront;break;case 2:r.depth_clip_mode=WMTDepthClipModeClamp;break;case 3:r.winding=WMTWindingClockwise;break;case 4:r.depth_bias=1.f;break;case 5:r.scole_scale=2.f;break;case 6:r.depth_bias_clamp=3.f;break;}
+    auto name="field"+std::to_string(i);report(name.c_str(),{a,draw(),b,draw()});}
+  return 0;
+} }

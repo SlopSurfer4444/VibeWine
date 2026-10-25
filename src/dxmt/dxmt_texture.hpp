@@ -292,7 +292,7 @@ public:
   Texture(unsigned bytes_per_image, unsigned bytes_per_row, const WMTTextureInfo &info, WMT::Device device);
 
 private:
-  void prepareAllocationViews(TextureAllocation* allocation);
+  void prepareAllocationViews(TextureAllocation* allocation, unsigned index);
 
   WMTTextureInfo info_;
   unsigned bytes_per_image_ = 0;

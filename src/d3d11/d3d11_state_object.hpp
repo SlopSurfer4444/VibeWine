@@ -7,6 +7,7 @@
 #include "thread.hpp"
 #include "util_hash.hpp"
 #include "dxmt_sampler.hpp"
+#include "d3d11_blend_hash.hpp"
 
 DEFINE_COM_INTERFACE("03629ed8-bcdd-4582-8997-3817209a34f4",
                      IMTLD3D11RasterizerState)
@@ -28,6 +29,9 @@ DEFINE_COM_INTERFACE("279a1d66-2fc1-460c-a0a7-a7a5f2b7a48f",
     : public ID3D11BlendState1 {
   virtual bool IsDualSourceBlending() = 0;
   virtual void SetupMetalPipelineDescriptor(WMTRenderPipelineBlendInfo* blend_info, uint32_t num_rt, uint32_t valid_rt) = 0;
+#if DXMT_SEMANTIC_BLEND_HASH
+  virtual size_t PipelineHash(uint32_t num_rt) const noexcept = 0;
+#endif
 };
 
 namespace std {

@@ -1,4 +1,5 @@
 #include <stdatomic.h>
+#include <string.h>
 #include <dlfcn.h>
 #import <Cocoa/Cocoa.h>
 #import <ColorSync/ColorSync.h>
@@ -449,7 +450,26 @@ _MTLCommandBuffer_renderCommandEncoder(void *obj) {
 #define W4_STENCIL_ATTACHMENT stencil
   MTLRenderPassColorAttachmentDescriptorArray *colors = descriptor.colorAttachments;
 #endif
+#if defined(DXMT_EMPTY_COLOR_SLOTS) && DXMT_EMPTY_COLOR_SLOTS && \
+    (!defined(DXMT_PERF_REF_W4_GETTERS) || !DXMT_PERF_REF_W4_GETTERS)
+  const double clear_zero = 0.0, clear_one = 1.0;
+#endif
   for (unsigned i = 0; i < 8; i++) {
+#if defined(DXMT_EMPTY_COLOR_SLOTS) && DXMT_EMPTY_COLOR_SLOTS && \
+    (!defined(DXMT_PERF_REF_W4_GETTERS) || !DXMT_PERF_REF_W4_GETTERS)
+    const struct WMTColorAttachmentInfo *slot = &info->colors[i];
+    // A fresh Metal color descriptor already has this exact public state.
+    // Preserve every assignment for noncanonical nil attachments as well as
+    // active ones, including clear/resolve/indices used by validation paths.
+    if (!slot->texture && !slot->resolve_texture && slot->load_action == WMTLoadActionDontCare &&
+        slot->store_action == WMTStoreActionStore && !slot->level && !slot->slice && !slot->depth_plane &&
+        !slot->resolve_level && !slot->resolve_slice && !slot->resolve_depth_plane &&
+        !memcmp(&slot->clear_color.r, &clear_zero, sizeof(clear_zero)) &&
+        !memcmp(&slot->clear_color.g, &clear_zero, sizeof(clear_zero)) &&
+        !memcmp(&slot->clear_color.b, &clear_zero, sizeof(clear_zero)) &&
+        !memcmp(&slot->clear_color.a, &clear_one, sizeof(clear_one)))
+      continue;
+#endif
 #if !defined(DXMT_PERF_REF_W4_GETTERS) || !DXMT_PERF_REF_W4_GETTERS
     MTLRenderPassColorAttachmentDescriptor *color = colors[i];
 #endif
@@ -932,9 +952,17 @@ _MTLRenderCommandEncoder_encodeCommands(void *obj) {
   struct unixcall_generic_obj_cmd_noret *params = obj;
   const struct wmtcmd_base *next = params->cmd_head.ptr;
   id<MTLRenderCommandEncoder> encoder = (id<MTLRenderCommandEncoder>)params->encoder;
+#if defined(DXMT_NATIVE_RASTER_SHADOW) && DXMT_NATIVE_RASTER_SHADOW
+  // Command storage is immutable until this synchronous decoder returns. Never
+  // preserve state across calls, encoder handles, or indirect execution.
+  const struct wmtcmd_render_setrasterizerstate *raster_shadow = NULL;
+#endif
   while (next) {
     switch ((enum WMTRenderCommandType)next->type) {
     default:
+#if defined(DXMT_NATIVE_RASTER_SHADOW) && DXMT_NATIVE_RASTER_SHADOW
+      raster_shadow = NULL;
+#endif
       assert(!next->type && "unhandled render command type");
       break;
     case WMTRenderCommandNop:
@@ -998,11 +1026,29 @@ _MTLRenderCommandEncoder_encodeCommands(void *obj) {
     }
     case WMTRenderCommandSetRasterizerState: {
       struct wmtcmd_render_setrasterizerstate *body = (struct wmtcmd_render_setrasterizerstate *)next;
+#if defined(DXMT_NATIVE_RASTER_SHADOW) && DXMT_NATIVE_RASTER_SHADOW
+      if (!raster_shadow || raster_shadow->fill_mode != body->fill_mode)
+        [encoder setTriangleFillMode:(MTLTriangleFillMode)body->fill_mode];
+      if (!raster_shadow || raster_shadow->cull_mode != body->cull_mode)
+        [encoder setCullMode:(MTLCullMode)body->cull_mode];
+      if (!raster_shadow || raster_shadow->depth_clip_mode != body->depth_clip_mode)
+        [encoder setDepthClipMode:(MTLDepthClipMode)body->depth_clip_mode];
+      // Compare float representations individually: keep signed zero/NaN bits,
+      // without interpreting ABI padding, links, or reserved command bytes.
+      if (!raster_shadow || memcmp(&raster_shadow->depth_bias, &body->depth_bias, sizeof(body->depth_bias)) ||
+          memcmp(&raster_shadow->scole_scale, &body->scole_scale, sizeof(body->scole_scale)) ||
+          memcmp(&raster_shadow->depth_bias_clamp, &body->depth_bias_clamp, sizeof(body->depth_bias_clamp)))
+        [encoder setDepthBias:body->depth_bias slopeScale:body->scole_scale clamp:body->depth_bias_clamp];
+      if (!raster_shadow || raster_shadow->winding != body->winding)
+        [encoder setFrontFacingWinding:(MTLWinding)body->winding];
+      raster_shadow = body;
+#else
       [encoder setTriangleFillMode:(MTLTriangleFillMode)body->fill_mode];
       [encoder setCullMode:(MTLCullMode)body->cull_mode];
       [encoder setDepthClipMode:(MTLDepthClipMode)body->depth_clip_mode];
       [encoder setDepthBias:body->depth_bias slopeScale:body->scole_scale clamp:body->depth_bias_clamp];
       [encoder setFrontFacingWinding:(MTLWinding)body->winding];
+#endif
       break;
     }
     case WMTRenderCommandSetViewports: {
@@ -1268,6 +1314,11 @@ _MTLRenderCommandEncoder_encodeCommands(void *obj) {
       break;
     }
     case WMTRenderCommandExecuteCommandsInBuffer: {
+#if defined(DXMT_NATIVE_RASTER_SHADOW) && DXMT_NATIVE_RASTER_SHADOW
+      // An ICB can carry raster state on supported devices; its contents are
+      // not represented in this CPU list. Force the next full raster setup.
+      raster_shadow = NULL;
+#endif
       struct wmtcmd_render_executecommands *body = (struct wmtcmd_render_executecommands *)next;
       [encoder executeCommandsInBuffer:(id<MTLIndirectCommandBuffer>)body->indirect_command_buffer
                              withRange:NSMakeRange(body->location, body->length)];

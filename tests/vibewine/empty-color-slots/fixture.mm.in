@@ -1,0 +1,67 @@
+// Exact production descriptor path, real Metal descriptors, CPU capture receiver.
+#import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
+#include "winemetal_thunks.h"
+#include <cstring>
+#include <cstdint>
+#include <chrono>
+#include <iostream>
+#include <string>
+#include <cstdlib>
+static unsigned visited_slots, indexed_getters;
+@interface CaptureBuffer : NSObject { @public MTLRenderPassDescriptor *captured; }
+@end
+@implementation CaptureBuffer
+- (id<MTLRenderCommandEncoder>)renderCommandEncoderWithDescriptor:(MTLRenderPassDescriptor *)descriptor {
+  [captured release];captured=[descriptor copy];return nil;
+}
+- (void)dealloc { [captured release];[super dealloc]; }
+@end
+using NTSTATUS=int;
+#define STATUS_SUCCESS 0
+// PRODUCTION_INITIALIZER
+// PRODUCTION_DESCRIPTOR_PATH
+static NSString *repr(double d) { uint64_t v;memcpy(&v,&d,sizeof(v));return [NSString stringWithFormat:@"%016llx",(unsigned long long)v]; }
+static double frombits(uint64_t v) {double r;memcpy(&r,&v,sizeof(r));return r;}
+static NSDictionary *color(MTLRenderPassColorAttachmentDescriptor *c) {
+  auto v=c.clearColor;
+  return @{@"nil":@(c.texture==nil),@"resolveNil":@(c.resolveTexture==nil),@"level":@(c.level),@"slice":@(c.slice),@"depthPlane":@(c.depthPlane),@"load":@(c.loadAction),@"store":@(c.storeAction),@"storeOptions":@(c.storeActionOptions),@"resolveLevel":@(c.resolveLevel),@"resolveSlice":@(c.resolveSlice),@"resolveDepthPlane":@(c.resolveDepthPlane),@"clearBits":@[repr(v.red),repr(v.green),repr(v.blue),repr(v.alpha)]};
+}
+static NSDictionary *snapshot(MTLRenderPassDescriptor *d) {
+  NSMutableArray *colors=[NSMutableArray array];for(unsigned i=0;i<8;i++)[colors addObject:color(d.colorAttachments[i])];
+  return @{@"colors":colors,@"globals":@[@(d.defaultRasterSampleCount),@(d.renderTargetArrayLength),@(d.renderTargetWidth),@(d.renderTargetHeight),@(d.tileWidth),@(d.tileHeight),@(d.visibilityResultBuffer==nil),@(d.visibilityResultType),@(d.supportColorAttachmentMapping)],@"depth":@[@(d.depthAttachment.texture==nil),@(d.depthAttachment.level),@(d.depthAttachment.slice),@(d.depthAttachment.depthPlane),@(d.depthAttachment.loadAction),@(d.depthAttachment.storeAction),repr(d.depthAttachment.clearDepth),@(d.depthAttachment.depthResolveFilter)],@"stencil":@[@(d.stencilAttachment.texture==nil),@(d.stencilAttachment.level),@(d.stencilAttachment.slice),@(d.stencilAttachment.depthPlane),@(d.stencilAttachment.loadAction),@(d.stencilAttachment.storeAction),@(d.stencilAttachment.clearStencil),@(d.stencilAttachment.stencilResolveFilter)]};
+}
+static NSMutableArray *observations;
+static void record(NSString *name,WMTRenderPassInfo &info) {
+  auto *buffer=[CaptureBuffer new];unixcall_generic_obj_uint64_obj_ret p{};p.handle=(obj_handle_t)buffer;p.arg=(uint64_t)&info;visited_slots=indexed_getters=0;
+  @try {auto status=_MTLCommandBuffer_renderCommandEncoder(&p);[observations addObject:@{@"name":name,@"visited":@(visited_slots),@"indexedGetters":@(indexed_getters),@"status":@(status),@"nilReturn":@(p.ret==0),@"snapshot":snapshot(buffer->captured)}];}
+  @catch(NSException *e) {[observations addObject:@{@"name":name,@"exception":e.name,@"reason":e.reason?:@""}];}
+  [buffer release];
+}
+int main(int argc,char **argv) { @autoreleasepool {
+  if(argc>1&&std::string(argv[1])=="bench") {
+    for(unsigned mode=0;mode<3;mode++) {
+      WMTRenderPassInfo info;InitializeRenderPassInfo(info);
+      if(mode==1)info.colors[0].load_action=WMTLoadActionClear;
+      if(mode==2)for(auto &c:info.colors)c.load_action=WMTLoadActionClear;
+      unixcall_generic_obj_uint64_obj_ret p{};p.arg=(uint64_t)&info;
+      for(unsigned block=0;block<9;block++) {
+        auto start=std::chrono::steady_clock::now();
+        for(unsigned iteration=0;iteration<10000;iteration++) { @autoreleasepool { _MTLCommandBuffer_renderCommandEncoder(&p); } }
+        auto ns=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();
+        std::cout<<mode<<' '<<block<<' '<<ns<<'\n';
+      }
+    }
+    return 0;
+  }
+  observations=[NSMutableArray array];
+  for(unsigned count:{0u,1u,4u,8u}) {WMTRenderPassInfo info;InitializeRenderPassInfo(info);for(unsigned i=0;i<count;i++)info.colors[i].load_action=WMTLoadActionClear;record([NSString stringWithFormat:@"nil-noncanonical-%u",count],info);}
+  {WMTRenderPassInfo info;InitializeRenderPassInfo(info);for(unsigned i:{0u,3u,7u})info.colors[i].load_action=WMTLoadActionClear;record(@"sparse-nil-noncanonical-0-3-7",info);}
+  for(unsigned test=0;test<15;test++) {
+    WMTRenderPassInfo info;InitializeRenderPassInfo(info);auto &c=info.colors[0];
+    switch(test){case 0:c.load_action=WMTLoadActionClear;break;case 1:c.store_action=WMTStoreActionDontCare;break;case 2:c.store_action=WMTStoreActionMultisampleResolve;break;case 3:c.level=1;break;case 4:c.slice=1;break;case 5:c.depth_plane=1;break;case 6:c.resolve_level=1;break;case 7:c.resolve_slice=1;break;case 8:c.resolve_depth_plane=1;break;case 9:c.clear_color.r=-0.0;break;case 10:c.clear_color.g=-0.0;break;case 11:c.clear_color.b=frombits(0x7ff8000000000001ull);break;case 12:c.clear_color.a=0;break;case 13:c.clear_color.r=1;break;case 14:c.clear_color.a=frombits(0x7ff8000000000002ull);break;}
+    record([NSString stringWithFormat:@"control-%u",test],info);
+  }
+  {WMTRenderPassInfo info;InitializeRenderPassInfo(info);info.depth.level=1;info.stencil.slice=2;info.render_target_width=17;info.render_target_height=19;info.tile_width=16;info.tile_height=16;record(@"nil-depth-stencil-global-control",info);}
+  NSError *error=nil;NSData *data=[NSJSONSerialization dataWithJSONObject:observations options:NSJSONWritingSortedKeys error:&error];if(!data)return 2;fwrite(data.bytes,1,data.length,stdout);fputc('\n',stdout);return 0;
+} }

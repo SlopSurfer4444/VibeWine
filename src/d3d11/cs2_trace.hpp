@@ -138,12 +138,14 @@ struct PresentationScope {
  }
  PresentationScope(const PresentationScope&)=delete;
 };
+// Keep generation/metadata admission unchanged; immutable profile selection
+// gates only these optional scope clocks, never the wrapped operation.
 struct ApiScope {
- uint32_t gen=generation(),type;uint64_t object,detail0=0,detail1=0;uint32_t result=0xffffffffu;uint64_t start=gen?now():0;
+ uint32_t gen=generation(),type;uint64_t object,detail0=0,detail1=0;uint32_t result=0xffffffffu;bool active=gen && profileAllows(type);uint64_t start=active?now():0;
  ApiScope(uint32_t event,uint64_t identity,uint64_t arg0=0,uint64_t arg1=0):type(event),object(identity),detail0(arg0),detail1(arg1){}
  ApiScope(const ApiScope&)=delete;
  template<class F> auto invoke(F &&fn) {auto value=fn();result=uint32_t(value);return value;}
- ~ApiScope(){if(gen)record(gen,type,start,now(),object,result,detail0,detail1);}
+ ~ApiScope(){if(active)record(gen,type,start,now(),object,result,detail0,detail1);}
 };
 // Diagnostic attribution only: queue scoped, generation scoped, thread local.
 enum class CommitReason : uint32_t { Unknown=0, Present=1, StagingMap=2,
@@ -178,13 +180,13 @@ inline uint32_t operationGeneration(uint64_t queue) {
 // Uncensored diagnostic calls; no clock read or payload when unarmed.
 struct SyncScope {
   uint32_t gen=generation(); uint32_t type; uint64_t object=0;
-  uint32_t flags=0; uint64_t queue=0,frame=0; uint64_t start=gen?now():0;
-  ~SyncScope() { if(gen) record(gen,type,start,now(),object,flags,queue,frame); }
+  uint32_t flags=0; bool active=gen && profileAllows(type); uint64_t queue=0,frame=0; uint64_t start=active?now():0;
+  ~SyncScope() { if(active) record(gen,type,start,now(),object,flags,queue,frame); }
 };
 
 struct Scope {
- uint32_t gen=generation();uint32_t type;uint64_t object=0;uint32_t flags=0;uint64_t start=gen?now():0;
- ~Scope(){if(gen){auto end=now();if(end-start>=100000)record(gen,type,start,end,object,flags);}}
+ uint32_t gen=generation();uint32_t type;uint64_t object=0;uint32_t flags=0;bool active=gen && profileAllows(type);uint64_t start=active?now():0;
+ ~Scope(){if(active){auto end=now();if(end-start>=100000)record(gen,type,start,end,object,flags);}}
 };
 struct Present {
  uint32_t gen=generation();uint64_t object;uint64_t start=gen?now():0;

@@ -255,12 +255,16 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
         return result->second.get();
       }
     }
-    sm50_error_t err;
+    sm50_error_t err = nullptr;
     sm50_shader_t sm50;
     MTL_SHADER_REFLECTION reflection;
     if (SM50Initialize(pBytecode, BytecodeLength, &sm50, &reflection, &err)) {
-      ERR("Failed to initialize shader: ", SM50GetErrorMessageString(err));
-      SM50FreeError(err);
+      if (err) {
+        ERR("Failed to initialize shader: ", SM50GetErrorMessageString(err));
+        SM50FreeError(err);
+      } else {
+        ERR("Failed to initialize shader without an error object");
+      }
       return nullptr;
     }
     auto shader = std::make_unique<CachedSM50Shader>(this, sm50, sha1, reflection);

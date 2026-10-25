@@ -156,21 +156,81 @@ public:
 
   void
   MarshalGSDispatchArguments(WMT::RenderCommandEncoder encoder, WMT::Buffer commands, uint32_t commands_offset) {
+#if defined(DXMT_MARSHAL_PACKETS) && DXMT_MARSHAL_PACKETS && \
+    !(defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING)
+    MarshalDispatchArgumentsPacket(encoder, gs_draw_arguments_marshal, commands, commands_offset);
+#else
     encoder.setRenderPipelineState(gs_draw_arguments_marshal);
     encoder.setVertexBuffer(commands, commands_offset, kCustomBufferArgumentIndex0);
     encoder.drawPrimitives(WMTPrimitiveTypePoint, 0, 1);
     encoder.setVertexBuffer({}, 0, kCustomBufferArgumentIndex0);
+#endif
   }
 
   void
   MarshalTSDispatchArguments(WMT::RenderCommandEncoder encoder, WMT::Buffer commands, uint32_t commands_offset) {
+#if defined(DXMT_MARSHAL_PACKETS) && DXMT_MARSHAL_PACKETS && \
+    !(defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING)
+    MarshalDispatchArgumentsPacket(encoder, ts_draw_arguments_marshal, commands, commands_offset);
+#else
     encoder.setRenderPipelineState(ts_draw_arguments_marshal);
     encoder.setVertexBuffer(commands, commands_offset, kCustomBufferArgumentIndex0);
     encoder.drawPrimitives(WMTPrimitiveTypePoint, 0, 1);
     encoder.setVertexBuffer({}, 0, kCustomBufferArgumentIndex0);
+#endif
+  }
+
+  void
+  UseMarshalTaskResources(WMT::RenderCommandEncoder encoder, WMT::Resource draw_arguments,
+                          WMT::Resource dispatch_arguments) {
+    // Exactly two existing declarations. No heap, extra task traversal or
+    // full-packet zeroing; every consumed field is assigned once as in wrappers.
+    std::array<wmtcmd_render_useresource, 2> packet;
+    packet[0].type = packet[1].type = WMTRenderCommandUseResource;
+    packet[0].next.set(&packet[1]);
+    packet[1].next.set(nullptr);
+    packet[0].resource = draw_arguments;
+    packet[0].usage = WMTResourceUsageRead;
+    packet[1].resource = dispatch_arguments;
+    packet[1].usage = WMTResourceUsageWrite;
+    packet[0].stages = packet[1].stages = WMTRenderStageVertex;
+    encoder.encodeCommands(reinterpret_cast<const wmtcmd_render_nop *>(packet.data()));
   }
 
 private:
+  void
+  MarshalDispatchArgumentsPacket(WMT::RenderCommandEncoder encoder, WMT::RenderPipelineState pipeline,
+                                 WMT::Buffer commands, uint32_t commands_offset) {
+    struct {
+      wmtcmd_render_setpso pipeline;
+      wmtcmd_render_setbuffer arguments;
+      wmtcmd_render_draw draw;
+      wmtcmd_render_setbuffer unbind;
+    } packet;
+    packet.pipeline.type = WMTRenderCommandSetPSO;
+    packet.pipeline.next.set(&packet.arguments);
+    packet.pipeline.pso = pipeline;
+    packet.arguments.type = WMTRenderCommandSetVertexBuffer;
+    packet.arguments.next.set(&packet.draw);
+    packet.arguments.buffer = commands;
+    packet.arguments.offset = commands_offset;
+    packet.arguments.index = kCustomBufferArgumentIndex0;
+    packet.draw.type = WMTRenderCommandDraw;
+    packet.draw.next.set(&packet.unbind);
+    packet.draw.primitive_type = WMTPrimitiveTypePoint;
+    packet.draw.vertex_start = 0;
+    packet.draw.vertex_count = 1;
+    packet.draw.base_instance = 0;
+    packet.draw.instance_count = 1;
+    packet.unbind.type = WMTRenderCommandSetVertexBuffer;
+    packet.unbind.next.set(nullptr);
+    packet.unbind.buffer = 0;
+    packet.unbind.offset = 0;
+    packet.unbind.index = kCustomBufferArgumentIndex0;
+    // Existing native traversal is synchronous; pointers never escape.
+    encoder.encodeCommands(reinterpret_cast<const wmtcmd_render_nop *>(&packet.pipeline));
+  }
+
   void setComputePipelineState(WMT::ComputePipelineState state, const WMTSize &threadgroup_size);
 
   void dispatchThreads(const WMTSize &grid_size);

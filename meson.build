@@ -159,6 +159,10 @@ foreach option_name, define_name : {
   'vibewine_render_pass_fusion' : 'DXMT_RENDER_PASS_FUSION',
   'vibewine_compute_pass_fusion' : 'DXMT_COMPUTE_PASS_FUSION',
   'vibewine_packed_ir_growth' : 'DXMT_PACKED_IR_GROWTH',
+  'vibewine_empty_color_slots' : 'DXMT_EMPTY_COLOR_SLOTS',
+  'vibewine_native_raster_shadow' : 'DXMT_NATIVE_RASTER_SHADOW',
+  'vibewine_marshal_packets' : 'DXMT_MARSHAL_PACKETS',
+  'vibewine_semantic_blend_hash' : 'DXMT_SEMANTIC_BLEND_HASH',
 }
   experiment_define = '-D' + define_name + '=' + get_option(option_name).to_int().to_string()
   add_project_arguments(experiment_define, language: ['c', 'cpp'])
