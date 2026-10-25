@@ -11,6 +11,8 @@
 #include <functional>
 #include "cs2_recipe.hpp"
 #include "dxmt_persistence.hpp"
+#include "util_hash.hpp"
+#include <type_traits>
 
 struct MTL_COMPILED_SHADER {
   /**
@@ -240,7 +242,35 @@ CreateVariantShader(MTLD3D11Device *, ManagedShader, Variant);
 namespace std {
 template <> struct hash<dxmt::ShaderVariant> {
   size_t operator()(const dxmt::ShaderVariant &v) const noexcept {
-    return v.index(); // FIXME:
+    // Match the active alternative's fieldwise equality, never its padding or
+    // the contents/lifetime of the objects named by identity handles.
+    if (v.valueless_by_exception())
+      return v.index();
+    dxmt::HashState state;
+    state.add(v.index());
+    std::visit([&](const auto &key) {
+      using T = std::decay_t<decltype(key)>;
+      auto fields = [&](const auto &...values) {
+        (state.add(std::hash<std::decay_t<decltype(values)>>{}(values)), ...);
+      };
+      if constexpr (std::is_same_v<T, dxmt::ShaderVariantVertex>)
+        fields(key.input_layout_handle, key.gs_passthrough, key.rasterization_disabled);
+      else if constexpr (std::is_same_v<T, dxmt::ShaderVariantPixel>)
+        fields(key.sample_mask, key.dual_source_blending, key.disable_depth_output, key.unorm_output_reg_mask);
+      else if constexpr (std::is_same_v<T, dxmt::ShaderVariantTessellationVertexHull>)
+        fields(key.input_layout_handle, key.vertex_shader_handle, key.index_buffer_format, key.max_potential_tess_factor);
+      else if constexpr (std::is_same_v<T, dxmt::ShaderVariantTessellationDomain>)
+        fields(key.hull_shader_handle, key.gs_passthrough, key.max_potential_tess_factor, key.rasterization_disabled);
+      else if constexpr (std::is_same_v<T, dxmt::ShaderVariantVertexStreamOutput>)
+        fields(key.input_layout_handle, key.stream_output_layout_handle);
+      else if constexpr (std::is_same_v<T, dxmt::ShaderVariantGeometryVertex>)
+        fields(key.input_layout_handle, key.geometry_shader_handle, key.index_buffer_format, key.strip_topology);
+      else if constexpr (std::is_same_v<T, dxmt::ShaderVariantGeometry>)
+        fields(key.vertex_shader_handle, key.strip_topology);
+      else
+        static_assert(std::is_same_v<T, dxmt::ShaderVariantDefault>, "hash every new shader variant's equality fields");
+    }, v);
+    return state;
   };
 };
 } // namespace std

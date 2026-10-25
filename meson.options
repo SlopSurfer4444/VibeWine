@@ -24,5 +24,13 @@ option('vibewine_discard_hints', type : 'boolean', value : false,
   description : 'Experimental exact full-color discard store admission')
 option('vibewine_bounded_encoder_optimizer', type : 'boolean', value : false,
   description : 'Experimental 64-position encoder merge lookahead; off preserves unbounded search')
+option('vibewine_packed_ir_growth', type : 'boolean', value : false,
+  description : 'Experimental 1.5x packed shader IR allocation growth; retains extra bounded slack')
 option('vibewine_perf_reference', type : 'combo', choices : ['none', 'w4', 'getters', 'batching'], value : 'none',
   description : 'Build-only corrected W4 performance reference; none keeps all optimizations')
+
+option('vibewine_render_pass_fusion', type : 'boolean', value : false,
+       description : 'Join ordinary render setup and recorded commands in one native call')
+
+option('vibewine_compute_pass_fusion', type : 'boolean', value : false,
+       description : 'Join compute setup and recorded commands in one native call')

@@ -19,30 +19,36 @@ namespace WMT { struct Device {}; }
 namespace dxmt {
 using mutex = std::mutex;
 inline std::atomic<uint64_t> live_allocations = 0, created_allocations = 0;
-struct NativeAllocation { uint64_t size; uint64_t allocatedSize() const { return size; } };
+inline std::atomic<uint64_t> native_size_queries = 0;
+struct NativeAllocation {
+  uint64_t size;
+  uint64_t allocatedSize() const { ++native_size_queries; return size; }
+};
 enum class BufferAllocationFlag { CpuPlaced };
 enum class TextureAllocationFlag {};
 template<class T> struct Flags { void set(T) {} };
 struct CountedAllocation {
   std::atomic<unsigned> refs = 0;
+  std::atomic<uint64_t> inc_calls = 0, dec_calls = 0;
   uint64_t serial = ++created_allocations;
   std::vector<unsigned char> bytes;
   uint64_t native_size;
   explicit CountedAllocation(uint64_t length) : bytes(length), native_size(length) { ++live_allocations; }
   ~CountedAllocation() { --live_allocations; }
-  void incRef() { ++refs; }
+  void incRef() { ++inc_calls; ++refs; }
 };
-struct BufferAllocation : CountedAllocation {
+struct BufferAllocation final : CountedAllocation {
+#include "buffer-charge-under-test.hpp"
   using CountedAllocation::CountedAllocation;
-  void decRef() { if (--refs == 0) delete this; }
+  void decRef() { ++dec_calls; if (--refs == 0) delete this; }
   NativeAllocation buffer() const { return {native_size}; }
   bool hasSuballocatoin(unsigned) { return false; }
   void *mappedMemory(unsigned) { return bytes.data(); }
 };
-struct TextureAllocation : CountedAllocation {
+struct TextureAllocation final : CountedAllocation {
   void *mappedMemory;
   explicit TextureAllocation(uint64_t length) : CountedAllocation(length), mappedMemory(bytes.data()) {}
-  void decRef() { if (--refs == 0) delete this; }
+  void decRef() { ++dec_calls; if (--refs == 0) delete this; }
   NativeAllocation texture() const { return {native_size}; }
 };
 template<class A, class F> struct MockResource {

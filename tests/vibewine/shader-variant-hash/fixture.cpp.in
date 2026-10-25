@@ -1,0 +1,179 @@
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <variant>
+#include <vector>
+#include "airconv_public.h"
+#include "util_hash.hpp"
+namespace dxmt { struct InputLayout { uint32_t content; }; struct Shader { uint32_t content; }; }
+using ManagedInputLayout = dxmt::InputLayout *;
+using ManagedShader = dxmt::Shader *;
+namespace dxmt {
+// DECLARATIONS
+}
+namespace std {
+// HASH
+}
+static void require(bool value, const char *why) {
+  if (!value) { std::cerr << "CONTRACT: " << why << '\n'; std::exit(1); }
+}
+using namespace dxmt;
+static std::array<InputLayout, 513> layouts{};
+static std::array<Shader, 513> shaders{};
+static size_t hash(const ShaderVariant &v) { return std::hash<ShaderVariant>{}(v); }
+struct CountEqual {
+  size_t *count;
+  bool operator()(const ShaderVariant &a, const ShaderVariant &b) const {
+    ++*count; return a == b;
+  }
+};
+struct OldHash {
+  size_t operator()(const ShaderVariant &v) const noexcept { return v.index(); }
+};
+// These expected differences independently guard all production equality fields.
+static void field(const ShaderVariant &a, const ShaderVariant &b) {
+  require(a != b, "single-field change must remain unequal");
+  require(hash(a) == hash(ShaderVariant{a}), "equal copy hash");
+#if !defined(CORRECTNESS_ONLY) && !defined(SKIP_FIELD_HASH)
+  // A bounded sentinel corpus, not a promise of collision freedom for all keys.
+  require(hash(a) != hash(b), "single-field sentinel must affect hash");
+#endif
+  std::unordered_map<ShaderVariant, int> map;
+  map.emplace(a, 3); map.emplace(b, 7);
+  require(map.size() == 2 && map.at(a) == 3 && map.at(b) == 7,
+          "single-field key lookup identity");
+  map.rehash(53);
+  require(map.at(a) == 3 && map.at(b) == 7, "identity after rehash");
+}
+static void fields() {
+  auto *l = &layouts[0]; auto *s = &shaders[0];
+  ShaderVariantVertex v{nullptr, 0, false};
+  field(v, ShaderVariantVertex{l, 0, false});
+  field(v, ShaderVariantVertex{nullptr, 0x80000000u, false});
+  field(v, ShaderVariantVertex{nullptr, 0, true});
+  ShaderVariantPixel p{0, false, false, 0};
+  field(p, ShaderVariantPixel{0x80000000u, false, false, 0});
+  field(p, ShaderVariantPixel{0, true, false, 0});
+  field(p, ShaderVariantPixel{0, false, true, 0});
+  field(p, ShaderVariantPixel{0, false, false, 0x80000000u});
+  ShaderVariantTessellationVertexHull h{nullptr, nullptr, SM50_INDEX_BUFFER_FORMAT_NONE, 0};
+  field(h, ShaderVariantTessellationVertexHull{l, nullptr, SM50_INDEX_BUFFER_FORMAT_NONE, 0});
+  field(h, ShaderVariantTessellationVertexHull{nullptr, s, SM50_INDEX_BUFFER_FORMAT_NONE, 0});
+  field(h, ShaderVariantTessellationVertexHull{nullptr, nullptr, SM50_INDEX_BUFFER_FORMAT_UINT16, 0});
+  field(h, ShaderVariantTessellationVertexHull{nullptr, nullptr, SM50_INDEX_BUFFER_FORMAT_UINT32, 0});
+  field(h, ShaderVariantTessellationVertexHull{nullptr, nullptr, SM50_INDEX_BUFFER_FORMAT_NONE, 0x80000000u});
+  ShaderVariantTessellationDomain d{nullptr, 0, 0, false};
+  field(d, ShaderVariantTessellationDomain{s, 0, 0, false});
+  field(d, ShaderVariantTessellationDomain{nullptr, 0x80000000u, 0, false});
+  field(d, ShaderVariantTessellationDomain{nullptr, 0, 0x80000000u, false});
+  field(d, ShaderVariantTessellationDomain{nullptr, 0, 0, true});
+  ShaderVariantVertexStreamOutput o{nullptr, 0};
+  field(o, ShaderVariantVertexStreamOutput{l, 0});
+  field(o, ShaderVariantVertexStreamOutput{nullptr, 1});
+  field(o, ShaderVariantVertexStreamOutput{nullptr, uint64_t{1} << 63});
+  ShaderVariantGeometryVertex g{nullptr, nullptr, SM50_INDEX_BUFFER_FORMAT_NONE, false};
+  field(g, ShaderVariantGeometryVertex{l, nullptr, SM50_INDEX_BUFFER_FORMAT_NONE, false});
+  field(g, ShaderVariantGeometryVertex{nullptr, s, SM50_INDEX_BUFFER_FORMAT_NONE, false});
+  field(g, ShaderVariantGeometryVertex{nullptr, nullptr, SM50_INDEX_BUFFER_FORMAT_UINT32, false});
+  field(g, ShaderVariantGeometryVertex{nullptr, nullptr, SM50_INDEX_BUFFER_FORMAT_NONE, true});
+  ShaderVariantGeometry x{nullptr, false};
+  field(x, ShaderVariantGeometry{s, false});
+  field(x, ShaderVariantGeometry{nullptr, true});
+  require(ShaderVariant{ShaderVariantDefault{}} == ShaderVariant{ShaderVariantDefault{}}, "default equality");
+  for (const auto &other : {ShaderVariant{v}, ShaderVariant{p}, ShaderVariant{h}, ShaderVariant{d},
+                            ShaderVariant{o}, ShaderVariant{g}, ShaderVariant{x}})
+    require(ShaderVariant{ShaderVariantDefault{}} != other, "alternative identity");
+  // Handles are identities: equal object contents are not equal keys; contents
+  // changing while the object remains alive cannot change a key's hash.
+  field(ShaderVariantVertex{l, 0, false}, ShaderVariantVertex{&layouts[1], 0, false});
+  field(ShaderVariantGeometry{s, false}, ShaderVariantGeometry{&shaders[1], false});
+  ShaderVariant identity = ShaderVariantTessellationVertexHull{l, s, SM50_INDEX_BUFFER_FORMAT_UINT16, 64};
+  auto before = hash(identity); l->content = 77; s->content = 99;
+  require(hash(identity) == before, "identity handle hash cannot depend on pointee contents");
+}
+static void padding() {
+  // Construct active alternatives in place over different storage patterns;
+  // assignment touches every field but deliberately leaves padding distinct.
+  auto check = []<class T>(auto assign) {
+    std::array<ShaderVariant, 2> values{T{}, T{}};
+    for (size_t i = 0; i < values.size(); ++i) {
+      auto &value = std::get<T>(values[i]);
+      std::memset(&value, i ? 0xaa : 0x55, sizeof(T));
+      assign(value);
+    }
+    require(values[0] == values[1], "independent storage pattern equality");
+    require(hash(values[0]) == hash(values[1]), "padding must not enter hash");
+    std::unordered_map<ShaderVariant, int> map;
+    map.emplace(values[0], 41);
+    require(map.at(values[1]) == 41, "equal patterned key lookup");
+  };
+  check.operator()<ShaderVariantDefault>([](auto &) {});
+  check.operator()<ShaderVariantVertex>([](auto &v) { v.input_layout_handle = nullptr; v.gs_passthrough = 42; v.rasterization_disabled = true; });
+  check.operator()<ShaderVariantPixel>([](auto &v) { v.sample_mask = 42; v.dual_source_blending = false; v.disable_depth_output = true; v.unorm_output_reg_mask = 7; });
+  check.operator()<ShaderVariantTessellationVertexHull>([](auto &v) { v.input_layout_handle = nullptr; v.vertex_shader_handle = nullptr; v.index_buffer_format = SM50_INDEX_BUFFER_FORMAT_UINT16; v.max_potential_tess_factor = 64; });
+  check.operator()<ShaderVariantTessellationDomain>([](auto &v) { v.hull_shader_handle = nullptr; v.gs_passthrough = 42; v.max_potential_tess_factor = 64; v.rasterization_disabled = false; });
+  check.operator()<ShaderVariantVertexStreamOutput>([](auto &v) { v.input_layout_handle = nullptr; v.stream_output_layout_handle = uint64_t{1} << 63; });
+  check.operator()<ShaderVariantGeometryVertex>([](auto &v) { v.input_layout_handle = nullptr; v.geometry_shader_handle = nullptr; v.index_buffer_format = SM50_INDEX_BUFFER_FORMAT_UINT32; v.strip_topology = false; });
+  check.operator()<ShaderVariantGeometry>([](auto &v) { v.vertex_shader_handle = nullptr; v.strip_topology = true; });
+}
+static ShaderVariant key(size_t alt, uint32_t i) {
+  switch (alt) {
+    case 0: return ShaderVariantDefault{};
+    case 1: return ShaderVariantVertex{&layouts[i], i * 17, bool(i & 1)};
+    case 2: return ShaderVariantPixel{i * 0x01010101u, bool(i & 1), bool(i & 2), i};
+    case 3: return ShaderVariantTessellationVertexHull{&layouts[i], &shaders[i], SM50_INDEX_BUFFER_FORMAT_UINT16, 64};
+    case 4: return ShaderVariantTessellationDomain{&shaders[i], i, 64, bool(i & 1)};
+    case 5: return ShaderVariantVertexStreamOutput{&layouts[i], (uint64_t{i} << 32) | i};
+    case 6: return ShaderVariantGeometryVertex{&layouts[i], &shaders[i], SM50_INDEX_BUFFER_FORMAT_UINT32, bool(i & 1)};
+    default: return ShaderVariantGeometry{&shaders[i], bool(i & 1)};
+  }
+}
+struct Work { size_t insert, hits, misses, largest_bucket; };
+template<class Hash> static Work work(size_t alt) {
+  constexpr uint32_t n = 256;
+  size_t count = 0;
+  std::unordered_map<ShaderVariant, uint32_t, Hash, CountEqual> map(0, Hash{}, CountEqual{&count});
+  map.reserve(n * 2);
+  for (uint32_t i = 0; i < n; ++i) require(map.emplace(key(alt, i), i).second, "distinct corpus insert");
+  auto inserts = count; count = 0;
+  for (uint32_t i = 0; i < n; ++i) {
+    require(map.find(key(alt, i))->second == i, "corpus hit correctness");
+    require(!map.emplace(key(alt, i), 999).second, "duplicate insertion identity");
+  }
+  auto hits = count; count = 0;
+  for (uint32_t i = n; i < n * 2; ++i) require(map.find(key(alt, i)) == map.end(), "corpus miss correctness");
+  auto misses = count;
+  size_t largest = 0;
+  for (size_t i = 0; i < map.bucket_count(); ++i) largest = std::max(largest, map.bucket_size(i));
+  map.rehash(1031);
+  for (uint32_t i = 0; i < n; ++i) require(map.at(key(alt, i)) == i, "corpus after rehash");
+  return {inserts, hits, misses, largest};
+}
+int main() {
+  static_assert(std::variant_size_v<ShaderVariant> == 8);
+  static_assert(std::is_same_v<decltype(ShaderVariantTessellationDomain::max_potential_tess_factor), uint32_t>);
+  static_assert(std::is_same_v<decltype(ShaderVariantTessellationVertexHull::max_potential_tess_factor), uint32_t>);
+  fields(); padding();
+  std::unordered_map<ShaderVariant, int> defaults;
+  for (int i = 0; i < 256; ++i) defaults.emplace(ShaderVariantDefault{}, i);
+  require(defaults.size() == 1, "default deduplication");
+  for (size_t alt = 1; alt < 8; ++alt) {
+    auto old = work<OldHash>(alt), current = work<std::hash<ShaderVariant>>(alt);
+    require(old.largest_bucket == 256, "baseline collision control");
+#ifndef CORRECTNESS_ONLY
+    require(current.largest_bucket < 32, "same-alternative bucket distribution");
+    require(current.insert * 8 < old.insert && current.hits * 8 < old.hits && current.misses * 8 < old.misses,
+            "same-alternative equality work reduction");
+#endif
+    std::cout << "{\"alternative\":" << alt << ",\"old\":[" << old.insert << ',' << old.hits << ',' << old.misses << ',' << old.largest_bucket
+              << "],\"current\":[" << current.insert << ',' << current.hits << ',' << current.misses << ',' << current.largest_bucket << "]}\n";
+  }
+  std::cout << "PASS production alternative equality/hash, field and padding cases, maps and equality counts\n";
+}

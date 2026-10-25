@@ -6,6 +6,7 @@
 #include "sha1/sha1_util.hpp"
 #include <mutex>
 #include "cs2_compile_lab.hpp"
+#include "cs2_compile_trace.hpp"
 
 namespace dxmt {
 
@@ -51,13 +52,16 @@ public:
 
   ThreadpoolWork *
   RunThreadpoolWork() {
+    cs2trace::CompilerWorkScope work_scope(task_trace_generation.load(std::memory_order_acquire), task_trace_serial);
     cs2lab::CompileTimer timer{.kind="shader", .name=func_name.c_str()};
     auto pool = WMT::MakeAutoreleasePool();
     WMT::Reference<WMT::Error> err;
     WMT::Reference<WMT::DispatchData> lib_data = shader_->find_cached_variant(variant_digest_);
 
     while (lib_data != nullptr) {
-      auto library = device_->GetMTLDevice().newLibrary(lib_data, err);
+      auto library = cs2trace::compilerStage(106, 1, [&] {
+        return device_->GetMTLDevice().newLibrary(lib_data, err);
+      }, [&](const auto &value) { return bool(value) && !err; });
 
       if (err || !library) {
         ERR("Failed to create MTLLibrary from cache: ", err.description().getUTF8String());
@@ -65,7 +69,9 @@ public:
         break;
       }
 
-      function_ = library.newFunction(func_name.c_str());
+      function_ = cs2trace::compilerStage(107, 1, [&] {
+        return library.newFunction(func_name.c_str());
+      }, [](const auto &value) { return bool(value); });
 
       if (function_ == nullptr) {
         ERR("Failed to create MTLFunction from cache: ", func_name);
@@ -78,14 +84,18 @@ public:
     timer.cache_hit = lib_data != nullptr;
     if (!lib_data) {
       SM50_COMPILED_BITCODE bitcode;
-      sm50_bitcode_t compile_result = proc(func_name.c_str(), &sm50_common);
+      sm50_bitcode_t compile_result = cs2trace::compilerStage(105, 0, [&] {
+        return proc(func_name.c_str(), &sm50_common);
+      }, [](const auto &value) { return bool(value); });
 
       if (!compile_result)
         return this;
 
       SM50GetCompiledBitcode(compile_result, &bitcode);
       lib_data = WMT::MakeDispatchData(bitcode.Data, bitcode.Size);
-      auto library = device_->GetMTLDevice().newLibrary(lib_data, err);
+      auto library = cs2trace::compilerStage(106, 0, [&] {
+        return device_->GetMTLDevice().newLibrary(lib_data, err);
+      }, [&](const auto &value) { return bool(value) && !err; });
 
       if (err) {
         ERR("Failed to create MTLLibrary: ", err.description().getUTF8String());
@@ -96,7 +106,9 @@ public:
 
       const auto cache_bytes = bitcode.Size;
       SM50DestroyBitcode(compile_result);
-      function_ = library.newFunction(func_name.c_str());
+      function_ = cs2trace::compilerStage(107, 0, [&] {
+        return library.newFunction(func_name.c_str());
+      }, [](const auto &value) { return bool(value); });
 
       if (function_ == nullptr) {
         ERR("Failed to create MTLFunction: ", func_name);

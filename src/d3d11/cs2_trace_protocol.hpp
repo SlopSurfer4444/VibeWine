@@ -10,7 +10,7 @@ constexpr bool profileTypeAllowed(Profile profile,uint32_t type) {
  switch(profile) {
   case Profile::Full:return true;
   case Profile::CompileWaits:return type==3 || type==4 || type==5 || type==17 || type==19 ||
-    (type>=80 && type<=89) || type==93 || type==94;
+    (type>=80 && type<=89) || type==93 || type==94 || (type>=104 && type<=107);
   case Profile::PresentationWaits:return type==1 || type==2 || (type>=6 && type<=16) ||
     (type>=20 && type<=25) || type==33 || type==40 || (type>=44 && type<=49) ||
     type==61 || type==62 || (type>=70 && type<=78) || (type>=89 && type<=92) ||

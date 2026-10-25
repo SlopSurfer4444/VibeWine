@@ -29,7 +29,7 @@ int main(int argc,char **argv) {
  assert(argc==2);auto h=buffer();assert(h);arm(10);
  if(!std::strcmp(argv[1],"full")) {
   assert(profile()==Profile::Full);assert(generation()==10 && h->next==0);
-  const uint32_t kinds[]={1,2,3,4,5,17,19,30,33,40,41,42,43,47,61,70,80,89,90,91,92,93,94,99};
+  const uint32_t kinds[]={1,2,3,4,5,17,19,30,33,40,41,42,43,47,61,70,80,89,90,91,92,93,94,99,104,105,106,107};
   for(auto kind:kinds)record(10,kind,10,20,123,7,8,9);
   assert(h->next==sizeof(kinds)/sizeof(kinds[0]));
   for(unsigned i=0;i<h->next;i++)assert(events()[i].type==kinds[i] && events()[i].reserved==10);
@@ -83,7 +83,7 @@ int main(int argc,char **argv) {
   assert(!std::strcmp(argv[1],"compile-waits") && profile()==Profile::CompileWaits);
   // First attempt is excluded, but policy is discoverable in the capture.
   record(10,42,10,20);assert(h->next==1);check_marker(0,10,Profile::CompileWaits);
-  const uint32_t keep[]={3,4,5,17,19,80,81,82,83,84,85,86,87,88,89,93,94};
+  const uint32_t keep[]={3,4,5,17,19,80,81,82,83,84,85,86,87,88,89,93,94,104,105,106,107};
   for(uint32_t type=0;type<110;type++) {
    bool accepted=false;for(auto k:keep)accepted|=type==k;
    assert(profileAllows(type)==accepted);

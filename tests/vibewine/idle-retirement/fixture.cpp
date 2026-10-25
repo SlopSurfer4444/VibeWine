@@ -51,7 +51,162 @@ template<class D> struct Subject {
   void burst(unsigned count = 32, uint64_t seq = 1) { while (count--) rename(seq); }
 };
 
+template<class D> bool dynamic_reuse_tests(bool copied_baseline) {
+  auto domain = std::make_shared<IdleRetirementDomain>();
+  Subject<D> s(domain); s.burst(3, 10);
+  auto *head = s.dynamic->fifo.front().allocation.ptr();
+  auto *current = s.dynamic->immediateName().ptr();
+  const auto initial_inc = head->inc_calls.load(), initial_dec = head->dec_calls.load();
+  const auto initial_refs = head->refs.load();
+  head->bytes[0] = 0x5b;
+  auto fresh = s.dynamic->allocate(9); // Incomplete head must remain live/in place.
+  assert(fresh.ptr() != head && s.dynamic->fifo.front().allocation.ptr() == head);
+  assert(s.dynamic->fifo.size() == 3 && head->refs == initial_refs);
+  bool result = head->inc_calls == initial_inc + (copied_baseline ? 1 : 0) &&
+                head->dec_calls == initial_dec + (copied_baseline ? 1 : 0);
+  const auto ready_inc = head->inc_calls.load(), ready_dec = head->dec_calls.load();
+  auto reused = s.dynamic->allocate(10); // Transfer FIFO ownership into returned Rc.
+  assert(reused.ptr() == head && reused->bytes[0] == 0x5b);
+  assert(s.dynamic->fifo.size() == 2 && head->refs == initial_refs);
+  assert(s.dynamic->immediateName().ptr() == current);
+  result = result && head->inc_calls == ready_inc + (copied_baseline ? 1 : 0) &&
+           head->dec_calls == ready_dec + (copied_baseline ? 1 : 0);
+  return result;
+}
+
 #if DXMT_IDLE_RETIREMENT
+template<class D> bool dynamic_getter_tests(bool uncached) {
+  auto domain = std::make_shared<IdleRetirementDomain>();
+  Subject<D> s(domain); s.burst(8);
+  native_size_queries = 0;
+  auto first = domain->sweep(0);
+  auto second = domain->sweep(0);
+  assert(first.current.bytes == 4096 && second.current.bytes == first.current.bytes);
+  assert(first.inflight.count == 8 && first.inflight.bytes == 8 * 4096);
+  assert(second.inflight.count == first.inflight.count && second.inflight.bytes == first.inflight.bytes);
+  constexpr bool buffer_cache = std::is_same_v<D, DynamicBuffer>;
+  const bool counts_match = native_size_queries == (uncached || !buffer_cache ? 18 : 9);
+  // Retirement still uses identical age, spare, release count and byte budget.
+  auto retired = domain->sweep(301);
+  assert(retired.released_count == 7 && retired.released_bytes == 7 * 4096);
+  assert(retired.current.count == 1 && retired.completed_idle.count == 1);
+  assert(retired.current.bytes == 4096 && retired.completed_idle.bytes == 4096);
+  auto calls = native_size_queries.load();
+  auto created = created_allocations.load();
+  s.rename(302, 301); // Transfer the warm spare into current, preserving its cache.
+  domain->sweep(302);
+  assert(created_allocations == created);
+  const bool warm_reuse_matches = uncached || !buffer_cache || native_size_queries == calls;
+  auto reserved = s.dynamic->allocate(0); // Hold the warm spare outside the pool.
+  auto fresh = s.dynamic->allocate(0); // Existing FIFO is incomplete: new native object.
+  assert(fresh.ptr() != reserved.ptr());
+  fresh->native_size = 8192;
+  Traits<D>::publish(*s.dynamic, 303, fresh);
+  s.resource.rename(s.dynamic->immediateName());
+  auto replaced = domain->sweep(302);
+  assert(replaced.current.bytes == 8192);
+  return counts_match && warm_reuse_matches;
+}
+
+template<class D> void dynamic_unknown_charge_test() {
+  auto domain = std::make_shared<IdleRetirementDomain>();
+  Subject<D> s(domain); s.burst(3);
+  // Unknown is a native bridge failure, and cannot be retired with guessed bytes.
+  for (const auto &entry : s.dynamic->fifo.entries()) entry.allocation->native_size = 0;
+  native_size_queries = 0;
+  auto first = domain->sweep(301);
+  assert(first.released_count == 0 && first.completed_idle.unknown_bytes_count == 3);
+  auto calls = native_size_queries.load();
+  auto second = domain->sweep(301);
+  assert(native_size_queries > calls && second.released_count == 0);
+  for (const auto &entry : s.dynamic->fifo.entries()) entry.allocation->native_size = 8192;
+  s.dynamic->idle_allocation_->native_size = 8192;
+  auto resolved = domain->sweep(301);
+  assert(resolved.released_count == 2 && resolved.released_bytes == 16384);
+  assert(resolved.completed_idle.bytes == 8192 && resolved.completed_idle.unknown_bytes_count == 0);
+}
+
+static bool staging_getter_tests(bool uncached) {
+  auto domain = std::make_shared<IdleRetirementDomain>();
+  Rc<StagingResource> r = new StagingResource({}, 4096, 4096, 4096, domain);
+  for (unsigned i = 0; i < 8; ++i) {
+    auto next = r->allocate(0); r->updateImmediateName(1, next);
+    r->buffer()->rename(r->allocation(next));
+  }
+  native_size_queries = 0;
+  auto first = domain->sweep(0);
+  auto second = domain->sweep(0);
+  assert(first.current.bytes == 4096 && second.current.bytes == 4096);
+  assert(first.inflight.count == 8 && first.inflight.bytes == 32768);
+  assert(second.inflight.count == 8 && second.inflight.bytes == 32768);
+  bool result = native_size_queries == (uncached ? 18 : 9);
+  auto retired = domain->sweep(301);
+  assert(retired.released_count == 7 && retired.released_bytes == 28672);
+  auto calls = native_size_queries.load();
+  auto next = r->allocate(301); r->updateImmediateName(302, next);
+  r->buffer()->rename(r->allocation(next));
+  domain->sweep(302);
+  result = result && (uncached || native_size_queries == calls);
+  // Reserve the existing warm spare, then reuse a freed stable vector ID
+  // with an entirely new allocation and charge.
+  const auto reserved = r->allocate(0);
+  next = r->allocate(0);
+  assert(next != reserved);
+  r->allocation(next)->native_size = 8192;
+  r->updateImmediateName(303, next); r->buffer()->rename(r->allocation(next));
+  auto reused = domain->sweep(302);
+  assert(reused.current.bytes == 8192 && reused.unclassified.count == 1);
+  return result;
+}
+
+static void staging_unknown_charge_test() {
+  auto domain = std::make_shared<IdleRetirementDomain>();
+  Rc<StagingResource> r = new StagingResource({}, 4096, 4096, 4096, domain);
+  for (unsigned i = 0; i < 3; ++i) {
+    auto next = r->allocate(0); r->updateImmediateName(1, next);
+    r->buffer()->rename(r->allocation(next));
+  }
+  for (const auto &entry : r->fifo.entries()) r->allocation(entry.id)->native_size = 0;
+  native_size_queries = 0;
+  auto unknown = domain->sweep(301);
+  assert(unknown.released_count == 0 && unknown.completed_idle.unknown_bytes_count == 3);
+  auto calls = native_size_queries.load();
+  domain->sweep(301); assert(native_size_queries > calls);
+  for (const auto &entry : r->fifo.entries()) r->allocation(entry.id)->native_size = 8192;
+  r->allocation(r->idle_allocation_)->native_size = 8192;
+  auto resolved = domain->sweep(301);
+  assert(resolved.released_count == 2 && resolved.released_bytes == 16384);
+  assert(resolved.completed_idle.bytes == 8192);
+}
+
+template<class A> static void overlapping_charge_readers() {
+  if constexpr (requires(A a) { a.allocatedSizeForIdleRetirement(); }) {
+    Rc<A> allocation = new A(4096);
+    native_size_queries = 0;
+    std::vector<std::thread> readers;
+    for (unsigned i = 0; i < 8; ++i)
+      readers.emplace_back([&] { assert(allocation->allocatedSizeForIdleRetirement() == 4096); });
+    for (auto &reader : readers) reader.join();
+    // Overlapping first reads may duplicate a native query, but later reads
+    // must reuse the known immutable scalar. No lock or other state is published.
+    assert(native_size_queries >= 1 && native_size_queries <= 8);
+    auto calls = native_size_queries.load();
+    assert(allocation->allocatedSizeForIdleRetirement() == 4096 && native_size_queries == calls);
+  }
+}
+
+static bool getter_tests(bool uncached) {
+  bool result = dynamic_getter_tests<DynamicBuffer>(uncached);
+  result = dynamic_getter_tests<DynamicLinearTexture>(uncached) && result;
+  result = staging_getter_tests(uncached) && result;
+  dynamic_unknown_charge_test<DynamicBuffer>();
+  dynamic_unknown_charge_test<DynamicLinearTexture>();
+  staging_unknown_charge_test();
+  overlapping_charge_readers<BufferAllocation>();
+  assert(live_allocations == 0);
+  return result;
+}
+
 template<class D> void dynamic_tests() {
   { // No subsequent Map or allocate: completion heartbeat alone retires excess.
     auto domain = std::make_shared<IdleRetirementDomain>();
@@ -212,13 +367,29 @@ static void bounded_and_races() {
 }
 #endif
 
-int main(int argc, char **) {
-  (void)argc;
+int main(int argc, char **argv) {
+  (void)argc; (void)argv;
+  if (argc > 1 && std::strcmp(argv[1], "reuse-target") == 0) {
+    const bool buffer = dynamic_reuse_tests<DynamicBuffer>(false);
+    const bool texture = dynamic_reuse_tests<DynamicLinearTexture>(false);
+    return buffer && texture ? 0 : 2;
+  }
 #if DXMT_IDLE_RETIREMENT
+  const bool uncached = argc > 1 && std::strcmp(argv[1], "uncached-baseline") == 0;
+  if (argc > 1 && std::strcmp(argv[1], "getter-target") == 0)
+    return getter_tests(false) ? 0 : 2;
+  const bool buffer_reuse_ok = dynamic_reuse_tests<DynamicBuffer>(uncached);
+  const bool texture_reuse_ok = dynamic_reuse_tests<DynamicLinearTexture>(uncached);
+  const bool reuse_ok = buffer_reuse_ok && texture_reuse_ok;
+  if (!reuse_ok || !getter_tests(uncached)) return 2;
+  if (argc > 1) {
+    std::cout << "PASS: getter/reference targets, unchanged accounting, zero retry, staging slot generations\n";
+    return 0;
+  }
   dynamic_tests<DynamicBuffer>(); dynamic_tests<DynamicLinearTexture>();
   staging_tests(); assert(live_allocations == 0);
   bounded_and_races();
-  std::cout << "PASS: idle-only maintenance, ownership, staging IDs, domain isolation, budgets/cap, unregister/races\n";
+  std::cout << "PASS: cached getter/reference owner paths, accounting/unknown retry/slot generations, idle-only maintenance, ownership, staging IDs, domain isolation, budgets/cap, unregister/races\n";
 #else
   {
     auto domain = std::make_shared<IdleRetirementDomain>();

@@ -1,0 +1,148 @@
+// Exact production emission sequence, real ABI/wrappers and PE thunk; CPU adapters.
+#include "ftl.hpp"
+#include "Metal.hpp"
+#include "winemetal_thunks.h"
+#include "airconv_public.h"
+#include <array>
+#include <algorithm>
+#include <iostream>
+#include <tuple>
+#include <vector>
+
+static unsigned crossings;
+static std::vector<std::array<uint64_t, 6>> trace;
+static void event(uint64_t t, uint64_t a=0,uint64_t b=0,uint64_t c=0,uint64_t d=0,uint64_t e=0) {
+  trace.push_back({t,a,b,c,d,e});
+}
+static void dispatch(unsigned opcode, unixcall_generic_obj_cmd_noret *params) {
+  assert(opcode == 38);
+  ++crossings;
+  // Synchronous ABI consumer; nil encoder has no Metal effects, but still crosses.
+  if (!params->encoder) return;
+  auto *node = static_cast<const wmtcmd_base *>(params->cmd_head.get());
+  unsigned visited = 0;
+  for (;node;node=static_cast<const wmtcmd_base *>(node->next.ptr)) {
+    assert(++visited < 100);
+    switch (node->type) {
+    case WMTRenderCommandNop: break;
+    case WMTRenderCommandSetVertexBuffer:
+    case WMTRenderCommandSetFragmentBuffer:
+    case WMTRenderCommandSetMeshBuffer:
+    case WMTRenderCommandSetObjectBuffer: {
+      auto &c=*reinterpret_cast<const wmtcmd_render_setbuffer *>(node);
+      event(c.type,c.buffer,c.offset,c.index); break;
+    }
+    case WMTRenderCommandUseResource: {
+      auto &c=*reinterpret_cast<const wmtcmd_render_useresource *>(node);
+      event(c.type,c.resource,c.usage,c.stages); break;
+    }
+    case WMTRenderCommandMemoryBarrier: {
+      auto &c=*reinterpret_cast<const wmtcmd_render_memory_barrier *>(node);
+      event(c.type,c.scope,c.stages_before,c.stages_after); break;
+    }
+    case WMTRenderCommandWaitForFence:
+    case WMTRenderCommandUpdateFence: {
+      auto &c=*reinterpret_cast<const wmtcmd_render_fence_op *>(node);
+      event(c.type,c.fence,c.stages); break;
+    }
+    case WMTRenderCommandDraw: {
+      auto &c=*reinterpret_cast<const wmtcmd_render_draw *>(node);
+      event(c.type,c.primitive_type,c.vertex_start,c.vertex_count,c.instance_count,c.base_instance);break;
+    }
+    default: assert(false && "unexpected fixture command");
+    }
+  }
+}
+#define UNIX_CALL(op, p) dispatch(op, p)
+// PRODUCTION_THUNK
+#undef UNIX_CALL
+extern "C" void MTLCommandEncoder_endEncoding(obj_handle_t encoder) { if(encoder) event(1000); }
+
+struct Fences {
+  std::vector<unsigned> ids;
+  template<class A,class B> void forEach(const Fences &excluded,A a,B b) {
+    for(auto id:ids) if(std::find(excluded.ids.begin(),excluded.ids.end(),id)==excluded.ids.end()) a(id);
+    for(auto id:excluded.ids) b(id);
+  }
+};
+struct MarshalTask {
+  uint64_t draw_arguments_va=101,dispatch_arguments_va=202,max_object_threadgroups=13;
+  uint32_t vertex_count_per_warp=32,control_point_count=3,patch_per_group=4;
+  WMT::Buffer draw_arguments,dispatch_arguments_buffer;
+  MarshalTask() { draw_arguments.handle=40;dispatch_arguments_buffer.handle=41; }
+};
+struct Data {
+  bool use_geometry=false,use_tessellation=false,use_emulated_so=false;
+  std::vector<MarshalTask> gs_arg_marshal_tasks,ts_arg_marshal_tasks;
+  Fences fence_wait{{1,2}},fence_wait_vertex{{2}},fence_update_vertex{{3,4}},fence_update{{4}};
+  wmtcmd_render_nop cmd_head{};
+};
+struct Queue {
+  std::array<uint64_t,64> mapped{};
+  auto AllocateArgumentBuffer(uint64_t seq, size_t bytes) {
+    assert(seq==7 && bytes<=sizeof(mapped));
+    mapped.fill(0);
+    WMT::Buffer buffer;buffer.handle=80;
+    return std::tuple<void *,WMT::Buffer,uint64_t>{mapped.data(),buffer,16};
+  }
+} queue_;
+struct Emulated {
+  void MarshalGSDispatchArguments(WMT::RenderCommandEncoder encoder,WMT::Buffer buffer,uint64_t offset) {
+    auto *p=queue_.mapped.data(); assert(p[0]==101 && p[1]==202 && p[2]==13);
+    assert(uint32_t(p[3])==32 && uint32_t(p[3]>>32)==1);
+    if(encoder) event(1001,buffer.handle,offset,p[0],p[1],p[2]);
+  }
+  void MarshalTSDispatchArguments(WMT::RenderCommandEncoder encoder,WMT::Buffer buffer,uint64_t offset) {
+    auto *p=queue_.mapped.data(); assert(p[0]==101 && p[1]==202 && p[2]==13);
+    assert(uint16_t(p[3])==3 && uint16_t(p[3]>>16)==4 && uint32_t(p[3]>>32)==1);
+    if(encoder) event(1002,buffer.handle,offset,p[0],p[1],p[2]);
+  }
+} emulated_cmd;
+namespace passopt {
+// PRODUCTION_DEDUP
+}
+static void emit(Data *data,WMT::RenderCommandEncoder encoder,WMT::Buffer gpu_buffer_) {
+  uint64_t seq_id_=7;
+  std::array<WMT::Fence,8> fence_pool_{};
+  for(unsigned i=0;i<fence_pool_.size();++i) fence_pool_[i].handle=90+i;
+// PRODUCTION_EMISSION
+}
+int main() {
+  unsigned scenario=0;
+  for(unsigned flags=0;flags<8;++flags) for(unsigned tasks=0;tasks<4;++tasks)
+  for(bool valid_encoder:{false,true}) for(bool valid_buffer:{false,true}) for(bool commands:{false,true}) {
+    Data data;data.use_geometry=flags&1;data.use_tessellation=flags&2;data.use_emulated_so=flags&4;
+    if(tasks&1) data.gs_arg_marshal_tasks.emplace_back();
+    if(tasks&2) data.ts_arg_marshal_tasks.emplace_back();
+    data.cmd_head.type=WMTRenderCommandNop;
+    wmtcmd_render_useresource resource{},duplicate{};
+    resource.type=duplicate.type=WMTRenderCommandUseResource;
+    resource.resource=duplicate.resource=500;
+    resource.usage=duplicate.usage=WMTResourceUsageRead;
+    resource.stages=duplicate.stages=WMTRenderStageVertex;
+    wmtcmd_render_draw draw{};draw.type=WMTRenderCommandDraw;
+    draw.primitive_type=WMTPrimitiveTypeTriangle;draw.vertex_start=6;draw.vertex_count=12;
+    draw.instance_count=2;draw.base_instance=8;
+    wmtcmd_render_memory_barrier barrier{};barrier.type=WMTRenderCommandMemoryBarrier;
+    barrier.scope=WMTBarrierScopeBuffers;barrier.stages_after=WMTRenderStageVertex;
+    barrier.stages_before=WMTRenderStageFragment;
+    if(commands) {
+      data.cmd_head.next.set(&resource);resource.next.set(&duplicate);duplicate.next.set(&barrier);barrier.next.set(&draw);
+    }
+    WMT::RenderCommandEncoder encoder;encoder.handle=valid_encoder?22:0;
+    WMT::Buffer buffer;buffer.handle=valid_buffer?33:0;
+    trace.clear();crossings=0;
+    emit(&data,encoder,buffer);
+    // The stack splice must never modify the recorded topology or tail.
+    assert(data.cmd_head.next.get()==(commands?static_cast<void *>(&resource):nullptr));
+    assert(resource.next.get()==(commands?static_cast<void *>(&duplicate):nullptr));
+    assert(duplicate.next.get()==(commands?static_cast<void *>(&barrier):nullptr));
+    assert(barrier.next.get()==(commands?static_cast<void *>(&draw):nullptr));
+    assert(draw.next.get()==nullptr);
+    bool eligible=!flags && !tasks && valid_encoder && valid_buffer;
+    // Prefix output includes every non-no-op payload, plus exact native counts.
+    std::cout << scenario++ << ' ' << eligible << ' ' << crossings << ' ' << trace.size();
+    for(auto &e:trace) for(auto value:e) std::cout << ' ' << value;
+    std::cout << '\n';
+  }
+}

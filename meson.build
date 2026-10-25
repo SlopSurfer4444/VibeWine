@@ -156,6 +156,9 @@ foreach option_name, define_name : {
   'vibewine_demand_scheduler' : 'DXMT_DEMAND_SCHEDULER',
   'vibewine_discard_hints' : 'DXMT_DISCARD_HINTS',
   'vibewine_bounded_encoder_optimizer' : 'DXMT_BOUNDED_ENCODER_OPTIMIZER',
+  'vibewine_render_pass_fusion' : 'DXMT_RENDER_PASS_FUSION',
+  'vibewine_compute_pass_fusion' : 'DXMT_COMPUTE_PASS_FUSION',
+  'vibewine_packed_ir_growth' : 'DXMT_PACKED_IR_GROWTH',
 }
   experiment_define = '-D' + define_name + '=' + get_option(option_name).to_int().to_string()
   add_project_arguments(experiment_define, language: ['c', 'cpp'])

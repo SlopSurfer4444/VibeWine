@@ -252,7 +252,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
       std::shared_lock<std::shared_mutex> lock(mutex_shares);
       auto result = shaders_.find(sha1);
       if (result != shaders_.end()) {
-        return shaders_.at(sha1).get();
+        return result->second.get();
       }
     }
     sm50_error_t err;
@@ -268,7 +268,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
       std::unique_lock<std::shared_mutex> lock(mutex_shares);
       auto result = shaders_.find(sha1);
       if (result != shaders_.end()) {
-        return shaders_.at(sha1).get();
+        return result->second.get();
       }
 #ifdef DXMT_DEBUG
       shader->bytecode = malloc(BytecodeLength);

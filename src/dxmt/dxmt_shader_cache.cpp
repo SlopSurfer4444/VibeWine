@@ -2,6 +2,7 @@
 #include "util_env.hpp"
 #include "util_string.hpp"
 #include "../d3d11/cs2_trace.hpp"
+#include "../d3d11/cs2_compile_trace.hpp"
 
 namespace dxmt {
 
@@ -48,13 +49,26 @@ WMT::Reference<WMT::DispatchData>
 ShaderCache::read(const void *key, uint64_t length) {
   if (!scache_reader_)
     return {};
-  std::lock_guard<dxmt::mutex> lock(scache_reader_mutex_);
-  const auto trace = cs2trace::beginDetail(trace_serial_);
-  const auto start = trace.gen ? cs2trace::now() : 0;
+  const auto wait_trace = cs2trace::profileAllows(104) ? cs2trace::beginDetail(trace_serial_) : cs2trace::DetailToken{};
+  cs2trace::CacheReaderLockScope wait(wait_trace, trace_serial_);
+  cs2trace::DetailToken trace;
   uint32_t status = WMTCacheStatusUnavailable;
-  auto data = scache_reader_.get_checked(key, length, status);
+  uint64_t start = 0, end = 0;
+  WMT::Reference<WMT::DispatchData> data;
+  {
+    std::lock_guard<dxmt::mutex> lock(scache_reader_mutex_);
+    wait.acquired();
+    // Preserve 93's original post-lock generation admission. Only an unchanged
+    // capture may share the before-lock read identity with its new wait probe.
+    trace = cs2trace::profileAllows(93) ? cs2trace::beginDetail(trace_serial_) : cs2trace::DetailToken{};
+    if (trace.gen && trace.gen == wait_trace.gen)
+      trace.serial = wait_trace.serial;
+    start = trace.gen ? cs2trace::now() : 0;
+    data = scache_reader_.get_checked(key, length, status);
+    end = trace.gen ? cs2trace::now() : 0;
+  }
   if (trace.gen)
-    cs2trace::detailRecord(trace.gen, 93, start, cs2trace::now(), trace_serial_, status, trace.serial, 0);
+    cs2trace::detailRecord(trace.gen, 93, start, end, trace_serial_, status, trace.serial, 0);
   return data;
 }
 

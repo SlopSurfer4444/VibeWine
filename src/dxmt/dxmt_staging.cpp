@@ -34,7 +34,11 @@ void StagingResource::sweepIdle(uint64_t coherent, IdleRetirementDomain::Budget 
                                 IdleRetirementDomain::Sample &sample) {
   std::unique_lock<dxmt::mutex> lock(mutex_, std::try_to_lock);
   if (!lock.owns_lock()) { ++sample.skipped_busy; return; }
-  sample.current.add(1, buffer_pool[immediate_name_]->buffer().allocatedSize());
+  const auto allocationBytes = [this](uint64_t id) {
+    const auto &allocation = buffer_pool[id];
+    return allocation->allocatedSizeForIdleRetirement();
+  };
+  sample.current.add(1, allocationBytes(immediate_name_));
   sample.created_count += created_allocations_;
   if (idle_allocation_ == kInvalidAllocation && !fifo.empty() &&
       fifo.front().will_free_at <= coherent && budget.entries) {
@@ -44,20 +48,20 @@ void StagingResource::sweepIdle(uint64_t coherent, IdleRetirementDomain::Budget 
     --budget.entries;
     auto entry = fifo.front();
     if (entry.will_free_at > coherent || coherent - entry.will_free_at < kIdleAllocationLifetime) break;
-    const auto bytes = buffer_pool[entry.id]->buffer().allocatedSize();
+    const auto bytes = allocationBytes(entry.id);
     if (!budget.release(bytes)) break;
     assert(entry.id != immediate_name_);
     fifo.pop(); buffer_pool[entry.id] = nullptr; free_slots_.push_back(entry.id);
     ++sample.released_count; sample.released_bytes += bytes;
   }
   if (idle_allocation_ != kInvalidAllocation)
-    sample.completed_idle.add(1, buffer_pool[idle_allocation_]->buffer().allocatedSize());
+    sample.completed_idle.add(1, allocationBytes(idle_allocation_));
   uint64_t inspected = 0;
   for (const auto &entry : fifo.entries()) {
     if (!budget.entries) break;
     --budget.entries; ++inspected;
     auto &category = entry.will_free_at <= coherent ? sample.completed_idle : sample.inflight;
-    category.add(1, buffer_pool[entry.id]->buffer().allocatedSize());
+    category.add(1, allocationBytes(entry.id));
   }
   sample.unclassified.add(fifo.size() - inspected, 0);
   // allocate() reserves a stable ID before updateImmediateName publishes it.

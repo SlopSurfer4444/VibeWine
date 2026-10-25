@@ -1,0 +1,131 @@
+// Real command ABI/wrappers and exact PE thunk with synchronous native observer.
+#include "ftl.hpp"
+#include "Metal.hpp"
+#include "winemetal_thunks.h"
+#include "airconv_public.h"
+#include <array>
+#include <iostream>
+#include <vector>
+
+static unsigned crossings;
+static std::vector<std::vector<uint64_t>> trace;
+static void event(std::initializer_list<uint64_t> fields) { trace.emplace_back(fields); }
+static void dispatch(unsigned opcode, unixcall_generic_obj_cmd_noret *params) {
+  assert(opcode==37); ++crossings;
+  if(!params->encoder) return;
+  WMTSize threadgroup_size{}; // Same per-call state as the native interpreter.
+  unsigned visited=0;
+  for(auto *node=static_cast<const wmtcmd_base *>(params->cmd_head.get());node;
+      node=static_cast<const wmtcmd_base *>(node->next.ptr)) {
+    assert(++visited<100);
+    switch(node->type) {
+    case WMTComputeCommandNop: break;
+    case WMTComputeCommandSetBuffer: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_setbuffer *>(node);
+      event({c.type,c.buffer,c.offset,c.index});break;
+    }
+    case WMTComputeCommandSetBufferOffset: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_setbufferoffset *>(node);
+      event({c.type,c.offset,c.index});break;
+    }
+    case WMTComputeCommandUseResource: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_useresource *>(node);
+      event({c.type,c.resource,c.usage});break;
+    }
+    case WMTComputeCommandSetPSO: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_setpso *>(node);
+      threadgroup_size=c.threadgroup_size;
+      event({c.type,c.pso,c.threadgroup_size.width,c.threadgroup_size.height,c.threadgroup_size.depth});break;
+    }
+    case WMTComputeCommandDispatch:
+    case WMTComputeCommandDispatchThreads: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_dispatch *>(node);
+      event({c.type,c.size.width,c.size.height,c.size.depth,threadgroup_size.width,threadgroup_size.height,threadgroup_size.depth});break;
+    }
+    case WMTComputeCommandDispatchIndirect: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_dispatch_indirect *>(node);
+      event({c.type,c.indirect_args_buffer,c.indirect_args_offset,threadgroup_size.width,threadgroup_size.height,threadgroup_size.depth});break;
+    }
+    case WMTComputeCommandSetBytes: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_setbytes *>(node);
+      event({c.type,c.index,c.length});
+      for(size_t i=0;i<c.length;++i) trace.back().push_back(static_cast<const uint8_t *>(c.bytes.ptr)[i]);
+      break;
+    }
+    case WMTComputeCommandSetTexture: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_settexture *>(node);
+      event({c.type,c.texture,c.index});break;
+    }
+    case WMTComputeCommandMemoryBarrier: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_memory_barrier *>(node);
+      event({c.type,c.scope});break;
+    }
+    case WMTComputeCommandExecuteCommandsInBuffer: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_executecommands *>(node);
+      event({c.type,c.indirect_command_buffer,c.location,c.length});break;
+    }
+    case WMTComputeCommandWaitForFence:
+    case WMTComputeCommandUpdateFence: {
+      auto &c=*reinterpret_cast<const wmtcmd_compute_fence_op *>(node);
+      event({c.type,c.fence});break;
+    }
+    default: assert(false && "unsupported fixture command");
+    }
+  }
+}
+#define UNIX_CALL(op,p) dispatch(op,p)
+// PRODUCTION_THUNK
+#undef UNIX_CALL
+extern "C" void MTLCommandEncoder_endEncoding(obj_handle_t encoder) { if(encoder) event({1000}); }
+struct Fences {
+  std::vector<unsigned> ids;
+  template<class F> void forEach(F f) { for(auto id:ids) f(id); }
+};
+struct Data {
+  WMT::Buffer allocated_argbuf;
+  Fences fence_wait,fence_update;
+  wmtcmd_compute_nop cmd_head{};
+};
+static void emit(Data *data,WMT::ComputeCommandEncoder encoder) {
+  std::array<WMT::Fence,8> fence_pool_{};
+  for(unsigned i=0;i<fence_pool_.size();++i) fence_pool_[i].handle=80+i;
+// PRODUCTION_EMISSION
+}
+int main() {
+  unsigned scenario=0;
+  for(bool valid_encoder:{false,true}) for(bool valid_buffer:{false,true})
+  for(unsigned stream=0;stream<4;++stream) for(bool fences:{false,true}) {
+    Data data;data.allocated_argbuf.handle=valid_buffer?30:0;
+    data.cmd_head.type=WMTComputeCommandNop;
+    if(fences) { data.fence_wait.ids={1,2};data.fence_update.ids={3,4}; }
+    wmtcmd_compute_nop nop{};nop.type=WMTComputeCommandNop;
+    wmtcmd_compute_setpso pso{};pso.type=WMTComputeCommandSetPSO;pso.pso=71;pso.threadgroup_size={8,4,2};
+    wmtcmd_compute_dispatch direct{};direct.type=WMTComputeCommandDispatch;direct.size={3,5,7};
+    wmtcmd_compute_setpso pso2{};pso2.type=WMTComputeCommandSetPSO;pso2.pso=72;pso2.threadgroup_size={16,2,1};
+    wmtcmd_compute_dispatch threads{};threads.type=WMTComputeCommandDispatchThreads;threads.size={33,44,55};
+    wmtcmd_compute_dispatch_indirect indirect{};indirect.type=WMTComputeCommandDispatchIndirect;indirect.indirect_args_buffer=73;indirect.indirect_args_offset=1024;
+    wmtcmd_compute_useresource resource{};resource.type=WMTComputeCommandUseResource;resource.resource=74;resource.usage=WMTResourceUsageWrite;
+    wmtcmd_compute_setbufferoffset offset{};offset.type=WMTComputeCommandSetBufferOffset;offset.offset=256;offset.index=SM50_BINDING_INDEX_ARGUMENT_TABLE;
+    wmtcmd_compute_memory_barrier barrier{};barrier.type=WMTComputeCommandMemoryBarrier;barrier.scope=WMTBarrierScopeBuffers;
+    uint8_t payload[]={0,2,4,8,255};
+    wmtcmd_compute_setbytes bytes{};bytes.type=WMTComputeCommandSetBytes;bytes.index=5;bytes.length=sizeof(payload);bytes.bytes.set(payload);
+    wmtcmd_compute_settexture texture{};texture.type=WMTComputeCommandSetTexture;texture.texture=75;texture.index=6;
+    wmtcmd_compute_executecommands execute{};execute.type=WMTComputeCommandExecuteCommandsInBuffer;execute.indirect_command_buffer=76;execute.location=3;execute.length=4;
+    std::vector<wmtcmd_base *> original;
+    auto append=[&](auto &c) {
+      auto *node=reinterpret_cast<wmtcmd_base *>(&c);
+      if(original.empty()) data.cmd_head.next.set(node); else original.back()->next.set(node);
+      original.push_back(node);
+    };
+    if(stream==1) append(nop);
+    if(stream>=2) { append(pso);append(direct); }
+    if(stream==3) { append(resource);append(offset);append(bytes);append(texture);append(barrier);append(pso2);append(threads);append(indirect);append(execute); }
+    WMT::ComputeCommandEncoder encoder;encoder.handle=valid_encoder?20:0;
+    crossings=0;trace.clear();emit(&data,encoder);
+    assert(data.cmd_head.next.get()==(original.empty()?nullptr:original.front()));
+    for(size_t i=0;i<original.size();++i) assert(original[i]->next.get()==(i+1<original.size()?original[i+1]:nullptr));
+    std::cout << scenario++ << ' ' << (valid_encoder&&valid_buffer) << ' ' << crossings << ' ' << trace.size();
+    for(auto &e:trace) { std::cout << ' ' << e.size();for(auto field:e) std::cout << ' ' << field; }
+    std::cout << '\n';
+  }
+}

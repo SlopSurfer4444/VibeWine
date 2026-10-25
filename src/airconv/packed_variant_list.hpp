@@ -1,11 +1,18 @@
 
 
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <limits>
 #include <type_traits>
+#include <utility>
 #include <variant>
+
+#ifndef DXMT_PACKED_IR_GROWTH
+#define DXMT_PACKED_IR_GROWTH 0
+#endif
 
 namespace dxmt {
 
@@ -65,16 +72,41 @@ template <typename... Types> class PackedVariantList {
     return (offset + alignment - 1) & ~(alignment - 1);
   }
 
+  static size_t checked_add(size_t offset, size_t amount) {
+    if (amount > std::numeric_limits<size_t>::max() - offset)
+      std::terminate();
+    return offset + amount;
+  }
+
+  static size_t checked_align_up(size_t offset, size_t alignment) {
+    return checked_add(offset, alignment - 1) & ~(alignment - 1);
+  }
+
   void ensure_capacity(size_t required) {
     if (required <= capacity)
       return;
 
     size_t new_capacity = capacity ? capacity : 1024;
-    while (new_capacity < required) {
-      new_capacity = new_capacity + 1024;
+#if DXMT_PACKED_IR_GROWTH
+    // Opt-in 1.5x growth trades bounded extra retained slack for amortized
+    // linear copying. A large append (or near-SIZE_MAX request) uses its size.
+    if (capacity)
+      new_capacity = capacity <= std::numeric_limits<size_t>::max() - capacity / 2
+                         ? capacity + capacity / 2 : required;
+    if (new_capacity < required)
+      new_capacity = required;
+#else
+    // Preserve the legacy 1024-byte steps without an unbounded search loop.
+    if (new_capacity < required) {
+      size_t remainder = (required - new_capacity) % 1024;
+      new_capacity = checked_add(required, remainder ? 1024 - remainder : 0);
     }
+#endif
 
     std::byte *new_data = static_cast<std::byte *>(std::malloc(new_capacity));
+    // airconv builds without exceptions. Fail before touching the live buffer.
+    if (!new_data)
+      std::terminate();
     if (data) {
       std::memcpy(new_data, data, size);
       std::free(data);
@@ -102,8 +134,8 @@ public:
   template <typename T> void push_back(const T &value) {
     static_assert((std::is_same_v<T, Types> || ...), "invalid type");
     size_t offset = size;
-    size_t data_offset = align_up(offset + sizeof(Tag), alignof(T));
-    size_t total_size = align_up(data_offset + sizeof(T), sizeof(Tag));
+    size_t data_offset = checked_align_up(checked_add(offset, sizeof(Tag)), alignof(T));
+    size_t total_size = checked_align_up(checked_add(data_offset, sizeof(T)), sizeof(Tag));
 
     ensure_capacity(total_size);
 

@@ -49,6 +49,8 @@ struct MTLD3D11Device {
   WMT::Device GetMTLDevice() { return {}; }
 };
 struct ThreadpoolWork {
+  const uint64_t task_trace_serial=0;
+  std::atomic<uint32_t> task_trace_generation{0};
   virtual ~ThreadpoolWork() = default;
   virtual ThreadpoolWork *RunThreadpoolWork() = 0;
   virtual bool GetIsDone() = 0;
@@ -72,6 +74,14 @@ struct Shader {
 };
 using ManagedShader = Shader *;
 namespace cs2lab { struct CompileTimer { const char *kind; const char *name; bool cache_hit = false; }; }
+#ifndef DXMT_COMPILER_TRACE_PRODUCTION
+// Persistence regressions stub diagnostics only; compiler-attribution/run.py
+// separately compiles the real producer/header and production-extracted paths.
+namespace cs2trace {
+struct CompilerWorkScope { CompilerWorkScope(uint32_t,uint64_t) {} };
+template<class F,class Check> auto compilerStage(uint32_t,uint64_t,F &&fn,Check &&) { return std::forward<F>(fn)(); }
+}
+#endif
 ShaderCache::ShaderCache(WMTMetalVersion) { writer_state_->writer = WMT::CacheWriter{fake_writer}; }
 
 // EXACT_GENERAL_SHADER_TASK

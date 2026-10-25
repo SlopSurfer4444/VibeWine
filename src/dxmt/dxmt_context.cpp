@@ -1026,6 +1026,16 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
         encoder.setMeshBuffer(gpu_buffer_, 0, SM50_BINDING_INDEX_ARGUMENT_TABLE);
       }
 #else
+      // Only ordinary passes can join setup directly to their recorded stream.
+      // Marshal work must keep its existing setup -> marshal -> barrier -> draw
+      // order; SO stays on the established path until separately validated.
+#if defined(DXMT_RENDER_PASS_FUSION) && DXMT_RENDER_PASS_FUSION
+      const bool fuse_render_setup = encoder && gpu_buffer_ && !data->use_geometry && !data->use_tessellation &&
+                                     !data->use_emulated_so && data->gs_arg_marshal_tasks.empty() &&
+                                     data->ts_arg_marshal_tasks.empty();
+#else
+      constexpr bool fuse_render_setup = false;
+#endif
       // Fixed setup is consumed synchronously before any marshal task or draw.
       // Five basic bindings, eight GS/TS bindings and one stream-output binding
       // fit without heap allocation or changing the recorded command list.
@@ -1062,7 +1072,8 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
         bind_buffer(WMTRenderCommandSetMeshBuffer, SM50_BINDING_INDEX_CONSTANT_BUFFER);
         bind_buffer(WMTRenderCommandSetMeshBuffer, SM50_BINDING_INDEX_ARGUMENT_TABLE);
       }
-      encoder.encodeCommands(reinterpret_cast<const wmtcmd_render_nop *>(setup.data()));
+      if (!fuse_render_setup)
+        encoder.encodeCommands(reinterpret_cast<const wmtcmd_render_nop *>(setup.data()));
 #endif
       if (data->gs_arg_marshal_tasks.size()) {
         auto task_count = data->gs_arg_marshal_tasks.size();
@@ -1125,7 +1136,16 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
 #if defined(DXMT_PHYSICAL_RESIDENCY_DEDUP) && DXMT_PHYSICAL_RESIDENCY_DEDUP
       passopt::DeduplicateRenderResidency(data->cmd_head);
 #endif
-      encoder.encodeCommands(&data->cmd_head);
+#if !(defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING)
+      if (fuse_render_setup) {
+        // Link stack-owned setup only for this synchronous native traversal.
+        // Dedup above still sees exactly the original recorded list; its head,
+        // tail and next pointers remain owned and unchanged by this splice.
+        setup[setup_count - 1].next.set(&data->cmd_head);
+        encoder.encodeCommands(reinterpret_cast<const wmtcmd_render_nop *>(setup.data()));
+      } else
+#endif
+        encoder.encodeCommands(&data->cmd_head);
       data->fence_update_vertex.forEach(
           data->fence_update, // if a fence is updated at fragment, no need to update again pre-raster
           [&](auto id) { encoder.updateFence(fence_pool_[id], WMTRenderStageFragment); },
@@ -1160,9 +1180,24 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       setup[0].index = SM50_BINDING_INDEX_CONSTANT_BUFFER;
       setup[0].next.set(&setup[1]);
       setup[1].index = SM50_BINDING_INDEX_ARGUMENT_TABLE;
-      encoder.encodeCommands(reinterpret_cast<const wmtcmd_compute_nop *>(setup.data()));
+#if defined(DXMT_COMPUTE_PASS_FUSION) && DXMT_COMPUTE_PASS_FUSION
+      const bool fuse_compute_setup = encoder && data->allocated_argbuf;
+#else
+      constexpr bool fuse_compute_setup = false;
 #endif
-      encoder.encodeCommands(&data->cmd_head);
+      if (!fuse_compute_setup)
+        encoder.encodeCommands(reinterpret_cast<const wmtcmd_compute_nop *>(setup.data()));
+#endif
+#if !(defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING)
+      if (fuse_compute_setup) {
+        // The buffer-only prefix leaves the native interpreter's per-call
+        // threadgroup state unchanged. Consume both lists synchronously;
+        // only this stack tail changes, never the recorded list topology.
+        setup.back().next.set(&data->cmd_head);
+        encoder.encodeCommands(reinterpret_cast<const wmtcmd_compute_nop *>(setup.data()));
+      } else
+#endif
+        encoder.encodeCommands(&data->cmd_head);
       data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id]); });
       encoder.endEncoding();
       data->~ComputeEncoderData();

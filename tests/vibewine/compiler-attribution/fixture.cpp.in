@@ -1,0 +1,172 @@
+// Exact production helper/protocol and extracted task/cache read implementation;
+// only OS mapping, timestamp observation and WMT/compiler endpoints are shims.
+#define DXMT_COMPILER_TRACE_PRODUCTION 1
+#include "cs2_compile_trace.hpp"
+// EXISTING_SHADER_FIXTURE_PREFIX
+
+inline constexpr uint32_t WMTCacheStatusUnavailable=0xffffffffu;
+// EXACT_CACHE_READ
+
+using namespace dxmt::cs2trace;
+static Event *events(){return reinterpret_cast<Event*>(reinterpret_cast<char*>(buffer())+4096);}
+static void arm(uint32_t gen){auto h=buffer();assert(h && !controlWriters(h->control));h->control=controlWord(gen,CaptureState::Open);}
+static std::vector<Event> selected(uint64_t from=0){
+  std::vector<Event> out;
+  for(uint64_t i=from;i<buffer()->next;i++)if(events()[i].type>=104 && events()[i].type<=107)out.push_back(events()[i]);
+  return out;
+}
+static void reset_endpoint(){reader_hit=false;reader_throw=false;WMT::fail_library=false;WMT::fail_function=false;WMT::fail_cached_library=false;throw_library=false;throw_function=false;fail_cached_function=false;}
+
+void shader_paths(bool armed) {
+  // Cold success, AIR failure, library failure, function failure, warm hit,
+  // cached-library rejection with successful fallback, three throwing endpoints.
+  for(unsigned mode=0;mode<10;mode++) {
+    reset_endpoint();reader_hit=mode==4 || mode==5 || mode==9;fail_cached_function=mode==9;
+    WMT::fail_library=mode==2;WMT::fail_function=mode==3;WMT::fail_cached_library=mode==5;
+    throw_library=mode==7;throw_function=mode==8;
+    fake_writer=std::make_shared<FakeWriterState>();
+    dxmt::ShaderCache cache(0);dxmt::Shader shader{cache};dxmt::MTLD3D11Device device;
+    unsigned proc_calls=0;
+    auto proc=[&](const char *,SM50_SHADER_COMMON_DATA *)->sm50_bitcode_t {
+      proc_calls++;if(mode==6)throw 7;return mode==1?nullptr:new FakeBitcode;
+    };
+    dxmt::GeneralShaderCompileTask<decltype(proc)> task(&device,&shader,std::move(proc),"test",{});
+    task.task_trace_generation=7;
+    auto from=buffer()->next;auto clocks=fixture_clock_calls.load();auto serial_before=newSerial();
+    bool caught=false;
+    try{assert(task.RunThreadpoolWork()==&task);}catch(int){caught=true;}
+    auto serial_after=newSerial();
+    assert(caught==(mode>=6 && mode<=8));assert(compiler_work.gen==0 && compiler_work.serial==0);
+    auto rows=selected(from);
+    if(!armed){assert(rows.empty() && fixture_clock_calls==clocks && serial_after==serial_before+1);continue;}
+    assert(!rows.empty());
+    unsigned air=0,library=0,function=0,wait=0,exceptions=0;
+    for(const auto &e:rows) {
+      assert(e.reserved==7 && e.end>=e.start);
+      if(e.type==104){wait++;assert(e.object && e.padding[0]==task.task_trace_serial && e.padding[1]);continue;}
+      assert(e.object==task.task_trace_serial && e.padding[0]);
+      assert(e.flags>=1 && e.flags<=3);exceptions+=e.flags==3;
+      air+=e.type==105;library+=e.type==106;function+=e.type==107;
+      if(e.type==105)assert(!e.padding[1]);
+      if(mode==4 && (e.type==106 || e.type==107))assert(e.padding[1]==1 && e.flags==1);
+      if(mode==1 && e.type==105)assert(e.flags==2);
+      if(mode==2 && e.type==106)assert(e.flags==2);
+      if(mode==3 && e.type==107)assert(e.flags==2);
+    }
+    assert(wait==1 && air==(mode==4?0u:1u));
+    assert(library==(mode==1 || mode==6?0u:(mode==5 || mode==9)?2u:1u));
+    assert(function==(mode==1 || mode==2 || mode==6 || mode==7?0u:mode==9?2u:1u));
+    assert(exceptions==(mode>=6 && mode<=8?1u:0u));
+    assert(proc_calls==(mode==4?0u:1u));
+  }
+}
+
+void nested_context(bool armed) {
+  assert(!compiler_work.serial);
+  {
+    CompilerWorkScope parent(7,900);
+    assert(compiler_work.serial==(armed?900u:0u));
+    {CompilerWorkScope child(7,901);assert(compiler_work.serial==(armed?901u:0u));}
+    assert(compiler_work.serial==(armed?900u:0u));
+    std::atomic<bool> isolated{false};
+    std::thread other([&]{assert(!compiler_work.serial);CompilerWorkScope own(7,902);isolated=compiler_work.serial==(armed?902u:0u);});
+    other.join();assert(isolated && compiler_work.serial==(armed?900u:0u));
+    try{CompilerWorkScope throwing(7,903);throw 1;}catch(int){}
+    assert(compiler_work.serial==(armed?900u:0u));
+  }
+  assert(!compiler_work.gen && !compiler_work.serial);
+}
+
+void contended_reader(bool armed) {
+  reset_endpoint();fake_writer=std::make_shared<FakeWriterState>();dxmt::ShaderCache cache(0);
+  std::atomic<bool> attempted{false};
+  uint64_t released=0,read_entry=0;unsigned key=42;
+  reader_entry=[&]{read_entry=now();};
+  auto from=buffer()->next;
+  auto held=std::make_unique<dxmt::ShaderCache::LockProtected<WMT::CacheReader>>(cache.getReader());
+  std::thread worker([&]{
+    CompilerWorkScope context(7,950);
+    before_mutex_lock=[&]{attempted=true;};
+    cache.find(key);
+    before_mutex_lock={};
+  });
+  until([&]{return attempted.load();});released=now();held.reset();worker.join();reader_entry={};
+  auto rows=selected(from);
+  if(!armed){assert(rows.empty());return;}
+  assert(rows.size()==1 && rows[0].type==104);const auto wait=rows[0];
+  assert(wait.padding[0]==950 && wait.flags==1 && wait.start<released && released<=wait.end && wait.end<=read_entry);
+  bool joined=false;
+  for(uint64_t i=from;i<buffer()->next;i++)if(events()[i].type==93){
+    const auto &get=events()[i];assert(get.object==wait.object && get.padding[0]==wait.padding[1]);
+    assert(wait.end<=get.start && get.start<=read_entry && read_entry<=get.end);joined=true;
+  }
+  assert(joined);
+}
+
+void read_capture_boundary() {
+  for(bool initially_open:{false,true}) {
+    reset_endpoint();fake_writer=std::make_shared<FakeWriterState>();dxmt::ShaderCache cache(0);unsigned key=42;
+    buffer()->control=controlWord(7,initially_open?CaptureState::Open:CaptureState::Closed);
+    auto from=buffer()->next;std::atomic<bool> attempted{false};
+    auto held=std::make_unique<dxmt::ShaderCache::LockProtected<WMT::CacheReader>>(cache.getReader());
+    std::thread worker([&]{CompilerWorkScope context(7,960);before_mutex_lock=[&]{attempted=true;};cache.find(key);});
+    until([&]{return attempted.load();});arm(8);held.reset();worker.join();
+    unsigned reads=0,waits=0,stale=0;
+    for(uint64_t i=from;i<buffer()->next;i++){
+      const auto &e=events()[i];
+      if(e.type==93){assert(e.reserved==8 && e.padding[0]);reads++;}
+      waits+=e.type==104;stale+=e.type==89 && e.flags==2 && e.padding[0]==7;
+    }
+    assert(reads==1 && waits==0 && stale==unsigned(initially_open));
+  }
+  arm(7);generation();
+}
+
+void unavailable_and_unparented(bool armed) {
+  reset_endpoint();fake_writer=std::make_shared<FakeWriterState>();unsigned key=42;
+  dxmt::ShaderCache unavailable(99);auto from=buffer()->next;auto clocks=fixture_clock_calls.load();
+  assert(!unavailable.find(key));assert(buffer()->next==from && fixture_clock_calls==clocks);
+  dxmt::ShaderCache cache(0);from=buffer()->next;cache.find(key);auto rows=selected(from);
+  if(armed)assert(rows.size()==1 && rows[0].type==104 && !rows[0].padding[0]);
+  else assert(rows.empty());
+}
+
+void cache_exceptions(bool armed) {
+  reset_endpoint();fake_writer=std::make_shared<FakeWriterState>();dxmt::ShaderCache cache(0);unsigned key=42;
+  for(bool lock_failure:{false,true}){
+    auto from=buffer()->next;CompilerWorkScope parent(7,970);
+    reader_throw=!lock_failure;
+    before_mutex_lock=lock_failure?std::function<void()>([]{throw 19;}):std::function<void()>{};
+    bool caught=false;try{cache.find(key);}catch(int){caught=true;}
+    before_mutex_lock={};reader_throw=false;assert(caught);
+    auto rows=selected(from);
+    if(!armed){assert(rows.empty());continue;}
+    assert(rows.size()==1 && rows[0].type==104 && rows[0].flags==(lock_failure?3u:1u));
+    for(uint64_t i=from;i<buffer()->next;i++)assert(events()[i].type!=93);
+  }
+}
+
+int main(int argc,char **argv) {
+  assert(argc==2);std::string mode=argv[1];arm(7);
+  const bool armed=mode=="armed";
+  if(mode=="budget"){
+    CompilerWorkScope context(7,990);
+    for(unsigned i=0;i<10;i++)compilerStage(105,0,[]{return true;},[](bool value){return value;});
+    unsigned records=0,failures=0;
+    for(uint64_t i=0;i<buffer()->next;i++){records+=events()[i].type==105;failures+=events()[i].type==89 && events()[i].flags==1;}
+    assert(records==2 && failures==1);return 0;
+  }
+  if(mode=="closed")buffer()->control=controlWord(7,CaptureState::Closed);
+  shader_paths(armed);nested_context(armed || mode=="closed");contended_reader(armed);unavailable_and_unparented(armed);cache_exceptions(armed);
+  if(armed){
+    read_capture_boundary();
+    // First scope attempt after a fresh arm: even metadata must not allocate
+    // a clock/event on behalf of old task context.
+    arm(9);
+    auto from=buffer()->next;auto clocks=fixture_clock_calls.load();auto serial_before=newSerial();
+    {CompilerWorkScope context(6,991);compilerStage(105,0,[]{return true;},[](bool value){return value;});}
+    auto serial_after=newSerial();
+    assert(buffer()->next==from && fixture_clock_calls==clocks && serial_after==serial_before+1);
+  }
+  std::cout<<"PASS exact shader/cache attribution: success/failure/exception/cache hit, contention, parent/TLS, profile/unarmed/budget\n";
+}

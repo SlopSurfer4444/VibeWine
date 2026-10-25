@@ -23,7 +23,7 @@ trimCompletedDynamicAllocations(Queue &fifo, uint64_t coherent_seq_id) {
 template<class A> uint64_t allocationBytes(const Rc<A> &allocation) {
   if (!allocation) return 0;
   if constexpr (requires { allocation->buffer(); })
-    return allocation->buffer().allocatedSize();
+    return allocation->allocatedSizeForIdleRetirement();
   else
     return allocation->texture().allocatedSize();
 }
@@ -113,7 +113,7 @@ DynamicBuffer::allocate(uint64_t coherent_seq_id) {
     if (fifo.empty()) {
       break;
     }
-    auto entry = fifo.front();
+    auto &entry = fifo.front();
     if (entry.will_free_at > coherent_seq_id) {
       break;
     }
@@ -217,7 +217,7 @@ DynamicLinearTexture::allocate(uint64_t coherent_seq_id) {
     if (fifo.empty()) {
       break;
     }
-    auto entry = fifo.front();
+    auto &entry = fifo.front();
     if (entry.will_free_at > coherent_seq_id) {
       break;
     }

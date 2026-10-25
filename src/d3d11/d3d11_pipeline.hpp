@@ -56,6 +56,7 @@ template <> struct hash<MTL_GRAPHICS_PIPELINE_DESC> {
     state.add((size_t)v.DomainShader);
     state.add((size_t)v.GeometryShader);
     state.add((size_t)v.InputLayout);
+    state.add((size_t)v.SOLayout);
     /* don't add blend */
     // state.add((size_t)v.BlendState);
     state.add((size_t)v.DepthStencilFormat);
@@ -126,6 +127,7 @@ template <> struct equal_to<MTL_GRAPHICS_PIPELINE_DESC> {
            (x.DomainShader == y.DomainShader) && 
            (x.GeometryShader == y.GeometryShader) &&
            (x.InputLayout == y.InputLayout) &&
+           (x.SOLayout == y.SOLayout) &&
            (x.DepthStencilFormat == y.DepthStencilFormat) &&
            (x.TopologyClass == y.TopologyClass) &&
            (x.RasterizationEnabled == y.RasterizationEnabled) &&

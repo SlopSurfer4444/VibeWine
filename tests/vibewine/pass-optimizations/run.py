@@ -39,7 +39,11 @@ def generate(contents):
     residency_start = cpp.find('#if defined(DXMT_PHYSICAL_RESIDENCY_DEDUP)',flush)
     hook = '' if residency_start < 0 else cpp[residency_start:cpp.index('#endif',residency_start)+len('#endif')]
     if residency_start >= 0:
-        assert cpp[residency_start+len(hook):].startswith('\n      encoder.encodeCommands(&data->cmd_head);'), 'final render hook moved away from command encoding'
+        after_hook = cpp[residency_start+len(hook):cpp.index('      data->fence_update_vertex.forEach(',residency_start)]
+        # Fusion may prepend stack setup only after this original-list dedup.
+        assert 'setup[setup_count - 1].next.set(&data->cmd_head);' in after_hook
+        assert 'encoder.encodeCommands(&data->cmd_head);' in after_hook
+        assert 'DeduplicateRenderResidency' not in after_hook
     mocks = (HERE/'mocks.hpp').read_text()
     for marker, value in {
         'TEXTURE_ALLOCATION_FLAGS': block(tex, 'enum class TextureAllocationFlag')+';',

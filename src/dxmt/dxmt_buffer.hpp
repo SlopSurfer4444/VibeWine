@@ -95,6 +95,20 @@ public:
     return obj_;
   }
 
+#if DXMT_IDLE_RETIREMENT
+  uint64_t allocatedSizeForIdleRetirement() const {
+    // These pools use fixed-length native buffers. Renames/suballocations do
+    // not resize them; the cache dies with this allocation, not a reused ID.
+    auto bytes = idle_retirement_bytes_.load(std::memory_order_relaxed);
+    if (!bytes) {
+      bytes = buffer().allocatedSize();
+      // Zero also means a failed bridge call: retry unknown charges next time.
+      if (bytes) idle_retirement_bytes_.store(bytes, std::memory_order_relaxed);
+    }
+    return bytes;
+  }
+#endif
+
   Flags<BufferAllocationFlag>
   flags() const {
     return flags_;
@@ -158,6 +172,11 @@ private:
   BufferAllocation(BufferAllocation &&) = delete;
 
   WMT::Reference<WMT::Buffer> obj_;
+#if DXMT_IDLE_RETIREMENT
+  // Standalone immutable charge, with safe overlapping first readers. It is
+  // deliberately not shared with textures or physical-residency measurement.
+  mutable std::atomic<uint64_t> idle_retirement_bytes_ = {0};
+#endif
   WMTBufferInfo info_;
   uint32_t version_ = 0;
   Flags<BufferAllocationFlag> flags_;
