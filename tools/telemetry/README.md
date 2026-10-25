@@ -52,14 +52,40 @@ except the supported `presentation-waits` profile described below, including
 records are suppressed and event 95 reports `invalid-fail-closed`. Restart through
 the normal producer lifecycle to change profiles; rearming does not change it.
 
-`compile-waits` keeps only types **3, 4, 5, 17, 19, 80–89, 93 and 94**. These are
+`compile-waits` keeps only types **3, 4, 5, 17, 19, 80–89, 93–94 and 104–107**. These are
 pipeline readiness waits, shader compilation/cache-hit indication, PSO creation,
 archive lookup/serialization, detailed scheduling/dependencies/readiness,
 persistence admission/locking/write timing and checked cache get/init. Types
-80–89/93–94 still require an explicit valid `DXMT_CS2_TRACE_DETAIL_LIMIT` and share
+80–89/93–94/104–107 still require an explicit valid `DXMT_CS2_TRACE_DETAIL_LIMIT` and share
 its existing cap; excluded events do not consume that budget. Existing 100 us
 duration censoring on 3/5/19 remains. Cache get timing begins after acquiring its
-reader mutex, so it cannot measure that mutex's wait.
+reader mutex. Additive event 104 separately measures acquisition of that mutex;
+event 93 keeps its existing checked SQLite status, call-only timing, and
+post-lock generation admission. A capture change during acquisition can leave
+the checked get standalone; a stale wait is never relabeled into a later capture.
+
+Optional compiler stages use the existing event layout and `cpu_steady_ns`
+intervals: **104** cache reader mutex acquisition (object=cache birth serial,
+p0=parent work serial or zero when unavailable/noncompiler, p1=read operation
+serial shared with event 93; flags=1 acquired or 3 lock exception), **105** AIR
+conversion, **106** Metal `newLibrary`, and **107** Metal `newFunction`. Stages
+105–107 use object=nonzero parent work serial, p0=nonzero fresh operation serial,
+p1=route (0 cold, 1 cache; 105 permits only 0), and flags=1 success, 2 returned
+failure, or 3 exception. A successful reader acquisition without event 93 can
+mean a later exception or missing boundary evidence; it is not a cache miss.
+
+`analyze.py` exposes `compiler_stage_attribution`. Exact cache/read identities
+join 104 to 93; task joins additionally require a valid observed run, matching
+thread, and contained chronology. Missing stages and missing joins stay unknown.
+Cache failures may fall back to cold conversion within the same work item.
+Stage context from a noncurrent generation is rejected before new timestamps or
+operation serials, including before profile metadata work. A race after that
+check still passes through the existing fail-closed publication gate. Budget
+exhaustion bounds records; later armed attempts may still read clocks/allocate
+operation serials before publication is refused.
+These CPU wall intervals include preemption/blocking and do not measure CPU busy
+cost, backend queue residence, a summed critical path, or FPS. Legacy captures
+without 104–107 report unknown compiler-stage coverage.
 
 The profile excludes every other kind: **1/2** legacy CPU Present cadence,
 **6–16** frame/encode/drawable scopes, **20–25** chunk/GPU/frame joins,
@@ -98,6 +124,7 @@ Focused offline regression:
 
 ```sh
 python3 tools/telemetry/test_trace_profile.py
+python3 tools/telemetry/test_compiler_attribution.py
 ```
 
 It compiles the exact production producer header with the existing portable
@@ -218,7 +245,7 @@ result is claimed by this directory's offline tests.
 `DXMT_CS2_TRACE_DETAIL_LIMIT=N` opts a compatible producer into detailed probes,
 only while its v2 capture is armed. Empty, zero, malformed or values above 32768
 disable them. `N` is a **per-producer, per-generation source cap shared by all
-types 80–94**: at most N budgeted detailed records plus one event 89 cap-failure
+types 80–94 and 104–107**: at most N budgeted detailed records plus one event 89 cap-failure
 marker. Stale-generation failure markers consume that N budget. All other
 existing events still consume the fixed process-lifetime
 131072-slot file. This cap is a count budget, not a promised capture duration or

@@ -91,3 +91,25 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/bridge-port/test_visibility_producer.py
         working-directory: components/dxmt
+      - run: git submodule update --init include/native/directx
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/render-pass-fusion/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/compute-pass-fusion/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/shader-variant-hash/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/idle-retirement/run.py --sanitize
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/packed-ir-growth/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/binding-hazard/run.py --sanitize
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/pso-solayout/run.py --sanitize
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/compiler-attribution/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/observer-gates/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/resolve-adjacency/run.py
+        working-directory: components/dxmt

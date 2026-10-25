@@ -1,5 +1,11 @@
 # DXMT patch provenance
 
+Latest general hot-path work and independently reproduced correctness repairs
+are recorded in [the 26 October report](../diagnostics/hotpaths-20261026.md).
+Those source changes follow `96940d73` and are separate from the installed
+renderer below. No game performance or runtime promotion follows from this map.
+
+
 ## FPS source wave, 25 October 2026
 
 Current development pin: DXMT `c7e4ab45`, adding attributed borrowed-error

@@ -1,10 +1,13 @@
 # Patch origins and scope
 
-Audited checkpoint: **2026-10-25**. This is a source map, not an FPS leaderboard
+Audited checkpoint: **2026-10-26**. This is a source map, not an FPS leaderboard
 or a claim that every feature is enabled in the installed test runtime.
 
 | Area | Origin | Scope / default | Source and evidence |
 | --- | --- | --- | --- |
+| Hot-path transport, variant hashing, pool/IR cost | Local implementation on existing DXMT owners; Pro source audits independently checked | General; render/compute fusion and growth default-off, no new game gate | [26 October report](diagnostics/hotpaths-20261026.md) |
+| Resource hazard membership, SO-layout PSO identity and resolve-order preservation | Local correctness repairs from independently reproduced audit leads | General D3D11; baseline-failing controls, no FPS claim | [26 October report](diagnostics/hotpaths-20261026.md), [hazard fixture](../components/dxmt/tests/vibewine/binding-hazard/README.md), [SO fixture](../components/dxmt/tests/vibewine/pso-solayout/README.md) |
+| Compiler stages/read-lock and long-stall parser | Local bounded producer/decoder/consumer changes | Opt-in attribution; elapsed time and explicit coverage, not automatic causality | [Compiler contract](../components/dxmt/docs/compiler-attribution-20261026.md), [session parser](../tools/telemetry/SESSION_PHASES.md) |
 | DXMT renderer/compiler baseline | Upstream 3Shain/DXMT, identified Git ancestry | General renderer | [DXMT history and nine logical local changes](provenance/dxmt.md) |
 | Native borrowed NSError ownership | Adapted g-cqd `cbf3c18c`; extended local API and same-object replacement handling | General correctness; successful shader/cache output unchanged | [Neighbor wave](integrations/neighbor-wave-20261025.md), [native production-bound controls](../components/dxmt/tests/vibewine/error-ownership/README.md) |
 | Failed-PSO dependent-work cancellation | Adapted g-cqd render/compute guards, with preserved uploads and per-encoder reset | General D3D11; no title gate or compiler-success claim | [Production paths and controls](../components/dxmt/docs/failed-pipeline-20261025.md) |

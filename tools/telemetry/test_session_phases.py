@@ -1,3 +1,4 @@
+import copy
 import gzip
 import json
 import os
@@ -84,13 +85,115 @@ class PhaseTests(unittest.TestCase):
     def test_unaligned_layers_and_invalid_metrics_fail(self):
         row = interval(1, 2, layers=2)
         row['Layers'][1]['Performance Stats']['End MCT Seconds'] = 2.1
-        for candidate in (row, interval(1, 7), interval(1, 2, count=-1)):
+        for candidate in (row, interval(1, 1 + sp.MAX_AGGREGATE_SECONDS + 1), interval(1, 2, count=-1)):
             with self.assertRaises(ValueError):
                 report([candidate])
         row = interval(1, 2)
         del row['Layers'][0]['Performance Stats']['Presented Frame Stats']
         with self.assertRaises(ValueError):
             report([row])
+
+    def test_observed_native_long_duration_excludes_only_aggregate_and_continues(self):
+        # Actual native object's duration; coordinates/PID and neighboring rows
+        # are synthetic. No private raw capture dependency or published payload.
+        duration = 5.676890850067139
+        end = 1 + duration
+        value = report([interval(0, 1, 10), interval(1, end, 1), interval(end, end + 1, 30)],
+                       [mark(0, 'menu'), mark(2, 'loading'), mark(end, 'gameplay'), mark(end + 1, 'exit')])
+        self.assertTrue(value['complete']); self.assertFalse(value['errors'])
+        self.assertEqual(value['whole']['intervals'], 2)
+        self.assertEqual(value['whole']['observedSeconds'], 2)
+        self.assertEqual(value['whole']['presentedFrames'], 40)
+        self.assertEqual(value['whole']['intervalRateHz'], 20)
+        self.assertEqual(value['discards']['longAggregates'], 1)
+        self.assertEqual(value['discards']['coverageGaps'], 0)
+        excluded = value['whole']['excludedCoverage']
+        self.assertEqual(excluded['longAggregateIntervals'], 1)
+        self.assertAlmostEqual(excluded['longAggregateSeconds'], duration)
+        self.assertEqual(value['phases']['mixed']['excludedCoverage'], excluded)
+        self.assertEqual(value['phases']['mixed']['intervals'], 0)
+        self.assertEqual(value['phases']['gameplay']['presentedFrames'], 30)
+        self.assertEqual(value['excludedIntervalDetails'][0]['phase'], 'mixed')
+        self.assertNotIn('presented', value['excludedIntervalDetails'][0])
+        self.assertNotIn('intervalRateHz', value['excludedIntervalDetails'][0])
+
+    def test_long_duration_boundaries_and_excluded_only_have_no_metrics(self):
+        value = report([interval(0, 5, 10)])
+        self.assertEqual(value['whole']['intervals'], 1)
+        self.assertEqual(value['whole']['excludedCoverage']['longAggregateIntervals'], 0)
+        for duration in (5.000001, sp.MAX_AGGREGATE_SECONDS):
+            long = interval(0, duration, 999)
+            long['Layers'][0]['Performance Stats']['Skipped Frame Stats']['Frame Count'] = 777
+            value = report([long])
+            self.assertTrue(value['complete']); self.assertFalse(value['metricsAvailable'])
+            self.assertEqual(value['whole']['observedSeconds'], 0)
+            self.assertEqual(value['whole']['presentedFrames'], 0)
+            self.assertEqual(value['whole']['skippedFrames'], 0)
+            self.assertIsNone(value['whole']['intervalRateHz'])
+            self.assertEqual(value['whole']['excludedCoverage']['longAggregateIntervals'], 1)
+        # The ordinary per-phase denominator cannot include the excluded span.
+        value = report([interval(0, 1), interval(1, 7), interval(7, 8)], [mark(0, 'gameplay'), mark(8, 'exit')])
+        self.assertEqual(value['phases']['gameplay']['observedCoverageFraction'], .25)
+        self.assertEqual(value['phases']['gameplay']['excludedCoverage']['longAggregateSeconds'], 6)
+
+    def test_long_aggregate_preserves_replay_overlap_timestamp_and_gap_watermarks(self):
+        long = interval(1, 7)
+        regressed_stamp = interval(7, 8); regressed_stamp['Timestamp'] = long['Timestamp']
+        value = report([interval(0, 1), long, copy.deepcopy(long), interval(6.5, 7.5),
+                        regressed_stamp, interval(8, 9)])
+        self.assertEqual(value['whole']['intervals'], 2)
+        self.assertEqual(value['discards']['longAggregates'], 1)
+        self.assertEqual(value['discards']['duplicateOrOverlapping'], 3)
+        self.assertEqual(value['discards']['coverageGaps'], 1)
+        # A rejected overlapping or foreign long row cannot poison later rows.
+        value = report([interval(0, 1), interval(.5, 7), interval(1, 7, pid=456), interval(1, 2)])
+        self.assertEqual(value['whole']['intervals'], 2)
+        self.assertEqual(value['discards']['duplicateOrOverlapping'], 1)
+        self.assertEqual(value['discards']['foreignPID'], 1)
+        self.assertEqual(value['whole']['excludedCoverage']['longAggregateIntervals'], 0)
+        # A later MCT interval with a replayed timestamp is rejected across the
+        # excluded span too, leaving the following genuine interval readable.
+        later = interval(9, 10); later['Timestamp'] = long['Timestamp'] - 1
+        value = report([long, later, interval(10, 11)])
+        self.assertEqual(value['whole']['intervals'], 1)
+        self.assertEqual(value['discards']['duplicateOrOverlapping'], 1)
+        self.assertEqual(value['discards']['coverageGaps'], 1)
+
+    def test_malformed_long_aggregate_still_fails_and_partial_is_prefix_only(self):
+        candidates = [interval(1, 1 + sp.MAX_AGGREGATE_SECONDS + 1), interval(1, float('inf'))]
+        for field, bad in [('Total Duration (sec)', 1), ('Time Active (sec)', 7),
+                           ('Duration MCT Seconds', 1)]:
+            row = interval(1, 7); row['Layers'][0]['Performance Stats'][field] = bad
+            candidates.append(row)
+        for bad in (-1, True, 2**31):
+            candidates.append(interval(1, 7, count=bad))
+        row = interval(1, 7, layers=2)
+        other = row['Layers'][1]['Performance Stats']
+        other.update({'Start MCT Seconds': 1.1, 'End MCT Seconds': 7.1})
+        candidates.append(row)
+        row = interval(1, 7); row['Timestamp'] = float('nan'); candidates.append(row)
+        row = interval(1, 7); del row['Layers'][0]['Performance Stats']['Skipped Frame Stats']; candidates.append(row)
+        for row in candidates:
+            with self.subTest(row=row):
+                with self.assertRaises(ValueError):
+                    report([interval(0, 1), row, interval(20000, 20001)])
+                value = report([interval(0, 1), row, interval(20000, 20001)], allow_partial=True)
+                self.assertFalse(value['complete']); self.assertTrue(value['errors'])
+                self.assertEqual(value['whole']['intervals'], 1)
+                self.assertEqual(value['whole']['excludedCoverage']['longAggregateIntervals'], 0)
+        value = report([interval(0, 1), interval(1, 7), candidates[0], interval(20000, 20001)], allow_partial=True)
+        self.assertEqual(value['whole']['intervals'], 1)
+        self.assertEqual(value['whole']['excludedCoverage']['longAggregateIntervals'], 1)
+
+    def test_long_aggregate_details_are_bounded_without_losing_counters(self):
+        with patch.object(sp, 'MAX_EXCLUDED_INTERVAL_DETAILS', 2):
+            value = report([interval(i * 6, (i + 1) * 6) for i in range(5)])
+        self.assertEqual(len(value['excludedIntervalDetails']), 2)
+        self.assertEqual(value['excludedIntervalDetailsDropped'], 3)
+        self.assertEqual(value['excludedIntervalDetailLimit'], 2)
+        self.assertEqual(value['whole']['excludedCoverage']['longAggregateIntervals'], 5)
+        self.assertEqual(value['whole']['excludedCoverage']['longAggregateSeconds'], 30)
+        self.assertFalse(value['metricsAvailable']); self.assertTrue(value['complete'])
 
     def test_wrong_birth_and_pid_are_rejected(self):
         row = mark(1, 'menu')
@@ -290,6 +393,22 @@ class FileTests(unittest.TestCase):
         self.assertTrue(value['metricsAvailable'])
         self.assertEqual(value['phases']['unknown']['intervals'], 1)
         self.assertEqual(set(value['sourceSha256']), set(sp.CAPS))
+
+    def test_report_cli_normal_native_long_duration_normal_needs_no_partial(self):
+        end = 1 + 5.676890850067139
+        self.write('metal.jsonstream.gz', gzip.compress(encode([
+            interval(0, 1, 10), interval(1, end, 1), interval(end, end + 1, 30)])))
+        self.write('events.jsonl', b'')
+        result = subprocess.run([sys.executable, str(Path(sp.__file__)), 'report', '--session', str(self.path),
+                                 '--pid', str(BOUND['pid']), '--birth', BOUND['birth']], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        value = json.loads(result.stdout)
+        self.assertTrue(value['complete']); self.assertFalse(value['allowPartial']); self.assertFalse(value['errors'])
+        self.assertEqual(value['whole']['intervals'], 2)
+        self.assertEqual(value['whole']['presentedFrames'], 40)
+        self.assertEqual(value['whole']['observedSeconds'], 2)
+        self.assertEqual(value['whole']['excludedCoverage']['longAggregateIntervals'], 1)
+        self.assertAlmostEqual(value['whole']['excludedCoverage']['longAggregateSeconds'], 5.676890850067139)
 
     def test_symlink_traversal_permissions_and_caps(self):
         (self.path / 'markers.jsonl').symlink_to(self.path / 'status.json')

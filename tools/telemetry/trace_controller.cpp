@@ -61,7 +61,7 @@ static uint64_t recordBudget(const char *arg) {
 }
 static const char *clockDomain(uint32_t type) {
   if(type==24)return "native_gpu_ns";
-  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=103))return "cpu_steady_ns";
+  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=107))return "cpu_steady_ns";
   return "unknown";
 }
 static const char *profileName(uint32_t flags) {
@@ -78,6 +78,12 @@ static bool presentationProbeValid(const trace::Decoded &e) {
  if(e.type==97)return e.flags && e.padding0>e.flags && e.padding1==e.padding0-e.flags;
  if(e.type==98)return !e.flags && e.padding0 && e.padding1;
  return !e.flags && e.padding0 && e.start==e.end;
+}
+static bool compilerProbeValid(const trace::Decoded &e) {
+ if(e.type<104 || e.type>107)return true;
+ if(!e.object || !e.thread || !e.start || e.end<e.start)return false;
+ if(e.type==104)return e.padding1 && (e.flags==1 || e.flags==3);
+ return e.padding0 && e.padding1<=1 && (e.type!=105 || !e.padding1) && e.flags>=1 && e.flags<=3;
 }
 int main(int argc,char **argv) {
   try {
@@ -115,6 +121,7 @@ int main(int argc,char **argv) {
           if(!presentationProbeValid(e) || !identities.emplace(e.type,e.object,e.padding0).second)profileValid=false;
         }
       }
+      for(const auto &e:s.events)if(!compilerProbeValid(e))profileValid=false;
       // Additive groups are optional for old producers. If present, partial or
       // malformed evidence is never silently accepted as valid visibility.
       std::map<std::tuple<uint32_t,uint64_t,uint64_t>,std::array<const trace::Decoded*,4>> visibility;
@@ -144,7 +151,8 @@ int main(int argc,char **argv) {
       const auto profileLabel=!profileMarkers?"unspecified-full-or-legacy":profileMarkers==1 && profileMarkerValid(*profile)?profileName(profile->flags):"malformed-profile-metadata";
       for(const auto &e:s.events) {
         std::cout<<"{\"kind\":\"event\",\"index\":"<<e.index<<",\"generation\":"<<e.generation<<",\"type\":"<<e.type<<",\"thread\":"<<e.thread<<",\"flags\":"<<e.flags<<",\"object\":"<<e.object<<",\"start\":"<<e.start<<",\"end\":"<<e.end<<",\"padding0\":"<<e.padding0<<",\"padding1\":"<<e.padding1<<",\"clock_domain\":"<<json(clockDomain(e.type))<<",\"duration_ns\":";
-        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && e.type!=99 && !(e.type>=100 && e.type<=103) && probe::valid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
+        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && e.type!=99 && !(e.type>=100 && e.type<=103) && probe::valid(e) && compilerProbeValid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
+        if(e.type>=104 && e.type<=107)std::cout<<",\"event_name\":"<<json(e.type==104?"Cache reader mutex acquisition wait":e.type==105?"AIR conversion":e.type==106?"Metal newLibrary":"Metal newFunction")<<",\"compiler_identity_valid\":"<<(compilerProbeValid(e)?"true":"false");
         if(e.type>=96 && e.type<=99)std::cout<<",\"event_name\":"<<json(e.type==96?"Queue frame-latency wait":e.type==97?"Swapchain admission wait":e.type==98?"Drawable acquire":"Queue/native frame binding")<<",\"presentation_identity_valid\":"<<(presentationProbeValid(e)?"true":"false");
         if(e.type>=100 && e.type<=103)std::cout<<",\"event_name\":"<<json(e.type==100?"Visibility sampled identity/status":e.type==101?"Visibility native freshness/flags":e.type==102?"Visibility window/display identity":"Visibility occlusion/configuration")<<",\"visibility_sample_only\":true";
         if(e.type==95)std::cout<<",\"event_name\":\"Producer trace profile\",\"producer_profile\":"<<json(profileName(e.flags))<<",\"profile_schema\":"<<e.object<<",\"profile_metadata_valid\":"<<(profileMarkerValid(e)?"true":"false")<<",\"detail_limit\":"<<e.padding0<<",\"lifetime_capacity\":"<<e.padding1;

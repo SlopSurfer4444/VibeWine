@@ -1,0 +1,503 @@
+{
+  "schema": 1,
+  "date": "2026-10-26",
+  "scope": "Source, matched renderer/compiler/native build and isolated offscreen correctness; no game/FPS or installed-runtime acceptance",
+  "baseline": {
+    "hub": "28756af3e2a067a622ecc470a212733ab147e8e6",
+    "dxmt": "96940d73ac28f57fe12df832d246d3e84965f2cd"
+  },
+  "dxmtSource": "a21579fb2a03aef5fbe93d7bcba1ea882e63a192",
+  "dxmtTree": "cb4ce14b6a01f705e683fad6f65de6acad34e58d",
+  "wineSourceUnchanged": "5d4b43e48f48d83254468596a0df8592d62e3242",
+  "checks": {
+    "telemetryOffline": 221,
+    "workspaceUnit": 13,
+    "rootFocusedLogs": {
+      "telemetry-check.log": "897c4a7e5e868b06e1ee15bab3e3b6028728d562432cbd390be701a93b49e8e0",
+      "workspace-unit-final.log": "078e4586284f02b8bbf54d43e36d5633cf222e3d7e09892c84dbbcb9116eb9f1",
+      "compiler-attribution-check.log": "1228bb63f2d075c5542429069993eb635c1535cec4ed77a36ac6c8b7fd1d6c44",
+      "observer-gates-check.log": "c5ea35ce1c1b729920be98e7525b4f9393108c697cbba72a3a2bfbe8fd1a4d2f",
+      "binding-hazard-sanitized.log": "38ea1290190fc8c6975c9a683a9ff79f3598981ba55cc196b7992ba9cb3dd3e0",
+      "pso-solayout-check.log": "7203c9a69a48a955831bdec5529634e1663e24b93056e84eef740b87b0ae6529",
+      "resolve-adjacency-check.log": "13f42e49ba8336fdd14d709218d67190cfc50ec26550129fdb0f0348ba374e44",
+      "variant-hash-check.log": "372c56457989ce232b8e5abe1b9a5fe296f5acd1d4488622bbcc1aff74366c91",
+      "pool-cost-check.log": "a18ec2c8b3aed7e0a33a0dbefe6a85100434d7b5cfa28082d1737fb586295ce7",
+      "packed-growth-arm64-check.log": "15a59cb3ac5543533d3202109352676918ce7c48f09b42b9ef2e3038b35433c1",
+      "packed-growth-x86-check.log": "15964b8907025a1802c954b62a6f52f3f605df2494668396b801319df919ef6e",
+      "render-fusion-final.log": "e7f90fee94f2d4f3f3b0f8464bc46063575b28f6fd866fff09b6f9beac1c2406",
+      "compute-fusion-final.log": "ed1b412885859e85c8f8053c6d43278d11659618838128f95a63a4a386425ed7",
+      "pass-optimizations-check.log": "749e4e67025752680c47418a5f31e50d7ac0338e91dabfa8b1dec2d63a9b92e3"
+    }
+  },
+  "builds": [
+    {
+      "mode": "false",
+      "phase": "configure",
+      "source": "a21579fb2a03aef5fbe93d7bcba1ea882e63a192",
+      "returncode": 0,
+      "elapsedSeconds": 9.602992667,
+      "logSha256": "ace1b7c381733edc6793880e6587ca705a486aec5d4363bac95f60dd4fb0c5d8"
+    },
+    {
+      "mode": "false",
+      "phase": "compile",
+      "source": "a21579fb2a03aef5fbe93d7bcba1ea882e63a192",
+      "returncode": 0,
+      "elapsedSeconds": 91.894942125,
+      "logSha256": "b3a382ce210a6540b3241f79e70af3d5fc89ad285acd7ca6123e4c0c12df9297"
+    },
+    {
+      "mode": "true",
+      "phase": "configure",
+      "source": "a21579fb2a03aef5fbe93d7bcba1ea882e63a192",
+      "returncode": 0,
+      "elapsedSeconds": 8.851103042000005,
+      "logSha256": "f6fac5574a655c0a46f92fe62c45f215872dc9198afb6da1740cb6272e7c2752"
+    },
+    {
+      "mode": "true",
+      "phase": "compile",
+      "source": "a21579fb2a03aef5fbe93d7bcba1ea882e63a192",
+      "returncode": 0,
+      "elapsedSeconds": 90.88771037500001,
+      "logSha256": "5eed52c29921d57c8275c63aaf21b90223ba71b3d52e5af11dea0dbacec202c6"
+    }
+  ],
+  "artifacts": {
+    "false": {
+      "matchedPeNativeDefinitions": [
+        {
+          "unit": "winemetal_unix.c",
+          "defines": [
+            "-DDXMT_BOUNDED_ENCODER_OPTIMIZER=0",
+            "-DDXMT_COMPUTE_PASS_FUSION=0",
+            "-DDXMT_DEAD_ATTACHMENT_STORES=0",
+            "-DDXMT_DEMAND_SCHEDULER=0",
+            "-DDXMT_DISCARD_HINTS=0",
+            "-DDXMT_FIXED_OUTPUT_METALFX=0",
+            "-DDXMT_IDLE_RETIREMENT=0",
+            "-DDXMT_PACKED_IR_GROWTH=0",
+            "-DDXMT_PHYSICAL_RESIDENCY_DEDUP=0",
+            "-DDXMT_PRECISE_BINDINGS=0",
+            "-DDXMT_RENDER_PASS_FUSION=0",
+            "-DDXMT_RESIDENCY_SETS=0",
+            "-DDXMT_SCENE_SUBMISSION=0",
+            "-DDXMT_SHADER_CLEANUP=0"
+          ]
+        },
+        {
+          "unit": "d3d11_device.cpp",
+          "defines": [
+            "-DDXMT_BOUNDED_ENCODER_OPTIMIZER=0",
+            "-DDXMT_COMPUTE_PASS_FUSION=0",
+            "-DDXMT_DEAD_ATTACHMENT_STORES=0",
+            "-DDXMT_DEMAND_SCHEDULER=0",
+            "-DDXMT_DISCARD_HINTS=0",
+            "-DDXMT_FIXED_OUTPUT_METALFX=0",
+            "-DDXMT_IDLE_RETIREMENT=0",
+            "-DDXMT_PACKED_IR_GROWTH=0",
+            "-DDXMT_PHYSICAL_RESIDENCY_DEDUP=0",
+            "-DDXMT_PRECISE_BINDINGS=0",
+            "-DDXMT_RENDER_PASS_FUSION=0",
+            "-DDXMT_RESIDENCY_SETS=0",
+            "-DDXMT_SCENE_SUBMISSION=0",
+            "-DDXMT_SHADER_CLEANUP=0"
+          ]
+        }
+      ],
+      "artifacts": {
+        "src/d3d11/d3d11.dll": {
+          "sha256": "ffd0ea5ca2196eea20d248058e3c8fbacea88242b9d07a70244ef93fb533fcec",
+          "bytes": 5287936
+        },
+        "src/dxgi/dxgi.dll": {
+          "sha256": "4898c00b7ef8e6e27f442822497e28a988e8f170202b5e4e5fb617256d6c562e",
+          "bytes": 1773568
+        },
+        "src/d3d10/d3d10core.dll": {
+          "sha256": "f3c5f45fff4a6b99853e07dcb5abfd96ca62f3a81cb4bbe6a2651d41940860dc",
+          "bytes": 1495040
+        },
+        "src/winemetal/winemetal.dll": {
+          "sha256": "937c4f483a144acb0f33383d5e58af5e2cc07967cc859cc4e9b42c27fd994783",
+          "bytes": 118784
+        },
+        "src/winemetal/unix/winemetal.so": {
+          "sha256": "0b22745e3c80325dd3c264035dbba1a0a2c3c0757fa8c1f691d4198b2e66e4c8",
+          "bytes": 51943960
+        },
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": {
+          "sha256": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010",
+          "bytes": 163006
+        },
+        "src/airconv/darwin/airconv": {
+          "sha256": "38781ff7b19cdeae69eabaa0475764a6ee528f320ab175fd6a46d0af800955cf",
+          "bytes": 51844224
+        }
+      }
+    },
+    "true": {
+      "matchedPeNativeDefinitions": [
+        {
+          "unit": "winemetal_unix.c",
+          "defines": [
+            "-DDXMT_BOUNDED_ENCODER_OPTIMIZER=1",
+            "-DDXMT_COMPUTE_PASS_FUSION=1",
+            "-DDXMT_DEAD_ATTACHMENT_STORES=1",
+            "-DDXMT_DEMAND_SCHEDULER=1",
+            "-DDXMT_DISCARD_HINTS=1",
+            "-DDXMT_FIXED_OUTPUT_METALFX=1",
+            "-DDXMT_IDLE_RETIREMENT=1",
+            "-DDXMT_PACKED_IR_GROWTH=1",
+            "-DDXMT_PHYSICAL_RESIDENCY_DEDUP=1",
+            "-DDXMT_PRECISE_BINDINGS=1",
+            "-DDXMT_RENDER_PASS_FUSION=1",
+            "-DDXMT_RESIDENCY_SETS=1",
+            "-DDXMT_SCENE_SUBMISSION=1",
+            "-DDXMT_SHADER_CLEANUP=1"
+          ]
+        },
+        {
+          "unit": "d3d11_device.cpp",
+          "defines": [
+            "-DDXMT_BOUNDED_ENCODER_OPTIMIZER=1",
+            "-DDXMT_COMPUTE_PASS_FUSION=1",
+            "-DDXMT_DEAD_ATTACHMENT_STORES=1",
+            "-DDXMT_DEMAND_SCHEDULER=1",
+            "-DDXMT_DISCARD_HINTS=1",
+            "-DDXMT_FIXED_OUTPUT_METALFX=1",
+            "-DDXMT_IDLE_RETIREMENT=1",
+            "-DDXMT_PACKED_IR_GROWTH=1",
+            "-DDXMT_PHYSICAL_RESIDENCY_DEDUP=1",
+            "-DDXMT_PRECISE_BINDINGS=1",
+            "-DDXMT_RENDER_PASS_FUSION=1",
+            "-DDXMT_RESIDENCY_SETS=1",
+            "-DDXMT_SCENE_SUBMISSION=1",
+            "-DDXMT_SHADER_CLEANUP=1"
+          ]
+        }
+      ],
+      "artifacts": {
+        "src/d3d11/d3d11.dll": {
+          "sha256": "b9facc23a975b3fe1b57d9836f081783b96e22e5bfde4952f629fea7bccf42c1",
+          "bytes": 5320704
+        },
+        "src/dxgi/dxgi.dll": {
+          "sha256": "2d1130d78a258eceebc149fdf8f90d847dc6ff0b6dfca88dbb6fafba378a487d",
+          "bytes": 1773568
+        },
+        "src/d3d10/d3d10core.dll": {
+          "sha256": "e54e556c8bd6eaa0e2039c63f6c2d9130051c46c9d54f6b709fb90a3c4a073e1",
+          "bytes": 1495040
+        },
+        "src/winemetal/winemetal.dll": {
+          "sha256": "70592bc255ea3de6cfac5fab86f70f7b5d184133b1c3dfea1be3e6c3b8b29b02",
+          "bytes": 118784
+        },
+        "src/winemetal/unix/winemetal.so": {
+          "sha256": "e943a106187cb8dba0d0c82bd117537420ad13582cbaafe2f45ebdecbd16d6bc",
+          "bytes": 51949464
+        },
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": {
+          "sha256": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010",
+          "bytes": 163006
+        },
+        "src/airconv/darwin/airconv": {
+          "sha256": "1cc1c06a7a778195120a7771f618af0874ec4cabf28ddc6b1f618dfdfd46c624",
+          "bytes": 51845640
+        }
+      }
+    }
+  },
+  "gpu": [
+    {
+      "label": "hotpaths-off-normal",
+      "passed": true,
+      "exitCode": 0,
+      "mappingCount": 7,
+      "sameBirthAfterMap": true,
+      "cleanupExitCodes": [
+        0,
+        0
+      ],
+      "guestReport": {
+        "schema": 1,
+        "status": "pass",
+        "exit_code": 0,
+        "negative_control": "none",
+        "stages_passed": 5,
+        "stages_unsupported": 0,
+        "checks": 249,
+        "non_stage_checks": 137,
+        "negative_controls_rejected": 0,
+        "modules": {
+          "d3d11.dll": "C:\\windows\\system32\\d3d11.dll",
+          "dxgi.dll": "C:\\windows\\system32\\DXGI.DLL",
+          "winemetal.dll": "C:\\windows\\system32\\winemetal.dll",
+          "d3dcompiler_47.dll": "C:\\windows\\system32\\D3DCOMPILER_47.dll"
+        },
+        "stages": [
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "draw_basic",
+            "status": "pass",
+            "checks": 23,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "mrt_depth",
+            "status": "pass",
+            "checks": 29,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "compute",
+            "status": "pass",
+            "checks": 26,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "msaa",
+            "status": "pass",
+            "checks": 17,
+            "detail": "verified_four_samples",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "query_later_chunk",
+            "status": "pass",
+            "checks": 17,
+            "detail": "verified",
+            "hr": "0x00000000"
+          }
+        ],
+        "evidence": "captured_guest_stdout_only"
+      },
+      "resultSha256": "69b301270ceb5d4880fc358e42626fd22f68bdeec32d71db0dbddb5a67f88c5d",
+      "stdoutSha256": "0c7abce081df10261fe9de0ac33c3a9b57897bc8227c0fee22bf531512f213ef"
+    },
+    {
+      "label": "hotpaths-resolve-off-normal",
+      "passed": true,
+      "exitCode": 0,
+      "mappingCount": 7,
+      "sameBirthAfterMap": true,
+      "cleanupExitCodes": [
+        0,
+        0
+      ],
+      "guestReport": {
+        "schema": 1,
+        "type": "summary",
+        "status": "pass",
+        "stages_passed": 2,
+        "stages_unsupported": 0,
+        "checks": 184,
+        "non_stage_checks": 129,
+        "negative_controls_rejected": 0,
+        "detail": "complete",
+        "hr": "0x00000000"
+      },
+      "resultSha256": "83c1f500a2007eb9275538a2066a900e545bc5a0ec56ad6a490fc95dc4e74b00",
+      "stdoutSha256": "038862eba215db950fa5228695a9ae31d8a11924ea4508e3f58a14b85630cca6"
+    },
+    {
+      "label": "hotpaths-on-normal",
+      "passed": true,
+      "exitCode": 0,
+      "mappingCount": 7,
+      "sameBirthAfterMap": true,
+      "cleanupExitCodes": [
+        0,
+        0
+      ],
+      "guestReport": {
+        "schema": 1,
+        "status": "pass",
+        "exit_code": 0,
+        "negative_control": "none",
+        "stages_passed": 5,
+        "stages_unsupported": 0,
+        "checks": 240,
+        "non_stage_checks": 136,
+        "negative_controls_rejected": 0,
+        "modules": {
+          "d3d11.dll": "C:\\windows\\system32\\d3d11.dll",
+          "dxgi.dll": "C:\\windows\\system32\\DXGI.DLL",
+          "winemetal.dll": "C:\\windows\\system32\\winemetal.dll",
+          "d3dcompiler_47.dll": "C:\\windows\\system32\\D3DCOMPILER_47.dll"
+        },
+        "stages": [
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "draw_basic",
+            "status": "pass",
+            "checks": 20,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "mrt_depth",
+            "status": "pass",
+            "checks": 29,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "compute",
+            "status": "pass",
+            "checks": 19,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "msaa",
+            "status": "pass",
+            "checks": 18,
+            "detail": "verified_four_samples",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "query_later_chunk",
+            "status": "pass",
+            "checks": 18,
+            "detail": "verified",
+            "hr": "0x00000000"
+          }
+        ],
+        "evidence": "captured_guest_stdout_only"
+      },
+      "resultSha256": "cd9c9244e22b28ee0c7a2ebf81ba478552bdae127a127994f100943f3f023e6e",
+      "stdoutSha256": "5347cb8ed17dcc0511165978ed6e790da31d715cc5a844ac380907c2192544af"
+    },
+    {
+      "label": "hotpaths-on-pixel",
+      "passed": true,
+      "exitCode": 20,
+      "mappingCount": 7,
+      "sameBirthAfterMap": true,
+      "cleanupExitCodes": [
+        0,
+        0
+      ],
+      "guestReport": {
+        "schema": 1,
+        "status": "negative_control_rejected",
+        "exit_code": 20,
+        "negative_control": "pixel",
+        "stages_passed": 0,
+        "stages_unsupported": 0,
+        "checks": 147,
+        "non_stage_checks": 129,
+        "negative_controls_rejected": 1,
+        "modules": {
+          "d3d11.dll": "C:\\windows\\system32\\d3d11.dll",
+          "dxgi.dll": "C:\\windows\\system32\\DXGI.DLL",
+          "winemetal.dll": "C:\\windows\\system32\\winemetal.dll",
+          "d3dcompiler_47.dll": "C:\\windows\\system32\\D3DCOMPILER_47.dll"
+        },
+        "stages": [
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "draw_basic",
+            "status": "fail",
+            "checks": 18,
+            "detail": "negative_control_pixel",
+            "hr": "0x80004005"
+          }
+        ],
+        "evidence": "captured_guest_stdout_only"
+      },
+      "resultSha256": "f05760e5bceae22f81153c69642596f637206f1276e1aef699fe08e78380eb9a",
+      "stdoutSha256": "d3527cdefc66e4c17efa607ae7ccf7843e3ec226c7fd3829df751d8d7bf1cc0e"
+    },
+    {
+      "label": "hotpaths-resolve-on-normal",
+      "passed": true,
+      "exitCode": 0,
+      "mappingCount": 7,
+      "sameBirthAfterMap": true,
+      "cleanupExitCodes": [
+        0,
+        0
+      ],
+      "guestReport": {
+        "schema": 1,
+        "type": "summary",
+        "status": "pass",
+        "stages_passed": 2,
+        "stages_unsupported": 0,
+        "checks": 184,
+        "non_stage_checks": 130,
+        "negative_controls_rejected": 0,
+        "detail": "complete",
+        "hr": "0x00000000"
+      },
+      "resultSha256": "63eabc29ae585a90112e8530a20ffdb61d8d869b466e7ec6ccbd59b98a4e6ebf",
+      "stdoutSha256": "98da3999cfddf7d05c92bea316821f99be2fb24a4c42a32e79162a6fe00e116f"
+    },
+    {
+      "label": "hotpaths-resolve-on-wrong-golden",
+      "passed": true,
+      "exitCode": 20,
+      "mappingCount": 7,
+      "sameBirthAfterMap": true,
+      "cleanupExitCodes": [
+        0,
+        0
+      ],
+      "guestReport": {
+        "schema": 1,
+        "type": "summary",
+        "status": "negative_control_rejected",
+        "stages_passed": 0,
+        "stages_unsupported": 0,
+        "checks": 158,
+        "non_stage_checks": 128,
+        "negative_controls_rejected": 1,
+        "detail": "negative_wrong_golden",
+        "hr": "0x80004005"
+      },
+      "resultSha256": "0487265d2835a000f815f611ee49994afecbb613824315e562dda20661f08331",
+      "stdoutSha256": "3de13c937da6b3402bd263026d57b14fae6e8ea107ea64718518e708bdaed567"
+    }
+  ],
+  "labRestoration": {
+    "restored": true,
+    "baselinePlanSha256": "8ef94069199b5fa81fee658eba54c96a6539c98f29bcc5126e13438d4ce4d70a",
+    "allBaselineFilesVerified": true,
+    "privatePrefixIdentityVerified": true,
+    "noIpcSockets": true
+  },
+  "installedRuntimeChanged": false,
+  "gameLaunched": false,
+  "fpsGainEstablished": false,
+  "limits": [
+    "Offscreen checks do not prove actual optimizer topology, physical displayed cadence, SO-output GPU correctness or DS3 performance.",
+    "Compiler scope times are elapsed steady-clock intervals, not thread CPU or a complete causal critical path.",
+    "Long aggregate intervals are excluded coverage; all-skipped vendor data remain unusable for FPS.",
+    "Optional growth retains more shader IR slack; retained Wine dependencies are not a newly linked full distribution."
+  ]
+}

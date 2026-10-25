@@ -1,21 +1,24 @@
 # Current source, installation and checks
 
-Latest [presentation/compiler source follow-up](diagnostics/presentation-followup-20261025.md):
-DXMT `96940d73`, Wine unchanged. New opt-in budgets and visibility diagnostics
-are separate from the installed renderer. No game/FPS promotion is claimed.
+Latest [hot-path and useful-telemetry wave](diagnostics/hotpaths-20261026.md):
+new general correctness and work-reduction source, opt-in render/compute fusion
+and packed IR growth, compiler-stage attribution and long-aggregate recovery.
+Wine remains `5d4b43e4`. The installed ten-switch renderer and DS3 launch policy
+are preserved; this wave does not establish new gameplay/FPS acceptance.
 
-Reconciled **25 October 2026**. This is the authoritative current checkpoint;
-dated snapshot documents retain their original historical claims.
+Reconciled **26 October 2026**. Source/build details for this wave are recorded
+in its report; dated documents retain their original historical claims.
 
 | Layer | Current state | What it does not establish |
 | --- | --- | --- |
-| Development source | Wine `5d4b43e4`; DXMT `e1772a42`: prior neighbor repairs plus demand/discard experiments and presentation diagnostics | A component branch tip is not an installed runtime |
+| Development source | Wine `5d4b43e4`; DXMT hot-path source checkpoint pinned by this hub, following `96940d73` | A component branch tip is not an installed runtime |
+| Latest source/build checks | DXMT `a21579fb`: two fresh 161-target builds, fourteen boolean switches off/on; five generic GPU stages and dedicated compute/blit resolve checks per variant, connected pixel/resolve negatives; 221 telemetry and 13 workspace tests | A new installation, SO-output GPU coverage, DS3 FPS or measured observer overhead |
 | Source prerelease | `v0.1.0-experimental.20261025`, frozen at hub `5be9c7d6`, Wine `85864be4` / DXMT `25eff5e1`; complete recursive source archive independently matched to Git and uploaded digests | Not an installable binary distribution or a release of the later neighbor source |
 | Matched build | Both fresh 161-target DXMT variants from local `036aaae9` (public tree-equivalent `e1772a42`) with ten experiment booleans off/on; matched PE/native/helper, retained Unix NTDLL/server and LLVM 15.0.7; compiler epoch 2 off / 3 cleanup on | Full reproducible Wine distribution or every optional feature |
 | Installation | Latest ten-switch experimental DXMT installed: five graphics artifacts updated, 17 Wine artifacts retained; exact readback and no-op passed. Separate helper delivery requests fixed-output MetalFX from the ordinary DS3 icon; prior recovery retained | Stable release promotion, actual game MetalFX activation, new exit/relaunch or FPS acceptance |
 | Preceding experiments | Seven default-off switches plus independent scene submission; focused CPU controls, five generic GPU stages and four dedicated pass cases per build, six native shader images per helper and connected pixel negatives pass | Dynamic DISCARD/residency admission, real MetalFX, production Present/capture, displayed FPS, latency or memory improvement |
 | Latest correctness checks | Terminal release old-fail/new-pass controls on arm64 and Rosetta, real NTDLL lifecycle controls, production MinGW-header compilation, five offscreen GPU stages and three rejected broken controls | A cure for every game hang |
-| Latest diagnostics | 184 offline telemetry checks; explicit presentation-waits and compiler/wait coverage, process-bound observed phase labels; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
+| Latest diagnostics | 221 offline telemetry checks; explicit presentation-waits and compiler/wait coverage, process-bound observed phase labels; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
 | Game observations | Earlier owner reports described usable play under background load; a previous unlabeled 1080p stream was retained | Controlled before/after FPS, clean gameplay-only timing or a causal network repair |
 
 The [next performance source wave](diagnostics/performance-wave-next-20261025.md)

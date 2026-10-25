@@ -7,21 +7,19 @@ windows, Retina, accessibility, game compatibility and performance you can
 measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
-**Current checkpoint: 25 October 2026.** The [first source drop](docs/releases/2026-10-25-source-preview.md)
-is published. A [subsequent neighbor wave](docs/integrations/neighbor-wave-20261025.md)
-adds checked general Metal-error ownership, failed-pipeline work cancellation and
-address-wait publication fixes. Both complete renderer variants build; this new
-Wine source follow-up is not a freshly linked Wine distribution. The next
-[performance wave](docs/diagnostics/performance-wave-next-20261025.md) adds
-default-off demand scheduling, explicit discard intent and bounded presentation
-wait diagnostics. Its ten-switch renderer is now installed for owner testing;
-ordinary DS3 launch requests fixed-output MetalFX, with actual game activation
-and controlled gameplay gains still unmeasured.
+**Current checkpoint: 26 October 2026.** The new
+[hot-path and telemetry wave](docs/diagnostics/hotpaths-20261026.md) reduces
+shader lookup, allocation/copy and native command-transport work; adds exact
+compiler-stage attribution; and separates long stalls from usable timing
+coverage. General correctness repairs remain separate from default-off
+experiments. This source checkpoint is distinct from the installed DS3 runtime
+and is not a demonstrated FPS increase.
 
-A [source follow-up](docs/diagnostics/presentation-followup-20261025.md) reduces
-repeated Present property calls, adds opt-in compiler/optimizer budgets and
-sampled window/Space visibility evidence. These changes are separate from the
-installed runtime; no new FPS result or game promotion is claimed.
+The [first source drop](docs/releases/2026-10-25-source-preview.md),
+[neighbor wave](docs/integrations/neighbor-wave-20261025.md),
+[performance wave](docs/diagnostics/performance-wave-next-20261025.md) and
+[presentation follow-up](docs/diagnostics/presentation-followup-20261025.md)
+remain dated evidence for their respective source/build/install checkpoints.
 
 The owner selected the preceding combined experiment
 for diagnostic DS3 play; the previous playable endpoint remains recoverable. Source
@@ -73,7 +71,8 @@ python3 scripts/workspace.py check
 | [Telemetry](tools/telemetry/README.md) and [gameplay tools](tools/gameplay/README.md) | Analysis, bounded test control and reproducible test protocols | `main` |
 | [Experiments](experiments/README.md) | Opt-in instrumentation and native presentation probes | `main` |
 
-The workspace pins Wine `5d4b43e4` and DXMT `e1772a42`. Components are pinned
+The workspace pins Wine `5d4b43e4` and the DXMT hot-path source checkpoint
+listed in [current status](docs/STATUS.md). Components are pinned
 submodules hosted on branches in this same repository.
 Updating a component branch does not silently update the workspace pin. GitHub's
 main-branch ZIP omits submodule contents; use a recursive clone or the component

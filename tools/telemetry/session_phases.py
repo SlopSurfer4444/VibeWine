@@ -21,6 +21,9 @@ CAPS = {'markers.jsonl': MIB, 'events.jsonl': 16 * MIB,
 MAX_EXPANDED = 256 * MIB
 MAX_OBJECT = MIB
 MAX_RECORDS = 65536
+MAX_RATE_INTERVAL_SECONDS = 5
+MAX_AGGREGATE_SECONDS = 4 * 60 * 60
+MAX_EXCLUDED_INTERVAL_DETAILS = 128
 PHASES = ('menu', 'loading', 'gameplay', 'exit', 'unknown')
 MEMORY = ('physicalFootprintBytes', 'residentBytes', 'wiredBytes', 'pageins',
           'diskReadBytes', 'diskWriteBytes')
@@ -258,11 +261,19 @@ def metal_interval(row, bound):
     layers = row.get('Layers')
     require(type(layers) is list and 1 <= len(layers) <= 128, 'invalid Layers')
     intervals, presented, skipped = [], 0, 0
+    excluded = False
     for layer in layers:
         require(type(layer) is dict and type(layer.get('Performance Stats')) is dict, 'invalid Performance Stats')
         stats = layer['Performance Stats']
         start, end, total = (number(stats.get(k)) for k in ('Start MCT Seconds', 'End MCT Seconds', 'Total Duration (sec)'))
-        require(0 < end - start <= 5 and abs(total - (end - start)) <= .001, 'invalid Metal interval')
+        require(0 < end - start <= MAX_AGGREGATE_SECONDS and 0 < total <= MAX_AGGREGATE_SECONDS
+                and abs(total - (end - start)) <= .001, 'invalid Metal interval')
+        for key in ('Duration MCT Seconds', 'Time Active (sec)'):
+            if key in stats:
+                value = number(stats[key])
+                require(abs(value - total) <= .001 if key == 'Duration MCT Seconds' else value <= total + .001,
+                        'incoherent Metal duration')
+        excluded = excluded or end - start > MAX_RATE_INTERVAL_SECONDS
         intervals.append((start, end))
         for key in ('Presented Frame Stats', 'Skipped Frame Stats'):
             require(type(stats.get(key)) is dict, 'invalid frame stats')
@@ -275,12 +286,13 @@ def metal_interval(row, bound):
     start, end = intervals[0]
     require(all(abs(a-start) <= 1e-6 and abs(b-end) <= 1e-6 for a,b in intervals), 'unaligned layers')
     return dict(start=start, end=end, duration=end-start, presented=presented, skipped=skipped,
-                timestamp=row['Timestamp'], layers=len(layers))
+                timestamp=row['Timestamp'], layers=len(layers), excludedLongAggregate=excluded)
 
 
 def bucket():
     return dict(intervals=0, observedSeconds=0.0, presentedFrames=0, skippedFrames=0,
-                intervalRateHz=None, declaredPhaseSeconds=None, memorySnapshots=[], hostSnapshots=[])
+                intervalRateHz=None, declaredPhaseSeconds=None, memorySnapshots=[], hostSnapshots=[],
+                excludedCoverage=dict(longAggregateIntervals=0, longAggregateSeconds=0.0))
 
 
 def _host_memory(result):
@@ -348,8 +360,11 @@ def analyze(metal_data, event_data, marker_data, status, bound, *, allow_partial
     report = dict(schema=1, identity=bound, complete=False, gzipComplete=False,
                   allowPartial=allow_partial, phases={p: bucket() for p in (*PHASES, 'mixed')},
                   whole=bucket(), discards=collections.Counter(), errors=[], markers=markers,
+                  excludedIntervalDetails=[], excludedIntervalDetailsDropped=0,
+                  excludedIntervalDetailLimit=MAX_EXCLUDED_INTERVAL_DETAILS,
                   limits=['Counts describe reported Metal frames across aligned layers; intervalRateHz is count/observed duration, not displayed FPS.',
                           'No per-frame distribution, 1% lows, GPU residency or combat inference is available.',
+                          'Coherent Metal aggregates over 5 seconds through 4 hours are excluded coverage; their counts and duration never enter rate totals.',
                           'Markers are supplied observations, not proof of continuous visual state; pre-first and post-last are unknown.',
                           'Memory delta is last minus first available in-phase snapshot, never an exact boundary or causal delta; suppressed for disjoint phase spans.',
                           'Memory uses shared Unix wall timestamps; marker monotonic is producer-local and is never joined to monitor monotonic.'])
@@ -370,6 +385,18 @@ def analyze(metal_data, event_data, marker_data, status, bound, *, allow_partial
                 report['discards']['coverageGaps'] += 1
             last = interval
             phase = phase_at(interval['start'], interval['end'], markers, 'mct')
+            if interval['excludedLongAggregate']:
+                report['discards']['longAggregates'] += 1
+                for item in (report['whole'], report['phases'][phase]):
+                    item['excludedCoverage']['longAggregateIntervals'] += 1
+                    item['excludedCoverage']['longAggregateSeconds'] += interval['duration']
+                if len(report['excludedIntervalDetails']) < MAX_EXCLUDED_INTERVAL_DETAILS:
+                    report['excludedIntervalDetails'].append(dict(
+                        reason='coherent_long_aggregate', phase=phase,
+                        **{key: interval[key] for key in ('start', 'end', 'duration', 'timestamp', 'layers')}))
+                else:
+                    report['excludedIntervalDetailsDropped'] += 1
+                continue
             for item in (report['whole'], report['phases'][phase]):
                 item['intervals'] += 1
                 item['observedSeconds'] += interval['duration']

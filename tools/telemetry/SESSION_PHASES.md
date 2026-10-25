@@ -57,8 +57,8 @@ The fixed inputs are `metal.jsonstream.gz`, `events.jsonl`, `status.json` and
 optional `markers.jsonl`. Without markers every interval remains unknown. The
 report records input SHA256 values. It refuses an active/incomplete collector,
 invalid JSON, missing metrics or truncated gzip unless `--allow-partial` is
-explicit. Partial mode reports only the validated prefix and marks incomplete
-status; it never resynchronizes after a malformed object. Duplicate keys,
+explicit. Partial mode reports only the validated prefix for a genuinely invalid or truncated
+stream and marks incomplete status; it never resynchronizes after a malformed object. Duplicate keys,
 nonfinite values, extra gzip members, overlapping/replayed intervals and foreign
 PIDs cannot silently increase accepted totals. Foreign/replayed records are
 counted separately. Collection status binds the raw PID-only vendor stream to
@@ -72,6 +72,34 @@ do not become zero FPS. Explicit observed zero frame counts remain zero. Whole
 and phase rates are total reported presented count divided by total observed
 seconds, across all aligned layers. They are not displayed FPS. No aggregate
 interval distribution is advertised as per-frame 1% lows or frame-time variance.
+
+Coherent intervals longer than 5 seconds and at most 4 hours are validated as
+long vendor aggregates, then excluded from metric coverage. Every layer must
+retain aligned boundaries, coherent total duration and valid integer frame
+counts. Optional active/duration seconds must be finite and coherent when
+present. Malformed or over-4-hour records still fail; `--allow-partial` stops at
+the invalid record and never resumes afterward. A valid long aggregate does not
+require partial mode and does not stop processing later ordinary intervals.
+
+Each whole/phase bucket has additive `excludedCoverage.longAggregateIntervals`
+and `longAggregateSeconds`. These values never enter `intervals`,
+`observedSeconds`, presented/skipped frame totals, rate numerators/denominators
+or observed phase coverage. Exclusions crossing a marker stay `mixed`; unknown
+phase spans remain unknown. Valid long records advance the existing overlap and
+timestamp watermark, so replayed/overlapping or regressed-timestamp rows after
+an exclusion remain rejected. Foreign records never advance that watermark.
+`discards.longAggregates` counts the exclusions; ordinary discontinuities still
+use `discards.coverageGaps` independently.
+
+`excludedIntervalDetails` retains at most 128 scalar details (reason, phase,
+start/end/duration, receipt timestamp and aligned layer count), with the cap in
+`excludedIntervalDetailLimit` and further omissions in
+`excludedIntervalDetailsDropped`. Totals continue after that detail cap. No
+frame counts or rate samples are retained in this list. `complete` describes
+structural processing of the capture, including explicit exclusions; it does
+not mean full metric coverage. A long-only stream can be structurally complete
+with `metricsAvailable=false` and no rate. This recovery does not establish
+actual displayed FPS or game performance.
 
 Game physical footprint, RSS, wired bytes, pageins and disk counters come from
 existing `process_snapshot` events. First/last/delta refer only to available
@@ -126,5 +154,8 @@ Fixtures cover wrong birth/PID, live identity changes, genuine exit absence,
 unknown and boundary coverage, weighted phase/whole totals, malformed/truncated
 gzip/JSON, duplicate/foreign/overlapping intervals, missing metrics, host/game
 memory deltas, sampled gaps versus observed zeros, byte/record/depth/expansion
-caps, symlinks, hardlinks, clock discontinuities and permissions. These checks do not establish a real
+caps, symlinks, hardlinks, clock discontinuities and permissions. Long-aggregate
+fixtures cover normal → observed 5.676890850067139-second duration → normal,
+5-second/4-hour boundaries, malformed/foreign/replayed/overlapping records,
+phase uncertainty, bounded exclusion details and prefix-only invalid handling. These checks do not establish a real
 scene, installed integration, runtime activation or game performance.
