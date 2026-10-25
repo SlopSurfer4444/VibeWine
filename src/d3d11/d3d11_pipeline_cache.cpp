@@ -5,6 +5,8 @@
 #include "d3d11_pipeline.hpp"
 #include "dxmt_shader_cache.hpp"
 #include "dxmt_tasks.hpp"
+#include "dxmt_compiler_options.hpp"
+#include "config/config.hpp"
 #include "log/log.hpp"
 #include "sha1/sha1_util.hpp"
 #include "../d3d10/d3d10_shader.hpp"
@@ -493,7 +495,8 @@ public:
       device(pDevice),
       blend_states(pDevice),
       so_layouts(pDevice),
-      scheduler_(env::getEnvVar("DXMT_SCHEDULER_BACKLOG_GROWTH") == "1", DXMT_DEMAND_SCHEDULER != 0) {
+      scheduler_(env::getEnvVar("DXMT_SCHEDULER_BACKLOG_GROWTH") == "1", DXMT_DEMAND_SCHEDULER != 0,
+          parse_compiler_worker_limit(Config::getInstance().getOption<std::string>("d3d11.maxCompilerThreads", ""))) {
     if (cs2lab::enabled())
       Logger::info(str::format("CS2LAB build=early-compile-v1 early_compile=", cs2lab::earlyCompile()));
   };

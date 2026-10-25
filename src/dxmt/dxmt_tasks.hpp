@@ -27,7 +27,7 @@ public:
   // scheduler records and never dereferences a retired task.
   void promote(Task task);
 
-  explicit task_scheduler(bool backlog_growth = false, bool demand_scheduler = false);
+  explicit task_scheduler(bool backlog_growth = false, bool demand_scheduler = false, uint64_t max_workers = 0);
   ~task_scheduler();
 
   uint64_t
@@ -72,13 +72,16 @@ private:
   bounded_persistence persistence_;
 };
 
-template <typename Task> task_scheduler<Task>::task_scheduler(bool backlog_growth, bool demand_scheduler)
+template <typename Task> task_scheduler<Task>::task_scheduler(bool backlog_growth, bool demand_scheduler, uint64_t max_workers)
     : backlog_growth_(backlog_growth), demand_scheduler_(demand_scheduler) {
   if (demand_scheduler_)
     demand_policy_.emplace();
   max_threads = std::max<uint64_t>(2, uint64_t(dxmt::thread::hardware_concurrency()) * 2);
+  // Zero retains the legacy policy; an opt-in cap can only reduce its limit.
+  if (max_workers)
+    max_threads = std::min(max_threads, max_workers);
   workers_.reserve(max_threads);
-  threads = 2;
+  threads = std::min<uint64_t>(2, max_threads);
 
   for (unsigned i = 0; i < threads; i++) {
     workers_.emplace_back([this]() { worker_func(); });
