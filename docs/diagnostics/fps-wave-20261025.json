@@ -496,5 +496,22 @@
     "compilerTraceMaxSeconds": 600,
     "collectorsArmedBeforeLaunch": true,
     "actualMetricAndDecodeAcceptance": "separate live checks"
+  },
+  "liveCollectorHandoff": {
+    "date": "2026-10-25",
+    "frameMetricsObserved": true,
+    "compilerProfileMarkerObserved": true,
+    "compilerRecordsAdvancing": true,
+    "droppedAtHandoff": 0,
+    "gameplayVerified": false,
+    "finalDecodeAccepted": false,
+    "delayedAttachmentReported": true,
+    "firstUnarmedAttemptsPreserved": true,
+    "mapping": "Exact live Darwin birth, bounded rc0 lsof process table, returned-directory path/device/inode, repeated before arm; Wine guest filename never inferred from host PID",
+    "companionSha256": "96a280d75540168ea050f5ac7da2a2ff9c9e9450daa20323d77fdb0a9f41c40d",
+    "offlineChecksPassed": 23,
+    "frameContinuationSeconds": 1200,
+    "compilerMaximumSeconds": 600,
+    "fpsGainClaimed": false
   }
 }
