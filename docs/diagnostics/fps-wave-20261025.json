@@ -480,5 +480,21 @@
     "shader pixels are not production presenter/CAMetalDrawable or actual MetalFX scaler proof",
     "readable capture and split scene/final frame boundaries pending",
     "installed selection, ordinary game lifecycle, controlled per-switch/combined FPS/latency/memory comparison pending"
-  ]
+  ],
+  "installation": {
+    "scope": "Owner-selected diagnostic experiment only; ordinaryFinalPromotionAllowed remains false",
+    "artifactCount": 22,
+    "candidateFiles": 25,
+    "transactionTargets": 32,
+    "afterimageReadback": true,
+    "repeatChanged": false,
+    "gameplayPerformanceAccepted": false,
+    "launchMode": "measure-compile-trace",
+    "requestedCompilerProfile": "compile-waits",
+    "requestedDetailBudget": 32768,
+    "frameObserverSeconds": 1200,
+    "compilerTraceMaxSeconds": 600,
+    "collectorsArmedBeforeLaunch": true,
+    "actualMetricAndDecodeAcceptance": "separate live checks"
+  }
 }

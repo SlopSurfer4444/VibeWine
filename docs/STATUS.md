@@ -7,26 +7,34 @@ dated snapshot documents retain their original historical claims.
 | --- | --- | --- |
 | Development source | Wine `85864be4`; DXMT `25eff5e1`: seven gated renderer experiments, MSync WaitAll rollback/attribution, and prior early scene submission | A component branch tip is not an installed runtime |
 | Matched build | Both complete 161-target DXMT variants, paired Unix NTDLL/server; PE/native/helper and LLVM 15.0.7; compiler epoch 2 off / 3 cleanup on | Full reproducible Wine distribution or every optional feature |
-| Installation | Selected 22-file closure installed in the owner's ordinary DS3 runtime; hash readback matched and repeated installation made no changes; prior recovery retained | This follow-up's real-game exit/relaunch or FPS acceptance |
+| Installation | User-selected combined experimental build: 22 runtime artifacts, metrics launcher and 32 transaction targets verified; repeat installation changed nothing; prior recovery retained | Stable release promotion, new game exit/relaunch or FPS acceptance |
 | New experiments | Seven new default-off switches plus independent scene submission; focused CPU controls, five generic GPU stages and four dedicated pass cases per build, six native shader images per helper and connected pixel negatives pass | Dynamic DISCARD/residency admission, real MetalFX, production Present/capture, displayed FPS, latency or memory improvement |
 | Latest correctness checks | Terminal release old-fail/new-pass controls on arm64 and Rosetta, real NTDLL lifecycle controls, production MinGW-header compilation, five offscreen GPU stages and three rejected broken controls | A cure for every game hang |
 | Latest diagnostics | 178 offline telemetry checks; process-bound observed phase labels and opt-in compiler/wait coverage; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
 | Game observations | Earlier owner reports described usable play under background load; a previous unlabeled 1080p stream was retained | Controlled before/after FPS, clean gameplay-only timing or a causal network repair |
 
-The **installed** graphics still correspond to local DXMT
-`356cc60d500f11d59dd2cb215250b2a08b07e8ba` and its tree-identical
-[public equivalent](provenance/focused-publication-20261024.json).
+The previous playable graphics corresponded to local DXMT `356cc60d` and
+[its public equivalent](provenance/focused-publication-20261024.json). The owner
+subsequently selected the combined experiment for a diagnostic play session.
+It is installed through the supported schema12 transaction, with final signed
+code rechecked on the GPU, exact afterimage readback and no-op convergence.
+The prior endpoint and recovery images remain retained.
 The latest experimental pair uses local build source `36385509`, public
 tree-equivalent `cb5fa11d`; later pin changes are test/documentation only. Eight
 booleans differ: seven new switches and scene submission. Both use the paired
 new Wine MSync source. The previous scene-only control package remains a separate
-checkpoint. No variant from the new wave was installed or promoted. See
+checkpoint. The true variant is selected for experimental play, with ordinary final
+promotion still explicitly false. See
 [the integration evidence](diagnostics/fps-wave-20261025.md) and
 [exact hashes and accepted checks](diagnostics/fps-wave-20261025.json).
 The 25 October baseline attempt launched the unchanged installed game, observed
 menu responses and repeated connection-loss dialogs, then ended it with macOS
 Quit. No stable offline world or controlled gameplay timing was accepted.
-The task-owned prefix and observer were stopped. The private install/admission
+That earlier task-owned prefix and observer were stopped. The new collector-first
+session uses an explicit cold `measure-compile-trace` launch: fixed compiler/wait
+profile and detail budget, bounded MSync/idle attribution, independent Metal/frame
+monitoring and short anomaly-triggered stack samples. Armed readiness precedes
+launch; actual data availability is a separate check. The private install/admission
 tooling and licensed retained engine dependencies are not distributed here.
 
 See [the focused changes and checks](diagnostics/focused-followup-20261024.md)
@@ -42,9 +50,12 @@ and the [earlier integrated build record](diagnostics/integrated-wave-20261023.m
   installed follow-up; investigate any surviving CPU-heavy process.
 - Actual menu/loading/gameplay phase labels in a new capture; comparable cold
   and warm frame times at fixed scene, settings, resolution and power state.
-- Compiler/wait profile activation through the supported launch route. The
-  producer/decoder are implemented; the installed launcher does not yet expose
-  this profile option. Filtering does not enlarge the fixed trace capacity.
+- Full runtime compiler/wait coverage acceptance: the installed explicit launch
+  option now requests the profile before producer startup, but final decode and
+  loss checks are required. Filtering does not enlarge the fixed trace capacity.
+- The shared launch-admission probe still uses a 250 ms inactivity timeout. A
+  cold new server took 0.83 s and produced one false-active refusal; the unchanged
+  supported probe subsequently returned inactive. No gate was weakened.
 - Resolution/Retina transitions, Mission Control cursor release, and reliable
   input on another Space remain separate live checks.
 - Intermittent server access and multiplayer latency remain unlocalized; no

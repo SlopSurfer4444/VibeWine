@@ -7,11 +7,11 @@ windows, Retina, accessibility, game compatibility and performance you can
 measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
-**Current checkpoint: 25 October 2026.** The selected 24 October Wine/DXMT
-closure remains installed in the owner's DS3 runtime. New development source
+**Current checkpoint: 25 October 2026.** The owner selected the new combined experiment
+for diagnostic DS3 play; the previous playable endpoint remains recoverable. Source
 adds seven independently gated renderer experiments, MSync rollback repair and
 bounded attribution, alongside early scene submission. Both complete matched
-builds and covered native/offscreen GPU checks pass. Installation and controlled
+builds and covered native/offscreen GPU checks pass. The experimental closure is installed with verified no-op convergence; controlled
 game FPS, latency and memory comparisons remain pending.
 [Changes, checks and limits](docs/diagnostics/fps-wave-20261025.md).
 
