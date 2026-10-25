@@ -97,3 +97,65 @@ translation units also pass syntax checks against retained configured headers.
 These are not fresh full builds, installation, real game behavior or FPS results.
 The two newer swapchain autorelease wrappers remain excluded: their donor ABI
 differs and matching caller/main-block pools already cover our legacy wrappers.
+
+## FPS investigation follow-up: MSync rollback and bounded attribution
+
+Base: `e20af58312ef059e54f8d16767ee7b74cb8358e5`. This source-only follow-up
+does not install a runtime, promote a native arm64 server, or claim an FPS gain.
+
+WaitAll rollback now restores only entries consumed by the current attempt,
+preserves pre-existing recursive ownership and abandoned state, caps semaphore
+restoration, wakes restored objects, and rechecks APC/deadline on retries. The
+abandoned mutex is available during the initial readiness scan. Client and server
+explicit event resets advance the same 32-bit generation in the existing unused
+high word; rollback cannot undo an intervening reset. The shared entry remains
+16 bytes, but **Unix ntdll and wineserver must be rebuilt and used together**.
+An old running server cannot provide the new reset contract. This is not the
+larger server-owned atomic WaitAll design and does not provide cross-object
+linearization.
+
+The reset/rollback design is adapted from kageroumado / Claude Opus 5.5's
+[Dormison `9d6a6ed55572957275f17a1d0b5d300b46227937`](https://github.com/kageroumado/dormison/commit/9d6a6ed55572957275f17a1d0b5d300b46227937).
+That revision depends on earlier acquisition tracking already present in its
+parent; this adaptation supplies the needed tracking directly in our production
+body. The donor's per-file LGPL-2.1-or-later notices and `COPYING.LIB` were
+checked. Original source notices and authorship remain intact. See
+[WaitAll evidence and limitations](tests/msync-waitall/README.md).
+
+`WINEMSYNC_ATTRIBUTION=1` enables cumulative approximate duration attribution for
+register send, unregister send, signal notification send, and the post-send ACK
+phase. Default/invalid values perform no clock reads or output. Every admitted
+summary contains process ID, monotonic coverage start/end, completed count,
+total/max duration and nonzero-result count for each phase. A pending/timeout
+result is included in that last count; it is not necessarily a transport error.
+The ACK phase ends before unregister and excludes the later object wait. An
+in-progress blocked send/wait appears only after it returns; absence of a sample
+is not evidence of a short wait. Summaries are independent relaxed reads, not a
+consistent transaction or CPU-time measurement.
+
+The Wine client owns this optional diagnostic producer. It writes no payloads,
+IP addresses, object handles, new files or background services. At most one
+snapshot is admitted per ten seconds, at most 64 per process, each strictly
+below 1 KiB: less than 64 KiB/process. After the cap, new calls stop timing;
+already-in-flight calls can finish updating counters. Admission uses atomics,
+without a diagnostic mutex. Each admitted output is one stderr write, with no
+retry after failure/partial write. Redirected stderr can still impose I/O delay,
+so instrumentation overhead remains an acceptance gate.
+
+Captured stderr uses the existing capture owner's seven-day raw TTL and 256 MiB
+session cap, with active/analysis/recovery holds. Outside that capture path,
+ordinary stderr retention belongs to its caller; no automatic cleanup is
+introduced. No permanent archive or additional raw-data scope is added.
+See [helper contract](tests/msync-attribution/README.md) and
+[native Mach pressure/wake evidence](tests/msync-pressure/README.md).
+
+The exact production-body WaitAll baseline fails ten expected checks and the
+candidate passes 15. Native and Rosetta ASan/UBSan checks reject four connected
+mutations. Existing registration/ACK regressions remain covered. The native
+private-port fixture exercises the original send arguments and both real Mach
+backends under full-queue pressure, with actual ulock wakes and three negative
+controls. Send options and queue sizes are unchanged; no naive send deadline is
+introduced. Helper-contract tests cover disabled behavior, timing, byte/count
+bounds, concurrent admission, clock errors and write failure. These are focused
+source/native fixtures and syntax checks, not a fresh linked runtime or gameplay
+comparison.

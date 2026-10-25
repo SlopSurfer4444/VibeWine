@@ -34,6 +34,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <sys/mman.h>
 #ifdef HAVE_SYS_STAT_H
 # include <sys/stat.h>
@@ -173,6 +174,89 @@ static inline mach_msg_return_t mach_msg2( mach_msg_header_t *data, uint64_t opt
 #undef MACH_MSG2_SHIFT_ARGS
 }
 
+/* Optional duration attribution: no wait payloads or object identities. Snapshot
+ * admission is a single CAS, never a diagnostic lock in the synchronization path.
+ * Cumulative relaxed reads are approximate under concurrent updates. */
+enum msync_attribution_kind
+{
+    MSYNC_ATTR_REGISTER_SEND, MSYNC_ATTR_UNREGISTER_SEND, MSYNC_ATTR_SIGNAL_SEND, MSYNC_ATTR_ACK,
+    MSYNC_ATTR_COUNT
+};
+#define MSYNC_ATTR_INTERVAL_NS 10000000000ull
+#define MSYNC_ATTR_MAX_SNAPSHOTS 64
+static struct
+{
+    int enabled;
+    uint64_t start, next;
+    unsigned int snapshots;
+    struct { uint64_t count, total, maximum, errors; } phase[MSYNC_ATTR_COUNT];
+} msync_attribution;
+
+static uint64_t msync_attribution_now(void)
+{
+    struct timespec t;
+    if (clock_gettime( CLOCK_MONOTONIC, &t )) return 0;
+    return (uint64_t)t.tv_sec * 1000000000 + t.tv_nsec;
+}
+
+static void msync_attribution_init(void)
+{
+    const char *value = getenv( "WINEMSYNC_ATTRIBUTION" );
+    if (!value || strcmp( value, "1" )) return;
+    msync_attribution.start = msync_attribution_now();
+    msync_attribution.next = msync_attribution.start + MSYNC_ATTR_INTERVAL_NS;
+    __atomic_store_n( &msync_attribution.enabled, !!msync_attribution.start, __ATOMIC_RELEASE );
+}
+
+static uint64_t msync_attribution_begin(unsigned int kind)
+{
+    if (!__atomic_load_n( &msync_attribution.enabled, __ATOMIC_ACQUIRE )) return 0;
+    return msync_attribution_now();
+}
+
+static void msync_attribution_end(unsigned int kind, uint64_t started, int status)
+{
+    uint64_t now, duration, maximum, next;
+    unsigned int i, snapshot;
+    int length, used;
+    char buffer[1024];
+
+    if (!started || !__atomic_load_n( &msync_attribution.enabled, __ATOMIC_ACQUIRE )) return;
+    now = msync_attribution_now();
+    if (!now || now < started) return;
+    duration = now - started;
+    __atomic_fetch_add( &msync_attribution.phase[kind].count, 1, __ATOMIC_RELAXED );
+    __atomic_fetch_add( &msync_attribution.phase[kind].total, duration, __ATOMIC_RELAXED );
+    if (status) __atomic_fetch_add( &msync_attribution.phase[kind].errors, 1, __ATOMIC_RELAXED );
+    maximum = __atomic_load_n( &msync_attribution.phase[kind].maximum, __ATOMIC_RELAXED );
+    while (duration > maximum && !__atomic_compare_exchange_n( &msync_attribution.phase[kind].maximum,
+            &maximum, duration, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED ));
+    next = __atomic_load_n( &msync_attribution.next, __ATOMIC_RELAXED );
+    if (now < next || !__atomic_compare_exchange_n( &msync_attribution.next, &next,
+            now + MSYNC_ATTR_INTERVAL_NS, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED )) return;
+    snapshot = __atomic_fetch_add( &msync_attribution.snapshots, 1, __ATOMIC_RELAXED );
+    if (snapshot >= MSYNC_ATTR_MAX_SNAPSHOTS) return;
+    if (snapshot == MSYNC_ATTR_MAX_SNAPSHOTS - 1)
+        __atomic_store_n( &msync_attribution.enabled, 0, __ATOMIC_RELEASE );
+    used = snprintf( buffer, sizeof(buffer), "msync-attribution v1 snapshot=%u pid=%lu start_ns=%llu end_ns=%llu cumulative_approx=1 completed_only=1 phases=register,unregister,signal,ack",
+                     snapshot + 1, (unsigned long)getpid(), (unsigned long long)msync_attribution.start, (unsigned long long)now );
+    for (i = 0; i < MSYNC_ATTR_COUNT && used > 0 && used < sizeof(buffer); ++i)
+    {
+        length = snprintf( buffer + used, sizeof(buffer) - used, " p%u=%llu,%llu,%llu,%llu", i,
+                (unsigned long long)__atomic_load_n( &msync_attribution.phase[i].count, __ATOMIC_RELAXED ),
+                (unsigned long long)__atomic_load_n( &msync_attribution.phase[i].total, __ATOMIC_RELAXED ),
+                (unsigned long long)__atomic_load_n( &msync_attribution.phase[i].maximum, __ATOMIC_RELAXED ),
+                (unsigned long long)__atomic_load_n( &msync_attribution.phase[i].errors, __ATOMIC_RELAXED ));
+        if (length < 0) return;
+        used += length;
+    }
+    if (used <= 0 || used >= sizeof(buffer) - 1) return;
+    buffer[used++] = '\n';
+    /* One bounded stderr write per admitted 10s snapshot; caller owns stderr.
+     * Failed/partial writes are not retried. No new file or background producer. */
+    write( STDERR_FILENO, buffer, used );
+}
+
 struct semaphore
 {
     int count;
@@ -186,12 +270,13 @@ C_ASSERT(sizeof(struct semaphore) == 16);
 struct event
 {
     int signaled;
-    int unused;
+    unsigned int reset_gen; /* with signaled, one aligned 64-bit word */
     unsigned short msync_type;
     unsigned short refcount;
     int multiple_waiters;
 };
 C_ASSERT(sizeof(struct event) == 16);
+C_ASSERT(FIELD_OFFSET(struct event, reset_gen) == sizeof(int));
 
 struct mutex
 {
@@ -220,6 +305,7 @@ static inline mach_msg_return_t server_register_wait( unsigned int msgh_id, cons
 {
     int i, is_mutex;
     mach_msg_return_t mr;
+    uint64_t started;
     __thread static mach_register_message_t message;
 
     message.header.msgh_remote_port = server_port;
@@ -246,8 +332,10 @@ static inline mach_msg_return_t server_register_wait( unsigned int msgh_id, cons
     message.header.msgh_size = sizeof(mach_msg_header_t) +
                                count * sizeof(unsigned int);
 
+    started = msync_attribution_begin( MSYNC_ATTR_REGISTER_SEND );
     mr = mach_msg2( (mach_msg_header_t *)&message, MACH_SEND_MSG, message.header.msgh_size,
                      0, MACH_PORT_NULL, MACH_MSG_TIMEOUT_NONE, 0 );
+    msync_attribution_end( MSYNC_ATTR_REGISTER_SEND, started, mr );
 
     if (mr != MACH_MSG_SUCCESS)
         ERR("Failed to send server register wait: %#x\n", mr);
@@ -260,6 +348,7 @@ static inline void server_remove_wait( unsigned int msgh_id, const int *objs, vo
 {
     int i;
     mach_msg_return_t mr;
+    uint64_t started;
     __thread static mach_register_message_t message;
 
     message.header.msgh_remote_port = server_port;
@@ -291,8 +380,10 @@ static inline void server_remove_wait( unsigned int msgh_id, const int *objs, vo
     message.header.msgh_size = sizeof(mach_msg_header_t) +
                                count * sizeof(unsigned int);
 
+    started = msync_attribution_begin( MSYNC_ATTR_UNREGISTER_SEND );
     mr = mach_msg2( (mach_msg_header_t *)&message, MACH_SEND_MSG, message.header.msgh_size,
                      0, MACH_PORT_NULL, MACH_MSG_TIMEOUT_NONE, 0 );
+    msync_attribution_end( MSYNC_ATTR_UNREGISTER_SEND, started, mr );
 
     if (mr != MACH_MSG_SUCCESS)
         ERR("Failed to send server remove wait: %#x\n", mr);
@@ -393,6 +484,7 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
     unsigned int msgh_id;
     unsigned int spins = 0;
     int total_count = count + (alert_obj ? 1 : 0);
+    uint64_t ack_started;
 
     __atomic_store_n( addr, MSYNC_ACK_PENDING, __ATOMIC_RELEASE );
     msgh_id = (tid << 8) | total_count;
@@ -404,6 +496,7 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
         return STATUS_PENDING;
     }
 
+    ack_started = msync_attribution_begin( MSYNC_ATTR_ACK );
     while ((val = __atomic_load_n( addr, __ATOMIC_ACQUIRE )) == MSYNC_ACK_PENDING || val == MSYNC_ACK_PARKED)
     {
         if ((!(spins & 63) || spins >= MSYNC_ACK_SPINS)
@@ -416,6 +509,7 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
              * of a game that waits on several objects in a hot loop). Unregister like
              * every other exit does; this also drops the alert object's waiter count,
              * which the loop here used to leave raised. */
+            msync_attribution_end( MSYNC_ATTR_ACK, ack_started, STATUS_PENDING );
             server_remove_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
             return STATUS_PENDING;
         }
@@ -423,6 +517,7 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
         if (end && (!(spins & 63) || spins >= MSYNC_ACK_SPINS)
                 && !(ns_timeleft = update_timeout( *end ) * 100))
         {
+            msync_attribution_end( MSYNC_ATTR_ACK, ack_started, STATUS_TIMEOUT );
             server_remove_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
             return STATUS_TIMEOUT;
         }
@@ -451,10 +546,12 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
         ret = ulock_wait( UL_COMPARE_AND_WAIT_SHARED | ULF_NO_ERRNO, addr, MSYNC_ACK_PARKED, ns_timeleft );
         if (ret && ret != -EINTR && ret != -EFAULT && ret != -EAGAIN && ret != -ETIMEDOUT)
         {
+            msync_attribution_end( MSYNC_ATTR_ACK, ack_started, ret );
             server_remove_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
             return STATUS_PENDING;
         }
     }
+    msync_attribution_end( MSYNC_ATTR_ACK, ack_started, STATUS_SUCCESS );
 
     /* ACK slices must not become a deadline for an infinite object wait. */
     ns_timeleft = 0;
@@ -652,6 +749,7 @@ void msync_init(void)
     void *dlhandle = dlopen( NULL, RTLD_NOW );
     char message_port_name[28];
 
+    msync_attribution_init();
     if (!do_msync())
     {
         /* make sure the server isn't running with WINEMSYNC */
@@ -718,6 +816,8 @@ static inline void signal_all( void *shm, unsigned int shm_idx )
 {
     __thread static mach_msg_header_t send_header;
     struct event *event_obj = (struct event *)shm;
+    uint64_t started;
+    mach_msg_return_t mr;
 
     __ulock_wake( UL_COMPARE_AND_WAIT_SHARED | ULF_WAKE_ALL, shm, 0 );
 
@@ -729,8 +829,10 @@ static inline void signal_all( void *shm, unsigned int shm_idx )
     send_header.msgh_size = sizeof(send_header);
     send_header.msgh_remote_port = server_port;
 
-    mach_msg2( &send_header, MACH_SEND_MSG, send_header.msgh_size, 0,
+    started = msync_attribution_begin( MSYNC_ATTR_SIGNAL_SEND );
+    mr = mach_msg2( &send_header, MACH_SEND_MSG, send_header.msgh_size, 0,
                MACH_PORT_NULL, MACH_MSG_TIMEOUT_NONE, 0 );
+    msync_attribution_end( MSYNC_ATTR_SIGNAL_SEND, started, mr );
 }
 
 NTSTATUS msync_release_semaphore_obj( int obj, ULONG count, ULONG *prev_count )
@@ -762,6 +864,53 @@ NTSTATUS msync_query_semaphore_obj( int obj, SEMAPHORE_BASIC_INFORMATION *info )
     return STATUS_SUCCESS;
 }
 
+/* Adapted from Dormison 9d6a6ed5 (kageroumado / Claude Opus 5.5), LGPL-2.1+.
+ * The generation makes a concurrent explicit reset survive a WaitAll rollback.
+ * Shared entries are 16-byte aligned; no object size or protocol field changes. */
+static inline uint64_t *event_word( struct event *event )
+{
+    return (uint64_t *)&event->signaled;
+}
+
+static inline LONG reset_event_word( struct event *event )
+{
+    uint64_t *word = event_word( event );
+    uint64_t current = __atomic_load_n( word, __ATOMIC_SEQ_CST ), reset;
+
+    do reset = (current & 0xffffffff00000000ull) + ((uint64_t)1 << 32);
+    while (!__atomic_compare_exchange_n( word, &current, reset, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST ));
+    return (LONG)(unsigned int)current;
+}
+
+static inline BOOL take_event_word( struct event *event, unsigned int *gen )
+{
+    uint64_t *word = event_word( event );
+    uint64_t current = __atomic_load_n( word, __ATOMIC_SEQ_CST );
+
+    do if (!(unsigned int)current) return FALSE;
+    while (!__atomic_compare_exchange_n( word, &current, current & 0xffffffff00000000ull, 0,
+                                         __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST ));
+    *gen = current >> 32;
+    return TRUE;
+}
+
+static inline void untake_event_word( struct event *event, unsigned int gen )
+{
+    uint64_t expected = (uint64_t)gen << 32;
+
+    __atomic_compare_exchange_n( event_word( event ), &expected, expected | 1, 0,
+                                 __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST );
+}
+
+static inline void untake_semaphore( struct semaphore *semaphore )
+{
+    int current = __atomic_load_n( &semaphore->count, __ATOMIC_SEQ_CST );
+
+    while (current < semaphore->max &&
+           !__atomic_compare_exchange_n( &semaphore->count, &current, current + 1, 0,
+                                         __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST ));
+}
+
 NTSTATUS msync_set_event_obj( int obj, LONG *prev_state )
 {
     struct event *event = get_shm( obj );
@@ -780,7 +929,7 @@ NTSTATUS msync_reset_event_obj( int obj, LONG *prev_state )
     struct event *event = get_shm( obj );
     LONG current;
 
-    current = __atomic_exchange_n( &event->signaled, 0, __ATOMIC_SEQ_CST );
+    current = reset_event_word( event );
 
     if (prev_state) *prev_state = current;
 
@@ -802,7 +951,7 @@ NTSTATUS msync_pulse_event_obj( int obj, LONG *prev_state )
      * side is the better thing to do... */
     sched_yield();
 
-    __atomic_store_n( &event->signaled, 0, __ATOMIC_SEQ_CST );
+    reset_event_word( event );
 
     if (prev_state) *prev_state = current;
 
@@ -1017,10 +1166,8 @@ NTSTATUS msync_wait_objs( const DWORD count, const int *objs, BOOLEAN wait_any,
          *
          * The idea is basically just to wait in sequence on every object in the
          * set. Then when we're done, try to grab them all in a tight loop. If
-         * that fails, release any resources we've grabbed (and yes, we can
-         * reliably do this—it's just mutexes and semaphores that we have to
-         * put back, and in both cases we just put back 1), and if any of that
-         * fails we start over.
+         * that fails, restore only resources this attempt consumed, preserving
+         * recursive ownership, abandonment, explicit resets and semaphore caps.
          *
          * What makes this inherently bad is that we might temporarily grab a
          * resource incorrectly. Hopefully it'll be quick (and hey, it won't
@@ -1031,16 +1178,30 @@ NTSTATUS msync_wait_objs( const DWORD count, const int *objs, BOOLEAN wait_any,
          * were blocking on object B, then B becomes available and someone grabs
          * A before we can, then they might have grabbed A before B became
          * signaled. In either case anyone who tries to wait on A or B will be
-         * waiting for an instant while we put things back. */
+         * waiting for an instant while we put things back.
+         * This remains a sequence of atomic operations, not an atomic grant of
+         * the complete set. The server-owned WaitAll redesign is separate. */
 
         NTSTATUS status = STATUS_SUCCESS;
+        BOOL retried = FALSE;
 
         while (1)
         {
             BOOL abandoned;
+            uint64_t taken, was_abandoned;
+            unsigned int taken_gen[MAXIMUM_WAIT_OBJECTS];
 
 tryagain:
             abandoned = FALSE;
+            taken = was_abandoned = 0;
+            /* A retry can observe all objects ready and never enter a wait,
+             * so its deadline and APC still need checking here. */
+            if (retried)
+            {
+                if (alert_obj_shm && __atomic_load_n( alert_obj_shm, __ATOMIC_SEQ_CST )) goto userapc;
+                if (timeout && !update_timeout( end )) return STATUS_TIMEOUT;
+            }
+            retried = TRUE;
 
             /* First step: try to wait on each object in sequence. */
 
@@ -1049,11 +1210,11 @@ tryagain:
                 if (((struct mutex *)objs_shm[i])->msync_type == MSYNC_MUTEX)
                 {
                     struct mutex *mutex = (struct mutex *)objs_shm[i];
+                    int tid;
 
                     if (mutex->tid == current_tid)
                         continue;
-
-                    while (__atomic_load_n( &mutex->tid, __ATOMIC_SEQ_CST ))
+                    while ((tid = __atomic_load_n( &mutex->tid, __ATOMIC_SEQ_CST )) && tid != ~0)
                     {
                         status = do_single_wait( objs[i], objs_shm[i], alert_obj, alert_obj_shm, timeout ? &end : NULL, current_tid );
                         if (status != STATUS_PENDING)
@@ -1115,7 +1276,11 @@ tryagain:
                     if (__sync_val_compare_and_swap( &mutex->tid, tid, current_tid ) != tid)
                         goto tooslow;
                     if (tid == ~0)
+                    {
                         abandoned = TRUE;
+                        was_abandoned |= (uint64_t)1 << i;
+                    }
+                    taken |= (uint64_t)1 << i;
                     break;
                 }
                 case MSYNC_SEMAPHORE:
@@ -1131,14 +1296,16 @@ tryagain:
                     }
                     if (!current)
                         goto tooslow;
+                    taken |= (uint64_t)1 << i;
                     break;
                 }
                 case MSYNC_AUTO_EVENT:
                 case MSYNC_AUTO_SERVER:
                 {
                     struct event *event = (struct event *)objs_shm[i];
-                    if (!__sync_val_compare_and_swap( &event->signaled, 1, 0 ))
+                    if (!take_event_word( event, &taken_gen[i] ))
                         goto tooslow;
+                    taken |= (uint64_t)1 << i;
                     break;
                 }
                 default:
@@ -1166,34 +1333,34 @@ tryagain:
 tooslow:
             for (--i; i >= 0; i--)
             {
+                if (!(taken & ((uint64_t)1 << i))) continue;
                 switch (((struct event *)objs_shm[i])->msync_type)
                 {
                 case MSYNC_MUTEX:
                 {
                     struct mutex *mutex = (struct mutex *)objs_shm[i];
-                    /* HACK: This won't do the right thing with abandoned
-                     * mutexes, but fixing it is probably more trouble than
-                     * it's worth. */
-                    __atomic_store_n( &mutex->tid, 0, __ATOMIC_SEQ_CST );
+                    int restored = (was_abandoned & ((uint64_t)1 << i)) ? ~0 : 0, tid = current_tid;
+                    /* An asynchronous server abandonment must also survive. */
+                    __atomic_compare_exchange_n( &mutex->tid, &tid, restored, 0,
+                                                 __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST );
                     break;
                 }
                 case MSYNC_SEMAPHORE:
                 {
-                    struct semaphore *semaphore = (struct semaphore *)objs_shm[i];
-                    __sync_fetch_and_add( &semaphore->count, 1 );
+                    untake_semaphore( (struct semaphore *)objs_shm[i] );
                     break;
                 }
                 case MSYNC_AUTO_EVENT:
                 case MSYNC_AUTO_SERVER:
                 {
-                    struct event *event = (struct event *)objs_shm[i];
-                    __atomic_store_n( &event->signaled, 1, __ATOMIC_SEQ_CST );
+                    untake_event_word( (struct event *)objs_shm[i], taken_gen[i] );
                     break;
                 }
                 default:
                     /* doesn't need to be put back */
                     break;
                 }
+                signal_all( objs_shm[i], objs[i] );
             }
         } /* while (1) */
     } /* else (wait-all) */

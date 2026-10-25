@@ -1,0 +1,220 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+#include <mach/mach.h>
+#include <mach/message.h>
+#include <mach/thread_info.h>
+#include <pthread.h>
+#include <dlfcn.h>
+#include <signal.h>
+#include <stdatomic.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sched.h>
+#define MAXIMUM_WAIT_OBJECTS 64
+#define UL_COMPARE_AND_WAIT_SHARED 3
+#define ULF_WAKE_ALL 0x100
+extern int __ulock_wake(uint32_t, void *, uint64_t);
+extern int __ulock_wait(uint32_t, void *, uint64_t, uint32_t);
+static int missing_wake(uint32_t op, void *addr, uint64_t val) { return 0; }
+#define ERR(...) do { fprintf(stderr, __VA_ARGS__); } while (0)
+@DECLARATIONS@
+@WRAPPER@
+static mach_port_t server_port, receive_port;
+static const mach_msg_bits_t msgh_bits_send = MACH_MSGH_BITS_REMOTE(MACH_MSG_TYPE_COPY_SEND);
+static atomic_int entered, returned;
+static mach_msg_return_t actual_result;
+enum { MSYNC_ATTR_REGISTER_SEND, MSYNC_ATTR_UNREGISTER_SEND, MSYNC_ATTR_SIGNAL_SEND, MSYNC_ATTR_ACK };
+static uint64_t msync_attribution_begin(unsigned int kind) { return 0; }
+static void msync_attribution_end(unsigned int kind, uint64_t started, int status) {}
+static void fail(const char *reason) { fprintf(stderr, "FAIL %s\n", reason); exit(1); }
+#define REQUIRE(test, reason) do { if (!(test)) fail(reason); } while (0)
+#define MACH_OK(call) REQUIRE((call) == KERN_SUCCESS, #call)
+
+static mach_msg_return_t mach_msg2(mach_msg_header_t *data, uint64_t options,
+    mach_msg_size_t send_size, mach_msg_size_t rcv_size, mach_port_t rcv_name,
+    uint64_t timeout, uint32_t priority)
+{
+    mach_msg_return_t ret;
+    REQUIRE(options == MACH_SEND_MSG && send_size == data->msgh_size && rcv_size == 0 &&
+            rcv_name == MACH_PORT_NULL && timeout == MACH_MSG_TIMEOUT_NONE && priority == 0 &&
+            data->msgh_remote_port == server_port && data->msgh_bits == msgh_bits_send,
+            "production send argument contract changed");
+    atomic_store_explicit(&entered, 1, memory_order_release);
+    ret = production_mach_msg2(data, options, send_size, rcv_size, rcv_name, timeout, priority);
+    actual_result = ret;
+    return ret;
+}
+@CLIENT@
+@SERVER_SIGNAL@
+
+static struct event objects[3];
+static int ids[] = {17, 19};
+static void *obj_ptrs[] = {&objects[0], &objects[1]};
+static unsigned int message_id = 7 | (3 << 21);
+static int operation;
+static void *sender(void *unused)
+{
+    switch (operation)
+    {
+    case 0: server_register_wait(message_id, ids, obj_ptrs, 23, &objects[2], 2); break;
+    case 1: server_remove_wait(message_id, ids, obj_ptrs, 23, &objects[2], 2); break;
+    case 2: signal_all(&objects[0], 17); break;
+    case 3: server_signal_all(17, (int *)&objects[0]); break;
+    }
+    atomic_store_explicit(&returned, 1, memory_order_release);
+    return NULL;
+}
+
+static uint64_t milliseconds(void)
+{
+    struct timespec now;
+    REQUIRE(clock_gettime(CLOCK_MONOTONIC, &now) == 0, "clock_gettime");
+    return (uint64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+}
+static mach_port_status_t port_status(void)
+{
+    mach_port_status_t status;
+    mach_msg_type_number_t count = MACH_PORT_RECEIVE_STATUS_COUNT;
+    MACH_OK(mach_port_get_attributes(mach_task_self(), server_port, MACH_PORT_RECEIVE_STATUS,
+                                    (mach_port_info_t)&status, &count));
+    return status;
+}
+static void receive_message(mach_register_message_t *out)
+{
+    struct { mach_register_message_t message; mach_msg_max_trailer_t trailer; } buffer;
+    memset(&buffer, 0, sizeof(buffer));
+    MACH_OK(mach_msg(&buffer.message.header, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0,
+                     sizeof(buffer), server_port, 1000, MACH_PORT_NULL));
+    *out = buffer.message;
+}
+static void pressure_case(int which)
+{
+    pthread_t thread;
+    mach_port_limits_t limits = { .mpl_qlimit = 1 };
+    mach_msg_header_t filler = {0};
+    mach_register_message_t received;
+    mach_port_status_t status;
+    thread_basic_info_data_t info;
+    mach_msg_type_number_t count;
+    uint64_t deadline;
+    int observed_wait = 0;
+    operation = which;
+    memset(objects, 0, sizeof(objects));
+    objects[1].msync_type = MSYNC_MUTEX;
+    for (int i = 0; i < 3; ++i) objects[i].multiple_waiters = which == 0 ? 0 : 1;
+    atomic_store(&entered, 0); atomic_store(&returned, 0);
+    actual_result = -1;
+    MACH_OK(mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &server_port));
+    receive_port = server_port;
+    MACH_OK(mach_port_insert_right(mach_task_self(), server_port, server_port, MACH_MSG_TYPE_MAKE_SEND));
+    MACH_OK(mach_port_set_attributes(mach_task_self(), server_port, MACH_PORT_LIMITS_INFO,
+                                    (mach_port_info_t)&limits, MACH_PORT_LIMITS_INFO_COUNT));
+    filler.msgh_remote_port = server_port;
+    filler.msgh_bits = msgh_bits_send;
+    filler.msgh_id = 12345;
+    filler.msgh_size = sizeof(filler);
+    MACH_OK(mach_msg(&filler, MACH_SEND_MSG, sizeof(filler), 0, MACH_PORT_NULL, MACH_MSG_TIMEOUT_NONE, 0));
+    status = port_status();
+    REQUIRE(status.mps_qlimit == 1 && status.mps_msgcount == 1, "private queue is not full at limit one");
+    REQUIRE(pthread_create(&thread, NULL, sender, NULL) == 0, "pthread_create");
+    deadline = milliseconds() + 2000;
+    /* The receive gate stays closed. After entry the sender has no waits except
+     * the extracted Mach send. Kernel WAITING plus the full queue distinguishes
+     * actual blocked send from merely scheduling a worker near a syscall. */
+    while (milliseconds() < deadline)
+    {
+        REQUIRE(!atomic_load_explicit(&returned, memory_order_acquire), "sender returned before gated drain");
+        if (!atomic_load_explicit(&entered, memory_order_acquire)) { sched_yield(); continue; }
+        count = THREAD_BASIC_INFO_COUNT;
+        MACH_OK(thread_info(pthread_mach_thread_np(thread), THREAD_BASIC_INFO, (thread_info_t)&info, &count));
+        if (info.run_state == TH_STATE_WAITING) { observed_wait = 1; break; }
+        sched_yield();
+    }
+    REQUIRE(observed_wait, "no kernel WAITING sender observed");
+    REQUIRE(!atomic_load_explicit(&returned, memory_order_acquire), "sender returned while receive gate closed");
+    status = port_status();
+    REQUIRE(status.mps_msgcount == 1 && status.mps_qlimit == 1, "queue changed before gate release");
+    for (int i = 0; i < (which < 2 ? 3 : 1); ++i)
+        REQUIRE(__atomic_load_n(&objects[i].multiple_waiters, __ATOMIC_SEQ_CST) == (which == 1 ? 0 : 1),
+                "waiter adjustment must precede blocked send");
+    receive_message(&received);
+    REQUIRE(received.header.msgh_id == filler.msgh_id, "first drain must receive filler");
+    REQUIRE(pthread_join(thread, NULL) == 0, "pthread_join");
+    REQUIRE(atomic_load(&returned) && actual_result == MACH_MSG_SUCCESS, "actual send did not succeed after drain");
+    receive_message(&received);
+    REQUIRE((unsigned int)received.header.msgh_id == (which < 2 ? message_id : 17), "production message id changed");
+    REQUIRE(received.header.msgh_size == sizeof(mach_msg_header_t) + (which < 2 ? 3 * sizeof(unsigned int) : 0),
+            "production message size changed");
+    if (which < 2)
+    {
+        REQUIRE(received.shm_idx[0] == (17u | (which == 1 ? 1u << 29 : 0)), "object zero flags changed");
+        REQUIRE(received.shm_idx[1] == (19u | (which == 0 ? 1u << 28 : 0)), "mutex flag changed");
+        REQUIRE(received.shm_idx[2] == 23, "alert object missing");
+    }
+    REQUIRE(port_status().mps_msgcount == 0, "owned queue not drained");
+    MACH_OK(mach_port_deallocate(mach_task_self(), server_port));
+    MACH_OK(mach_port_mod_refs(mach_task_self(), server_port, MACH_PORT_RIGHT_RECEIVE, -1));
+    mach_port_type_t type;
+    REQUIRE(mach_port_type(mach_task_self(), server_port, &type) == KERN_INVALID_NAME, "owned port right survived teardown");
+}
+static struct event *wake_object;
+static atomic_int ulock_entered;
+static int ulock_result;
+static void *ulock_sleeper(void *unused)
+{
+    atomic_store_explicit(&ulock_entered, 1, memory_order_release);
+    ulock_result = __ulock_wait(UL_COMPARE_AND_WAIT_SHARED, wake_object, 0, 1000000);
+    return NULL;
+}
+static void native_wake_case(int server)
+{
+    pthread_t thread;
+    thread_basic_info_data_t info;
+    mach_msg_type_number_t count;
+    uint64_t deadline;
+    int observed_wait = 0;
+    wake_object = mmap(NULL, sizeof(*wake_object), PROT_READ | PROT_WRITE,
+                       MAP_SHARED | MAP_ANON, -1, 0);
+    REQUIRE(wake_object != MAP_FAILED, "shared wake mmap");
+    memset(wake_object, 0, sizeof(*wake_object));
+    atomic_store(&ulock_entered, 0); atomic_store(&entered, 0);
+    ulock_result = -999;
+    REQUIRE(pthread_create(&thread, NULL, ulock_sleeper, NULL) == 0, "ulock pthread_create");
+    deadline = milliseconds() + 500;
+    while (milliseconds() < deadline)
+    {
+        if (!atomic_load_explicit(&ulock_entered, memory_order_acquire)) { sched_yield(); continue; }
+        count = THREAD_BASIC_INFO_COUNT;
+        MACH_OK(thread_info(pthread_mach_thread_np(thread), THREAD_BASIC_INFO, (thread_info_t)&info, &count));
+        if (info.run_state == TH_STATE_WAITING) { observed_wait = 1; break; }
+        sched_yield();
+    }
+    REQUIRE(observed_wait, "no real ulock sleeper observed");
+    if (server) server_signal_all(17, (int *)wake_object);
+    else signal_all(wake_object, 17);
+    REQUIRE(pthread_join(thread, NULL) == 0, "ulock pthread_join");
+    REQUIRE(ulock_result == 0, "native ulock wake was not delivered before timeout");
+    REQUIRE(!atomic_load(&entered), "zero-waiter signal sent a message");
+    REQUIRE(munmap(wake_object, sizeof(*wake_object)) == 0, "shared wake munmap");
+}
+int main(int argc, char **argv)
+{
+    REQUIRE(argc == 2, "backend required");
+    alarm(10); /* Process-level fail-safe in addition to Python kill/reap deadline. */
+    if (!strcmp(argv[1], "trap"))
+    {
+        mach_msg2_trap = (mach_msg2_trap_ptr_t)dlsym(RTLD_DEFAULT, "mach_msg2_trap");
+        REQUIRE(mach_msg2_trap != NULL, "real mach_msg2_trap unavailable");
+    }
+    else REQUIRE(!strcmp(argv[1], "fallback"), "unknown backend");
+    for (int i = 0; i < 4; ++i) pressure_case(i);
+    native_wake_case(0);
+    native_wake_case(1);
+    alarm(0);
+    printf("native pressure PASS: cases=4 backend=%s qlimit=1 kernel_wait=4 drained=4 zero_waiter=2 real_ulock_wakes=2 rights=released\n", argv[1]);
+    return 0;
+}

@@ -1,0 +1,138 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+#include <assert.h>
+#include <setjmp.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <stddef.h>
+#define C_ASSERT(x) _Static_assert(x,#x)
+#define FIELD_OFFSET(t,f) offsetof(t,f)
+#define MAXIMUM_WAIT_OBJECTS 64
+#define TIMEOUT_INFINITE INT64_MAX
+#define STATUS_SUCCESS 0
+#define STATUS_TIMEOUT 0x102
+#define STATUS_PENDING 0x103
+#define STATUS_USER_APC 0xc0
+#define STATUS_ABANDONED 0x80
+#define STATUS_ABANDONED_WAIT_0 0x80
+#define SELECT_INTERRUPTIBLE 1
+#define SELECT_ALERTABLE 2
+#define ERR(...) do {} while (0)
+typedef int NTSTATUS;
+typedef unsigned int DWORD;
+typedef unsigned char BOOLEAN;
+typedef int BOOL;
+typedef int32_t LONG;
+typedef uint64_t ULONGLONG;
+typedef struct { int64_t QuadPart; } LARGE_INTEGER;
+enum { FALSE, TRUE };
+enum { MSYNC_SEMAPHORE=1, MSYNC_AUTO_EVENT, MSYNC_MANUAL_EVENT, MSYNC_MUTEX,
+       MSYNC_AUTO_SERVER, MSYNC_MANUAL_SERVER };
+@STRUCTS@
+static union { struct event event; struct semaphore semaphore; struct mutex mutex; uint64_t alignment[2]; } objects[5];
+enum { NORMAL, RECURSIVE, ABANDONED, WAKE, MAX_COUNT, RESET, RESET_SERVER, DEADLINE, ALERT, DEADLINE_ALERT };
+static int scenario, inject, cas_calls, waits, wakes[5], capped, checked_params, failures, checks, first_loads;
+static uint64_t now;
+static jmp_buf escape;
+static int GetCurrentThreadId(void) { return 7; }
+static void *get_shm(unsigned int id) { assert(id && id<5); return &objects[id]; }
+static void NtQuerySystemTime(LARGE_INTEGER *v) { v->QuadPart=now; }
+static long long update_timeout(ULONGLONG end) { return end>now ? end-now : 0; }
+static NTSTATUS msync_wait_single(int id,void *shm,ULONGLONG *end,int tid) {
+    assert(id>0 && id<5 && shm==&objects[id] && tid==7);
+    if(end) assert(*end==1);
+    ++checked_params; ++waits; return STATUS_TIMEOUT;
+}
+static NTSTATUS msync_wait_multiple(const int *ids,void **shm,int alert,void *alert_shm,int count,ULONGLONG *end,int tid) {
+    assert(count==1 && alert==3 && alert_shm==&objects[3]);
+    return msync_wait_single(ids[0],shm[0],end,tid);
+}
+static NTSTATUS server_wait(void *a,int count,int flags,const LARGE_INTEGER *timeout) {
+    assert(!a && !count && flags==(SELECT_INTERRUPTIBLE|SELECT_ALERTABLE) && !timeout->QuadPart);
+    ++checked_params; return STATUS_TIMEOUT;
+}
+static void signal_all(void *shm,unsigned int id) { assert(shm==&objects[id]); ++wakes[id]; }
+static NTSTATUS msync_reset_event_obj(int obj,LONG *previous);
+struct msync { unsigned int shm_idx; };
+static void server_reset_event(struct msync *msync);
+static void before_load(void *addr) {
+    if(scenario==ABANDONED && addr==&objects[1] && ++first_loads==3) objects[1].mutex.tid=-1;
+    if((scenario==DEADLINE || scenario==ALERT || scenario==DEADLINE_ALERT) && addr==&objects[2]) objects[2].event.signaled=1;
+}
+static void before_cas(void *addr) {
+    if(addr!=&objects[2] || scenario==NORMAL) return;
+    if(++cas_calls>32) { ++capped; longjmp(escape,1); }
+    if(!inject && scenario!=DEADLINE && scenario!=ALERT && scenario!=DEADLINE_ALERT) return;
+    inject=0;
+    if(scenario==RESET) { LONG prev=99; assert(msync_reset_event_obj(1,&prev)==STATUS_SUCCESS && prev==0); }
+    if(scenario==RESET_SERVER) { struct msync obj={1}; server_reset_event(&obj); }
+    if(scenario==MAX_COUNT) objects[1].semaphore.count=objects[1].semaphore.max;
+    if(scenario==DEADLINE || scenario==DEADLINE_ALERT) now=2;
+    if(scenario==ALERT || scenario==DEADLINE_ALERT) objects[3].event.signaled=1;
+    objects[2].event.signaled=0;
+}
+#define __atomic_load_n(p,o) ({ __typeof__(p) _p=(p); before_load((void *)_p); __atomic_load_n(_p,(o)); })
+#define __sync_val_compare_and_swap(p,a,b) ({ __typeof__(p) _p=(p); __typeof__(*_p) _a=(a),_b=(b); before_cas((void *)_p); __sync_val_compare_and_swap(_p,_a,_b); })
+#define __atomic_compare_exchange_n(p,e,d,w,s,f) ({ __typeof__(p) _p=(p); before_cas((void *)_p); __atomic_compare_exchange_n(_p,(e),(d),(w),(s),(f)); })
+@HELPERS@
+@PRODUCTION@
+@SERVER@
+#undef __atomic_load_n
+#undef __sync_val_compare_and_swap
+#undef __atomic_compare_exchange_n
+
+#define CHECK(x,label) do { ++checks; if(!(x)) { fprintf(stderr,"FAIL %s\n",label); ++failures; } } while(0)
+static void reset(int next,int first_type) {
+    memset(objects,0,sizeof(objects)); memset(wakes,0,sizeof(wakes));
+    scenario=next; inject=1; cas_calls=waits=capped=checked_params=first_loads=0; now=0;
+    objects[1].event.msync_type=first_type; objects[1].event.signaled=1;
+    objects[2].event.msync_type=MSYNC_AUTO_EVENT; objects[2].event.signaled=1;
+    objects[3].event.msync_type=MSYNC_MANUAL_EVENT;
+}
+static NTSTATUS run(int alert,int finite) {
+    int ids[]={1,2}; LARGE_INTEGER timeout={-1};
+    if(setjmp(escape)) return -999;
+    return msync_wait_objs(2,ids,FALSE,alert?3:0,finite?&timeout:NULL);
+}
+int main(void) {
+    NTSTATUS status; LONG previous;
+    reset(RECURSIVE,MSYNC_MUTEX); objects[1].mutex.tid=7; objects[1].mutex.count=2;
+    status=run(0,0);
+    CHECK(status==STATUS_TIMEOUT && objects[1].mutex.tid==7 && objects[1].mutex.count==2,"recursive ownership survives rollback");
+    reset(ABANDONED,MSYNC_MUTEX); objects[1].mutex.tid=0;
+    status=run(0,0);
+    CHECK(status==STATUS_TIMEOUT && objects[1].mutex.tid==-1,"abandoned state survives rollback");
+    reset(WAKE,MSYNC_AUTO_EVENT); status=run(0,0);
+    CHECK(status==STATUS_TIMEOUT && objects[1].event.signaled==1 && wakes[1]==1,"rollback wakes restored event");
+    reset(MAX_COUNT,MSYNC_SEMAPHORE); objects[1].semaphore.max=1; status=run(0,0);
+    CHECK(status==STATUS_TIMEOUT && objects[1].semaphore.count==1,"rollback does not exceed semaphore maximum");
+    reset(RESET,MSYNC_AUTO_EVENT); status=run(0,0);
+    CHECK(status==STATUS_TIMEOUT && !objects[1].event.signaled,"reset during take is not undone");
+    reset(RESET_SERVER,MSYNC_AUTO_EVENT); status=run(0,0);
+    CHECK(status==STATUS_TIMEOUT && !objects[1].event.signaled,"server reset during take is not undone");
+    reset(DEADLINE,MSYNC_AUTO_EVENT); status=run(0,1);
+    CHECK(status==STATUS_TIMEOUT && !capped && !waits,"retry checks expired deadline");
+    reset(ALERT,MSYNC_AUTO_EVENT); status=run(1,0);
+    CHECK(status==STATUS_USER_APC && !capped && !waits,"retry checks alert");
+    reset(DEADLINE_ALERT,MSYNC_AUTO_EVENT); status=run(1,1);
+    CHECK(status==STATUS_USER_APC && !capped && !waits,"retry pending APC precedes expired deadline");
+    reset(NORMAL,MSYNC_AUTO_EVENT); status=run(0,0);
+    CHECK(status==STATUS_SUCCESS && !objects[1].event.signaled && !objects[2].event.signaled && !waits,"normal WaitAll consumes once");
+    reset(NORMAL,MSYNC_MUTEX); objects[1].mutex.tid=7; objects[1].mutex.count=2; status=run(0,0);
+    CHECK(status==STATUS_SUCCESS && objects[1].mutex.tid==7 && objects[1].mutex.count==3,"successful recursive WaitAll increments once");
+    reset(NORMAL,MSYNC_MUTEX); objects[1].mutex.tid=-1; status=run(0,0);
+    CHECK(status==STATUS_ABANDONED && objects[1].mutex.tid==7 && objects[1].mutex.count==1,"successful abandoned WaitAll control");
+    reset(NORMAL,MSYNC_AUTO_EVENT); previous=-1; status=msync_reset_event_obj(1,&previous);
+    CHECK(status==STATUS_SUCCESS && previous==1 && !objects[1].event.signaled,"ordinary reset previous state");
+    #if HAS_GENERATION
+    reset(NORMAL,MSYNC_AUTO_EVENT);
+    { uint64_t word=0xffffffff00000001ull; memcpy(&objects[1],&word,sizeof(word));
+      status=msync_reset_event_obj(1,&previous); memcpy(&word,&objects[1],sizeof(word));
+      CHECK(status==STATUS_SUCCESS && previous==1 && word==0,"generation wrap preserves reset"); }
+    #endif
+    reset(NORMAL,MSYNC_SEMAPHORE); objects[1].semaphore.count=2; objects[1].semaphore.max=2;
+    { int ids[]={1,2}; status=msync_wait_objs(2,ids,TRUE,0,NULL); }
+    CHECK(status==0 && objects[1].semaphore.count==1 && objects[2].event.signaled==1,"WaitAny unaffected control");
+    printf("checks=%d failed=%d\n",checks,failures);
+    return !!failures;
+}

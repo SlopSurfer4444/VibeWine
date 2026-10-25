@@ -44,6 +44,10 @@ PRELUDE = r'''
 #include <setjmp.h>
 #include <signal.h>
 #include <stdint.h>
+enum { MSYNC_ATTR_REGISTER_SEND, MSYNC_ATTR_UNREGISTER_SEND, MSYNC_ATTR_SIGNAL_SEND, MSYNC_ATTR_ACK };
+static uint64_t msync_attribution_begin(unsigned int kind) { return 0; }
+static void msync_attribution_end(unsigned int kind,uint64_t start,int status) {}
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

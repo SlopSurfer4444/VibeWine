@@ -1,0 +1,235 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+#include <pthread.h>
+#include <stdatomic.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+#include <errno.h>
+static const char *environment;
+static atomic_uint_fast64_t fake_time;
+static atomic_uint clocks, writes, output_bytes;
+static int clock_failure, write_failure, partial_write;
+static char last_output[1025];
+static uint64_t output_times[64];
+static unsigned output_numbers[64];
+static pthread_mutex_t output_lock = PTHREAD_MUTEX_INITIALIZER;
+static void fail(const char *reason) { fprintf(stderr, "FAIL %s\n", reason); exit(1); }
+#define REQUIRE(test, reason) do { if (!(test)) fail(reason); } while (0)
+static char *fixture_getenv(const char *name)
+{
+    REQUIRE(!strcmp(name, "WINEMSYNC_ATTRIBUTION"), "unexpected environment name");
+    return (char *)environment;
+}
+static int fixture_clock_gettime(clockid_t id, struct timespec *out)
+{
+    uint64_t now = atomic_load(&fake_time);
+    REQUIRE(id == CLOCK_MONOTONIC, "clock must be monotonic");
+    atomic_fetch_add(&clocks, 1);
+    if (clock_failure) { errno = EIO; return -1; }
+    out->tv_sec = now / 1000000000ull;
+    out->tv_nsec = now % 1000000000ull;
+    return 0;
+}
+static ssize_t fixture_write(int fd, const void *buffer, size_t size)
+{
+    unsigned index, snapshot;
+    unsigned long long start, end;
+    unsigned long pid;
+    REQUIRE(fd == STDERR_FILENO, "unexpected output destination");
+    REQUIRE(size > 0 && size <= 1024, "snapshot byte cap exceeded");
+    pthread_mutex_lock(&output_lock);
+    index = atomic_fetch_add(&writes, 1);
+    REQUIRE(index < 64, "snapshot cap exceeded");
+    atomic_fetch_add(&output_bytes, size);
+    REQUIRE(atomic_load(&output_bytes) <= 65536, "total byte cap exceeded");
+    memcpy(last_output, buffer, size); last_output[size] = 0;
+    REQUIRE(last_output[size - 1] == '\n', "snapshot newline missing");
+    REQUIRE(sscanf(last_output, "msync-attribution v1 snapshot=%u pid=%lu start_ns=%llu end_ns=%llu", &snapshot, &pid, &start, &end) == 4,
+            "snapshot header changed");
+    REQUIRE(pid == (unsigned long)getpid(), "snapshot process identity missing");
+    REQUIRE(strstr(last_output, "cumulative_approx=1 completed_only=1 phases=register,unregister,signal,ack") != NULL,
+            "snapshot interpretation missing");
+    output_numbers[index] = snapshot; output_times[index] = end;
+    pthread_mutex_unlock(&output_lock);
+    if (write_failure) { errno = EIO; return -1; }
+    if (partial_write) return size / 2;
+    return size;
+}
+#define getenv fixture_getenv
+#define clock_gettime fixture_clock_gettime
+#define write fixture_write
+@PRODUCTION@
+#undef getenv
+#undef clock_gettime
+#undef write
+#define SECOND 1000000000ull
+#define START (3 * SECOND)
+static void reset(const char *value)
+{
+    memset(&msync_attribution, 0, sizeof(msync_attribution));
+    memset(last_output, 0, sizeof(last_output));
+    memset(output_times, 0, sizeof(output_times));
+    memset(output_numbers, 0, sizeof(output_numbers));
+    environment = value; clock_failure = write_failure = partial_write = 0;
+    atomic_store(&fake_time, START);
+    atomic_store(&clocks, 0); atomic_store(&writes, 0); atomic_store(&output_bytes, 0);
+}
+static void disabled(void)
+{
+    const char *values[] = {NULL, "", "0", "true", "01", "1 ", "yes"};
+    for (unsigned i = 0; i < sizeof(values) / sizeof(values[0]); ++i)
+    {
+        reset(values[i]); msync_attribution_init();
+        REQUIRE(msync_attribution_begin(MSYNC_ATTR_ACK) == 0, "invalid env enabled attribution");
+        msync_attribution_end(MSYNC_ATTR_ACK, 17, 1);
+        REQUIRE(atomic_load(&clocks) == 0 && atomic_load(&writes) == 0, "disabled attribution touched clock or output");
+    }
+}
+static void metrics(void)
+{
+    reset("1"); msync_attribution_init();
+    for (unsigned kind = 0; kind < 4; ++kind)
+    {
+        uint64_t started;
+        atomic_store(&fake_time, START + kind * 100);
+        started = msync_attribution_begin(kind);
+        atomic_store(&fake_time, started + 5);
+        msync_attribution_end(kind, started, 0);
+        atomic_store(&fake_time, START + kind * 100 + 10);
+        started = msync_attribution_begin(kind);
+        atomic_store(&fake_time, started + 7);
+        msync_attribution_end(kind, started, -9);
+        REQUIRE(msync_attribution.phase[kind].count == 2 && msync_attribution.phase[kind].total == 12 &&
+                msync_attribution.phase[kind].maximum == 7 && msync_attribution.phase[kind].errors == 1,
+                "completed phase counters changed");
+    }
+    REQUIRE(atomic_load(&writes) == 0, "early phase output");
+    atomic_store(&fake_time, START + 10 * SECOND);
+    msync_attribution_end(MSYNC_ATTR_ACK, START + 10 * SECOND - 3, 0);
+    REQUIRE(atomic_load(&writes) == 1, "missing first metrics snapshot");
+    for (unsigned kind = 0; kind < 4; ++kind)
+    {
+        char field[80];
+        snprintf(field, sizeof(field), " p%u=%u,%u,7,1", kind, kind == 3 ? 3 : 2, kind == 3 ? 15 : 12);
+        REQUIRE(strstr(last_output, field) != NULL, "serialized phase counters changed");
+    }
+}
+static void interval_and_cap(void)
+{
+    reset("1"); msync_attribution_init();
+    atomic_store(&fake_time, START + 10 * SECOND - 1);
+    msync_attribution_end(MSYNC_ATTR_REGISTER_SEND, START, 0);
+    REQUIRE(atomic_load(&writes) == 0, "first snapshot before ten seconds");
+    atomic_store(&fake_time, START + 10 * SECOND);
+    msync_attribution_end(MSYNC_ATTR_REGISTER_SEND, START, 0);
+    REQUIRE(atomic_load(&writes) == 1 && output_numbers[0] == 1, "first snapshot missing at ten seconds");
+    for (unsigned i = 0; i < 32; ++i) msync_attribution_end(MSYNC_ATTR_SIGNAL_SEND, START, 0);
+    REQUIRE(atomic_load(&writes) == 1, "duplicate snapshot admission");
+    atomic_store(&fake_time, START + 20 * SECOND - 1);
+    msync_attribution_end(MSYNC_ATTR_ACK, START, 0);
+    REQUIRE(atomic_load(&writes) == 1, "snapshot interval below ten seconds");
+    for (unsigned i = 2; i <= 70; ++i)
+    {
+        atomic_store(&fake_time, START + i * 10 * SECOND);
+        msync_attribution_end(i % 4, START, i % 2);
+    }
+    REQUIRE(atomic_load(&writes) == 64, "snapshot cap not reached");
+    for (unsigned i = 0; i < 64; ++i)
+    {
+        REQUIRE(output_numbers[i] == i + 1, "snapshot numbers duplicated");
+        if (i) REQUIRE(output_times[i] - output_times[i-1] >= 10 * SECOND, "snapshot time interval too short");
+    }
+    unsigned before = atomic_load(&clocks);
+    for (unsigned i = 0; i < 32; ++i)
+    {
+        REQUIRE(msync_attribution_begin(i % 4) == 0, "clock continued after snapshot stop");
+        msync_attribution_end(i % 4, START, 0);
+    }
+    REQUIRE(atomic_load(&clocks) == before && atomic_load(&writes) == 64, "work continued after attribution stop");
+}
+static void bad_clocks(void)
+{
+    reset("1"); clock_failure = 1; msync_attribution_init();
+    REQUIRE(!msync_attribution.enabled, "failed initial clock enabled attribution");
+    REQUIRE(msync_attribution_begin(0) == 0 && atomic_load(&clocks) == 1, "disabled failed-clock fast path");
+    reset("1"); msync_attribution_init();
+    clock_failure = 1;
+    REQUIRE(msync_attribution_begin(0) == 0, "failed begin clock not ignored");
+    msync_attribution_end(0, START, 1);
+    clock_failure = 0; atomic_store(&fake_time, START - 1);
+    msync_attribution_end(0, START, 1);
+    unsigned before = atomic_load(&clocks);
+    msync_attribution_end(0, 0, 1);
+    REQUIRE(atomic_load(&clocks) == before && msync_attribution.phase[0].count == 0 && atomic_load(&writes) == 0,
+            "invalid duration updated counters or output");
+    reset("1"); atomic_store(&fake_time, 0); msync_attribution_init();
+    REQUIRE(!msync_attribution.enabled, "zero initial clock enabled attribution");
+}
+static pthread_mutex_t gate_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t gate_cond = PTHREAD_COND_INITIALIZER;
+static unsigned ready;
+static int gate_open;
+static void *concurrent_end(void *value)
+{
+    pthread_mutex_lock(&gate_lock);
+    ++ready; pthread_cond_broadcast(&gate_cond);
+    while (!gate_open) pthread_cond_wait(&gate_cond, &gate_lock);
+    pthread_mutex_unlock(&gate_lock);
+    msync_attribution_end((uintptr_t)value % 4, START, 0);
+    return NULL;
+}
+static void concurrent_batch(void)
+{
+    pthread_t threads[32];
+    ready = 0; gate_open = 0;
+    for (uintptr_t i = 0; i < 32; ++i)
+        REQUIRE(pthread_create(&threads[i], NULL, concurrent_end, (void *)i) == 0, "concurrent thread create");
+    pthread_mutex_lock(&gate_lock);
+    while (ready != 32) pthread_cond_wait(&gate_cond, &gate_lock);
+    gate_open = 1; pthread_cond_broadcast(&gate_cond);
+    pthread_mutex_unlock(&gate_lock);
+    for (unsigned i = 0; i < 32; ++i) REQUIRE(pthread_join(threads[i], NULL) == 0, "concurrent join");
+}
+static void concurrency(void)
+{
+    reset("1"); msync_attribution_init();
+    atomic_store(&fake_time, START + 10 * SECOND);
+    concurrent_batch();
+    REQUIRE(atomic_load(&writes) == 1 && msync_attribution.snapshots == 1, "duplicate concurrent snapshot admission");
+    for (unsigned kind = 0; kind < 4; ++kind)
+        REQUIRE(msync_attribution.phase[kind].count == 8, "concurrent completed counts lost");
+    for (unsigned i = 2; i <= 63; ++i)
+    {
+        atomic_store(&fake_time, START + i * 10 * SECOND);
+        msync_attribution_end(0, START, 0);
+    }
+    atomic_store(&fake_time, START + 64 * 10 * SECOND);
+    concurrent_batch();
+    REQUIRE(atomic_load(&writes) == 64 && !msync_attribution.enabled, "concurrent final budget exceeded");
+    unsigned before = atomic_load(&clocks);
+    concurrent_batch();
+    REQUIRE(atomic_load(&clocks) == before && atomic_load(&writes) == 64, "concurrent calls continued after stop");
+}
+static void bounded_write_failures(void)
+{
+    for (unsigned partial = 0; partial < 2; ++partial)
+    {
+        reset("1"); msync_attribution_init();
+        write_failure = !partial; partial_write = partial;
+        atomic_store(&fake_time, START + 10 * SECOND);
+        msync_attribution_end(0, START, 0);
+        msync_attribution_end(0, START, 0);
+        REQUIRE(atomic_load(&writes) == 1, "failed or partial write was retried");
+    }
+}
+int main(void)
+{
+    alarm(10);
+    disabled(); metrics(); interval_and_cap(); bad_clocks(); concurrency(); bounded_write_failures();
+    alarm(0);
+    puts("attribution PASS: disabled metrics interval cap clocks concurrent partial_write");
+    return 0;
+}

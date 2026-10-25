@@ -1439,6 +1439,76 @@
       "source": "integrated-wave-20261023/terminal-sigquit-reentry/vibewine/INTEGRATED_WAVE_20261023.md",
       "destination": "vibewine/INTEGRATED_WAVE_20261023.md",
       "sha256": "93a622a09e9efcc27694a9a0d32b9fb8994361983dab6c3db1ba5ce1448f9820"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/dlls/ntdll/unix/msync.c",
+      "destination": "dlls/ntdll/unix/msync.c",
+      "sha256": "2d22ceac0ab6451907ee958463c4b685cdeb7365c053fea8b260aeae0191772f"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/server/msync.c",
+      "destination": "server/msync.c",
+      "sha256": "95435f3cb1a246b800a5e071b67bca31153fdc4172d005d2670d18042bdeb6d4"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/UPSTREAM_BACKPORTS.md",
+      "destination": "vibewine/UPSTREAM_BACKPORTS.md",
+      "sha256": "d9653e14b29ed1c15311abeab2b8ddcc9a294733e1a90a05dc2a6ab77c88df24"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-ack/fixture.c.in",
+      "destination": "vibewine/tests/msync-ack/fixture.c.in",
+      "sha256": "2f271cc67fd297f7fef2cc16430fb0e6b933c5e072b5f3dbab74a4aaa5c93091"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync_registration.py",
+      "destination": "vibewine/tests/msync_registration.py",
+      "sha256": "cf1aab804e7df1b82b8521e36e5252896f4c595334948092ca607a900d29addb"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-waitall/README.md",
+      "destination": "vibewine/tests/msync-waitall/README.md",
+      "sha256": "d15945d73f3eb8f347abf898155c93d486b7f9d9df4ada64bebf1f5770de4e76"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-waitall/fixture.c.in",
+      "destination": "vibewine/tests/msync-waitall/fixture.c.in",
+      "sha256": "edd4b73d274f88c5a111cd16e49d01e147487f03c026193f658739d8643f552c"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-waitall/run.py",
+      "destination": "vibewine/tests/msync-waitall/run.py",
+      "sha256": "16611312668223536cf12add2f08e3814c7b0ad206b77129f5895a97b83213e6"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-pressure/README.md",
+      "destination": "vibewine/tests/msync-pressure/README.md",
+      "sha256": "28cf8a6d08301c9f646ae10a66e3de7f83c06aaa6fa36054c82b421172cea46e"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-pressure/fixture.c.in",
+      "destination": "vibewine/tests/msync-pressure/fixture.c.in",
+      "sha256": "0783a03530981f8abcd851152869f547e08f9c202e2b13b4d6eddcf3bbb562a0"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-pressure/run.py",
+      "destination": "vibewine/tests/msync-pressure/run.py",
+      "sha256": "e00cc4ec6052ac1c020b022703e2b9d1385b0b4f740b34984ed43300b63fcc55"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-attribution/README.md",
+      "destination": "vibewine/tests/msync-attribution/README.md",
+      "sha256": "76ecba85b59595ab5a3b85f17368ed096f2936a0d47efe9fd26499a0779e9e81"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-attribution/fixture.c.in",
+      "destination": "vibewine/tests/msync-attribution/fixture.c.in",
+      "sha256": "0fcbf5b8c73420ecb407b3586ee8c4fa866fee1a406bb92577d1808bfce657ba"
+    },
+    {
+      "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-attribution/run.py",
+      "destination": "vibewine/tests/msync-attribution/run.py",
+      "sha256": "7ca7c3e9d18cd930ec00b4137163caffd9c15ae777566f4e37534496ef37c82e"
     }
   ]
 }
