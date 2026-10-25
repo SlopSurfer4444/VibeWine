@@ -23,9 +23,11 @@ def block(text, marker):
 def main():
     state = (REPO / 'src/dxmt/dxmt_capture.cpp').read_text()
     state = re.sub(r'^#include [^\n]*\n', '', state, flags=re.M)
-    queue = block((REPO / 'src/dxmt/dxmt_command_queue.cpp').read_text(),
+    queue_source = (REPO / 'src/dxmt/dxmt_command_queue.cpp').read_text()
+    shutdown = block(queue_source, 'void\nCommandQueue::ShutdownAndJoin()')
+    queue = block(queue_source,
                   'switch (capture_state.getNextAction(chunk.frame_))')
-    source = (HERE / 'state_fixture.cpp.in').read_text().replace('@CAPTURE_SOURCE@', state).replace('@QUEUE_SWITCH@', queue)
+    source = (HERE / 'state_fixture.cpp.in').read_text().replace('@CAPTURE_SOURCE@', state).replace('@QUEUE_SWITCH@', queue).replace('@SHUTDOWN_FUNCTION@', shutdown)
     results = []
     with tempfile.TemporaryDirectory(prefix='dxmt-capture-state-') as scratch:
         cpp = Path(scratch) / 'state.cpp'
@@ -47,10 +49,17 @@ def main():
         subprocess.run([*command, '-arch', other, '-c', str(cpp), '-o', str(Path(scratch) / 'other.o')], check=True, timeout=60)
         controls = [
             ('failed_capture_claims_ownership', 'owns_capture_ = success;', 'owns_capture_ = true;'),
-            ('failed_capture_stops_other_owner', 'if (capture_state.takeCaptureOwnership())', 'if (true)'),
+            ('failed_capture_stops_other_owner', 'if (capture_state.takeCaptureOwnership())\n      capture_mgr.stopCapture();', 'if (true)\n      capture_mgr.stopCapture();'),
             ('success_capture_never_stopped', 'capture_state.captureStarted(capture_mgr.startCapture(info));',
              '(void)capture_mgr.startCapture(info); capture_state.captureStarted(false);'),
         ]
+        shutdown_stop = 'if (capture_state.takeCaptureOwnership())\n    WMT::CaptureManager::sharedCaptureManager().stopCapture();'
+        controls.extend([
+            ('shutdown_missing_stop', shutdown_stop, '(void)capture_state.takeCaptureOwnership();'),
+            ('shutdown_ownership_before_workers_join',
+             '  encodeThread.join();\n  finishThread.join();',
+             '  (void)capture_state.takeCaptureOwnership();\n  encodeThread.join();\n  finishThread.join();'),
+        ])
         for name, before, after in controls:
             assert source.count(before) == 1, name
             result = run(source.replace(before, after), name)
@@ -60,7 +69,8 @@ def main():
     print(json.dumps({'scope': 'CPU stubs; no Metal device, trace capture, Wine runtime or game',
                       'sanitizers': ['address', 'undefined'], 'other_architecture_compile': other,
                       'state_sha256': hashlib.sha256(state.encode()).hexdigest(),
-                      'queue_switch_sha256': hashlib.sha256(queue.encode()).hexdigest(), 'results': results}, indent=2))
+                      'queue_switch_sha256': hashlib.sha256(queue.encode()).hexdigest(),
+                      'shutdown_function_sha256': hashlib.sha256(shutdown.encode()).hexdigest(), 'results': results}, indent=2))
     subprocess.run(['python3', str(HERE / 'test_native.py')], check=True, timeout=180)
 
 if __name__ == '__main__':

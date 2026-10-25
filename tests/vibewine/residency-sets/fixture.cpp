@@ -19,6 +19,7 @@ static unsigned pending = 0;
 static uint64_t os_major = 15;
 static unsigned os_reads=0, creations=0, attachments=0;
 static bool creation_succeeds=true;
+static unsigned capture_stops=0;
 [[maybe_unused]] static void WMTGetOSVersion(uint64_t *major, uint64_t *minor, uint64_t *patch) {
   ++os_reads; *major=os_major; *minor=0; *patch=0;
 }
@@ -52,6 +53,10 @@ struct Device {
 struct CommandQueue {
   void addResidencySet(ResidencySet set) { assert(set.valid); ++attachments; }
 };
+struct CaptureManager {
+  static CaptureManager sharedCaptureManager() { return {}; }
+  void stopCapture() { ++capture_stops; }
+};
 }
 static WMT::Buffer buffer(uint64_t id, uint64_t bytes) {
   native[id] = std::make_shared<NativeState>(NativeState{bytes}); return {{id}};
@@ -77,6 +82,10 @@ struct BufferAllocation : Allocation {
   Flags<BufferAllocationFlag> flags() { return bits; }
 };
 struct CommandQueue {
+  struct CaptureState {
+    unsigned ownership_checks=0;
+    bool takeCaptureOwnership() { ++ownership_checks; return false; }
+  } capture_state;
   WMT::Device device;
   WMT::CommandQueue commandQueue;
   WMT::ResidencySet residency_set_;
@@ -93,6 +102,7 @@ struct CommandQueue {
   struct Chunk { CommandBuffer attached_cmdbuf; };
   std::vector<Chunk> chunks;
   void drain() {
+    // CAPTURE_CLEANUP
     // SHUTDOWN_DRAIN
   }
   bool TryReadOnlyResidency(BufferAllocation*, DXMT_RESOURCE_RESIDENCY, uint64_t);
@@ -235,6 +245,7 @@ static void exact_queue_admission() {
               {{true,WMTCommandBufferStatusScheduled}},{{false,WMTCommandBufferStatusCompleted}}};
   pending=2;
   q.drain(); assert(pending==0); assert(q.residency_policy_.heldCount()==0);
+  assert(q.capture_state.ownership_checks==1); assert(capture_stops==0);
   assert(value.refs==0);
   assert((operations == std::vector<char>{'a','c','r','c'}));
   // A dead identity cannot leave a small cached charge for a newly observed

@@ -112,6 +112,10 @@ CommandQueue::ShutdownAndJoin() {
   SharedEventListener_destroy(shared_event_listener);
   encodeThread.join();
   finishThread.join();
+  // The selected capture may be the final submitted frame. With the encoding
+  // worker joined, ownership is no longer concurrently accessed.
+  if (capture_state.takeCaptureOwnership())
+    WMT::CaptureManager::sharedCaptureManager().stopCapture();
 #if DXMT_RESIDENCY_SETS
   if (residency_set_) {
     // Shutdown can stop the finish worker before all queued work retires. Only

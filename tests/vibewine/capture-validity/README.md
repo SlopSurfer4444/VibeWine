@@ -10,12 +10,19 @@ python3 tests/vibewine/capture-validity/test_native.py
 
 `run.py` compiles the current production `CaptureState` implementation, includes
 its actual header and `Metal.hpp`, and extracts the complete capture switch from
-`CommandQueue::CommitChunkInternal`. Environment and native calls are synchronous
+`CommandQueue::CommitChunkInternal`, plus the whole production
+`CommandQueue::ShutdownAndJoin`. Environment and native calls are synchronous
 CPU stubs. It verifies default-off values, executable matching, scheduling, failed
 starts, a capture owned elsewhere, retry after failure, successful one-stop
-ownership, consumed ownership, and one-shot ownership transfer. Compiled mutations
+ownership, consumed ownership, and one-shot ownership transfer. Final-frame
+capture is stopped once at shutdown without requiring another frame; failed or
+external starts never trigger a shutdown stop. Repeated shutdown is idempotent.
+Recording worker joins and an ownership observer verify at runtime that ownership
+is taken only after both worker joins, while delegating ownership to the actual
+production state. Compiled mutations
 must be rejected for claiming ownership after failure, ignoring queue ownership,
-and discarding a successful start result. The host build excludes the Windows
+discarding a successful start result, omitting shutdown stop, and taking shutdown
+ownership before worker joins. The host build excludes the Windows
 F10 implementation; its Windows-only private-field warning is suppressed, and no
 keyboard-path acceptance is claimed.
 

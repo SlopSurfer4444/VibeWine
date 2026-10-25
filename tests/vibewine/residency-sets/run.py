@@ -46,6 +46,10 @@ def main():
     fixture = fixture.replace('// INITIALIZE', block(queue, 'void\nCommandQueue::InitializeResidencySet()'))
     shutdown = block(queue, 'void\nCommandQueue::ShutdownAndJoin()')
     assert shutdown.index('finishThread.join()') < shutdown.index('residency_policy_.clearAfterDrain') < shutdown.index('chunk.reset()')
+    cleanup_start = shutdown.index('  if (capture_state.takeCaptureOwnership())')
+    cleanup_end = shutdown.index('#if DXMT_RESIDENCY_SETS', cleanup_start)
+    assert shutdown.index('finishThread.join()') < cleanup_start < cleanup_end
+    fixture = fixture.replace('// CAPTURE_CLEANUP', shutdown[cleanup_start:cleanup_end])
     drain = block(shutdown, '  if (residency_set_) {')
     fixture = fixture.replace('// SHUTDOWN_DRAIN', drain)
     retain = block(queue, 'void CommandQueue::Retain(')

@@ -6,6 +6,7 @@
 #include <ctime>
 #include <string>
 #include <utility>
+#include <mutex>
 static const char *scenario;
 #define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "%s:%d: %s\n", scenario, __LINE__, #x); std::exit(1); } } while (0)
 #define WARN(...) ((void)0)
@@ -20,6 +21,7 @@ inline std::string getUnixPath(std::string value) { return "/fixture/" + value; 
 @CAPTURE_SOURCE@
 static bool native_result, other_capture;
 static unsigned starts, stops;
+static bool shutdown_active, encode_joined, finish_joined;
 extern "C" obj_handle_t MTLCaptureManager_sharedCaptureManager() { return 13; }
 extern "C" bool MTLCaptureManager_startCapture(obj_handle_t manager, WMTCaptureInfo *info) {
   CHECK(manager == 13 && info->capture_object == 17);
@@ -31,6 +33,49 @@ extern "C" void MTLCaptureManager_stopCapture(obj_handle_t manager) {
   CHECK(manager == 13 && !other_capture); ++stops;
 }
 using dxmt::CaptureState;
+#define TRACE(...) ((void)0)
+namespace cs2trace { struct ApiScope { int result{}; ApiScope(unsigned, uint64_t) {} }; }
+static void SharedEventListener_destroy(unsigned value) { CHECK(value == 31); }
+namespace dxmt {
+using mutex = std::mutex;
+struct CaptureOwnershipObserver {
+  CaptureState &state;
+  bool takeCaptureOwnership() {
+    CHECK(shutdown_active && encode_joined && finish_joined);
+    return state.takeCaptureOwnership();
+  }
+};
+struct MockSignal {
+  void store(bool value) { CHECK(value); shutdown_active = true; }
+  void operator++(int) {}
+  void notify_one() {}
+};
+struct MockThread {
+  unsigned role;
+  void join() {
+    CHECK(shutdown_active);
+    if (role == 1) { CHECK(!encode_joined && !finish_joined); encode_joined = true; }
+    else if (role == 2) { CHECK(encode_joined && !finish_joined); finish_joined = true; }
+    else CHECK(encode_joined && finish_joined);
+  }
+};
+struct MockChunk { void reset() { CHECK(encode_joined && finish_joined); } };
+class CommandQueue {
+public:
+  explicit CommandQueue(CaptureState &state) : capture_state{state} {}
+  mutex shutdown_mutex_;
+  bool shutdown_complete_ = false;
+  MockSignal stopped, ready_for_encode, ready_for_commit;
+  unsigned shared_event_listener = 31;
+  MockThread encodeThread{1}, finishThread{2}, event_listener_thread{3};
+  CaptureOwnershipObserver capture_state;
+  static constexpr unsigned kCommandChunkCount = 1;
+  MockChunk chunks[kCommandChunkCount];
+  uint64_t traceSerial() { return 67; }
+  void ShutdownAndJoin();
+};
+@SHUTDOWN_FUNCTION@
+}
 static void process(CaptureState &capture_state, uint64_t frame) {
   struct { uint64_t frame_; } chunk{frame};
   WMT::Device device; device.handle = 17;
@@ -38,7 +83,8 @@ static void process(CaptureState &capture_state, uint64_t frame) {
   @QUEUE_SWITCH@
 }
 static CaptureState reset(const char *name, const char *enabled = "1", const char *executable = "fixture.exe") {
-  scenario = name; starts = stops = 0; native_result = true; other_capture = false;
+  scenario = name; starts = stops = 0;
+  shutdown_active = encode_joined = finish_joined = false; native_result = true; other_capture = false;
   dxmt::env::enabled = enabled; dxmt::env::executable = executable;
   return CaptureState{};
 }
@@ -78,5 +124,19 @@ int main() {
     state.scheduleNextFrameCapture(4); CHECK(state.getNextAction(4) == CaptureState::NextAction::StartCapture);
     state.captureStarted(false); CHECK(!state.takeCaptureOwnership());
     CHECK(state.getNextAction(5) == CaptureState::NextAction::Nothing); }
-  std::puts("PASS exact production CaptureState + queue switch: defaultoff, executable guard, failed start, external capture, retry, successful one-stop ownership");
+  { auto state = reset("final_frame_capture_shutdown_once");
+    state.scheduleNextFrameCapture(4); process(state, 4); CHECK(starts == 1 && !stops);
+    dxmt::CommandQueue queue(state); queue.ShutdownAndJoin();
+    CHECK(stops == 1 && queue.shutdown_complete_ && encode_joined && finish_joined);
+    queue.ShutdownAndJoin(); CHECK(stops == 1);
+  }
+  for (bool external : {false, true}) {
+    auto state = reset(external ? "external_capture_shutdown_no_stop" : "failed_capture_shutdown_no_stop");
+    other_capture = external; native_result = false;
+    state.scheduleNextFrameCapture(4); process(state, 4); CHECK(starts == 1 && !stops);
+    dxmt::CommandQueue queue(state); queue.ShutdownAndJoin();
+    CHECK(stops == 0 && queue.shutdown_complete_ && encode_joined && finish_joined);
+    queue.ShutdownAndJoin(); CHECK(stops == 0);
+  }
+  std::puts("PASS exact production CaptureState + queue switch: defaultoff, executable guard, failed start, external capture, retry, successful one-stop ownership, final-frame shutdown after worker joins");
 }
