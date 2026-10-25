@@ -316,7 +316,18 @@ static void workflow() {
   step(hr, "hardware_device_create"); require(level == D3D_FEATURE_LEVEL_11_0, "feature_level_11");
   module(L"d3d11.dll", "d3d11.dll"); module(L"dxgi.dll", "dxgi.dll");
   module(L"winemetal.dll", "winemetal.dll"); module(L"d3dcompiler_47.dll", "d3dcompiler_47.dll");
-  Sleep(1000); // Bounded external module-mapping observation window; no input/UI.
+  wchar_t mapping_ack[32768]{};
+  const auto ack_length = GetEnvironmentVariableW(L"VIBEWINE_GPU_MAP_ACK", mapping_ack, 32768);
+  require(ack_length < 32768, "module_mapping_ack_path");
+  if (ack_length) {
+    const auto map_started = GetTickCount64();
+    while (GetFileAttributesW(mapping_ack) == INVALID_FILE_ATTRIBUTES) {
+      require(GetTickCount64() - map_started < 15000, "module_mapping_ack_deadline");
+      Sleep(10);
+    }
+  } else {
+    Sleep(1000); // Legacy bounded observation window for an unmodified caller.
+  }
   Pipeline pipeline(device.p);
   stage("draw_basic", context.p, [&] { basic(device.p, context.p, pipeline); });
   stage("mrt_depth", context.p, [&] { mrt_depth(device.p, context.p, pipeline); });

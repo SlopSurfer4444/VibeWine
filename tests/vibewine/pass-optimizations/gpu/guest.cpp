@@ -112,6 +112,16 @@ static void workflow() {
                          device.out(), &level, context.out()), "device");
   require(level == requested, "feature_level");
   module(L"d3d11.dll"); module(L"dxgi.dll"); module(L"winemetal.dll"); module(L"d3dcompiler_47.dll");
+  wchar_t mapping_ack[32768]{};
+  const auto ack_length = GetEnvironmentVariableW(L"VIBEWINE_GPU_MAP_ACK", mapping_ack, 32768);
+  require(ack_length < 32768, "module_mapping_ack_path");
+  if (ack_length) {
+    const auto map_started = GetTickCount64();
+    while (GetFileAttributesW(mapping_ack) == INVALID_FILE_ATTRIBUTES) {
+      require(GetTickCount64() - map_started < 15000, "module_mapping_ack_deadline");
+      Sleep(10);
+    }
+  }
   Ref<ID3DBlob> code; Ref<ID3D11VertexShader> vs; Ref<ID3D11PixelShader> ps, blue_ps;
   compile("vs_main", "vs_5_0", code);
   step(device->CreateVertexShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, vs.out()), "vs");
@@ -156,6 +166,7 @@ static void workflow() {
   }
 }
 int main(int argc, char **argv) {
+  std::setvbuf(stdout, nullptr, _IONBF, 0);
   started = GetTickCount64(); negative = argc == 2 && !std::strcmp(argv[1], "--negative-pixel");
   if (argc != 1 && !negative) return 2;
   finished = CreateEventW(nullptr, TRUE, FALSE, nullptr); if (!finished) return 3;

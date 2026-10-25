@@ -75,3 +75,12 @@ receipt under the existing seven-day raw-evidence policy and active/analysis/
 recovery holds. Its normal bounded cleanup method applies; this adapter installs
 no cleaner or background producer. Compiled source/binary/build evidence uses
 the reused builder's existing byte caps and the same parent retention contract.
+## Live module observation
+
+The guest publishes module lines without stdio buffering. An identity-checking
+external runner may set `VIBEWINE_GPU_MAP_ACK` to an owned sandbox file; the guest
+then waits at most 15 seconds for acknowledgement before compiling/drawing.
+Only the runner can prove live incarnation, mapped libraries and admitted hashes;
+it must not acknowledge based on module text alone. Missing acknowledgement or
+an oversized path fails the run. Without the variable there is no extra wait.
+The acknowledgement is test evidence under the runner's existing retention owner.

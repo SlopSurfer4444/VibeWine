@@ -131,3 +131,13 @@ geometry/tessellation/stream-output, complete query reuse interleavings, driver
 memory reclamation, DS3 gameplay, FPS or latency. The source-extracted CPU suite
 under `encoder-marshalling/` covers additional setup/error paths; matched native
 and visible gameplay checks remain separate integration gates.
+## Live module observation
+
+An identity-checking external runner may set `VIBEWINE_GPU_MAP_ACK` to a path
+inside its owned test sandbox. After reporting loaded modules, the guest waits
+up to 15 seconds for that file before issuing GPU work. The runner must create
+it only after verifying the same live process incarnation and admitted PE/native
+library paths and hashes. A missing acknowledgement fails the run; the path must
+fit the bounded Windows buffer. Without this variable the previous one-second
+observation pause is retained. The file is runner-owned test evidence, not a
+permission or a performance signal; its existing session cleanup/retention applies.
