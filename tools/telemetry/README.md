@@ -47,7 +47,8 @@ Set `DXMT_CS2_TRACE_PROFILE=compile-waits` **before starting the producer** for
 a short discriminating compiler experiment. The selection is parsed once and
 fixed for that producer's lifetime. An empty/unset value preserves the existing
 full stream and emits no new profile marker. Every other nonempty value,
-including `full`, case changes or surrounding whitespace, fails closed: ordinary
+except the supported `presentation-waits` profile described below, including
+`full`, case changes or surrounding whitespace, fails closed: ordinary
 records are suppressed and event 95 reports `invalid-fail-closed`. Restart through
 the normal producer lifecycle to change profiles; rearming does not change it.
 
@@ -72,7 +73,8 @@ independent frame observer and explicit phase labels when comparing hitches.
 One event **95** identifies each observed generation of a nondefault producer,
 even when its first event attempts are filtered. It uses the existing v2 event
 layout and real writer admission/quiescence protocol. Object=1 is the profile
-metadata schema; flags=1 means `compile-waits`, flags=2 means invalid/fail-closed;
+metadata schema; flags=1 means `compile-waits`, flags=2 means invalid/fail-closed,
+flags=3 means `presentation-waits`;
 p0 is the configured detailed record limit, p1 is the lifetime capacity 131072.
 Start=end is a CPU steady-clock instant; it is not a duration or performance
 metric. This single marker is outside the detailed record budget and consumes
@@ -101,6 +103,78 @@ python3 tools/telemetry/test_trace_profile.py
 It compiles the exact production producer header with the existing portable
 Windows mapping seam, checks actual `record`/`detailRecord` and scope emitters,
 and exercises the identity-bound native binary decoder. It launches no game.
+
+## Opt-in presentation/wait coverage profile
+
+`DXMT_CS2_TRACE_PROFILE=presentation-waits` is explicit process-lifetime opt-in;
+metadata95 flags=3 uses the existing schema/version2. Invalid=2 stays reserved.
+The full/default and compile-waits meanings are unchanged. This extends the
+existing producer/controller/analyzer rather than introducing another collector,
+format, daemon, scheduler or native bridge. Runtime selection and the installed
+launcher are unchanged. See [the short capture recipe](PRESENTATION_WAITS.md).
+
+The exact allowlist is **1/2, 6–16, 20–25, 33, 40, 44–49, 61/62, 70–78,
+89–92 and 96–99**. Event95 is emitted separately once per admitted generation.
+It excludes high-rate draw/Map/GetData/Flush API streams (41–43), compiler,
+archive/cache/task probes (3–5/17/19/80–88/93–94), and unknown future kinds.
+90–92 still require `DXMT_CS2_TRACE_DETAIL_LIMIT` and share its unchanged
+32768-record maximum. Excluded probes do not spend that budget. 89 retains cap
+and stale-work failure semantics; profile-only asynchronous presentation scopes
+also emit a stale-work89 on an active-generation mismatch, outside the optional
+detail budget so disabling optional finish probes cannot conceal stale work.
+All of these records still spend the fixed 131072 lifetime slots.
+
+| Type | Profile-only meaning and identity payload |
+|---|---|
+| 96 | Uncensored queue frame-latency fence wait. Object queue birth serial; p0 presented **queue** frame; p1 awaited fence frame (`p0+1-flags`); flags configured max latency. Queue frame0 is valid. |
+| 97 | Uncensored swapchain admission wait, only when that fence is actually waited. Object swapchain birth serial; p0 local presentation count; p1 awaited count (`p0-flags`); flags configured latency. This local counter is never assumed equal to a queue or native frame. |
+| 98 | Uncensored drawable acquisition CPU interval. Object swapchain birth serial; p0 native presenter frame; p1 immutable configuration revision; flags zero. Captured zero generation stays unarmed; stale generation cannot be upgraded. |
+| 99 | Instant explicit frame binding. Object swapchain birth serial; p0 native presenter frame; p1 queue frame; flags zero. Unique same-receipt25 supplies queue birth serial. Native and queue counter values can differ. |
+
+96–98 start/end are CPU steady nanoseconds; 99 is a CPU steady instant and its
+decoded duration is null. 20–23 remain CPU-steady queue publication/encode/
+commit/completion observations; 24 remains native GPU nanoseconds. Native71
+contains separately tagged CoreAnimation host seconds in p1, with 72 revision
+and 73 drawable dimensions. No epoch subtraction is allowed. Legacy1/2 and6–16
+retain pointers/local counters and 100 us censoring; they cannot supply the
+new exact joins or prove missing costs zero.
+
+`presentation_capture` independently checks coverage, stop/loss evidence,
+profile3, exact unique25/99 counter bindings, unique queue/chunk completion,
+96/98 identities and revision-consistent strict71/72/73 feedback. It requires
+at least two consecutive native frames for cadence, a supported capability70,
+and every captured native/binding/drawable/queue-wait identity to be joined.
+Malformed, duplicate, stale, wrong-profile, missing-identity, unsuccessful GPU,
+loss or boundary records prevent complete capture acceptance. Partial rows and
+raw events remain visible; neither a profile-valid decoder result nor a
+nonempty cadence array certifies the capture. 97 and native CLOSE are optional
+and their absence remains unknown. Native failures, observed counter loss and
+incomplete observed CLOSE accounting fail acceptance. Optional finish90–92 must
+join exactly and never prove consumer wake latency.
+
+Use `analyze.py INPUT --output OUTPUT --expected-profile presentation-waits` for
+an acceptance command: it writes the report and exits3 for the wrong profile or
+incomplete presentation capture. Without `--expected-profile`, legacy CLI exit
+behavior is preserved. Profile3 sets `producer_profile.capture_usable=false`
+when presentation coverage fails; `policy_valid` continues to describe metadata
+and allowlist validity separately. This is offline trace acceptance, not proof
+of loaded binaries, actual gameplay, display latency, saturation or FPS gain.
+
+For this presentation experiment, the existing diagnostic/session owner owns
+one producer-lifetime mapping and private decoded derivatives. State lifetime
+is the producer lifetime with its fixed cap; raw/decoded data have **7-day TTL /
+64 MiB combined cap** per experiment (a stricter subset of the general contract
+below). Results/minimal failure evidence retain the existing30-day /4 MiB cap.
+Active producer mappings, active analysis and unresolved acceptance/recovery
+holds are excluded from retirement and need reviewed expiry; admit no further
+bulk capture when this would exceed the cap. Cleanup is manual through the
+existing session lifecycle after bounded exact-path inventory and preservation
+verification; no cleaner or extra collection is installed. No private raw data
+is published. Do not reset/rearm to recycle slots or inflate either quota.
+
+```sh
+python3 tools/telemetry/test_presentation_profile.py
+```
 
 ## Interpretation
 
@@ -162,7 +236,7 @@ sampler, paths, shader bytecode or user payload is added by these probes.
 | 87 / 88 | Cache writer lock wait / checked native call CPU interval. Object task; p0 scheduler; p1 zero. 87 flags zero; 88 flags raw SQLite status. |
 | 89 | Detailed capture failure, object zero. Flags 1: cap exhausted, p0 configured cap; flags 2: stale generation callback, p0 callback generation. These invalidate detailed capture acceptance. |
 | 90 | Query readback destruction interval before CPU coherence. Object queue birth serial; p0 chunk sequence; p1 frame; flags zero. |
-| 91 / 92 | Chunk reset complete, before / after CPU coherence signal. Same queue/sequence/frame, zero flags. 92 observes return from signal, not consumer wake latency. |
+| 91 / 92 | Chunk reset complete / post-signal finish observation. Same queue/sequence/frame, zero flags. 91 precedes CPU coherence signalling; 92 follows signalling and any enabled idle-retirement sweep. Their interval includes that work and is not pure coherence-signal cost or consumer wake latency. |
 | 93 / 94 | Checked cache get / init CPU interval. Object cache birth serial; p0 operation birth serial; p1 zero; flags raw SQLite status. |
 
 All start/end fields in 80–94 use the existing producer CPU steady clock. No

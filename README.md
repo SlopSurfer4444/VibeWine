@@ -11,7 +11,10 @@ reproduction, a focused patch and evidence of what you checked.
 is published. A [subsequent neighbor wave](docs/integrations/neighbor-wave-20261025.md)
 adds checked general Metal-error ownership, failed-pipeline work cancellation and
 address-wait publication fixes. Both complete renderer variants build; this new
-source follow-up has not replaced the playable installed experiment.
+source follow-up has not replaced the playable installed experiment. The next
+[performance wave](docs/diagnostics/performance-wave-next-20261025.md) adds
+default-off demand scheduling, explicit discard intent and bounded presentation
+wait diagnostics; controlled gameplay gains remain unmeasured.
 
 The owner selected the preceding combined experiment
 for diagnostic DS3 play; the previous playable endpoint remains recoverable. Source
@@ -63,7 +66,7 @@ python3 scripts/workspace.py check
 | [Telemetry](tools/telemetry/README.md) and [gameplay tools](tools/gameplay/README.md) | Analysis, bounded test control and reproducible test protocols | `main` |
 | [Experiments](experiments/README.md) | Opt-in instrumentation and native presentation probes | `main` |
 
-The workspace pins Wine `5d4b43e4` and DXMT `c7e4ab45`. Components are pinned
+The workspace pins Wine `5d4b43e4` and DXMT `e1772a42`. Components are pinned
 submodules hosted on branches in this same repository.
 Updating a component branch does not silently update the workspace pin. GitHub's
 main-branch ZIP omits submodule contents; use a recursive clone or the component

@@ -3,6 +3,36 @@
 This is a direction for contributions, not a release promise. Start with the
 [component source](README.md#get-the-source) and [contribution guide](CONTRIBUTING.md).
 
+## Performance implementation wave — next checkpoint, 25 October 2026
+
+User authorized the next large implementation wave after the source drop and
+neighbor repairs. Root owns Git, integration, builds/GPU and publication. Source
+base: hub `ae953dac`, DXMT `c7e4ab45`, Wine `5d4b43e4`. Preserve the current
+playable installed closure and recovery; development does not install or launch
+the game. Independent editors use isolated checkouts and return tested changes.
+
+| ID | Required result / dependency | Acceptance / state |
+| --- | --- | --- |
+| S0 | Bounded presentation trace and end-to-end analysis | Existing producer/native/decoder/analysis seams, explicit profile and phase/coverage semantics, old modes unchanged, no inferred gameplay/FPS; accepted source/184 offline checks |
+| S1 | Demand-aware compiler scheduling experiment | Production saturation discriminator first; default-off urgency/promotion/dependency policy, no extra workers, no starvation/duplicate execution/lifetime regressions; source/CPU/build and covered GPU accepted, game contention pending |
+| S2 | Explicit discard optimization experiment | Narrow admitted full color subresources, preserved ordering/reads/aliases/resolves and negative controls, default off; source/CPU/build/25 GPU image checks per variant accepted, native action/cost pending |
+| S3 | Parsed shader IR memory/cost assessment | Inspect exact neighbor design and current owner/scheduler/cache contracts, measure a production parser/lifetime seam where feasible; adapt only with a safe complete lifetime and demonstrated benefit; measured allocator opportunity and CPU output equivalence; unchanged donor rejected, eviction not implemented |
+| S4 | Combined source/build/covered GPU and publication / S0–S3 | Independent and integrated controls, matched variants, exact source/provenance, retained working runtime; accepted source/build/covered GPU; component e1772a42 published, workspace source checkpoint ready |
+
+Terminal checkpoint is a coherent tested source/build wave with explicit
+accepted/rejected experiments and a runnable bounded measurement route. Real
+game improvement, activation and runtime promotion remain separate evidence.
+Do not bypass an unsafe lifetime or rendering result to make a wave look larger.
+
+Artifact owner: root performance-wave integration. Private scope is the exact
+`performance-wave-next-20261025` campaign output plus its isolated checkouts;
+tests use their own temporary scratch. Raw audit/test evidence TTL seven days,
+curated summaries 30 days / 4 MiB, branch scratch 64 MiB excluding identified
+source checkouts and build products. Builds reuse the integrated wave's 40 GB
+cap and 20 GiB free-space reserve. Active work, unresolved analysis and selected
+candidate/recovery are holds. Cleanup is manual for exact owned paths after
+holds are released; no new cleaner/service or user-data collection is installed.
+
 ## Neighbor convergence wave — 25 October 2026
 
 Current checkpoint: publish the verified preceding source drop, refresh neighbor

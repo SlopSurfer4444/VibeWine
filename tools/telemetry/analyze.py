@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 from wave7_analysis import wave7_analysis
 from detail_analysis import detail_analysis
+from presentation_analysis import presentation_analysis
 CAPACITY=131072
 REASONS={0:'Unknown',1:'Present',2:'StagingMap',3:'GetDataNotReady',4:'ExplicitFlush',5:'GPUIdle',6:'FenceSignal',7:'FenceWait',8:'PassPromotion'}
 SYNC_NAMES={30:'StagingMap CPU fence wait',31:'GetData not-ready Flush',32:'GPUIdle CPU fence wait'}
@@ -30,13 +31,15 @@ def producer_profile_analysis(events,summary):
     failures=[]
     if len(markers)!=1:failures.append('duplicate_profile_metadata')
     marker=markers[0]
-    valid=marker['object']==1 and marker['flags'] in (1,2) and marker['start']==marker['end'] and marker['padding0']<=32768 and marker['padding1']==CAPACITY
+    valid=marker['object']==1 and marker['flags'] in (1,2,3) and marker['start']==marker['end'] and marker['padding0']<=32768 and marker['padding1']==CAPACITY
+    if marker['flags']==3 and not marker['thread']:valid=False
     if not valid:failures.append('malformed_profile_metadata')
-    name='compile-waits' if marker['flags']==1 else 'invalid-fail-closed' if marker['flags']==2 else 'unknown'
+    name='compile-waits' if marker['flags']==1 else 'invalid-fail-closed' if marker['flags']==2 else 'presentation-waits' if marker['flags']==3 else 'unknown'
     if marker['flags']==2:failures.append('invalid_producer_profile_fail_closed')
     keep={3,4,5,17,19,93,94}|set(range(80,90))
+    if marker['flags']==3:keep={1,2,33,40,61,62}|set(range(6,17))|set(range(20,26))|set(range(44,50))|set(range(70,79))|set(range(89,93))|set(range(96,100))
     excluded=[e['index'] for e in events if e['type']!=95 and e['type'] not in keep]
-    if marker['flags']==1 and excluded:failures.append('excluded_event_in_compile_waits_profile')
+    if marker['flags'] in (1,3) and excluded:failures.append('excluded_event_in_'+name.replace('-','_')+'_profile')
     if summary.get('producer_profile_policy_valid') is False:failures.append('decoder_profile_policy_invalid')
     count=sum(e['type']!=95 for e in events)
     return {'name':name,'metadata_observed':True,'metadata_event_index':marker['index'],'metadata_count':len(markers),
@@ -117,7 +120,7 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
         for k in ['generation','type','thread','flags']:uint32(e[k])
         if e['generation']!=gen or e['index']>=CAPACITY or e['index'] in seen:raise ValueError('generation/index mismatch or duplicate')
         seen.add(e['index'])
-        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|set(range(80,96))|{17,19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76,77,78} else 'unknown'
+        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|set(range(80,100))|{17,19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76,77,78} else 'unknown'
         if e.get('clock_domain')!=expected:raise ValueError('clock domain mismatch')
     rejected=defaultdict(int); cadence=[]; presentations=defaultdict(list);intervals=defaultdict(list)
     for e in events:
@@ -199,13 +202,17 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
     quality.append('scopes_or_gpu_chunks_crossing_stop_are_not_complete')
     wave7=wave7_analysis(events,summary,rejected,stats,expected_dimensions,expected_revision)
     if not wave7["strict_acceptance"]["capture_identity_quality_ok"]:quality.append("unidentified_native_feedback_records")
-    return {'schema':2,'generation':gen,'decoder_identity':summary.get('identity'),'scope':'observed immutable snapshot only; displayed cadence only from valid native presented feedback; no FPS gain inference','producer_profile':producer_profile,'wave7':wave7,
+    presentation=presentation_analysis(events,summary,producer_profile,wave7,chunkrows,detailed,stats,rejected)
+    if producer_profile['name']=='presentation-waits' and not presentation['capture_usable']:
+        producer_profile['capture_usable']=False
+        quality.append('presentation_capture_coverage_invalid')
+    return {'presentation_capture':presentation,'schema':2,'generation':gen,'decoder_identity':summary.get('identity'),'scope':'observed immutable snapshot only; displayed cadence only from valid native presented feedback; no FPS gain inference','producer_profile':producer_profile,'wave7':wave7,
       'quality_limits':quality,'rejections':dict(rejected),'cpu_present_streams':cadence,'queue_chunk_metrics':{'joined_chunks':len(chunkrows),'successful_completed_chunks':sum(c['completion_status']==4 for c in chunkrows),'publish_to_encode':stats(queuewait),'encode_setup_commit':stats(encodecommit),'commit_to_cpu_completion_observation':stats(completion),'gpu_command_buffer_durations':stats(gpu)},'chunks':chunkrows,
       'full_api_boundaries':api,'sync_probes':sync,'detailed_probes':detailed,'interpretation':['GPU duration uses native GPU end-start only; never subtract CPU and GPU epochs.','GPU durations may overlap and must not be summed as GPU busy time.','No absent event is interpreted as zero cost; old scopes below 100 us are censored.','V2 queue identity uses birth serials; legacy Present body identity remains a pointer. Duplicate chunk keys are rejected.','Missing boundary chunks and frame ownership prevent complete-frame GPU attribution.']}
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('input',type=Path);p.add_argument('--output',type=Path,required=True)
-    p.add_argument('--expected-width',type=int);p.add_argument('--expected-height',type=int);p.add_argument('--expected-revision',type=int)
+    p.add_argument('--expected-profile', choices=('presentation-waits','compile-waits'));p.add_argument('--expected-width',type=int);p.add_argument('--expected-height',type=int);p.add_argument('--expected-revision',type=int)
     a=p.parse_args()
     if (a.expected_width is None)!=(a.expected_height is None):p.error('expected width and height must be supplied together')
     rows=[]
@@ -214,4 +221,5 @@ def main():
             if len(line)>8192 or len(rows)>CAPACITY:raise ValueError('input exceeds bounded decoder format')
             rows.append(json.loads(line))
     result=analyze(rows,expected_dimensions=None if a.expected_width is None else {'width':a.expected_width,'height':a.expected_height},expected_revision=a.expected_revision);a.output.write_text(json.dumps(result,indent=2)+'\n')
+    if a.expected_profile and (result['producer_profile']['name']!=a.expected_profile or not result['producer_profile']['capture_usable']):raise SystemExit(3)
 if __name__=='__main__':main()

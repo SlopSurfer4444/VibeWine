@@ -5,14 +5,25 @@ dated snapshot documents retain their original historical claims.
 
 | Layer | Current state | What it does not establish |
 | --- | --- | --- |
-| Development source | Wine `5d4b43e4`; DXMT `c7e4ab45`: prior gated experiments plus three general neighbor repairs | A component branch tip is not an installed runtime |
+| Development source | Wine `5d4b43e4`; DXMT `e1772a42`: prior neighbor repairs plus demand/discard experiments and presentation diagnostics | A component branch tip is not an installed runtime |
 | Source prerelease | `v0.1.0-experimental.20261025`, frozen at hub `5be9c7d6`, Wine `85864be4` / DXMT `25eff5e1`; complete recursive source archive independently matched to Git and uploaded digests | Not an installable binary distribution or a release of the later neighbor source |
-| Matched build | Both complete 161-target DXMT variants, paired Unix NTDLL/server; PE/native/helper and LLVM 15.0.7; compiler epoch 2 off / 3 cleanup on | Full reproducible Wine distribution or every optional feature |
+| Matched build | Both fresh 161-target DXMT variants from local `036aaae9` (public tree-equivalent `e1772a42`) with ten experiment booleans off/on; matched PE/native/helper, retained Unix NTDLL/server and LLVM 15.0.7; compiler epoch 2 off / 3 cleanup on | Full reproducible Wine distribution or every optional feature |
 | Installation | User-selected combined experimental build: 22 runtime artifacts, metrics launcher and 32 transaction targets verified; repeat installation changed nothing; prior recovery retained | Stable release promotion, new game exit/relaunch or FPS acceptance |
-| New experiments | Seven new default-off switches plus independent scene submission; focused CPU controls, five generic GPU stages and four dedicated pass cases per build, six native shader images per helper and connected pixel negatives pass | Dynamic DISCARD/residency admission, real MetalFX, production Present/capture, displayed FPS, latency or memory improvement |
+| Preceding experiments | Seven default-off switches plus independent scene submission; focused CPU controls, five generic GPU stages and four dedicated pass cases per build, six native shader images per helper and connected pixel negatives pass | Dynamic DISCARD/residency admission, real MetalFX, production Present/capture, displayed FPS, latency or memory improvement |
 | Latest correctness checks | Terminal release old-fail/new-pass controls on arm64 and Rosetta, real NTDLL lifecycle controls, production MinGW-header compilation, five offscreen GPU stages and three rejected broken controls | A cure for every game hang |
-| Latest diagnostics | 178 offline telemetry checks; process-bound observed phase labels and opt-in compiler/wait coverage; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
+| Latest diagnostics | 184 offline telemetry checks; explicit presentation-waits and compiler/wait coverage, process-bound observed phase labels; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
 | Game observations | Earlier owner reports described usable play under background load; a previous unlabeled 1080p stream was retained | Controlled before/after FPS, clean gameplay-only timing or a causal network repair |
+
+The [next performance source wave](diagnostics/performance-wave-next-20261025.md)
+adds two independent default-off switches to the preceding seven and scene
+submission: demand-aware compiler admission and explicit last-color discard.
+The new presentation profile distinguishes queue waits from drawable acquisition
+with source-bound identities. Equal-capacity CPU ordering, lifetime/mutation
+controls and the complete paired renderer builds pass. Both variants pass five generic offscreen GPU stages and 25 dedicated discard
+images, with five connected GPU controls rejected; the dated wave report records
+source-equivalence and native-action/performance limits; no new installation or game measurement is
+implied. Parsed IR eviction was measured but rejected as a direct donor import;
+it is not enabled by this source wave.
 
 The [fresh neighbor follow-up](integrations/neighbor-wave-20261025.md) is built
 but not installed. DXMT `c7e4ab45` passes both fresh complete 161-target release

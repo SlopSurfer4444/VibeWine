@@ -98,7 +98,7 @@ class TraceProfileTests(unittest.TestCase):
         self.assertIn('invalid_producer_profile_fail_closed', result['producer_profile']['failures'])
 
     def test_malformed_duplicate_or_excluded_data_cannot_pass_profile(self):
-        invalid = [[marker(**change)] for change in [dict(object=0), dict(flags=0), dict(flags=3),
+        invalid = [[marker(**change)] for change in [dict(object=0), dict(flags=0), dict(flags=4),
                    dict(end=101), dict(padding0=32769), dict(padding1=tests_cli.CAPACITY-1)]]
         invalid += [[marker(), marker()], [marker(), event(42, 200, 300)],
                     [marker(), event(90, 200, 300)]]
@@ -146,7 +146,8 @@ class TraceProfileTests(unittest.TestCase):
 
     def test_exact_production_producer_regression(self):
         result = subprocess.run([sys.executable, str(HUB / 'components/dxmt/tests/vibewine/trace_profile_test.py')],
-                                capture_output=True, text=True, timeout=90)
+                                capture_output=True, text=True, timeout=90,
+                                env=dict(os.environ, DXMT_TRACE_TEST_HUB=str(HUB)))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 

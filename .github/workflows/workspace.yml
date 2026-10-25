@@ -75,3 +75,9 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/failed-pipeline/run.py --mutation early-stage
         working-directory: components/dxmt
+      - run: python3 tests/vibewine/demand-scheduler/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/discard-hints/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/device-teardown/run.py
+        working-directory: components/dxmt
