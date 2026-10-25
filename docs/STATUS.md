@@ -8,7 +8,7 @@ dated snapshot documents retain their original historical claims.
 | Development source | Wine `5d4b43e4`; DXMT `e1772a42`: prior neighbor repairs plus demand/discard experiments and presentation diagnostics | A component branch tip is not an installed runtime |
 | Source prerelease | `v0.1.0-experimental.20261025`, frozen at hub `5be9c7d6`, Wine `85864be4` / DXMT `25eff5e1`; complete recursive source archive independently matched to Git and uploaded digests | Not an installable binary distribution or a release of the later neighbor source |
 | Matched build | Both fresh 161-target DXMT variants from local `036aaae9` (public tree-equivalent `e1772a42`) with ten experiment booleans off/on; matched PE/native/helper, retained Unix NTDLL/server and LLVM 15.0.7; compiler epoch 2 off / 3 cleanup on | Full reproducible Wine distribution or every optional feature |
-| Installation | User-selected combined experimental build: 22 runtime artifacts, metrics launcher and 32 transaction targets verified; repeat installation changed nothing; prior recovery retained | Stable release promotion, new game exit/relaunch or FPS acceptance |
+| Installation | Latest ten-switch experimental DXMT installed: five graphics artifacts updated, 17 Wine artifacts retained; exact readback and no-op passed. Separate helper delivery requests fixed-output MetalFX from the ordinary DS3 icon; prior recovery retained | Stable release promotion, actual game MetalFX activation, new exit/relaunch or FPS acceptance |
 | Preceding experiments | Seven default-off switches plus independent scene submission; focused CPU controls, five generic GPU stages and four dedicated pass cases per build, six native shader images per helper and connected pixel negatives pass | Dynamic DISCARD/residency admission, real MetalFX, production Present/capture, displayed FPS, latency or memory improvement |
 | Latest correctness checks | Terminal release old-fail/new-pass controls on arm64 and Rosetta, real NTDLL lifecycle controls, production MinGW-header compilation, five offscreen GPU stages and three rejected broken controls | A cure for every game hang |
 | Latest diagnostics | 184 offline telemetry checks; explicit presentation-waits and compiler/wait coverage, process-bound observed phase labels; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
@@ -21,20 +21,21 @@ The new presentation profile distinguishes queue waits from drawable acquisition
 with source-bound identities. Equal-capacity CPU ordering, lifetime/mutation
 controls and the complete paired renderer builds pass. Both variants pass five generic offscreen GPU stages and 25 dedicated discard
 images, with five connected GPU controls rejected; the dated wave report records
-source-equivalence and native-action/performance limits; no new installation or game measurement is
-implied. Parsed IR eviction was measured but rejected as a direct donor import;
+source-equivalence and native-action/performance limits. The later owner installation
+and native MetalFX probe are recorded in that report; game measurements remain pending.
+Parsed IR eviction was measured but rejected as a direct donor import;
 it is not enabled by this source wave.
 
-The [fresh neighbor follow-up](integrations/neighbor-wave-20261025.md) is built
-but not installed. DXMT `c7e4ab45` passes both fresh complete 161-target release
+The [fresh neighbor follow-up](integrations/neighbor-wave-20261025.md) was built
+before installation of its successor renderer. DXMT `c7e4ab45` passes both fresh complete 161-target release
 builds with the eight existing experiment booleans all off/on. Borrowed-error
 ownership and failed-pipeline cancellation pass production-bound CPU/native,
 baseline and mutation controls. Wine `5d4b43e4` passes address-publication and
 previous timeout controls on arm64/Rosetta; the complete changed PE source unit
 compiles for i386/x86_64 with retained configured headers. Its 11,179-file
 source verifier passes. This is not a newly linked complete Wine distribution,
-GPU failure-path validation or a new game comparison. The playable installed
-experiment, recovery images and data remain unchanged by this follow-up.
+GPU failure-path validation or a new game comparison. The latest DXMT successor
+is now installed; the existing Wine binaries, recovery images and data are retained.
 
 The previous playable graphics corresponded to local DXMT `356cc60d` and
 [its public equivalent](provenance/focused-publication-20261024.json). The owner
@@ -42,22 +43,24 @@ subsequently selected the combined experiment for a diagnostic play session.
 It is installed through the supported schema12 transaction, with final signed
 code rechecked on the GPU, exact afterimage readback and no-op convergence.
 The prior endpoint and recovery images remain retained.
-The latest experimental pair uses local build source `36385509`, public
+The preceding eight-switch experimental pair used local build source `36385509`, public
 tree-equivalent `cb5fa11d`; later pin changes are test/documentation only. Eight
-booleans differ: seven new switches and scene submission. Both use the paired
+booleans differed: seven new switches and scene submission. Both used the paired
 new Wine MSync source. The previous scene-only control package remains a separate
-checkpoint. The true variant is selected for experimental play, with ordinary final
+checkpoint. Its true variant was selected for experimental play, with ordinary final
 promotion still explicitly false. See
 [the integration evidence](diagnostics/fps-wave-20261025.md) and
 [exact hashes and accepted checks](diagnostics/fps-wave-20261025.json).
 The 25 October baseline attempt launched the unchanged installed game, observed
 menu responses and repeated connection-loss dialogs, then ended it with macOS
 Quit. No stable offline world or controlled gameplay timing was accepted.
-That earlier task-owned prefix and observer were stopped. The new collector-first
-session uses an explicit cold `measure-compile-trace` launch: fixed compiler/wait
+That earlier task-owned prefix and observer were stopped. That checkpoint's collector-first
+session used an explicit cold `measure-compile-trace` launch: fixed compiler/wait
 profile and detail budget, bounded MSync/idle attribution, independent Metal/frame
 monitoring and short anomaly-triggered stack samples. Armed readiness precedes
-launch; actual data availability is a separate check. The private install/admission
+launch; actual data availability was a separate check. This does not describe a
+collector for the later MetalFX play session: none was armed for that session.
+The private install/admission
 tooling and licensed retained engine dependencies are not distributed here.
 
 See [the focused changes and checks](diagnostics/focused-followup-20261024.md)

@@ -11,10 +11,12 @@ reproduction, a focused patch and evidence of what you checked.
 is published. A [subsequent neighbor wave](docs/integrations/neighbor-wave-20261025.md)
 adds checked general Metal-error ownership, failed-pipeline work cancellation and
 address-wait publication fixes. Both complete renderer variants build; this new
-source follow-up has not replaced the playable installed experiment. The next
+Wine source follow-up is not a freshly linked Wine distribution. The next
 [performance wave](docs/diagnostics/performance-wave-next-20261025.md) adds
 default-off demand scheduling, explicit discard intent and bounded presentation
-wait diagnostics; controlled gameplay gains remain unmeasured.
+wait diagnostics. Its ten-switch renderer is now installed for owner testing;
+ordinary DS3 launch requests fixed-output MetalFX, with actual game activation
+and controlled gameplay gains still unmeasured.
 
 The owner selected the preceding combined experiment
 for diagnostic DS3 play; the previous playable endpoint remains recoverable. Source
