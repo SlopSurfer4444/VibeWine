@@ -20,6 +20,15 @@ ABBA measures real descriptor creation/setters/release and autoreleasepool compl
 
 The no-hit ranges overlapped; this experiment did not establish a no-hit regression. These are bounded host CPU observations, not GPU time or FPS. With I matched slots, source-level count reduction is I indexed getters + 11I setters; the outer colorAttachments getter remains. No allocation-count claim follows.
 
-Before a source checkpoint, root GPU checks must cover actual 1/4/8 MRT, sparse slots, depth-only, MSAA/resolve, mip/array/3D attachments, Present, queries and error/validation paths on the matched runtime. Nonzero real source/resolve texture guards were not exercised by this host-only fixture. Private validator metadata and cross-macOS behavior remain outside its proof. Keep the flag off by default; reject wrong pixels, changed progress/topology, changed meaningful validation outcomes or unacceptable no-hit/change-heavy CPU/frame-tail regression.
+Before promotion to an enabled gameplay default, root GPU acceptance must cover actual 1/4/8 MRT, sparse slots, depth-only, MSAA/resolve, mip/array/3D attachments, Present, queries and error/validation paths on the matched runtime. Nonzero real source/resolve texture guards were not exercised by this host-only fixture. Private validator metadata and cross-macOS behavior remain outside its proof. Keep the flag off by default; reject wrong pixels, changed progress/topology, changed meaningful validation outcomes or unacceptable no-hit/change-heavy CPU/frame-tail regression.
 
 Primary evidence: Apple documents default color load DontCare, store Store and clear (0,0,0,1) in https://developer.apple.com/library/archive/documentation/Miscellaneous/Conceptual/MetalProgrammingGuide/Render-Ctx/Render-Ctx.html . The installed public MTLRenderPass.h documents zero attachment indices, nullable source/resolve textures and storeActionOptions default None. An earlier descriptor-only snapshot proof is in next-round/descriptor-default-proof/receipt.json. This experiment still requires root's real encoder/GPU acceptance.
+
+Root subsequently built the complete matched eighteen-flag pair from `101d5ff7`.
+Both variants passed generic1/2MRT, compute, four-sample resolve, later-chunk query,
+and the dedicated [4/8MRT, sparse and depth-only guest](gpu/README.md).
+The on variant rejected the connected depth wrong-golden. Exact native/PE mappings
+and process birth were admitted; the authless GPU lab returned to its prior hashes.
+These checks close covered active-target paths, not Present/HDR, mip/array/3D,
+all native validation/error behavior, workload incidence or FPS. Flag remains off
+by default and the installed game selection was not changed.
