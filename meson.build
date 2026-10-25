@@ -155,6 +155,7 @@ foreach option_name, define_name : {
   'vibewine_shader_cleanup' : 'DXMT_SHADER_CLEANUP',
   'vibewine_demand_scheduler' : 'DXMT_DEMAND_SCHEDULER',
   'vibewine_discard_hints' : 'DXMT_DISCARD_HINTS',
+  'vibewine_bounded_encoder_optimizer' : 'DXMT_BOUNDED_ENCODER_OPTIMIZER',
 }
   experiment_define = '-D' + define_name + '=' + get_option(option_name).to_int().to_string()
   add_project_arguments(experiment_define, language: ['c', 'cpp'])

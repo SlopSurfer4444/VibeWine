@@ -1,0 +1,168 @@
+// Appended to the existing production-bound pass optimizer fixture.
+static std::vector<uint64_t> fence_ids(FenceSet f) {
+  std::vector<uint64_t> out; f.forEach([&](auto id) { out.push_back(id); }); return out;
+}
+static void command(RenderEncoderData *r, wmtcmd_render_draw &cmd, unsigned token) {
+  cmd = {}; cmd.type = WMTRenderCommandDraw; cmd.vertex_start = token;
+  r->cmd_head.next.set(&cmd); r->cmd_tail = reinterpret_cast<wmtcmd_base *>(&cmd);
+}
+static std::vector<unsigned> tokens(const std::vector<EncoderData *> &nodes) {
+  std::vector<unsigned> out;
+  for (auto *n : nodes) {
+    if (n->type == EncoderType::Render) {
+      auto *r = static_cast<RenderEncoderData *>(n);
+      unsigned count = 0;
+      for (auto *p = reinterpret_cast<wmtcmd_base *>(r->cmd_head.next.get()); p;
+           p = reinterpret_cast<wmtcmd_base *>(p->next.get())) {
+        require(++count < 8, "acyclic test draw list");
+        require(p->type == WMTRenderCommandDraw, "draw node type retained");
+        out.push_back(reinterpret_cast<wmtcmd_render_draw *>(p)->vertex_start);
+      }
+    } else if (n->type == EncoderType::SignalEvent || n->type == EncoderType::WaitForEvent ||
+               n->type == EncoderType::SampleTimestamp) {
+      out.push_back(1000 + static_cast<unsigned>(n->type));
+    }
+  }
+  return out;
+}
+static void scaling(unsigned count, bool null_tail) {
+  Arena a; ArgumentEncodingContext ctx;
+  std::vector<Surface> surfaces(count);
+  std::vector<EncoderData *> nodes;
+  for (unsigned i = 0; i < count; ++i) nodes.push_back(render(a, surfaces[i]));
+  if (null_tail)
+    for (unsigned i = 0; i < count; ++i) nodes.push_back(a.make<EncoderData>(EncoderType::Null));
+  const auto original = nodes;
+  relation_calls = candidate_visits = 0;
+  ctx.optimize(nodes);
+  require(nodes == original, "independent nodes retain array identity and order");
+  uint64_t expected_visits = 0, expected_relations = 0;
+  for (unsigned j = 0; j < count; ++j) {
+    const auto remaining = nodes.size() - j - 1;
+    const auto visited = bounded ? std::min<size_t>(64, remaining) : remaining;
+    expected_visits += visited;
+    expected_relations += std::min<size_t>(visited, count - j - 1);
+    auto *r = static_cast<RenderEncoderData *>(nodes[j]);
+    require(r->type == EncoderType::Render && r->colors[0].attachment == &surfaces[j].base,
+            "no independent render lost or substituted");
+    require(r->colors[0].load_action == WMTLoadActionLoad && r->colors[0].store_action == WMTStoreActionStore,
+            "independent render load/store retained");
+    require(r->fence_wait.empty() && r->fence_update.empty() && !r->use_visibility_result,
+            "independent render fence/query state retained");
+  }
+  require(candidate_visits == expected_visits && relation_calls == expected_relations,
+          "physical scan and relation counts match bounded or legacy production driver");
+  if (bounded) require(candidate_visits <= 64ull * count, "linear physical scan budget");
+  std::cout << "scaling n=" << count << " null_tail=" << null_tail << " visits=" << candidate_visits
+            << " relations=" << relation_calls << '\n';
+}
+static void merge_window(unsigned distance, EncoderType barrier = EncoderType::Null) {
+  Surface s; Arena a; ArgumentEncodingContext ctx;
+  auto *r0 = render(a,s), *r1 = render(a,s);
+  wmtcmd_render_draw a0{}, a1{};
+  command(r0,a0,1); command(r1,a1,2);
+  r0->fence_wait.set(3); r0->fence_update.set(5);
+  r1->fence_wait.set(5); r1->fence_update.set(7);
+  r1->use_visibility_result = true;
+  std::vector<EncoderData *> nodes{r0};
+  for (unsigned i = 1; i < distance; ++i)
+    nodes.push_back(a.make<EncoderData>(i == 1 && barrier != EncoderType::Null ? barrier : EncoderType::Null));
+  nodes.push_back(r1);
+  const auto before = tokens(nodes);
+  ctx.optimize(nodes);
+  const bool merged = barrier == EncoderType::Null && (!bounded || distance <= 64);
+  require((r0->type == EncoderType::Null) == merged, "merge occurs only within physical window and barriers");
+  require(tokens(nodes) == before, "all draw tokens and timestamp/event boundaries retain order");
+  require(r1->use_visibility_result, "visibility query participation retained");
+  if (merged) {
+    require(fence_ids(r1->fence_wait) == std::vector<uint64_t>{3}, "merged external waits retained");
+    require((fence_ids(r1->fence_update) == std::vector<uint64_t>{5,7}), "merged fence updates retained");
+  } else {
+    require(fence_ids(r0->fence_wait) == std::vector<uint64_t>{3} &&
+            fence_ids(r0->fence_update) == std::vector<uint64_t>{5} &&
+            fence_ids(r1->fence_wait) == std::vector<uint64_t>{5} &&
+            fence_ids(r1->fence_update) == std::vector<uint64_t>{7}, "unmerged dependency fences retained");
+  }
+}
+static void partial_clear_boundary() {
+  Surface depth, stencil; Arena a; ArgumentEncodingContext ctx;
+  auto *c = clear(a,depth); c->clear_dsv = 3; c->depth_stencil = {0.75f, 9};
+  c->fence_wait.set(2); c->fence_update.set(4);
+  auto *r0 = render(a,depth), *r1 = render(a,depth);
+  r0->dsv_planar_flags = r1->dsv_planar_flags = 3;
+  r0->depth.attachment = r1->depth.attachment = &depth.base;
+  r0->stencil.attachment = r1->stencil.attachment = &stencil.base;
+  r0->depth.load_action = r1->depth.load_action = WMTLoadActionLoad;
+  r0->stencil.load_action = r1->stencil.load_action = WMTLoadActionLoad;
+  r0->depth.store_action = r1->depth.store_action = WMTStoreActionStore;
+  r0->stencil.store_action = r1->stencil.store_action = WMTStoreActionStore;
+  std::vector<EncoderData *> nodes{c};
+  for (unsigned i = 1; i < 64; ++i) nodes.push_back(a.make<EncoderData>(EncoderType::Null));
+  nodes.push_back(r0); nodes.push_back(r1);
+  ctx.optimize(nodes);
+  // Render suffix may merge before the Clear is considered. The first
+  // surviving render is therefore at distance 65 when the bound is active.
+  require(c->type == EncoderType::Clear && c->clear_dsv == (bounded ? 3u : 2u),
+          "partial clear remains explicit when its first surviving match is outside the window");
+  require(c->fence_wait.test(2) && c->fence_update.test(4), "partial clear fences retained");
+  require(r1->depth.load_action == (bounded ? WMTLoadActionLoad : WMTLoadActionClear),
+          "only a visited partial-clear match changes depth load");
+  require(r1->stencil.load_action == WMTLoadActionLoad, "unmatched stencil stays loaded");
+}
+static void partial_clear_then_cutoff() {
+  Surface depth, stencil; Arena a; ArgumentEncodingContext ctx;
+  auto *c = clear(a,depth); c->clear_dsv = 3; c->depth_stencil = {0.75f, 9};
+  c->fence_wait.set(2); c->fence_update.set(4);
+  auto *r0 = render(a,depth), *r1 = render(a,depth);
+  r0->depth.attachment = &depth.base; r0->stencil.attachment = &stencil.base;
+  r1->depth.attachment = &stencil.base; r1->stencil.attachment = &depth.base;
+  r0->dsv_planar_flags = r1->dsv_planar_flags = 3;
+  r0->depth.load_action = r1->depth.load_action = WMTLoadActionLoad;
+  r0->stencil.load_action = r1->stencil.load_action = WMTLoadActionLoad;
+  std::vector<EncoderData *> nodes{c};
+  for (unsigned i = 1; i < 64; ++i) nodes.push_back(a.make<EncoderData>(EncoderType::Null));
+  nodes.push_back(r0); nodes.push_back(r1);
+  ctx.optimize(nodes);
+  require(r0->depth.load_action == WMTLoadActionClear && r0->depth.clear_depth == 0.75f,
+          "partial depth fold at position 64 is finalized before cutoff");
+  if (bounded) {
+    require(c->type == EncoderType::Clear && c->clear_dsv == 2, "residual stencil clear survives cutoff");
+    require(c->fence_wait.test(2) && c->fence_update.test(4), "residual clear retains fences");
+    require(r1->stencil.load_action == WMTLoadActionLoad, "unvisited stencil match unchanged");
+  } else {
+    require(c->type == EncoderType::Null && r1->stencil.load_action == WMTLoadActionClear &&
+            r1->stencil.clear_stencil == 9, "legacy search completes residual stencil fold");
+    require(r1->fence_wait.test(2) && r1->fence_update.test(4), "completed clear transfers fences");
+  }
+}
+static void resolve_then_cutoff() {
+  Surface source, destination; Arena a; ArgumentEncodingContext ctx;
+  auto *r = render(a,source);
+  auto *resolve = a.make<ResolveEncoderData>(EncoderType::Resolve);
+  resolve->src = &source.base; resolve->dst = &destination.base;
+  resolve->fence_wait.set(2); resolve->fence_update.set(4);
+  r->fence_wait.set(1); r->fence_update.set(3);
+  wmtcmd_render_draw cmd{}; command(r,cmd,77);
+  std::vector<EncoderData *> nodes{r};
+  for (unsigned i = 1; i < 64; ++i) nodes.push_back(a.make<EncoderData>(EncoderType::Null));
+  nodes.push_back(resolve);
+  nodes.push_back(a.make<EncoderData>(EncoderType::SampleTimestamp));
+  const auto before = tokens(nodes);
+  ctx.optimize(nodes);
+  require(resolve->type == EncoderType::Null && r->colors[0].store_action == WMTStoreActionStoreAndMultisampleResolve &&
+          r->colors[0].resolve_attachment == &destination.base, "resolve absorption finalized before cutoff");
+  require((fence_ids(r->fence_wait) == std::vector<uint64_t>{1,2}) &&
+          (fence_ids(r->fence_update) == std::vector<uint64_t>{3,4}), "absorbed resolve transfers all fences");
+  require(tokens(nodes) == before, "draw and timestamp survive absorbed resolve at boundary");
+}
+int main() {
+  dead_store_cases(); residency_cases();
+  for (auto n : {63u,64u,65u,256u,1024u}) { scaling(n,false); scaling(n,true); }
+  for (auto distance : {1u,63u,64u,65u,256u}) merge_window(distance);
+  for (auto barrier : {EncoderType::SignalEvent, EncoderType::WaitForEvent, EncoderType::SampleTimestamp})
+    merge_window(65,barrier);
+  partial_clear_boundary();
+  partial_clear_then_cutoff();
+  resolve_then_cutoff();
+  std::cout << "PASS assertions=" << checks << " bounded=" << bounded << '\n';
+}

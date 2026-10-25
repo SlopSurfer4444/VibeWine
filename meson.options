@@ -22,5 +22,7 @@ option('vibewine_demand_scheduler', type : 'boolean', value : false,
   description : 'Experimental bounded demand-aware shader compiler scheduling')
 option('vibewine_discard_hints', type : 'boolean', value : false,
   description : 'Experimental exact full-color discard store admission')
+option('vibewine_bounded_encoder_optimizer', type : 'boolean', value : false,
+  description : 'Experimental 64-position encoder merge lookahead; off preserves unbounded search')
 option('vibewine_perf_reference', type : 'combo', choices : ['none', 'w4', 'getters', 'batching'], value : 'none',
   description : 'Build-only corrected W4 performance reference; none keeps all optimizations')

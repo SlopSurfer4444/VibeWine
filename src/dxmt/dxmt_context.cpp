@@ -871,8 +871,6 @@ ArgumentEncodingContext::$$setEncodingContext(uint64_t seq_id, uint64_t frame_id
   frame_id_ = frame_id;
 }
 
-constexpr unsigned kEncoderOptimizerThreshold = 64;
-
 #if defined(DXMT_RESIDENCY_SETS) && DXMT_RESIDENCY_SETS
 bool
 ArgumentEncodingContext::tryReadOnlyResidency(Buffer *buffer, DXMT_RESOURCE_RESIDENCY requested) {
@@ -916,6 +914,14 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       if (encoders[j]->type != EncoderType::Clear && encoders[j]->type != EncoderType::Render)
         continue;
       for (i = j + 1; i < encoder_count; i++) {
+#if defined(DXMT_BOUNDED_ENCODER_OPTIMIZER) && DXMT_BOUNDED_ENCODER_OPTIMIZER
+        // Limit physical positions, including Null nodes, to bound traversal.
+        // Each completed relation check already finalized its own mutations.
+        // Stop seeking optional merges; leave remaining encoder emission intact.
+        constexpr unsigned kEncoderOptimizerThreshold = 64;
+        if (i - j > kEncoderOptimizerThreshold)
+          break;
+#endif
         if (encoders[i]->type == EncoderType::Null)
           continue;
         if (checkEncoderRelation(encoders[j], encoders[i]) == DXMT_ENCODER_LIST_OP_SYNCHRONIZE)
