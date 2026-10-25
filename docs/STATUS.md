@@ -1,5 +1,9 @@
 # Current source, installation and checks
 
+Latest [presentation/compiler source follow-up](diagnostics/presentation-followup-20261025.md):
+DXMT `96940d73`, Wine unchanged. New opt-in budgets and visibility diagnostics
+are separate from the installed renderer. No game/FPS promotion is claimed.
+
 Reconciled **25 October 2026**. This is the authoritative current checkpoint;
 dated snapshot documents retain their original historical claims.
 

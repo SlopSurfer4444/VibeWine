@@ -6,6 +6,8 @@
 #include <iomanip>
 #include <set>
 #include <tuple>
+#include <map>
+#include <array>
 #include <QuartzCore/CABase.h>
 #include <mach/mach_time.h>
 #include <uuid/uuid.h>
@@ -59,7 +61,7 @@ static uint64_t recordBudget(const char *arg) {
 }
 static const char *clockDomain(uint32_t type) {
   if(type==24)return "native_gpu_ns";
-  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=99))return "cpu_steady_ns";
+  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=103))return "cpu_steady_ns";
   return "unknown";
 }
 static const char *profileName(uint32_t flags) {
@@ -113,11 +115,38 @@ int main(int argc,char **argv) {
           if(!presentationProbeValid(e) || !identities.emplace(e.type,e.object,e.padding0).second)profileValid=false;
         }
       }
+      // Additive groups are optional for old producers. If present, partial or
+      // malformed evidence is never silently accepted as valid visibility.
+      std::map<std::tuple<uint32_t,uint64_t,uint64_t>,std::array<const trace::Decoded*,4>> visibility;
+      for(const auto &e:s.events)if(e.type>=100 && e.type<=103) {
+        auto &group=visibility[{e.thread,e.object,e.start}];auto &slot=group[e.type-100];
+        if(slot || !e.thread || !e.object || e.start!=e.end)profileValid=false;
+        slot=&e;
+      }
+      using VisibilityPayload=std::tuple<uint64_t,uint64_t,uint64_t,uint64_t,uint32_t>;
+      std::map<std::pair<uint64_t,uint64_t>,VisibilityPayload> visibilitySnapshots;
+      for(const auto &[key,g]:visibility) {
+        if(!g[0] || !g[1] || !g[2] || !g[3]) {profileValid=false;continue;}
+        const auto &a=*g[0],&b=*g[1],&c=*g[2],&d=*g[3];
+        if(a.flags>4 || (b.flags&~255u) || c.flags || d.flags ||
+           bool(b.flags&32u)!=bool(d.padding0&2u))profileValid=false;
+        if(a.flags==0 && (!a.padding0 || !a.padding1 || !b.padding0 || b.padding1>=1000000000ULL ||
+                         (!(b.flags&1u) && c.padding0)))profileValid=false;
+        // Cached observations retain immutable identity even after expiry or
+        // when another Presenter reads the same layer. Only age/status and the
+        // caller's configuration revision may differ between receipts.
+        if(a.padding0 && a.padding1) {
+          VisibilityPayload payload{b.padding0,c.padding0,c.padding1,d.padding0,b.flags};
+          auto [prior,inserted]=visibilitySnapshots.emplace(std::make_pair(a.padding0,a.padding1),payload);
+          if(!inserted && prior->second!=payload)profileValid=false;
+        }
+      }
       const auto profileLabel=!profileMarkers?"unspecified-full-or-legacy":profileMarkers==1 && profileMarkerValid(*profile)?profileName(profile->flags):"malformed-profile-metadata";
       for(const auto &e:s.events) {
         std::cout<<"{\"kind\":\"event\",\"index\":"<<e.index<<",\"generation\":"<<e.generation<<",\"type\":"<<e.type<<",\"thread\":"<<e.thread<<",\"flags\":"<<e.flags<<",\"object\":"<<e.object<<",\"start\":"<<e.start<<",\"end\":"<<e.end<<",\"padding0\":"<<e.padding0<<",\"padding1\":"<<e.padding1<<",\"clock_domain\":"<<json(clockDomain(e.type))<<",\"duration_ns\":";
-        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && e.type!=99 && probe::valid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
+        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && e.type!=99 && !(e.type>=100 && e.type<=103) && probe::valid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
         if(e.type>=96 && e.type<=99)std::cout<<",\"event_name\":"<<json(e.type==96?"Queue frame-latency wait":e.type==97?"Swapchain admission wait":e.type==98?"Drawable acquire":"Queue/native frame binding")<<",\"presentation_identity_valid\":"<<(presentationProbeValid(e)?"true":"false");
+        if(e.type>=100 && e.type<=103)std::cout<<",\"event_name\":"<<json(e.type==100?"Visibility sampled identity/status":e.type==101?"Visibility native freshness/flags":e.type==102?"Visibility window/display identity":"Visibility occlusion/configuration")<<",\"visibility_sample_only\":true";
         if(e.type==95)std::cout<<",\"event_name\":\"Producer trace profile\",\"producer_profile\":"<<json(profileName(e.flags))<<",\"profile_schema\":"<<e.object<<",\"profile_metadata_valid\":"<<(profileMarkerValid(e)?"true":"false")<<",\"detail_limit\":"<<e.padding0<<",\"lifetime_capacity\":"<<e.padding1;
         if(e.type==71){
           const double seconds=std::bit_cast<double>(e.padding1);

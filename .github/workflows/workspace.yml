@@ -81,3 +81,13 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/device-teardown/run.py
         working-directory: components/dxmt
+      - run: python3 tests/vibewine/encoder-marshalling/test_present.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/compiler-budget/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/encoder-optimizer-lookahead/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/bridge-port/run_visibility.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/bridge-port/test_visibility_producer.py
+        working-directory: components/dxmt

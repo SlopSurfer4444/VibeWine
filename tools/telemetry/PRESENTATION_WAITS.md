@@ -90,3 +90,19 @@ cannot establish which runtime binary a game actually loads.
    performance improvement follows from this diagnostic capture alone. Apply
    the7-day/64MiB raw cap and active/analysis/recovery holds from README; stop all
    task-owned collection at acceptance through its existing owner.
+
+## Optional sampled native visibility
+
+Additive100–103 groups describe diagnostics-only native layer visibility. They
+are optional for historical traces; missing groups yield `not_observed_legacy_or_disabled`
+in `visibility_observations`. Present groups are joined by generation/thread/
+swapchain/CPU receipt, checked for duplicate/missing fields and native age, and
+kept distinct from displayed cadence. Unknown/stale/unsupported evidence cannot
+become fresh visibility. The fields and producer bounds are documented in the
+component's `docs/presentation-visibility-20261025.md`.
+
+`visibility_observations.continuous_visibility_verified` is always false; sampled
+window/Space/occlusion flags never establish continuous visible gameplay. Native
+MONOTONIC_RAW observation/age payloads remain separate from CPU QPC and
+CoreAnimation host seconds. The source uses the existing fixed trace capacity
+and session retention/holds; no new collector or retained file is introduced.

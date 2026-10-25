@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "date": "2026-10-25",
+  "dxmt": "96940d73ac28f57fe12df832d246d3e84965f2cd",
+  "dxmtTree": "ef5ffa7d5dce0f7e4fb240a0f5a0674b2353d584",
+  "wineSource": "5d4b43e48f48d83254468596a0df8592d62e3242",
+  "installed": false,
+  "gameLaunched": false,
+  "fpsGainEstablished": false,
+  "variants": {
+    "false": {
+      "elevenBuildSwitches": false,
+      "matchedPeNativeDefinitionsVerified": true,
+      "targetCount": 161,
+      "hashesBeforeLabSigning": {
+        "src/d3d11/d3d11.dll": "ee71ecac14cff69b3cba570d25e4210de897639c9eed719db8889bd41bf9e03c",
+        "src/dxgi/dxgi.dll": "cecd4b8ed7600e848a8e3109c5486d79c3de461054726ed3db1bfbad93bbe65b",
+        "src/d3d10/d3d10core.dll": "998bcb20ce1174ab8d25b0a7b2f0fc31e1bdda15ae6af9b996a8b4d31e4c6f0e",
+        "src/winemetal/winemetal.dll": "be72a359aff0913edf07b3742b2d683c358b0624c02472955218fdd0fcc46335",
+        "src/winemetal/unix/winemetal.so": "a97573112d1779169c7931f1208f4876feb6ec1ca441a9725ab6c5a96e2fdead"
+      },
+      "configureCompileExitCodes": [
+        0,
+        0
+      ]
+    },
+    "true": {
+      "elevenBuildSwitches": true,
+      "matchedPeNativeDefinitionsVerified": true,
+      "targetCount": 161,
+      "hashesBeforeLabSigning": {
+        "src/d3d11/d3d11.dll": "40ec032438c40fbd4a8ec7d9c44e2fbea45a9d110831391f6939484e87aed1ff",
+        "src/dxgi/dxgi.dll": "4b6cd502b9a5c50baf8afcb33fb3b8feacc7a5c4902eccadb307472f14b75deb",
+        "src/d3d10/d3d10core.dll": "98fd1113bac5ab5a79da3d8c51244941dc4782d61291fe39df2626a198da4bd5",
+        "src/winemetal/winemetal.dll": "268507d019cfbdc2b7bacdf63353115118460cc0086abf4eae5853eb4fe72471",
+        "src/winemetal/unix/winemetal.so": "6c4e4f5386b584aa673c5f3e35de24c8b3fdcdab916e9019d7b85cd7016a33e5"
+      },
+      "configureCompileExitCodes": [
+        0,
+        0
+      ]
+    }
+  },
+  "gpuChecks": {
+    "false": {
+      "passed": true,
+      "exitCode": 0,
+      "scope": "isolated offscreen D3D11 fixture; not presented gameplay",
+      "stagesPassed": 5,
+      "checks": 172,
+      "status": "pass",
+      "liveBirthAndSevenMappingsVerified": true,
+      "isolatedServerCleanup": true,
+      "hashesUnchangedDuringRun": true
+    },
+    "true": {
+      "passed": true,
+      "exitCode": 0,
+      "scope": "isolated offscreen D3D11 fixture; not presented gameplay",
+      "stagesPassed": 5,
+      "checks": 166,
+      "status": "pass",
+      "liveBirthAndSevenMappingsVerified": true,
+      "isolatedServerCleanup": true,
+      "hashesUnchangedDuringRun": true
+    },
+    "true-pixel-control": {
+      "passed": true,
+      "exitCode": 20,
+      "scope": "isolated offscreen D3D11 fixture; not presented gameplay",
+      "stagesPassed": 0,
+      "checks": 91,
+      "status": "negative_control_rejected",
+      "liveBirthAndSevenMappingsVerified": true,
+      "isolatedServerCleanup": true,
+      "hashesUnchangedDuringRun": true
+    }
+  },
+  "labRestoredToBaseline": true
+}

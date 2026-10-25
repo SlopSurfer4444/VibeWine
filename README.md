@@ -18,6 +18,11 @@ wait diagnostics. Its ten-switch renderer is now installed for owner testing;
 ordinary DS3 launch requests fixed-output MetalFX, with actual game activation
 and controlled gameplay gains still unmeasured.
 
+A [source follow-up](docs/diagnostics/presentation-followup-20261025.md) reduces
+repeated Present property calls, adds opt-in compiler/optimizer budgets and
+sampled window/Space visibility evidence. These changes are separate from the
+installed runtime; no new FPS result or game promotion is claimed.
+
 The owner selected the preceding combined experiment
 for diagnostic DS3 play; the previous playable endpoint remains recoverable. Source
 adds seven independently gated renderer experiments, MSync rollback repair and

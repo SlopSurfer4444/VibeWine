@@ -1,5 +1,11 @@
 # VibeWine roadmap
 
+The [presentation/compiler follow-up](docs/diagnostics/presentation-followup-20261025.md)
+implements bounded optimizer search, explicit compiler concurrency control,
+source-dimension reuse and sampled visibility. Next acceptance is measured
+critical-path benefit with trustworthy layer/display coverage; default-off
+experiments are not an installed performance release.
+
 This is a direction for contributions, not a release promise. Start with the
 [component source](README.md#get-the-source) and [contribution guide](CONTRIBUTING.md).
 
