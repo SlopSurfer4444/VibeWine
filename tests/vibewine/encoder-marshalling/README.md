@@ -38,7 +38,11 @@ Wine/DXMT runtime, game, window or Metal device is used:
   normalized commands with the previous six-wrapper sequence and tests matched
   and scaled dimensions, actual acquired geometry, null/non-null gamma, metadata,
   viewport/draw fields, fences, configuration application/failure/retry, missing
-  drawable/texture, bad format, zero geometry and nil encoder.
+  drawable/texture, bad format, zero geometry and nil encoder. Source dimensions
+  are read once each after acquired-drawable validation and reused for viewport
+  fitting and pipeline selection. Checks count the real wrapper calls, including
+  early failures, and reject restoring repeated getters. Zero source dimensions
+  preserve the existing full-viewport fallback.
 
 All three fixtures compile the undefined default, explicit optimized (`0`) and
 reference (`1`) macro variants. The undefined default and explicit optimized
@@ -98,6 +102,15 @@ five calls (four removed); optional bindings join the same batch; compute setup
 replaces two calls (one removed); Present replaces six calls (five removed). No
 FPS or timing result follows from these counts. There is no descriptor cache,
 attachment omission, asynchronous command storage or protocol change.
+
+The presentation source-dimension reuse removes up to two more native property
+thunks per frame: source width/height reads go from four to two when there are no
+bars and widths match, from three to two when widths differ, and stay at two when
+bars already short-circuit pipeline selection. Drawable dimensions are still read
+once each from the acquired texture. This reuse applies to all W4 build-reference
+modes; those controls continue to isolate only their original getters/batching.
+The current whole-function fixture also supplies the presentation trace scope and
+frame identifier required by the production signature.
 
 The fixture owner is this test directory. Generated source/binaries live in one
 private temporary directory per invocation and are removed on completion; inputs

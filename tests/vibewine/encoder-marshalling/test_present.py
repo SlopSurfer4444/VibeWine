@@ -69,10 +69,12 @@ def main():
             subprocess.run([*command, "-arch", other, *defines, "-c", str(cpp),
                             "-o", str(Path(scratch) / (name + ".o"))], check=True, timeout=60)
         mutations = [
-            ("offset_viewport_wrong_absolute_blit", "!has_bars && backbuffer.width() == (uint64_t)width &&\n                                  backbuffer.height() == (uint64_t)height",
-             "backbuffer.width() == (uint64_t)viewport.width && backbuffer.height() == (uint64_t)viewport.height"),
+            ("offset_viewport_wrong_absolute_blit", "!has_bars && source_width == (uint64_t)width &&\n                                  source_height == (uint64_t)height",
+             "source_width == (uint64_t)viewport.width && source_height == (uint64_t)viewport.height"),
             ("bars_not_cleared", "has_bars ? WMTLoadActionClear : WMTLoadActionDontCare", "WMTLoadActionDontCare"),
             ("wrong_viewport_tail", "viewport_command.viewports.set(&viewport);", "viewport.originX += 1; viewport_command.viewports.set(&viewport);"),
+            ("repeated_source_dimension_thunks", "!has_bars && source_width == (uint64_t)width &&\n                                  source_height == (uint64_t)height",
+             "!has_bars && backbuffer.width() == (uint64_t)width &&\n                                  backbuffer.height() == (uint64_t)height"),
         ]
         for mutation, before, after in mutations:
             assert body.count(before) == 1, mutation

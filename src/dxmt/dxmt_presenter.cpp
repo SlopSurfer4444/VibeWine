@@ -379,13 +379,17 @@ Presenter::encodeCommands(
   if (width == 0 || height == 0)
     return {};
 
-  auto viewport = fitPresentViewport(width, height, backbuffer.width(), backbuffer.height(),
-                                           configuration.preserve_aspect);
+  // Texture dimensions are immutable. Each accessor crosses the native bridge,
+  // so reuse this frame's values for geometry and pipeline selection.
+  const uint64_t source_width = backbuffer.width();
+  const uint64_t source_height = backbuffer.height();
+  auto viewport = fitPresentViewport(width, height, source_width, source_height,
+                                    configuration.preserve_aspect);
   const bool has_bars = viewport.originX != 0 || viewport.originY != 0 ||
                         viewport.width != width || viewport.height != height;
   // Blit shaders use absolute raster position; an offset viewport must sample UVs.
-  const bool source_size_matched = !has_bars && backbuffer.width() == (uint64_t)width &&
-                                  backbuffer.height() == (uint64_t)height;
+  const bool source_size_matched = !has_bars && source_width == (uint64_t)width &&
+                                  source_height == (uint64_t)height;
 
   WMTRenderPassInfo info;
   WMT::InitializeRenderPassInfo(info);

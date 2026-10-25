@@ -13,6 +13,13 @@ static const char *scenario;
   std::fprintf(stderr, "%s:%d: %s\n", scenario, __LINE__, #condition); std::exit(1); } } while (0)
 namespace cs2trace {
 struct Scope { unsigned type; uint64_t object; ~Scope() { CHECK(type == 12 && object != 0); } };
+struct PresentationScope {
+  PresentationScope(uint32_t event, uint64_t serial, uint64_t frame, uint64_t revision,
+                    uint32_t flags, uint32_t generation) {
+    CHECK(event == 98 && serial == 67 && frame == 71 && revision != 0 && flags == 0);
+    CHECK(generation == 0 || generation == 23);
+  }
+};
 static unsigned failures;
 static uint64_t revision;
 static uint32_t status;
@@ -35,7 +42,7 @@ public:
   WMT::MetalDrawable encodeCommands(
       WMT::CommandBuffer, WMT::Texture, const PresentationConfiguration &, DXMTPresentMetadata, uint32_t,
       std::function<void(WMT::RenderCommandEncoder)> &&,
-      std::function<void(WMT::RenderCommandEncoder)> &&);
+      std::function<void(WMT::RenderCommandEncoder)> &&, uint64_t);
 };
 @FUNCTION@
 }
@@ -55,6 +62,7 @@ static uint64_t source_width, source_height, target_width, target_height;
 static WMTPixelFormat target_format;
 static obj_handle_t drawable_result, texture_result, encoder_result;
 static unsigned applies, acquires, encoders, ends, waits, updates;
+static unsigned source_width_reads, source_height_reads, target_width_reads, target_height_reads;
 static bool reply_checked;
 static uint32_t apply_status;
 static uint64_t expected_revision;
@@ -95,10 +103,14 @@ extern "C" WMTPixelFormat MTLTexture_pixelFormat(obj_handle_t texture) {
   CHECK(texture == TARGET); return target_format;
 }
 extern "C" uint64_t MTLTexture_width(obj_handle_t texture) {
-  CHECK(texture == SOURCE || texture == TARGET); return texture == TARGET ? target_width : source_width;
+  CHECK(texture == SOURCE || texture == TARGET);
+  ++(texture == TARGET ? target_width_reads : source_width_reads);
+  return texture == TARGET ? target_width : source_width;
 }
 extern "C" uint64_t MTLTexture_height(obj_handle_t texture) {
-  CHECK(texture == SOURCE || texture == TARGET); return texture == TARGET ? target_height : source_height;
+  CHECK(texture == SOURCE || texture == TARGET);
+  ++(texture == TARGET ? target_height_reads : source_height_reads);
+  return texture == TARGET ? target_height : source_height;
 }
 extern "C" obj_handle_t MTLCommandBuffer_renderCommandEncoder(obj_handle_t buffer, WMTRenderPassInfo *info) {
   CHECK(buffer == BUFFER); ++encoders; events.push_back("encoder");
@@ -191,6 +203,7 @@ static void reset(const char *name, const Presenter::PresentationConfiguration &
   target_format = WMTPixelFormatBGRA8Unorm;
   drawable_result = DRAWABLE; texture_result = TARGET; encoder_result = ENCODER;
   applies = acquires = encoders = ends = waits = updates = 0;
+  source_width_reads = source_height_reads = target_width_reads = target_height_reads = 0;
   reply_checked = true; apply_status = W7LA_OK;
   expected_revision = c.revision; expected_props = c.layer_props; expected_colorspace = c.colorspace;
   cs2trace::failures = 0;
@@ -198,12 +211,16 @@ static void reset(const char *name, const Presenter::PresentationConfiguration &
 }
 static WMT::MetalDrawable invoke(Presenter &p, const Presenter::PresentationConfiguration &c, unsigned generation = 23) {
   WMT::CommandBuffer buffer; buffer.handle = BUFFER; WMT::Texture backbuffer; backbuffer.handle = SOURCE;
-  return p.encodeCommands(buffer, backbuffer, c, metadata, generation, wait_fences, update_fences);
+  return p.encodeCommands(buffer, backbuffer, c, metadata, generation, wait_fences, update_fences, 71);
 }
 static Presenter presenter() { Presenter p; p.layer_.handle = LAYER; return p; }
-static void empty_result(WMT::MetalDrawable result, unsigned expected_acquires, unsigned expected_encoders) {
+static void empty_result(WMT::MetalDrawable result, unsigned expected_acquires, unsigned expected_encoders,
+                         bool zero_geometry = false) {
   CHECK(!result && records.empty() && batch_sizes.empty());
   CHECK(!waits && !updates && !ends && acquires == expected_acquires && encoders == expected_encoders);
+  const bool has_geometry = zero_geometry || expected_encoders != 0;
+  CHECK(target_width_reads == unsigned(has_geometry) && target_height_reads == unsigned(has_geometry));
+  CHECK(source_width_reads == expected_encoders && source_height_reads == expected_encoders);
 }
 // Historical control reconstructs only the old six wrapper calls. All guard,
 // acquisition, configuration, dimensions, fences, and failure behavior above come
@@ -227,6 +244,8 @@ static void success(const char *name, bool gamma, uint64_t sw, uint64_t sh, uint
   CHECK(invoke(p, c).handle == DRAWABLE);
   CHECK(p.encoded_configuration_revision_ == c.revision && applies == 1 && acquires == 1 && encoders == 1);
   CHECK(waits == 1 && updates == 1 && ends == 1 && cs2trace::failures == 0);
+  CHECK(source_width_reads == 1 && source_height_reads == 1);
+  CHECK(target_width_reads == 1 && target_height_reads == 1);
 #if defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING
   CHECK(batch_sizes == std::vector<unsigned>(8, 1));
 #else
@@ -254,7 +273,7 @@ static void success(const char *name, bool gamma, uint64_t sw, uint64_t sh, uint
   const auto actual = records; records.clear(); batch_sizes.clear();
   wrapper_control(c, expected_pso);
   CHECK(actual == records && batch_sizes == std::vector<unsigned>(8, 1));
-  std::printf("%s:passed:production-command-records-equal-historical-wrappers\n", name);
+  std::printf("%s:passed:production-command-records-equal-historical-wrappers:source-getters=2\n", name);
 }
 int main() {
   success("matched_null_gamma", false, 1920, 1080, 1920, 1080);
@@ -273,6 +292,8 @@ int main() {
   success("fixed_actual_fractional_odd_size", true, 640, 480, 853, 479,
           true, (853 - 640.0 * 479 / 480) / 2, 0, 640.0 * 479 / 480, 479);
   success("fixed_actual_same_aspect_blit", true, 640, 480, 640, 480, true);
+  success("zero_source_width", false, 0, 480, 640, 480, true);
+  success("zero_source_height", true, 640, 0, 640, 480, true);
   auto c = configuration();
   { reset("unsupported_checked_config", c); auto p = presenter(); reply_checked = false;
     p.checked_layer_configuration_ = WMT::MetalLayer::supportsCheckedConfiguration();
@@ -296,8 +317,8 @@ int main() {
   { reset("no_drawable", c); auto p = presenter(); drawable_result = 0; empty_result(invoke(p, c), 1, 0); }
   { reset("no_texture", c); auto p = presenter(); texture_result = 0; empty_result(invoke(p, c), 1, 0); }
   { reset("format_mismatch", c); auto p = presenter(); target_format = WMTPixelFormatRGBA16Float; empty_result(invoke(p, c), 1, 0); }
-  { reset("zero_width", c); auto p = presenter(); target_width = 0; empty_result(invoke(p, c), 1, 0); }
-  { reset("zero_height", c); auto p = presenter(); target_height = 0; empty_result(invoke(p, c), 1, 0); }
+  { reset("zero_width", c); auto p = presenter(); target_width = 0; empty_result(invoke(p, c), 1, 0, true); }
+  { reset("zero_height", c); auto p = presenter(); target_height = 0; empty_result(invoke(p, c), 1, 0, true); }
   { reset("nil_encoder", c); auto p = presenter(); encoder_result = 0; empty_result(invoke(p, c), 1, 1); }
   std::puts("unsupported-config-no-drawable-no-texture-format-zero-geometry-nil-encoder:passed:no-draw-update-end");
   std::puts("CPU-stub-only:passed:no-Metal-link-device-GPU-window-or-runtime-execution");
