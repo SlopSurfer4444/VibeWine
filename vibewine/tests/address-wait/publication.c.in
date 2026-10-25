@@ -1,0 +1,260 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* Actual production address queue bodies are inserted verbatim. Scheduling,
+ * raw alert, atomic, and syscall seams are supplied by this native fixture. */
+#define _POSIX_C_SOURCE 200809L
+#include <assert.h>
+#include <errno.h>
+#include <pthread.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include "wine/list.h"
+
+typedef int32_t LONG, NTSTATUS;
+typedef uint32_t DWORD, ULONG;
+typedef uint64_t ULONG64;
+typedef uint16_t USHORT;
+typedef uint8_t UCHAR;
+typedef uintptr_t ULONG_PTR, DWORD_PTR;
+typedef size_t SIZE_T;
+typedef void *HANDLE;
+typedef int BOOL;
+typedef struct { int64_t QuadPart; } LARGE_INTEGER;
+#define WINAPI
+#define TRUE 1
+#define FALSE 0
+#define STATUS_SUCCESS ((NTSTATUS)0)
+#define STATUS_TIMEOUT ((NTSTATUS)0x102)
+#define STATUS_ALERTED ((NTSTATUS)0x101)
+#define STATUS_INVALID_PARAMETER ((NTSTATUS)0xc000000d)
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
+static _Thread_local DWORD current_tid;
+static _Thread_local unsigned int lock_calls;
+static pthread_mutex_t control = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t changed = PTHREAD_COND_INITIALIZER;
+static struct
+{
+    int raw_wait_entered, allow_raw_alert, before_remove, allow_remove;
+    int cleanup_attempt, at_return, allow_return, detached, waker_done;
+    int early_return, acquire_reads, publications, batch;
+    DWORD received[257];
+    unsigned int received_count, batches, batch_sizes[2];
+    LONG batch_lock_values[2];
+    ULONG address;
+    NTSTATUS status;
+} schedule;
+static LONG *batch_lock;
+
+static void permit(int *field)
+{
+    pthread_mutex_lock(&control);
+    *field = 1;
+    pthread_cond_broadcast(&changed);
+    pthread_mutex_unlock(&control);
+}
+static void wait_locked(int *field)
+{
+    struct timespec deadline;
+    assert(!clock_gettime(CLOCK_REALTIME, &deadline));
+    deadline.tv_sec += 3;
+    while (!*field)
+        if (pthread_cond_timedwait(&changed, &control, &deadline) == ETIMEDOUT)
+        { fputs("PUBLICATION_SCHEDULE_TIMEOUT\n", stderr); abort(); }
+}
+static void await(int *field)
+{
+    pthread_mutex_lock(&control);
+    wait_locked(field);
+    pthread_mutex_unlock(&control);
+}
+static void fixture_trace(const char *format, ...)
+{
+    if (current_tid != 1 || strcmp(format, "returning %#lx\n")) return;
+    pthread_mutex_lock(&control);
+    /* Hold immediately before the production return. The stack entry stays
+     * live even on the old path, so the regression oracle needs no invalid
+     * memory access. The waker remains paused before the real list_remove. */
+    schedule.early_return = !schedule.detached;
+    schedule.at_return = 1;
+    pthread_cond_broadcast(&changed);
+    wait_locked(&schedule.allow_return);
+    pthread_mutex_unlock(&control);
+}
+#define TRACE(...) fixture_trace(__VA_ARGS__)
+static const char *debugstr_timeout(const LARGE_INTEGER *timeout) { return "fixture"; }
+static DWORD GetCurrentThreadId(void) { return current_tid; }
+static void YieldProcessor(void) { __asm__ __volatile__("" ::: "memory"); }
+static LONG InterlockedCompareExchange(LONG *p, LONG value, LONG compare)
+{
+    if (current_tid == 1 && ++lock_calls == 2)
+        permit(&schedule.cleanup_attempt);
+    __atomic_compare_exchange_n(p, &compare, value, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return compare;
+}
+static LONG InterlockedExchange(LONG *p, LONG value)
+{
+    return __atomic_exchange_n(p, value, __ATOMIC_SEQ_CST);
+}
+static inline __attribute__((unused)) void *ReadPointerAcquire(void * const volatile *p)
+{
+    ++schedule.acquire_reads;
+    return __atomic_load_n(p, __ATOMIC_ACQUIRE);
+}
+static inline __attribute__((unused)) void WritePointerRelease(void * volatile *p, void *value);
+static void fixture_list_remove(struct list *entry)
+{
+    if (current_tid == 2 && !schedule.batch)
+    {
+        pthread_mutex_lock(&control);
+        schedule.before_remove = 1;
+        pthread_cond_broadcast(&changed);
+        wait_locked(&schedule.allow_remove);
+        pthread_mutex_unlock(&control);
+    }
+    list_remove(entry); /* Actual wine/list.h helper, before the macro below. */
+    if (!schedule.batch) permit(&schedule.detached);
+}
+#define list_remove(entry) fixture_list_remove(entry)
+static NTSTATUS NtWaitForAlertByThreadId(const void *address, const LARGE_INTEGER *timeout)
+{
+    assert(current_tid == 1 && !timeout);
+    pthread_mutex_lock(&control);
+    schedule.raw_wait_entered = 1;
+    pthread_cond_broadcast(&changed);
+    wait_locked(&schedule.allow_raw_alert);
+    pthread_mutex_unlock(&control);
+    /* A raw per-thread alert is independent of the selected address waker. */
+    return STATUS_ALERTED;
+}
+static NTSTATUS NtAlertThreadByThreadId(HANDLE tid)
+{
+    assert(schedule.received_count < ARRAY_SIZE(schedule.received));
+    schedule.received[schedule.received_count++] = (DWORD)(ULONG_PTR)tid;
+    return STATUS_SUCCESS;
+}
+static NTSTATUS NtAlertMultipleThreadByThreadId(HANDLE *tids, unsigned int count,
+                                               void *unknown1, void *unknown2)
+{
+    assert(schedule.batches < ARRAY_SIZE(schedule.batch_sizes));
+    schedule.batch_sizes[schedule.batches] = count;
+    if (schedule.batch) schedule.batch_lock_values[schedule.batches] = *batch_lock;
+    ++schedule.batches;
+    for (unsigned int i = 0; i < count; ++i) NtAlertThreadByThreadId(tids[i]);
+    return STATUS_SUCCESS;
+}
+
+/* PRODUCTION_ADDRESS */
+#undef list_remove
+
+static inline __attribute__((unused)) void WritePointerRelease(void * volatile *p, void *value)
+{
+    assert(!value);
+    ++schedule.publications;
+    __atomic_store_n(p, value, __ATOMIC_RELEASE);
+    if (schedule.batch)
+    {
+        /* A published stack entry may cease to be owned by the waker. Change
+         * this field at that boundary to check that all delivery uses the
+         * already captured tid, including the 257th entry's in-lock flush. */
+        struct futex_entry *entry = (void *)((char *)p - offsetof(struct futex_entry, addr));
+        entry->tid = 0xdead;
+    }
+}
+static void *waiter(void *unused)
+{
+    ULONG compare = 0;
+    current_tid = 1;
+    lock_calls = 0;
+    schedule.status = RtlWaitOnAddress(&schedule.address, &compare, sizeof(compare), NULL);
+    return NULL;
+}
+static void *waker(void *all)
+{
+    current_tid = 2;
+    if (all) RtlWakeAddressAll(&schedule.address);
+    else RtlWakeAddressSingle(&schedule.address);
+    permit(&schedule.waker_done);
+    return NULL;
+}
+static int publication_test(int all)
+{
+    pthread_t wait_thread, wake_thread;
+    memset(&schedule, 0, sizeof(schedule));
+    memset(futex_queues, 0, sizeof(futex_queues));
+    assert(!pthread_create(&wait_thread, NULL, waiter, NULL));
+    await(&schedule.raw_wait_entered);
+    assert(!pthread_create(&wake_thread, NULL, waker, all ? &schedule : NULL));
+    await(&schedule.before_remove);
+    permit(&schedule.allow_raw_alert);
+    pthread_mutex_lock(&control);
+    struct timespec deadline;
+    assert(!clock_gettime(CLOCK_REALTIME, &deadline));
+    deadline.tv_sec += 3;
+    while (!schedule.at_return && !schedule.cleanup_attempt)
+        if (pthread_cond_timedwait(&changed, &control, &deadline) == ETIMEDOUT)
+        { fputs("NO_RETURN_OR_CLEANUP\n", stderr); abort(); }
+    int early = schedule.at_return;
+    pthread_mutex_unlock(&control);
+    permit(&schedule.allow_remove);
+    await(&schedule.waker_done);
+    await(&schedule.at_return);
+    permit(&schedule.allow_return);
+    assert(!pthread_join(wake_thread, NULL));
+    assert(!pthread_join(wait_thread, NULL));
+    assert(schedule.status == STATUS_SUCCESS && schedule.received_count == 1);
+    assert(schedule.received[0] == 1 && schedule.detached);
+    assert(!!schedule.early_return == early);
+    if (!early) assert(schedule.acquire_reads == 1 && schedule.publications == 1);
+    printf("raw-alert/%s return_before_detach=%d %s\n", all ? "all" : "single", early,
+           early ? "REGRESSION" : "PASS");
+    return early;
+}
+static void batch_test(void)
+{
+    struct futex_entry entries[259];
+    unsigned char addresses[4112];
+    memset(&schedule, 0, sizeof(schedule));
+    memset(futex_queues, 0, sizeof(futex_queues));
+    schedule.batch = 1;
+    current_tid = 2;
+    struct futex_queue *queue = get_futex_queue(addresses);
+    assert(queue == get_futex_queue(addresses + 4096));
+    batch_lock = &queue->lock;
+    list_init(&queue->queue);
+    for (unsigned int i = 0; i < ARRAY_SIZE(entries); ++i)
+    {
+        entries[i].addr = (i == 0 || i == 129) ? addresses + 4096 : addresses;
+        entries[i].tid = i == 0 || i == 129 ? 0xbeef : i - (i > 129);
+        list_add_tail(&queue->queue, &entries[i].entry);
+    }
+    RtlWakeAddressAll(addresses);
+    assert(schedule.received_count == 257 && schedule.publications == 257);
+    assert(schedule.batches == 2 && schedule.batch_sizes[0] == 256 && schedule.batch_sizes[1] == 1);
+    assert(schedule.batch_lock_values[0] == -1 && schedule.batch_lock_values[1] == 0);
+    for (unsigned int i = 0; i < 257; ++i) assert(schedule.received[i] == i + 1);
+    assert(queue->queue.next == &entries[0].entry && queue->queue.prev == &entries[129].entry);
+    assert(entries[0].entry.next == &entries[129].entry && entries[129].entry.prev == &entries[0].entry);
+    for (unsigned int i = 0; i < ARRAY_SIZE(entries); ++i)
+    {
+        if (i == 0 || i == 129) assert(entries[i].addr == addresses + 4096 && entries[i].tid == 0xbeef);
+        else assert(!entries[i].addr && entries[i].tid == 0xdead);
+    }
+    puts("all/batch257 captured tids survive publication, flush256+1, collision retained PASS");
+}
+int main(void)
+{
+    int regressions = publication_test(0);
+    regressions += publication_test(1);
+    if (regressions)
+    {
+        fprintf(stderr, "ADDRESS_PUBLICATION_REGRESSION cases=%d\n", regressions);
+        return 42;
+    }
+    batch_test();
+    puts("ADDRESS_PUBLICATION_PASS");
+    return 0;
+}

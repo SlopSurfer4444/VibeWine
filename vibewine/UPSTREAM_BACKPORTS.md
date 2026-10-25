@@ -159,3 +159,21 @@ introduced. Helper-contract tests cover disabled behavior, timing, byte/count
 bounds, concurrent admission, clock errors and write failure. These are focused
 source/native fixtures and syntax checks, not a fresh linked runtime or gameplay
 comparison.
+
+
+## Address queue publication follow-up (2026-10-25)
+
+Paul Gofman's [Wine `81e52628b25ac173d04796e8a9b9cda637d3e233`](https://github.com/wine-mirror/wine/commit/81e52628b25ac173d04796e8a9b9cda637d3e233)
+is adapted onto local base `85864be47d483d4518f729baef48cbf52ea1e5cf` under
+LGPL-2.1-or-later. Wakers snapshot the thread ID and detach the stack entry
+before release-publishing NULL; a non-timeout waiter uses an acquire precheck.
+Every timeout still acquires the queue lock, and the existing claimed-timeout
+infinite alert drain and error mapping remain intact. No Unix alert backend is
+transplanted. Native/translated ASan+UBSan production-body fixtures prove two
+exact old-source raw-alert publication failures, fixed-source safe cleanup,
+257-entry batching with post-publication field changes and retained colliding
+addresses. Existing native-kqueue/futex timeout regressions and error controls
+remain passing. See [the address-wait fixture notes](tests/address-wait/README.md)
+for exact commands, ownership, source boundaries and limitations. No installed
+runtime, full Wine build, game acceptance or performance claim follows from
+these checks.

@@ -1509,6 +1509,41 @@
       "source": "fps-wave-20261025/p5-msync/vibewine/tests/msync-attribution/run.py",
       "destination": "vibewine/tests/msync-attribution/run.py",
       "sha256": "7ca7c3e9d18cd930ec00b4137163caffd9c15ae777566f4e37534496ef37c82e"
+    },
+    {
+      "source": "neighbor-wave-20261025/wait-publication/dlls/ntdll/sync.c",
+      "destination": "dlls/ntdll/sync.c",
+      "sha256": "e2ff7d4e66957fb6af1e9e696d5275acddcfb6cd95218b4133e3ac98350c6df1"
+    },
+    {
+      "source": "neighbor-wave-20261025/wait-publication/vibewine/UPSTREAM_BACKPORTS.md",
+      "destination": "vibewine/UPSTREAM_BACKPORTS.md",
+      "sha256": "ca2b4a9558c9bebbc79918a0c0e4e3e824d082bbd6bfc804ac2b559316ec0238"
+    },
+    {
+      "source": "neighbor-wave-20261025/wait-publication/vibewine/tests/address-wait/README.md",
+      "destination": "vibewine/tests/address-wait/README.md",
+      "sha256": "fea7c2837914d0f070d974632fcfaf94691b7378d3b47257a3dc27021bff5847"
+    },
+    {
+      "source": "neighbor-wave-20261025/wait-publication/vibewine/tests/address-wait/fixture.c.in",
+      "destination": "vibewine/tests/address-wait/fixture.c.in",
+      "sha256": "8692926a6fefc72c6ac22f37eee34e30b8d8b56ad4e977d45f9a075922bf03e5"
+    },
+    {
+      "source": "neighbor-wave-20261025/wait-publication/vibewine/tests/address-wait/run.py",
+      "destination": "vibewine/tests/address-wait/run.py",
+      "sha256": "655aafb2ed332936204d1e4256be0d4f2caab661ac396ba7a71da29844c3c390"
+    },
+    {
+      "source": "neighbor-wave-20261025/wait-publication/vibewine/tests/address-wait/publication.c.in",
+      "destination": "vibewine/tests/address-wait/publication.c.in",
+      "sha256": "ef9210754fe8d5ea28474645117ce1eadbb72027fcdec75c7a7aeb31fdb2b664"
+    },
+    {
+      "source": "neighbor-wave-20261025/wait-publication/vibewine/tests/address-wait/run_publication.py",
+      "destination": "vibewine/tests/address-wait/run_publication.py",
+      "sha256": "9b88195dc9087d966ff032ddda8bdf80da366a767571c6bb41c594cac7641a5d"
     }
   ]
 }

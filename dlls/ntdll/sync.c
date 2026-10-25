@@ -911,8 +911,9 @@ NTSTATUS WINAPI RtlWaitOnAddress( const void *addr, const void *cmp, SIZE_T size
     ret = NtWaitForAlertByThreadId( NULL, timeout );
 
     /* We may have already been removed by a call to RtlWakeAddressSingle() or RtlWakeAddressAll().
-     * A timeout must check under the lock whether a waker has claimed this entry. */
-    if (ret == STATUS_TIMEOUT || entry.addr)
+     * A timeout must check under the lock whether a waker has claimed this entry.
+     * The acquire pairs with the waker's final access to this stack entry. */
+    if (ret == STATUS_TIMEOUT || ReadPointerAcquire( (void * volatile *)&entry.addr ))
     {
         spin_lock( &queue->lock );
         if ((queued = entry.addr != NULL))
@@ -942,6 +943,7 @@ void WINAPI RtlWakeAddressAll( const void *addr )
     struct futex_entry *entry, *next;
     unsigned int count = 0;
     HANDLE tids[256];
+    DWORD tid;
 
     TRACE("%p\n", addr);
 
@@ -956,14 +958,15 @@ void WINAPI RtlWakeAddressAll( const void *addr )
     {
         if (entry->addr == addr)
         {
-            entry->addr = NULL;
+            tid = entry->tid;
             list_remove( &entry->entry );
+            WritePointerRelease( (void * volatile *)&entry->addr, NULL );
             if (count == ARRAY_SIZE(tids))
             {
                 NtAlertMultipleThreadByThreadId( tids, count, NULL, NULL );
                 count = 0;
             }
-            tids[count++] = (HANDLE)(ULONG_PTR)entry->tid;
+            tids[count++] = (HANDLE)(ULONG_PTR)tid;
         }
     }
 
@@ -1003,8 +1006,8 @@ void WINAPI RtlWakeAddressSingle( const void *addr )
             /* Remove this entry from the queue, so that a simultaneous call to
              * RtlWakeAddressSingle() will not also wake it—two simultaneous
              * calls must wake at least two waiters if they exist. */
-            entry->addr = NULL;
             list_remove( &entry->entry );
+            WritePointerRelease( (void * volatile *)&entry->addr, NULL );
             break;
         }
     }

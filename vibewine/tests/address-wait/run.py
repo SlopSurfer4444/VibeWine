@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--revision", help="read both sync.c files from this component Git revision")
     parser.add_argument("--expect-regression", action="store_true")
     parser.add_argument("--sanitize", action="store_true")
+    parser.add_argument("--arch", choices=("arm64", "x86_64"), help="Darwin compiler architecture")
     parser.add_argument("--backend", choices=("futex", "kqueue", "all"),
                         default="all" if sys.platform == "darwin" else "futex",
                         help="Darwin defaults to both production branches; kqueue uses native syscalls")
@@ -93,6 +94,8 @@ def main():
             binary = Path(scratch) / f"fixture-{backend}"
             command = ["clang", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-pthread", "-O2",
                        "-I", str(root / "include"), str(source), "-o", str(binary)]
+            if args.arch:
+                command += ["-arch", args.arch]
             if backend == "kqueue":
                 command.append("-DTEST_KQUEUE")
             if args.sanitize:
