@@ -20,6 +20,7 @@
 #include <metal_common>
 #include <metal_texture>
 #include <metal_math>
+#include <metal_integer>
 #include "dxmt_command_constants.hpp"
 
 using namespace metal;
