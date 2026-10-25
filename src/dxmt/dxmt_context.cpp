@@ -913,6 +913,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       // TODO(fences): we don't actively move encoders other than clear and render
       if (encoders[j]->type != EncoderType::Clear && encoders[j]->type != EncoderType::Render)
         continue;
+      bool intervening_live_encoder = false;
       for (i = j + 1; i < encoder_count; i++) {
 #if defined(DXMT_BOUNDED_ENCODER_OPTIMIZER) && DXMT_BOUNDED_ENCODER_OPTIMIZER
         // Limit physical positions, including Null nodes, to bound traversal.
@@ -924,8 +925,18 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
 #endif
         if (encoders[i]->type == EncoderType::Null)
           continue;
-        if (checkEncoderRelation(encoders[j], encoders[i]) == DXMT_ENCODER_LIST_OP_SYNCHRONIZE)
+        // Folding a resolve into the earlier render moves its destination
+        // access backwards. The render's original dependencies do not prove
+        // that move safe across an already visited live encoder. Only permit
+        // this fold for live adjacency; Nulls and absorbed resolves are inert.
+        if (intervening_live_encoder && encoders[j]->type == EncoderType::Render &&
+            encoders[i]->type == EncoderType::Resolve) {
+          if (hasDataDependency(encoders[i], encoders[j]))
+            break;
+        } else if (checkEncoderRelation(encoders[j], encoders[i]) == DXMT_ENCODER_LIST_OP_SYNCHRONIZE) {
           break;
+        }
+        intervening_live_encoder |= encoders[i]->type != EncoderType::Null;
       }
     }
   }

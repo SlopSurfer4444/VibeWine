@@ -277,7 +277,7 @@ CommandQueue::WaitForFinishThread() {
       auto status = chunk.attached_cmdbuf.status();
       cs2trace::record(chunk.trace_generation,23,t,t,traceSerial(),status,internal_seq,chunk.frame_);
       // Completed command-buffer properties only; no new wait or counter buffer.
-      if (status == WMTCommandBufferStatusCompleted) {
+      if (status == WMTCommandBufferStatusCompleted && cs2trace::profileAllows(24)) {
         auto gpu_start = chunk.attached_cmdbuf.gpuStartTime();
         auto gpu_end = chunk.attached_cmdbuf.gpuEndTime();
         if (gpu_start && gpu_end >= gpu_start)

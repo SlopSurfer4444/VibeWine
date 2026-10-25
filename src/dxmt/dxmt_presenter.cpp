@@ -305,8 +305,12 @@ void Presenter::observePresentation(WMT::MetalDrawable drawable, uint64_t frame_
                                    uint64_t revision, uint32_t generation) {
   observeVisibility(generation, revision);
   const auto active_generation = cs2trace::generation();
-  if (feedback_session_ && feedback_generation_ != active_generation)
+  const bool feedback_allowed = cs2trace::profileAllows(70);
+  if (feedback_session_ && (!feedback_allowed || feedback_generation_ != active_generation))
     closePresentationFeedback();
+  // Keep native-owner cleanup above the gate, even for an excluded profile.
+  if (!feedback_allowed)
+    return;
   if (!generation || generation != active_generation || !swapchain_serial_)
     return;
   if (!feedback_capability_checked_) {

@@ -1,0 +1,165 @@
+// Uses the production optimizer, relation/signature/dependency functions and tracker.
+static unsigned scenarios;
+#if defined(DXMT_BOUNDED_ENCODER_OPTIMIZER) && DXMT_BOUNDED_ENCODER_OPTIMIZER
+constexpr bool bounded=true;
+#else
+constexpr bool bounded=false;
+#endif
+static void bind_ids(RenderEncoderData *r, EncoderId vertex=256) {
+  r->encoder_id_vertex=vertex;r->id=vertex+1;r->default_raster_sample_count=4;
+  r->fence_update_vertex.set(vertex);r->fence_update.set(vertex+1);
+}
+static ResolveEncoderData *resolve_node(Arena &a,Surface &src,Surface &dst,EncoderId id) {
+  auto *q=a.make<ResolveEncoderData>(EncoderType::Resolve);q->id=id;q->fence_update.set(id);
+  q->src=&src.base;q->dst=&dst.base;return q;
+}
+static void resolve_access(GenericAccessTracker &src,GenericAccessTracker &dst,ResolveEncoderData *q) {
+  // Same Read(source)/Write(destination) registration as resolveTexture().
+  src.accessShared(q->id,q->fence_wait,q->barrier_state);
+  dst.accessExclusive(q->id,q->fence_wait,q->barrier_state,false);
+}
+static bool same_fences(const FenceSet &a,const FenceSet &b) { return a.contains(b)&&b.contains(a); }
+static void connect(std::vector<EncoderData *> &nodes) {
+  for(size_t i=0;i<nodes.size();++i) nodes[i]->next=i+1<nodes.size()?nodes[i+1]:nullptr;
+}
+enum class Access { Read, Write, Unrelated };
+static void crossed_destination(EncoderType kind,Access access,unsigned distance,bool completed_prefix) {
+  ++scenarios;
+  Surface s,d,s0,d0;s.desc.samples=s0.desc.samples=4;Arena a;ArgumentEncodingContext ctx;
+  auto *r=render(a,s);bind_ids(r);
+  GenericAccessTracker source,destination,prefix_source,prefix_destination,unrelated;
+  source.accessExclusiveFragment(r->id,r->fence_wait,r->barrier_state,false);
+  ResolveEncoderData *prefix=nullptr;
+  std::vector<EncoderData *> nodes{r};
+  if(completed_prefix) {
+    r->render_target_count=2;r->colors[1]=r->colors[0];
+    r->colors[1].attachment=&s0.base;
+    prefix_source.accessExclusiveFragment(r->id,r->fence_wait,r->barrier_state,false);
+    prefix=resolve_node(a,s0,d0,258);resolve_access(prefix_source,prefix_destination,prefix);
+    nodes.push_back(prefix);
+  }
+  // Null slots represent already retired/absorbed positions. The live X is
+  // immediately before Q, keeping its real tracker dependency within kLane.
+  while(nodes.size()+1<distance) nodes.push_back(a.make<EncoderData>(EncoderType::Null));
+  EncoderData *x=kind==EncoderType::Compute?static_cast<EncoderData *>(a.make<ComputeEncoderData>(kind)):
+                                           static_cast<EncoderData *>(a.make<BlitEncoderData>(kind));
+  x->id=257+nodes.size();x->fence_update.set(x->id);nodes.push_back(x);
+  if(access==Access::Read) destination.accessShared(x->id,x->fence_wait,x->barrier_state);
+  if(access==Access::Write) destination.accessExclusive(x->id,x->fence_wait,x->barrier_state,false);
+  if(access==Access::Unrelated) unrelated.accessExclusive(x->id,x->fence_wait,x->barrier_state,false);
+  auto *q=resolve_node(a,s,d,257+nodes.size());resolve_access(source,destination,q);nodes.push_back(q);
+  require(nodes.size()==distance+1,"resolve at requested physical distance");
+  require(!ctx.hasDataDependency(x,r),"original render and crossed encoder are independent");
+  require(q->fence_wait.test(x->id)==(access!=Access::Unrelated),"real tracker supplies destination writer/reader wait");
+  const auto q_wait=q->fence_wait,q_update=q->fence_update;
+  const auto x_wait=x->fence_wait,x_update=x->fence_update;
+  connect(nodes);const auto original=nodes;ctx.optimize(nodes);
+  require(nodes==original && x->type==kind,"encoder array and crossed live encoder preserved");
+  require(q->type==EncoderType::Resolve,"resolve cannot move before a crossed live encoder");
+  require(r->colors[0].store_action==WMTStoreActionStore && !r->colors[0].resolve_attachment,
+          "render destination access is not enlarged across live work");
+  require(!r->fence_wait.test(x->id),"earlier render never imports wait on later destination producer/reader");
+  require(!r->fence_update.test(q->id),"unfolded resolve completion is not published by early render");
+  require(same_fences(q->fence_wait,q_wait)&&same_fences(q->fence_update,q_update),"unfolded resolve retains tracked dependencies");
+  require(same_fences(x->fence_wait,x_wait)&&same_fences(x->fence_update,x_update),"crossed encoder dependency sets unchanged");
+  if(prefix) {
+    require(prefix->type==EncoderType::Null && r->colors[1].resolve_attachment==&d0.base &&
+            r->colors[1].store_action==WMTStoreActionStoreAndMultisampleResolve,
+            "previous completed adjacent resolve fold survives later rejection/cutoff");
+    require(ctx.statistics.resolve_pass_optimized==1,"only legitimate completed prefix counted");
+  } else require(ctx.statistics.resolve_pass_optimized==0,"unsafe fold is not counted");
+}
+static void null_adjacency(unsigned distance) {
+  ++scenarios;
+  Surface s,d;s.desc.samples=4;Arena a;ArgumentEncodingContext ctx;auto *r=render(a,s);bind_ids(r);
+  GenericAccessTracker source,destination;
+  source.accessExclusiveFragment(r->id,r->fence_wait,r->barrier_state,false);
+  auto *q=resolve_node(a,s,d,257+distance);resolve_access(source,destination,q);
+  auto waits=r->fence_wait.unionOf(q->fence_wait);waits.subtract(q->fence_update);
+  const auto updates=r->fence_update.unionOf(q->fence_update);
+  std::vector<EncoderData *> nodes{r};
+  while(nodes.size()<distance) nodes.push_back(a.make<EncoderData>(EncoderType::Null));
+  nodes.push_back(q);connect(nodes);ctx.optimize(nodes);
+  const bool fold=!bounded||distance<=64;
+  require((q->type==EncoderType::Null)==fold,"Null-only adjacency obeys unchanged physical lookahead bound");
+  require((r->colors[0].store_action==WMTStoreActionStoreAndMultisampleResolve)==fold,"legitimate adjacent store resolve retained");
+  if(fold) {
+    require(r->colors[0].resolve_attachment==&d.base,"adjacent resolve destination retained");
+    require(same_fences(r->fence_wait,waits)&&same_fences(r->fence_update,updates),"adjacent resolve preserves previous fence transfer");
+  }
+}
+static void absorbed_resolve_chain() {
+  ++scenarios;
+  Surface s0,d0,s1,d1;s0.desc.samples=s1.desc.samples=4;Arena a;ArgumentEncodingContext ctx;auto *r=render(a,s0);bind_ids(r);
+  r->render_target_count=2;r->colors[1]=r->colors[0];r->colors[1].attachment=&s1.base;
+  GenericAccessTracker source0,destination0,source1,destination1;
+  source0.accessExclusiveFragment(r->id,r->fence_wait,r->barrier_state,false);
+  source1.accessExclusiveFragment(r->id,r->fence_wait,r->barrier_state,false);
+  auto *q0=resolve_node(a,s0,d0,258),*q1=resolve_node(a,s1,d1,260);
+  resolve_access(source0,destination0,q0);resolve_access(source1,destination1,q1);
+  std::vector<EncoderData *> nodes{r,q0,a.make<EncoderData>(EncoderType::Null),q1};connect(nodes);ctx.optimize(nodes);
+  require(q0->type==EncoderType::Null && q1->type==EncoderType::Null,"absorbed resolves remain transparent to subsequent live adjacency");
+  require(r->colors[0].resolve_attachment==&d0.base && r->colors[1].resolve_attachment==&d1.base,
+          "adjacent chain folds both distinct attachments");
+  require(ctx.statistics.resolve_pass_optimized==2,"both legitimate chained folds counted");
+}
+static void unmatched_resolve_blocks() {
+  ++scenarios;
+  Surface s,d,other,other_destination;s.desc.samples=other.desc.samples=4;Arena a;ArgumentEncodingContext ctx;auto *r=render(a,s);bind_ids(r);
+  GenericAccessTracker source,destination,unmatched_source,unmatched_destination;
+  source.accessExclusiveFragment(r->id,r->fence_wait,r->barrier_state,false);
+  auto *q0=resolve_node(a,other,other_destination,258),*q1=resolve_node(a,s,d,259);
+  resolve_access(unmatched_source,unmatched_destination,q0);resolve_access(source,destination,q1);
+  std::vector<EncoderData *> nodes{r,q0,q1};connect(nodes);ctx.optimize(nodes);
+  require(q0->type==EncoderType::Resolve && q1->type==EncoderType::Resolve,"unmatched surviving resolve blocks later backward fold");
+}
+static void boundary_event(EncoderType type) {
+  ++scenarios;
+  Surface s,d;s.desc.samples=4;Arena a;ArgumentEncodingContext ctx;auto *r=render(a,s);bind_ids(r);
+  GenericAccessTracker source,destination;
+  source.accessExclusiveFragment(r->id,r->fence_wait,r->barrier_state,false);
+  auto *q=resolve_node(a,s,d,258);resolve_access(source,destination,q);
+  std::vector<EncoderData *> nodes{r,a.make<EncoderData>(type),q};connect(nodes);ctx.optimize(nodes);
+  require(q->type==EncoderType::Resolve && r->colors[0].store_action==WMTStoreActionStore,"event/timestamp stops still protect resolve order");
+}
+static void dependency_stop_after_suppressed_resolve() {
+  ++scenarios;
+  Surface s,d;s.desc.samples=4;Arena a;ArgumentEncodingContext ctx;
+  auto *r0=render(a,s),*r1=render(a,s);bind_ids(r0);bind_ids(r1,260);
+  GenericAccessTracker source,destination;
+  source.accessExclusiveFragment(r0->id,r0->fence_wait,r0->barrier_state,false);
+  auto *x=a.make<ComputeEncoderData>(EncoderType::Compute);x->id=258;x->fence_update.set(258);
+  destination.accessExclusive(x->id,x->fence_wait,x->barrier_state,false);
+  auto *q=resolve_node(a,s,d,259);resolve_access(source,destination,q);
+  source.accessExclusiveFragment(r1->id,r1->fence_wait,r1->barrier_state,false);
+  require(ctx.hasDataDependency(q,r0),"suppressed resolve still depends on original render");
+  std::vector<EncoderData *> nodes{r0,x,q,r1};connect(nodes);ctx.optimize(nodes);
+  require(r0->type==EncoderType::Render && r1->type==EncoderType::Render && q->type==EncoderType::Resolve,
+          "suppressed dependent resolve still stops search before later render merge");
+  require(ctx.statistics.render_pass_optimized==0,"dependent stop prevents moving original render past resolve");
+}
+static void preserve_other_fold_kinds() {
+  ++scenarios;
+  Surface s,d,other,other_destination;s.desc.samples=other.desc.samples=4;
+  Arena a;ArgumentEncodingContext ctx;auto *r0=render(a,s),*r1=render(a,s);bind_ids(r0);bind_ids(r1,260);
+  GenericAccessTracker source,other_source,other_destination_tracker;
+  source.accessExclusiveFragment(r0->id,r0->fence_wait,r0->barrier_state,false);
+  auto *q=resolve_node(a,other,other_destination,258);resolve_access(other_source,other_destination_tracker,q);
+  source.accessExclusiveFragment(r1->id,r1->fence_wait,r1->barrier_state,false);
+  std::vector<EncoderData *> nodes{r0,q,r1};connect(nodes);ctx.optimize(nodes);
+  require(r0->type==EncoderType::Null && r1->type==EncoderType::Render && q->type==EncoderType::Resolve,
+          "ordinary render merge can still cross an independent unmatched resolve");
+  require(ctx.statistics.render_pass_optimized==1,"guard remains specific to backward resolve folding");
+}
+int main() {
+  for(auto kind:{EncoderType::Compute,EncoderType::Blit}) for(auto access:{Access::Read,Access::Write,Access::Unrelated})
+    for(auto distance:{2u,3u,63u,64u,65u}) crossed_destination(kind,access,distance,false);
+  for(auto kind:{EncoderType::Compute,EncoderType::Blit}) for(auto access:{Access::Read,Access::Write})
+    for(auto distance:{3u,64u,65u}) crossed_destination(kind,access,distance,true);
+  for(auto distance:{1u,2u,63u,64u,65u}) null_adjacency(distance);
+  absorbed_resolve_chain();unmatched_resolve_blocks();
+  dependency_stop_after_suppressed_resolve();preserve_other_fold_kinds();
+  for(auto type:{EncoderType::SignalEvent,EncoderType::WaitForEvent,EncoderType::SampleTimestamp}) boundary_event(type);
+  dead_store_cases();residency_cases();
+  std::cout<<"PASS scenarios="<<scenarios<<" assertions="<<checks<<" bounded="<<bounded<<'\n';
+}
