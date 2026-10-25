@@ -210,6 +210,8 @@ struct RenderEncoderData : EncoderData {
   bool use_emulated_so = 0;
   TileBarrierPSOKey tile_barrier_pso_key = {};
   WMT::RenderPipelineState last_pso = {};
+  // Last application PSO resolution failed; omit dependent work until success.
+  bool pipeline_failed = false;
 };
 
 struct ComputeEncoderData : EncoderData {
@@ -218,6 +220,7 @@ struct ComputeEncoderData : EncoderData {
   WMT::Buffer allocated_argbuf;
   uint64_t allocated_argbuf_offset;
   void *allocated_argbuf_mapping;
+  bool pipeline_failed = false;
 };
 
 struct BlitEncoderData : EncoderData {
@@ -724,6 +727,12 @@ public:
   currentRenderEncoder() {
     assert(encoder_current && encoder_current->type == EncoderType::Render);
     return static_cast<RenderEncoderData *>(encoder_current);
+  }
+
+  ComputeEncoderData *
+  currentComputeEncoder() {
+    assert(encoder_current && encoder_current->type == EncoderType::Compute);
+    return static_cast<ComputeEncoderData *>(encoder_current);
   }
 
   void *
