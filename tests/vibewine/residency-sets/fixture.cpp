@@ -33,6 +33,7 @@ struct Allocation {
 struct Buffer : Allocation {};
 template<class T> struct Reference : T {
   std::shared_ptr<NativeState> ref;
+  Reference() = default;
   Reference(T value) : T(value), ref(native.at(value.handle)) {}
 };
 struct ResidencySet {
@@ -48,7 +49,7 @@ struct ResidencySet {
 };
 struct Error {};
 struct Device {
-  ResidencySet newResidencySet(uint64_t count, Error&) { assert(count==256); ++creations; return {creation_succeeds}; }
+  ResidencySet newResidencySet(uint64_t count, Reference<Error>&) { assert(count==256); ++creations; return {creation_succeeds}; }
 };
 struct CommandQueue {
   void addResidencySet(ResidencySet set) { assert(set.valid); ++attachments; }

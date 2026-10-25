@@ -1,0 +1,29 @@
+#import <Foundation/Foundation.h>
+#include <dispatch/dispatch.h>
+#include <stdlib.h>
+#include "winemetal_thunks.h"
+extern obj_handle_t fixture_result(obj_handle_t *error);
+@protocol MTLDevice
+- (id)newLibraryWithData:(dispatch_data_t)data error:(NSError **)error;
+@end
+@interface FakeDevice : NSObject <MTLDevice>
+@end
+@implementation FakeDevice
+- (id)newLibraryWithData:(dispatch_data_t)data error:(NSError **)error {
+  (void)data;
+  return (id)fixture_result((obj_handle_t *)error);
+}
+@end
+obj_handle_t FakeDevice_alloc_init(void) { return (obj_handle_t)[[FakeDevice alloc] init]; }
+typedef int NTSTATUS;
+#define STATUS_SUCCESS 0
+// EXACT_NATIVE_FUNCTIONS
+void native_dispatch(unsigned opcode, void *params) {
+  switch(opcode) {
+  case 0: _NSObject_retain(params); break;
+  case 1: _NSObject_release(params); break;
+  case 10: _NSAutoreleasePool_alloc_init(params); break;
+  case 25: _MTLDevice_newLibrary(params); break;
+  default: abort();
+  }
+}

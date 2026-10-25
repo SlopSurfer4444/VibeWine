@@ -86,7 +86,7 @@ CommandQueue::InitializeResidencySet() {
   uint64_t major = 0, minor = 0, patch = 0;
   WMTGetOSVersion(&major, &minor, &patch);
   if (major >= 15) {
-    WMT::Error error;
+    WMT::Reference<WMT::Error> error;
     residency_set_ = device.newResidencySet(256, error);
     if (residency_set_)
       commandQueue.addResidencySet(residency_set_);

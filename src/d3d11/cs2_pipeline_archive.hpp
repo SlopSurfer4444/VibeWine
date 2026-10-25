@@ -99,7 +99,7 @@ struct Pending {
 };
 inline WMT::Reference<WMT::RenderPipelineState> create(
     WMT::Device device,WMTRenderPipelineInfo info,const Sha1Digest &vs,const Sha1Digest &ps,
-    WMT::Error &error,Pending &pending,uint64_t object) {
+    WMT::Reference<WMT::Error> &error,Pending &pending,uint64_t object) {
   auto &s=store();
   if(s.directory.empty())return device.newRenderPipelineState(info,error);
   auto digest=key(device,info,vs,ps).string();auto path=s.directory+"/"+digest+".metalarc";
@@ -130,7 +130,7 @@ inline WMT::Reference<WMT::RenderPipelineState> create(
   auto result=device.newRenderPipelineState(info,error);
   if(!result && info.binary_archive_for_serialization){
     // An optional cache must never prevent normal pipeline creation.
-    if(error){error.release();error.handle=0;}
+    error = nullptr;
     info.binary_archive_for_serialization=0;
     result=device.newRenderPipelineState(info,error);fresh={};
   }

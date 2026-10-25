@@ -1,0 +1,124 @@
+#import <Foundation/Foundation.h>
+#include <dispatch/dispatch.h>
+#include <string_view>
+#include <cstdio>
+#include <cstdlib>
+#include "Metal.hpp"
+#include "winemetal_thunks.h"
+
+#define CHECK(c) do { if (!(c)) { fprintf(stderr, "CHECK failed at %d: %s\n", __LINE__, #c); _Exit(1); } } while (0)
+static int errors_dead, objects_dead;
+@interface TrackedError : NSError
+@end
+@implementation TrackedError
+- (void)dealloc { ++errors_dead; [super dealloc]; }
+@end
+@interface TrackedObject : NSObject
+@end
+@implementation TrackedObject
+- (void)dealloc { ++objects_dead; [super dealloc]; }
+@end
+static bool success, omit_error_write;
+static obj_handle_t reused_error;
+extern "C" obj_handle_t fixture_result(obj_handle_t *out) {
+  if (success) {
+    if (!omit_error_write) *out = 0;
+    return (obj_handle_t)[[TrackedObject alloc] init];
+  }
+  *out = reused_error ? reused_error : (obj_handle_t)[[[TrackedError alloc] initWithDomain:@"fixture" code:7 userInfo:nil] autorelease];
+  return 0;
+}
+extern "C" void native_dispatch(unsigned, void *);
+extern "C" obj_handle_t FakeDevice_alloc_init();
+static bool RtlDllShutdownInProgress() { return false; }
+#define UNIX_CALL(n, p) native_dispatch(n, p)
+// EXACT_PE_THUNKS
+
+WINEMETAL_API obj_handle_t DispatchData_alloc_init(uint64_t, uint64_t) { return (obj_handle_t)[[TrackedObject alloc] init]; }
+WINEMETAL_API obj_handle_t MTLLibrary_newFunctionWithConstants(obj_handle_t, const char *, const WMTFunctionConstant *, uint32_t, obj_handle_t *error) { return fixture_result(error); }
+WINEMETAL_API void MTLBinaryArchive_serialize(obj_handle_t, const char *, obj_handle_t *error) { auto handle = fixture_result(error); if (handle) NSObject_release(handle); }
+WINEMETAL_API obj_handle_t MTLDevice_newLibraryWithSource(obj_handle_t, const char *, uint64_t, obj_handle_t *error) { return fixture_result(error); }
+WINEMETAL_API obj_handle_t MTLDevice_newComputePipelineState(obj_handle_t, const WMTComputePipelineInfo *, obj_handle_t *error) { return fixture_result(error); }
+WINEMETAL_API obj_handle_t MTLDevice_newRenderPipelineState(obj_handle_t, const WMTRenderPipelineInfo *, obj_handle_t *error) { return fixture_result(error); }
+WINEMETAL_API obj_handle_t MTLDevice_newMeshRenderPipelineState(obj_handle_t, const WMTMeshRenderPipelineInfo *, obj_handle_t *error) { return fixture_result(error); }
+WINEMETAL_API obj_handle_t MTLDevice_newTileRenderPipelineState(obj_handle_t, const WMTTileRenderPipelineInfo *, obj_handle_t *error) { return fixture_result(error); }
+WINEMETAL_API obj_handle_t MTLDevice_newResidencySet(obj_handle_t, uint64_t, obj_handle_t *error) { return fixture_result(error); }
+WINEMETAL_API obj_handle_t MTLDevice_newBinaryArchive(obj_handle_t, const char *, obj_handle_t *error) { return fixture_result(error); }
+
+static void invoke(int api, WMT::Device device, WMT::Reference<WMT::Error> &error) {
+  WMT::Library library;
+  WMT::BinaryArchive archive;
+  WMT::Function function;
+  switch(api) {
+  case 0: { auto value = device.newLibrary(nullptr, 0, error); CHECK(bool(value) == success); break; }
+  case 1: { auto value = device.newLibraryFromNativeBuffer(0, 0, error); CHECK(bool(value) == success); break; }
+  case 2: { auto value = device.newLibrary(WMT::DispatchData{}, error); CHECK(bool(value) == success); break; }
+  case 3: { auto value = device.newLibraryWithSource("", error); CHECK(bool(value) == success); break; }
+  case 4: { auto value = library.newFunctionWithConstants("", nullptr, 0, error); CHECK(bool(value) == success); break; }
+  case 5: archive.serialize("", error); break;
+  case 6: { auto value = device.newComputePipelineState(function, error); CHECK(bool(value) == success); break; }
+  case 7: { auto value = device.newComputePipelineState(function, true, error); CHECK(bool(value) == success); break; }
+  case 8: { auto value = device.newComputePipelineState(WMTComputePipelineInfo{}, error); CHECK(bool(value) == success); break; }
+  case 9: { auto value = device.newRenderPipelineState(WMTRenderPipelineInfo{}, error); CHECK(bool(value) == success); break; }
+  case 10: { auto value = device.newRenderPipelineState(WMTMeshRenderPipelineInfo{}, error); CHECK(bool(value) == success); break; }
+  case 11: { auto value = device.newRenderPipelineState(WMTTileRenderPipelineInfo{}, error); CHECK(bool(value) == success); break; }
+  case 12: { auto value = device.newResidencySet(1, error); CHECK(bool(value) == success); break; }
+  case 13: { auto value = device.newBinaryArchive(nullptr, error); CHECK(bool(value) == success); break; }
+  default: CHECK(false);
+  }
+}
+
+int main() {
+  auto outer = WMT::MakeAutoreleasePool();
+  auto fake = (NSObject *)FakeDevice_alloc_init();
+  WMT::Device device{(obj_handle_t)fake};
+  // Ref destroyed first: baseline fails safely here before double-release at drain.
+  for (int api = 0; api < 14; ++api) {
+    const int before = errors_dead;
+    {
+      auto pool = WMT::MakeAutoreleasePool();
+      { WMT::Reference<WMT::Error> error; invoke(api, device, error); CHECK(error); }
+      CHECK(errors_dead == before);
+    }
+    CHECK(errors_dead == before + 1);
+    // Pool destroyed first; the Reference must continue to own a live error.
+    WMT::Reference<WMT::Error> error;
+    {
+      auto pool = WMT::MakeAutoreleasePool();
+      invoke(api, device, error);
+    }
+    CHECK(errors_dead == before + 1);
+    CHECK([(NSError *)error.handle code] == 7);
+    // A repeated borrowed handle must be retained before replacing the sole owner.
+    reused_error = error.handle;
+    invoke(api, device, error);
+    reused_error = 0;
+    CHECK(errors_dead == before + 1);
+    CHECK([(NSError *)error.handle code] == 7);
+    // A distinct failure replaces and releases the previous sole-owned error.
+    {
+      auto pool = WMT::MakeAutoreleasePool();
+      invoke(api, device, error);
+      CHECK(errors_dead == before + 2);
+    }
+    CHECK(errors_dead == before + 2);
+    // Success clears the old error, balances the new +1 result and dispatch data.
+    success = true;
+    const int objects_before = objects_dead;
+    invoke(api, device, error);
+    CHECK(!error);
+    CHECK(errors_dead == before + 3);
+    CHECK(objects_dead == objects_before + ((api == 0 || api == 1) ? 2 : 1));
+    // A success API that leaves its error untouched must still clear stale state.
+    success = false;
+    { auto pool = WMT::MakeAutoreleasePool(); invoke(api, device, error); }
+    success = true; omit_error_write = true;
+    invoke(api, device, error);
+    CHECK(!error);
+    CHECK(errors_dead == before + 4);
+    omit_error_write = false;
+    success = false;
+  }
+  [fake release];
+  puts("PASS 14 production wrappers: both pool/ref destruction orders, same/distinct error replacement, success/null/reset and +1 result balance");
+}
