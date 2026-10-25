@@ -17,6 +17,7 @@
  */
 
 #include "dxmt_context.hpp"
+#include "dxmt_pass_optimizations.hpp"
 #include "Metal.hpp"
 #include "dxmt_command_queue.hpp"
 #include "dxmt_deptrack.hpp"
@@ -863,6 +864,13 @@ ArgumentEncodingContext::$$setEncodingContext(uint64_t seq_id, uint64_t frame_id
 
 constexpr unsigned kEncoderOptimizerThreshold = 64;
 
+#if defined(DXMT_RESIDENCY_SETS) && DXMT_RESIDENCY_SETS
+bool
+ArgumentEncodingContext::tryReadOnlyResidency(Buffer *buffer, DXMT_RESOURCE_RESIDENCY requested) {
+  return queue_.TryReadOnlyResidency(buffer->current(), requested, seq_id_);
+}
+#endif
+
 QueryReadbacks
 ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId, uint64_t event_seq_id) {
   assert(!encoder_current);
@@ -881,6 +889,16 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
     }
     assert(encoder_index == encoder_count);
   }
+
+#if defined(DXMT_DEAD_ATTACHMENT_STORES) && DXMT_DEAD_ATTACHMENT_STORES
+  // Only original adjacent Render->Clear pairs carry the full-clear proof.
+  // Decide before the optimizer can fold away that clear or reorder encoders.
+  for (unsigned i = 1; i < encoder_count; ++i) {
+    if (encoders[i - 1]->type == EncoderType::Render && encoders[i]->type == EncoderType::Clear)
+      passopt::DiscardAdjacentColorStores(
+          static_cast<RenderEncoderData *>(encoders[i - 1]), static_cast<ClearEncoderData *>(encoders[i]));
+  }
+#endif
 
   if (encoder_count > 1) {
     unsigned j, i;
@@ -1089,6 +1107,9 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
             WMTRenderStageVertex | WMTRenderStageMesh | WMTRenderStageObject
         );
       }
+#if defined(DXMT_PHYSICAL_RESIDENCY_DEDUP) && DXMT_PHYSICAL_RESIDENCY_DEDUP
+      passopt::DeduplicateRenderResidency(data->cmd_head);
+#endif
       encoder.encodeCommands(&data->cmd_head);
       data->fence_update_vertex.forEach(
           data->fence_update, // if a fence is updated at fragment, no need to update again pre-raster

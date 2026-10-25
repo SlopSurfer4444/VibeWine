@@ -1,4 +1,6 @@
 #include "Metal.hpp"
+#include "dxmt_present_geometry.hpp"
+#include <cmath>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -58,6 +60,8 @@ static uint32_t apply_status;
 static uint64_t expected_revision;
 static WMTLayerProps expected_props;
 static WMTColorSpace expected_colorspace;
+static bool expected_clear;
+static WMTViewport expected_viewport;
 
 extern "C" void NSObject_retain(obj_handle_t) {}
 extern "C" void NSObject_release(obj_handle_t) {}
@@ -98,7 +102,12 @@ extern "C" uint64_t MTLTexture_height(obj_handle_t texture) {
 }
 extern "C" obj_handle_t MTLCommandBuffer_renderCommandEncoder(obj_handle_t buffer, WMTRenderPassInfo *info) {
   CHECK(buffer == BUFFER); ++encoders; events.push_back("encoder");
-  CHECK(info->colors[0].texture == TARGET && info->colors[0].load_action == WMTLoadActionDontCare);
+  CHECK(info->colors[0].texture == TARGET);
+  CHECK(info->colors[0].load_action == (expected_clear ? WMTLoadActionClear : WMTLoadActionDontCare));
+  if (expected_clear) {
+    const auto &color = info->colors[0].clear_color;
+    CHECK(color.r == 0 && color.g == 0 && color.b == 0 && color.a == 1);
+  }
   CHECK(info->colors[0].store_action == WMTStoreActionStore && info->colors[0].resolve_texture == 0);
   CHECK(info->depth.texture == 0 && info->stencil.texture == 0 && info->visibility_buffer == 0);
   for (unsigned i = 1; i < 8; ++i) CHECK(info->colors[i].texture == 0);
@@ -185,6 +194,7 @@ static void reset(const char *name, const Presenter::PresentationConfiguration &
   reply_checked = true; apply_status = W7LA_OK;
   expected_revision = c.revision; expected_props = c.layer_props; expected_colorspace = c.colorspace;
   cs2trace::failures = 0;
+  expected_clear = false; expected_viewport = {0, 0, 1920, 1080, 0, 1};
 }
 static WMT::MetalDrawable invoke(Presenter &p, const Presenter::PresentationConfiguration &c, unsigned generation = 23) {
   WMT::CommandBuffer buffer; buffer.handle = BUFFER; WMT::Texture backbuffer; backbuffer.handle = SOURCE;
@@ -201,15 +211,18 @@ static void empty_result(WMT::MetalDrawable result, unsigned expected_acquires, 
 static void wrapper_control(const Presenter::PresentationConfiguration &c, obj_handle_t pipeline) {
   WMT::RenderCommandEncoder e; e.handle = ENCODER;
   WMT::Texture back; back.handle = SOURCE; WMT::RenderPipelineState pso; pso.handle = pipeline;
-  const WMTViewport viewport{0, 0, double(target_width), double(target_height), 0, 1};
+  const auto viewport = expected_viewport;
   wait_fences(e);
   e.setFragmentTexture(back, 0); e.setFragmentTexture(c.gamma_lut_texture, 1);
   e.setFragmentBytes(&metadata, sizeof(metadata), 0); e.setRenderPipelineState(pso);
   e.setViewport(viewport); e.drawPrimitives(WMTPrimitiveTypeTriangle, 0, 3);
   update_fences(e); e.endEncoding();
 }
-static void success(const char *name, bool gamma, uint64_t sw, uint64_t sh, uint64_t tw, uint64_t th) {
-  auto c = configuration(7, gamma); reset(name, c); auto p = presenter();
+static void success(const char *name, bool gamma, uint64_t sw, uint64_t sh, uint64_t tw, uint64_t th,
+                    bool aspect = false, double x = 0, double y = 0, double vw = 0, double vh = 0) {
+  auto c = configuration(7, gamma); c.preserve_aspect = aspect; reset(name, c); auto p = presenter();
+  expected_viewport = {x, y, vw ? vw : double(tw), vh ? vh : double(th), 0, 1};
+  expected_clear = x != 0 || y != 0 || expected_viewport.width != tw || expected_viewport.height != th;
   source_width = sw; source_height = sh; target_width = tw; target_height = th;
   CHECK(invoke(p, c).handle == DRAWABLE);
   CHECK(p.encoded_configuration_revision_ == c.revision && applies == 1 && acquires == 1 && encoders == 1);
@@ -228,10 +241,13 @@ static void success(const char *name, bool gamma, uint64_t sw, uint64_t sh, uint
   CHECK(records[3].fields[0] == sizeof(metadata) && records[3].fields[1] == 0);
   CHECK(records[3].payload.size() == sizeof(metadata));
   CHECK(std::memcmp(records[3].payload.data(), &metadata, sizeof(metadata)) == 0);
-  const auto expected_pso = sw == tw && sh == th ? BLIT : SCALE;
+  const auto expected_pso = !expected_clear && sw == tw && sh == th ? BLIT : SCALE;
   CHECK(records[4].fields[0] == expected_pso);
   WMTViewport viewport{}; std::memcpy(&viewport, records[5].payload.data(), sizeof(viewport));
-  CHECK(viewport.originX == 0 && viewport.originY == 0 && viewport.width == tw && viewport.height == th);
+  CHECK(std::abs(viewport.originX - expected_viewport.originX) < 1e-9);
+  CHECK(std::abs(viewport.originY - expected_viewport.originY) < 1e-9);
+  CHECK(std::abs(viewport.width - expected_viewport.width) < 1e-9);
+  CHECK(std::abs(viewport.height - expected_viewport.height) < 1e-9);
   CHECK(viewport.znear == 0 && viewport.zfar == 1);
   CHECK((records[6].fields == std::array<uint64_t, 6>{WMTPrimitiveTypeTriangle, 0, 3, 1, 0, 0}));
   CHECK(records[7].fields[0] == UPDATE && records[7].fields[1] == update_stages);
@@ -246,6 +262,17 @@ int main() {
   success("scaled_width_gamma", true, 1280, 1080, 1920, 1080);
   success("scaled_height_null_gamma", false, 1920, 720, 1920, 1080);
   success("acquired_size_over_requested_layer_size", true, 4096, 2160, 853, 479);
+  success("fixed_actual_pillarbox_source_equals_viewport_requires_scale", true, 640, 480, 800, 480,
+          true, 80, 0, 640, 480);
+  success("fixed_actual_letterbox_source_equals_viewport_requires_scale", false, 640, 480, 640, 600,
+          true, 0, 60, 640, 480);
+  success("fixed_actual_downscale_wide", true, 1920, 1080, 640, 480,
+          true, 0, 60, 640, 360);
+  success("fixed_actual_upscale_tall", false, 640, 480, 1920, 1080,
+          true, 240, 0, 1440, 1080);
+  success("fixed_actual_fractional_odd_size", true, 640, 480, 853, 479,
+          true, (853 - 640.0 * 479 / 480) / 2, 0, 640.0 * 479 / 480, 479);
+  success("fixed_actual_same_aspect_blit", true, 640, 480, 640, 480, true);
   auto c = configuration();
   { reset("unsupported_checked_config", c); auto p = presenter(); reply_checked = false;
     p.checked_layer_configuration_ = WMT::MetalLayer::supportsCheckedConfiguration();

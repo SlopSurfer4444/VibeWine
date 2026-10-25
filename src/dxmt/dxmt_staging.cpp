@@ -5,6 +5,9 @@ namespace dxmt {
 
 StagingResource::StagingResource(
   WMT::Device device, uint64_t length, uint32_t bytes_per_row, uint32_t bytes_per_image
+#if DXMT_IDLE_RETIREMENT
+    , std::shared_ptr<IdleRetirementDomain> domain
+#endif
 ) :
     bytesPerRow(bytes_per_row),
     bytesPerImage(bytes_per_image),
@@ -13,7 +16,58 @@ StagingResource::StagingResource(
   buffer_ = new Buffer(length, device);
   immediate_name_ = allocate(0);
   buffer_->rename(allocation(immediate_name_));
+#if DXMT_IDLE_RETIREMENT
+  idle_registration_.attach(std::move(domain), this, [](void *owner, uint64_t coherent,
+      IdleRetirementDomain::Budget &budget, IdleRetirementDomain::Sample &sample) {
+    static_cast<StagingResource *>(owner)->sweepIdle(coherent, budget, sample);
+  });
+#endif
 }
+
+StagingResource::~StagingResource() {
+#if DXMT_IDLE_RETIREMENT
+  idle_registration_.detach();
+#endif
+}
+#if DXMT_IDLE_RETIREMENT
+void StagingResource::sweepIdle(uint64_t coherent, IdleRetirementDomain::Budget &budget,
+                                IdleRetirementDomain::Sample &sample) {
+  std::unique_lock<dxmt::mutex> lock(mutex_, std::try_to_lock);
+  if (!lock.owns_lock()) { ++sample.skipped_busy; return; }
+  sample.current.add(1, buffer_pool[immediate_name_]->buffer().allocatedSize());
+  sample.created_count += created_allocations_;
+  if (idle_allocation_ == kInvalidAllocation && !fifo.empty() &&
+      fifo.front().will_free_at <= coherent && budget.entries) {
+    --budget.entries; idle_allocation_ = fifo.front().id; fifo.pop();
+  }
+  while (!fifo.empty() && budget.entries) {
+    --budget.entries;
+    auto entry = fifo.front();
+    if (entry.will_free_at > coherent || coherent - entry.will_free_at < kIdleAllocationLifetime) break;
+    const auto bytes = buffer_pool[entry.id]->buffer().allocatedSize();
+    if (!budget.release(bytes)) break;
+    assert(entry.id != immediate_name_);
+    fifo.pop(); buffer_pool[entry.id] = nullptr; free_slots_.push_back(entry.id);
+    ++sample.released_count; sample.released_bytes += bytes;
+  }
+  if (idle_allocation_ != kInvalidAllocation)
+    sample.completed_idle.add(1, buffer_pool[idle_allocation_]->buffer().allocatedSize());
+  uint64_t inspected = 0;
+  for (const auto &entry : fifo.entries()) {
+    if (!budget.entries) break;
+    --budget.entries; ++inspected;
+    auto &category = entry.will_free_at <= coherent ? sample.completed_idle : sample.inflight;
+    category.add(1, buffer_pool[entry.id]->buffer().allocatedSize());
+  }
+  sample.unclassified.add(fifo.size() - inspected, 0);
+  // allocate() reserves a stable ID before updateImmediateName publishes it.
+  // Such owners are held by buffer_pool but deliberately absent from FIFO;
+  // count their ownership without an unbounded vector walk or touching them.
+  const auto reserved = buffer_pool.size() - free_slots_.size() - fifo.size() - 1 -
+                        (idle_allocation_ != kInvalidAllocation ? 1 : 0);
+  sample.unclassified.add(reserved, 0);
+}
+#endif
 
 void
 StagingResource::incRef() {
@@ -73,6 +127,9 @@ StagingResource::allocate(uint64_t coherent_seq_id) {
     flags.set(BufferAllocationFlag::CpuPlaced);
 #endif
     auto next = buffer_->allocate(flags);
+#if DXMT_IDLE_RETIREMENT
+    ++created_allocations_;
+#endif
     if (free_slots_.empty()) {
       // Trimming must not allocate after retiring a slot. Reserve before
       // publishing a new pool index so every slot can enter the freelist even

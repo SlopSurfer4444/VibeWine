@@ -1,5 +1,6 @@
 #include "cs2_trace.hpp"
 #include "d3d11_swapchain.hpp"
+#include "d3d11_spatial_geometry.hpp"
 #include "com/com_guid.hpp"
 #include "config/config.hpp"
 #include "d3d11_private.h"
@@ -148,11 +149,18 @@ public:
 
     if constexpr (EnableMetalFX) {
       scale_factor = std::max(Config::getInstance().getOption<float>("d3d11.metalSpatialUpscaleFactor", 2), 1.0f);
+#if defined(DXMT_FIXED_OUTPUT_METALFX) && DXMT_FIXED_OUTPUT_METALFX
+      fixed_output_ = Config::getInstance().getOption<bool>("d3d11.metalfxPerformanceUpscale", false);
+      if (fixed_output_) {
+        fixed_output_width_ = Config::getInstance().getOption<int>("d3d11.metalfxOutputWidth", 0);
+        fixed_output_height_ = Config::getInstance().getOption<int>("d3d11.metalfxOutputHeight", 0);
+      }
+#endif
     }
 
     presenter = Rc(new Presenter(pDevice->GetMTLDevice(), layer_weak_,
                                  pDevice->GetDXMTDevice().queue().cmd_library,
-                                 scale_factor, desc_.SampleDesc.Count, trace_serial_));
+                                 fixed_output_ ? 1.0f : scale_factor, desc_.SampleDesc.Count, trace_serial_));
     if (!presenter->supportsCheckedLayerConfiguration()) {
       ERR("Native Metal bridge lacks checked synchronous layer configuration");
       initialization_result_ = DXGI_ERROR_UNSUPPORTED;
@@ -638,6 +646,11 @@ public:
       next_desc.Format = Format;
     }
 
+    SpatialOutputGeometry next_output;
+    if (fixed_output_ && !ResolveFixedSpatialOutput(render_width, render_height,
+          fixed_output_width_, fixed_output_height_, D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION, next_output))
+      return E_INVALIDARG;
+
     auto next_buffer_desc = backbuffer_desc_;
     next_buffer_desc.Width = std::max(1u, render_width);
     next_buffer_desc.Height = std::max(1u, render_height);
@@ -650,30 +663,51 @@ public:
     if (FAILED(hr)) return hr;
 
     if constexpr (EnableMetalFX) {
-      auto upscaled_desc = next_buffer_desc;
-      double scaled_width = double(next_buffer_desc.Width) * scale_factor;
-      double scaled_height = double(next_buffer_desc.Height) * scale_factor;
-      if (!(scaled_width >= 1 && scaled_width <= D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION &&
-            scaled_height >= 1 && scaled_height <= D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION))
-        return E_INVALIDARG;
-      upscaled_desc.Width = static_cast<UINT>(scaled_width);
-      upscaled_desc.Height = static_cast<UINT>(scaled_height);
       Com<D3D11ResourceCommon> next_upscaled;
-      hr = dxmt::CreateDeviceTexture2D(device_, &upscaled_desc, nullptr,
-          reinterpret_cast<ID3D11Texture2D1 **>(&next_upscaled));
-      if (FAILED(hr)) return hr;
-      WMTFXSpatialScalerInfo info = {};
-      info.input_height = next_buffer_desc.Height;
-      info.input_width = next_buffer_desc.Width;
-      info.output_height = upscaled_desc.Height;
-      info.output_width = upscaled_desc.Width;
-      info.color_format = next_public_buffer->texture()->pixelFormat();
-      info.output_format = next_upscaled->texture()->pixelFormat();
-      Rc<SpatialScaler> next_scaler = new SpatialScaler(device_->GetMTLDevice(), info);
-      if (!next_scaler->scaler() || !next_scaler->fence()) return E_FAIL;
+      Rc<SpatialScaler> next_scaler;
+      // The native spatial descriptor currently uses perceptual color. Keep
+      // HDR/scRGB and multisample data on the established presentation path.
+      const bool supported_format = next_desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM ||
+          next_desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ||
+          next_desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM ||
+          next_desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+      const bool use_scaler = !fixed_output_ ||
+          (next_output.upscale && supported_format && next_desc.SampleDesc.Count == 1 &&
+           colorspace_ == DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
+      if (use_scaler) {
+        auto upscaled_desc = next_buffer_desc;
+        double scaled_width = fixed_output_ ? next_output.width : double(next_buffer_desc.Width) * scale_factor;
+        double scaled_height = fixed_output_ ? next_output.height : double(next_buffer_desc.Height) * scale_factor;
+        if (!(scaled_width >= 1 && scaled_width <= D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION &&
+              scaled_height >= 1 && scaled_height <= D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION))
+          return E_INVALIDARG;
+        upscaled_desc.Width = static_cast<UINT>(scaled_width);
+        upscaled_desc.Height = static_cast<UINT>(scaled_height);
+        hr = dxmt::CreateDeviceTexture2D(device_, &upscaled_desc, nullptr,
+            reinterpret_cast<ID3D11Texture2D1 **>(&next_upscaled));
+        if (FAILED(hr)) return hr;
+        WMTFXSpatialScalerInfo info = {};
+        info.input_height = next_buffer_desc.Height;
+        info.input_width = next_buffer_desc.Width;
+        info.output_height = upscaled_desc.Height;
+        info.output_width = upscaled_desc.Width;
+        info.color_format = next_public_buffer->texture()->pixelFormat();
+        info.output_format = next_upscaled->texture()->pixelFormat();
+        next_scaler = new SpatialScaler(device_->GetMTLDevice(), info);
+        if (!next_scaler->scaler() || !next_scaler->fence()) {
+          if (!fixed_output_) return E_FAIL;
+          // A nil optional scaler/fence never reaches encoding and must not
+          // reuse a scaler belonging to an earlier buffer generation.
+          next_scaler = nullptr;
+          next_upscaled = nullptr;
+        }
+      }
+      if (fixed_output_ && !next_scaler)
+        WARN("Fixed-output MetalFX unavailable for this buffer; using ordinary presentation");
       upscaled_backbuffer_ = std::move(next_upscaled);
       metalfx_scaler = std::move(next_scaler);
     }
+    output_geometry_ = next_output;
 
     backbuffer_ = next_public_buffer.prvRef();
     backbuffer_desc_ = next_buffer_desc;
@@ -797,8 +831,10 @@ public:
                               : colorspace_,
                           LayerSupportEDR());
     if (presenter->changeLayerProperties(
-            ConvertSwapChainFormat(desc_.Format), target_color_space, desc_.Width * scale_factor,
-            desc_.Height * scale_factor, desc_.SampleDesc.Count
+            ConvertSwapChainFormat(desc_.Format), target_color_space,
+            fixed_output_ ? output_geometry_.width : desc_.Width * scale_factor,
+            fixed_output_ ? output_geometry_.height : desc_.Height * scale_factor, desc_.SampleDesc.Count,
+            fixed_output_
         ))
       device_context_->WaitUntilGPUIdle();
   };
@@ -1025,18 +1061,25 @@ public:
       chunk->emitcc([
         this, vsync_duration, backbuffer = backbuffer_->texture(),
         sync_state = std::move(sync_state),
-        upscaled = upscaled_backbuffer_->texture(),
+        upscaled = upscaled_backbuffer_ && (!fixed_output_ ||
+            colorspace_ == DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709)
+            ? upscaled_backbuffer_->texture() : Rc<Texture>{},
         scaler = this->metalfx_scaler, state = state
       ](ArgumentEncodingContext &ctx) mutable {
         ScalerInfo scaler_info{};
-        scaler_info.type = ScalerType::Spatial;
-        scaler_info.input_width = backbuffer->width();
-        scaler_info.input_height = backbuffer->height();
-        scaler_info.output_width = upscaled->width();
-        scaler_info.output_height = upscaled->height();
-        ctx.updateFrameStatistics([&](auto &statistics) { statistics.last_scaler_info = scaler_info; });
-        ctx.upscale(backbuffer, upscaled, scaler);
-        ctx.present(upscaled, presenter, vsync_duration, state);
+        if (upscaled && scaler) {
+          scaler_info.type = ScalerType::Spatial;
+          scaler_info.input_width = backbuffer->width();
+          scaler_info.input_height = backbuffer->height();
+          scaler_info.output_width = upscaled->width();
+          scaler_info.output_height = upscaled->height();
+          ctx.updateFrameStatistics([&](auto &statistics) { statistics.last_scaler_info = scaler_info; });
+          ctx.upscale(backbuffer, upscaled, scaler);
+          ctx.present(upscaled, presenter, vsync_duration, state);
+        } else {
+          ctx.updateFrameStatistics([&](auto &statistics) { statistics.last_scaler_info = scaler_info; });
+          ctx.present(backbuffer, presenter, vsync_duration, state);
+        }
         ReleaseSemaphore(present_semaphore_, 1, nullptr);
         this->UpdateStatistics(ctx.queue().statistics, ctx.currentFrameId());
       });
@@ -1286,6 +1329,10 @@ public:
 
   HRESULT STDMETHODCALLTYPE
   SetColorSpace1(DXGI_COLOR_SPACE_TYPE ColorSpace) override {
+    // Match Present/Resize lock order so a queued frame captures its color and
+    // optional scaler decision from one generation.
+    std::unique_lock<d3d11_device_mutex> device_lock(device_->mutex);
+    std::lock_guard<dxmt::mutex> buffer_lock(buffer_mutex_);
     auto target_color_space = ConvertColorSpace(ColorSpace, LayerSupportEDR());
     if (presenter->changeLayerColorSpace(target_color_space))
       device_context_->WaitUntilGPUIdle();
@@ -1369,6 +1416,10 @@ private:
   std::conditional<EnableMetalFX, Rc<SpatialScaler>, std::monostate>::type metalfx_scaler;
   std::conditional<EnableMetalFX, Com<D3D11ResourceCommon>, std::monostate>::type upscaled_backbuffer_;
   float scale_factor = 1.0;
+  bool fixed_output_ = false;
+  int fixed_output_width_ = 0;
+  int fixed_output_height_ = 0;
+  SpatialOutputGeometry output_geometry_;
 };
 
 HRESULT

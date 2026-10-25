@@ -27,8 +27,11 @@
 #include "dxmt_command_list.hpp"
 #include "dxmt_context.hpp"
 #include "dxmt_counter.hpp"
+#include "dxmt_idle_retirement.hpp"
+#include "dxmt_idle_diagnostics.hpp"
 #include "dxmt_occlusion_query.hpp"
 #include "dxmt_resource_initializer.hpp"
+#include "dxmt_residency_set_policy.hpp"
 #include "dxmt_ring_bump_allocator.hpp"
 #include "dxmt_statistics.hpp"
 #include "log/log.hpp"
@@ -38,6 +41,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <span>
 
 namespace dxmt {
@@ -168,6 +172,7 @@ class CommandQueue {
   const uint64_t trace_serial_=cs2trace::newSerial();
 
 private:
+  void InitializeResidencySet();
   void CommitChunkInternal(CommandChunk &chunk, uint64_t seq);
 
   uint32_t EncodingThread();
@@ -188,10 +193,41 @@ private:
   uint64_t frame_count = 0;
   std::atomic_uint32_t max_latency_ = 3;
 
+#if DXMT_IDLE_RETIREMENT
+  // Construct before workers; completion sweeping has no independent worker.
+  std::shared_ptr<IdleRetirementDomain> idle_retirement_ = std::make_shared<IdleRetirementDomain>();
+  IdleRetirementDiagnostics idle_diagnostics_{env::getEnvVar("DXMT_IDLE_ATTRIBUTION") == "1"};
+#endif
   dxmt::thread encodeThread;
   dxmt::thread finishThread;
   WMT::Device device;
   WMT::Reference<WMT::CommandQueue> commandQueue;
+#if DXMT_RESIDENCY_SETS
+  WMT::Reference<WMT::ResidencySet> residency_set_;
+  struct ResidencyBufferCandidate : WMT::Buffer {
+    BufferAllocation *owner;
+    ResidencyBufferCandidate(WMT::Buffer buffer, BufferAllocation *owner) : WMT::Buffer(buffer), owner(owner) {}
+  };
+  struct ResidencyBufferReference : WMT::Buffer {
+    // Keep the C++ identity alive as well as its native backing. Retain() can
+    // then touch every view/copy use without confusing recycled owner pointers.
+    Rc<BufferAllocation> owner;
+    ResidencyBufferReference(ResidencyBufferCandidate candidate) : WMT::Buffer(candidate), owner(candidate.owner) {}
+  };
+  ResidencySetPolicy<ResidencyBufferReference> residency_policy_;
+  struct ResidencyBackend {
+    WMT::ResidencySet set;
+    bool add(WMT::Allocation allocation) {
+      set.addAllocations(&allocation, 1);
+      set.commit();
+      return true; // existing bridge has no fallible membership result
+    }
+    void remove(WMT::Allocation allocation) {
+      set.removeAllocations(&allocation, 1);
+      set.commit();
+    }
+  };
+#endif
 
   obj_handle_t shared_event_listener;
   dxmt::thread event_listener_thread;
@@ -210,6 +246,18 @@ private:
   CaptureState capture_state;
 
 public:
+  std::shared_ptr<IdleRetirementDomain> idleRetirement() const {
+#if DXMT_IDLE_RETIREMENT
+    return idle_retirement_;
+#else
+    return {};
+#endif
+  }
+
+  // Called only from the raw-buffer residency path on the encoding owner.
+  // Returning false preserves the existing per-encoder declaration.
+  bool TryReadOnlyResidency(BufferAllocation *allocation, DXMT_RESOURCE_RESIDENCY requested, uint64_t seq);
+
   uint64_t traceSerial() const {return trace_serial_;}
   InternalCommandLibrary cmd_library;
   ArgumentEncodingContext argument_encoding_ctx;

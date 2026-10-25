@@ -215,6 +215,7 @@ public:
 
 class Allocation : public Object {
 public:
+  uint64_t allocatedSize() const { return MTLAllocation_allocatedSize(handle); }
 };
 
 class Resource : public Allocation {

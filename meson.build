@@ -143,6 +143,24 @@ if dxmt_crossbuild
   add_project_arguments(vibewine_scene_define, language: ['c', 'cpp'], native: true)
 endif
 
+# Independent performance experiments use identical PE/native definitions.
+# Every switch is off in the ordinary build; a combined candidate is explicit.
+foreach option_name, define_name : {
+  'vibewine_precise_bindings' : 'DXMT_PRECISE_BINDINGS',
+  'vibewine_dead_attachment_stores' : 'DXMT_DEAD_ATTACHMENT_STORES',
+  'vibewine_physical_residency_dedup' : 'DXMT_PHYSICAL_RESIDENCY_DEDUP',
+  'vibewine_residency_sets' : 'DXMT_RESIDENCY_SETS',
+  'vibewine_idle_retirement' : 'DXMT_IDLE_RETIREMENT',
+  'vibewine_fixed_output_metalfx' : 'DXMT_FIXED_OUTPUT_METALFX',
+  'vibewine_shader_cleanup' : 'DXMT_SHADER_CLEANUP',
+}
+  experiment_define = '-D' + define_name + '=' + get_option(option_name).to_int().to_string()
+  add_project_arguments(experiment_define, language: ['c', 'cpp'])
+  if dxmt_crossbuild
+    add_project_arguments(experiment_define, language: ['c', 'cpp'], native: true)
+  endif
+endforeach
+
 if dxmt_debug
 add_project_arguments('-DDXMT_DEBUG=1', language: 'cpp')
 endif

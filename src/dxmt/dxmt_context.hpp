@@ -541,6 +541,10 @@ public:
 
   void retainAllocation(Allocation* allocation);
 
+#if defined(DXMT_RESIDENCY_SETS) && DXMT_RESIDENCY_SETS
+  bool tryReadOnlyResidency(Buffer *buffer, DXMT_RESOURCE_RESIDENCY requested);
+#endif
+
   template <PipelineStage stage, PipelineKind kind>
   void
   makeResident(WMT::Resource resource, DXMT_RESOURCE_RESIDENCY requested) {
@@ -574,6 +578,10 @@ public:
     uint64_t encoder_id = currentEncoder()->id;
     DXMT_RESOURCE_RESIDENCY requested = GetResidencyMask<kind>(stage, read, write);
     if (CheckResourceResidency(allocation->residencyState, encoder_id, requested)) {
+#if defined(DXMT_RESIDENCY_SETS) && DXMT_RESIDENCY_SETS
+      if (tryReadOnlyResidency(buffer, requested))
+        return;
+#endif
       makeResident<stage, kind>(allocation->buffer(), requested);
     };
   }

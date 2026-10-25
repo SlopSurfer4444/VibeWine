@@ -1,0 +1,242 @@
+// Production helpers and optimizer are inserted verbatim by run.py.
+/* ADAPTERS */
+using namespace dxmt;
+static unsigned checks;
+static void require(bool value, const char *message) {
+  ++checks;
+  if (!value) { std::cerr << "behavioral assertion: " << message << '\n'; std::exit(1); }
+}
+#if defined(DXMT_DEAD_ATTACHMENT_STORES) && DXMT_DEAD_ATTACHMENT_STORES
+constexpr bool dead_enabled = true;
+#else
+constexpr bool dead_enabled = false;
+#endif
+#if defined(DXMT_PHYSICAL_RESIDENCY_DEDUP) && DXMT_PHYSICAL_RESIDENCY_DEDUP
+constexpr bool residency_enabled = true;
+#else
+constexpr bool residency_enabled = false;
+#endif
+struct Surface {
+  Texture desc;
+  TextureAllocation allocation;
+  TextureView base;
+  Surface() {
+    static obj_handle_t next_handle=0x10000;
+    next_handle+=16;
+    base.texture.handle=allocation.object.handle=next_handle;
+    native_extents[next_handle]={desc.w,desc.h};
+    allocation.descriptor = &desc;
+    allocation.allocation_flags.set(TextureAllocationFlag::GpuPrivate);
+    base.allocation = &allocation;
+    base.key.mip_count = base.key.mip_end = base.key.array_end = 1;
+  }
+};
+struct Arena {
+  std::vector<std::pair<EncoderData *, std::function<void()>>> values;
+  template<class T> T *make(EncoderType type) {
+    void *bytes = ::operator new(sizeof(T));
+    T *value = new(bytes) T{};
+    value->type = type;
+    values.emplace_back(value, [value] { if (value->type != EncoderType::Null) value->~T(); ::operator delete(value); });
+    return value;
+  }
+  ~Arena() { for (auto &v : values) v.second(); }
+};
+static RenderEncoderData *render(Arena &a, Surface &s) {
+  auto *r = a.make<RenderEncoderData>(EncoderType::Render);
+  r->render_target_count = 1;
+  r->render_target_array_length = 1;
+  r->render_target_width = s.desc.w;
+  r->render_target_height = s.desc.h;
+  r->default_raster_sample_count = 1;
+  r->colors[0].attachment = &s.base;
+  r->colors[0].load_action = WMTLoadActionLoad;
+  r->colors[0].store_action = WMTStoreActionStore;
+  r->cmd_head.type = WMTRenderCommandNop;
+  r->cmd_tail = reinterpret_cast<wmtcmd_base *>(&r->cmd_head);
+  return r;
+}
+static ClearEncoderData *clear(Arena &a, Surface &s) {
+  auto *c = a.make<ClearEncoderData>(EncoderType::Clear);
+  c->clear_dsv = 0;
+  c->array_length = 1;
+  c->width = s.desc.w;
+  c->height = s.desc.h;
+  c->attachment = &s.base;
+  c->color = {0.1, 0.2, 0.3, 1};
+  return c;
+}
+static void dead_store_cases() {
+  {
+    Surface s; Arena a; ArgumentEncodingContext ctx;
+    auto *r = render(a,s); auto *c = clear(a,s);
+    r->next=c; r->fence_wait.set(11); r->fence_update.set(12);
+    c->fence_wait.set(13); c->fence_update.set(14);
+    auto *tail=r->cmd_tail;
+    std::vector<EncoderData *> nodes{r,c}; ctx.optimize(nodes);
+    require(r->colors[0].store_action == (dead_enabled ? WMTStoreActionDontCare : WMTStoreActionStore),"adjacent full clear discards ordinary color store only when enabled");
+    require(r->type==EncoderType::Render && c->type==EncoderType::Clear && r->next==c,"dead-store pass preserves nodes and adjacency");
+    require(r->fence_wait.test(11) && r->fence_update.test(12) && c->fence_wait.test(13) && c->fence_update.test(14),"dead-store pass preserves all fences");
+    require(r->cmd_tail==tail,"dead-store pass preserves commands");
+  }
+  {
+    Surface s; Arena a; ArgumentEncodingContext ctx;
+    auto *r0=render(a,s); auto *c=clear(a,s); auto *r1=render(a,s);r0->next=c;c->next=r1;
+    std::vector<EncoderData *> nodes{r0,c,r1}; ctx.optimize(nodes);
+    require(c->type==EncoderType::Null && r1->colors[0].load_action==WMTLoadActionClear,"existing optimizer folds clear into following render");
+    require(r0->type==EncoderType::Render && r1->type==EncoderType::Render,"folded clear leaves separate renders");
+    require(r0->colors[0].store_action==(dead_enabled ? WMTStoreActionDontCare : WMTStoreActionStore),"prepass discards store before clear is folded");
+  }
+  using Change=std::function<void(Surface &,RenderEncoderData *,ClearEncoderData *,Surface &)>;
+  const std::vector<std::pair<const char *,Change>> rejected{
+    {"no attachment",[](auto&,auto*r,auto*,auto&){r->colors[0].attachment={};}},
+    {"no clear attachment",[](auto&,auto*,auto*c,auto&){c->attachment={};}},
+    {"missing allocation",[](auto&s,auto*,auto*,auto&){s.base.allocation=nullptr;}},
+    {"missing descriptor",[](auto&s,auto*,auto*,auto&){s.allocation.descriptor=nullptr;}},
+    {"nonprivate allocation",[](auto&s,auto*,auto*,auto&){s.allocation.allocation_flags.clr(TextureAllocationFlag::GpuPrivate);}},
+    {"mapped allocation",[](auto&s,auto*,auto*,auto&){s.allocation.mappedMemory=&s;}},
+    {"zero width",[](auto&s,auto*r,auto*c,auto&){s.desc.w=r->render_target_width=c->width=0;}},
+    {"zero height",[](auto&s,auto*r,auto*c,auto&){s.desc.h=r->render_target_height=c->height=0;}},
+    {"texture depth",[](auto&s,auto*,auto*,auto&){s.desc.d=2;}},
+    {"DSV planar flags",[](auto&,auto*r,auto*,auto&){r->dsv_planar_flags=1;}},
+    {"missing native texture",[](auto&s,auto*,auto*,auto&){s.base.texture.handle=0;}},
+    {"different allocation native texture",[](auto&s,auto*,auto*,auto&){s.allocation.object.handle=102;}},
+    {"view mip range",[](auto&s,auto*,auto*,auto&){s.base.key.mip_end=2;}},
+    {"view array range",[](auto&s,auto*,auto*,auto&){s.base.key.array_end=2;}},
+    {"native width mismatch",[](auto&s,auto*,auto*,auto&){--native_extents.at(s.base.texture.handle).first;}},
+    {"native height mismatch",[](auto&s,auto*,auto*,auto&){--native_extents.at(s.base.texture.handle).second;}},
+    {"partial width",[](auto&,auto*,auto*c,auto&){--c->width;}},
+    {"partial height",[](auto&,auto*,auto*c,auto&){--c->height;}},
+    {"render width",[](auto&,auto*r,auto*,auto&){--r->render_target_width;}},
+    {"render height",[](auto&,auto*r,auto*,auto&){--r->render_target_height;}},
+    {"clear array",[](auto&,auto*,auto*c,auto&){c->array_length=2;}},
+    {"render array",[](auto&,auto*r,auto*,auto&){r->render_target_array_length=2;}},
+    {"DSV clear",[](auto&,auto*,auto*c,auto&){c->clear_dsv=1;}},
+    {"depth attachment",[](auto&,auto*r,auto*,auto&o){r->depth.attachment=&o.base;}},
+    {"stencil attachment",[](auto&,auto*r,auto*,auto&o){r->stencil.attachment=&o.base;}},
+    {"multisample",[](auto&s,auto*,auto*,auto&){s.desc.samples=2;}},
+    {"multimip",[](auto&s,auto*,auto*,auto&){s.desc.mips=2;}},
+    {"multiarray",[](auto&s,auto*,auto*,auto&){s.desc.arrays=2;}},
+    {"3D texture",[](auto&s,auto*,auto*,auto&){s.desc.type=WMTTextureType3D;}},
+    {"shared allocation",[](auto&s,auto*,auto*,auto&){s.allocation.allocation_flags.set(TextureAllocationFlag::Shared);}},
+    {"heap allocation",[](auto&s,auto*,auto*,auto&){s.allocation.allocation_flags.set(TextureAllocationFlag::AllocatedOnHeap);}},
+    {"nonbase view",[](auto&s,auto*,auto*,auto&){s.base.key.index=1;}},
+    {"view mip",[](auto&s,auto*,auto*,auto&){s.base.key.mip_start=1;}},
+    {"view array",[](auto&s,auto*,auto*,auto&){s.base.key.array_start=1;}},
+    {"attachment mip",[](auto&,auto*r,auto*,auto&){r->colors[0].level=1;}},
+    {"attachment slice",[](auto&,auto*r,auto*,auto&){r->colors[0].slice=1;}},
+    {"depth plane",[](auto&,auto*r,auto*,auto&){r->colors[0].depth_plane=1;}},
+    {"resolve target",[](auto&,auto*r,auto*,auto&o){r->colors[0].resolve_attachment=&o.base;}},
+    {"store and resolve",[](auto&,auto*r,auto*,auto&){r->colors[0].store_action=WMTStoreActionStoreAndMultisampleResolve;}},
+    {"resolve-only",[](auto&,auto*r,auto*,auto&){r->colors[0].store_action=WMTStoreActionMultisampleResolve;}},
+    {"different allocation",[](auto&,auto*,auto*c,auto&o){c->attachment=&o.base;}},
+    {"color alias",[](auto&s,auto*r,auto*,auto&){r->render_target_count=2;r->colors[1]=r->colors[0];r->colors[1].attachment=&s.base;}},
+  };
+  for(auto &[name,change]:rejected) {
+    Surface s,other; Arena a; ArgumentEncodingContext ctx; auto*r=render(a,s);auto*c=clear(a,s);
+    r->next=c;change(s,r,c,other); auto before=r->colors[0].store_action;
+    std::vector<EncoderData *> nodes{r,c}; ctx.optimize(nodes);
+    require(r->colors[0].store_action==before,name);
+  }
+  {
+    Surface s; TextureView alias=s.base; alias.texture.handle=102; Arena a; ArgumentEncodingContext ctx;
+    auto*r=render(a,s);auto*c=clear(a,s);r->next=c;c->attachment=&alias;
+    std::vector<EncoderData *> nodes{r,c};ctx.optimize(nodes);
+    require(r->colors[0].store_action==WMTStoreActionStore,"different native view rejected despite same allocation");
+  }
+  for(auto type:{EncoderType::Null,EncoderType::Compute,EncoderType::Blit,EncoderType::SignalEvent,EncoderType::WaitForEvent,EncoderType::SampleTimestamp}) {
+    Surface s;Arena a;ArgumentEncodingContext ctx;auto*r=render(a,s);auto*c=clear(a,s);auto*gap=a.make<EncoderData>(type);
+    std::vector<EncoderData *> nodes{r,gap,c};ctx.optimize(nodes);
+    require(r->colors[0].store_action==WMTStoreActionStore,"original strict adjacency required, including Null gap");
+  }
+}
+static wmtcmd_render_useresource resource(obj_handle_t handle,unsigned usage,unsigned stage) {
+  wmtcmd_render_useresource c{};c.type=WMTRenderCommandUseResource;c.resource=handle;
+  c.usage=static_cast<WMTResourceUsage>(usage);c.stages=static_cast<WMTRenderStages>(stage);return c;
+}
+static void apply_final_render(RenderEncoderData *data) {
+  /* RESIDENCY_HOOK */
+}
+static std::vector<wmtcmd_render_nop *> dedup(std::vector<wmtcmd_render_nop *> commands) {
+  wmtcmd_render_nop head{};
+  auto*last=&head;
+  for(auto *c:commands){last->next.set(c);last=c;}last->next.set(nullptr);
+  RenderEncoderData recorded{};
+  recorded.cmd_head = head;
+  apply_final_render(&recorded);
+  require(head.next.get()==recorded.cmd_head.next.get(),"residency preserves head link");
+  std::vector<wmtcmd_render_nop *> result;
+  unsigned visited=0;
+  auto*p=reinterpret_cast<wmtcmd_render_nop *>(head.next.get());
+  while(p){require(visited<commands.size(),"residency chain remains acyclic");require(p==commands[visited],"every original command link and tail remain unchanged");++visited;if(p->type!=WMTRenderCommandNop)result.push_back(p);p=reinterpret_cast<wmtcmd_render_nop *>(p->next.get());}
+  require(visited==commands.size(),"all command nodes remain in list");
+  return result;
+}
+template<class T> static wmtcmd_render_nop *node(T &v){return reinterpret_cast<wmtcmd_render_nop *>(&v);}
+static void residency_cases() {
+  constexpr unsigned R=WMTResourceUsageRead,W=WMTResourceUsageWrite,V=WMTRenderStageVertex,F=WMTRenderStageFragment;
+  {
+    Surface s;Arena arena;ArgumentEncodingContext ctx;
+    auto *r0=render(arena,s), *r1=render(arena,s);r0->next=r1;
+    auto a=resource(10,R,V),b=resource(10,R,V);
+    r0->cmd_head.next.set(&a);r0->cmd_tail=reinterpret_cast<wmtcmd_base *>(&a);
+    r1->cmd_head.next.set(&b);r1->cmd_tail=reinterpret_cast<wmtcmd_base *>(&b);
+    std::vector<EncoderData *> nodes{r0,r1};ctx.optimize(nodes);
+    require(r0->type==EncoderType::Null&&r1->type==EncoderType::Render,"existing optimizer merges identical renders");
+    require(r1->cmd_head.next.get()==&a&&a.next.get()==&b,"merged render list retains both declarations before final hook");
+    apply_final_render(r1);
+    require(a.type==WMTRenderCommandUseResource&&b.type==(residency_enabled?WMTRenderCommandNop:WMTRenderCommandUseResource),"final hook deduplicates across merged render command lists");
+    require(r1->cmd_tail==reinterpret_cast<wmtcmd_base *>(&b)&&a.next.get()==&b,"final hook retains merged tail and links");
+  }
+  {
+    auto a=resource(10,R,V),b=resource(10,R,V);auto out=dedup({node(a),node(b)});
+    require(out.size()==(residency_enabled?1:2),"same physical resource duplicate is removed when enabled");
+    require(out.front()==node(a),"earliest declaration is retained");
+  }
+  {
+    auto a=resource(10,R,V),b=resource(10,W,V),c=resource(10,R|W,V),d=resource(10,R,V);
+    auto out=dedup({node(a),node(b),node(c),node(d)});
+    require(out.size()==(residency_enabled?3:4),"usage upgrades retained; later single covered use removed");
+    require(out[0]==node(a)&&out[1]==node(b)&&out[2]==node(c),"usage upgrade order unchanged");
+  }
+  {
+    auto a=resource(10,R,V),b=resource(10,W,F),c=resource(10,R,F),d=resource(10,R|W,V|F);
+    auto out=dedup({node(a),node(b),node(c),node(d)});
+    require(out.size()==4,"disjoint declarations cannot create cross-product coverage");
+  }
+  {
+    auto a=resource(10,R,V),b=resource(10,R,F),c=resource(10,R,V|F);
+    require(dedup({node(a),node(b),node(c)}).size()==3,"stage upgrade requires one covering earlier declaration");
+  }
+  {
+    auto a=resource(10,R|W,V|F),b=resource(10,R,F),c=resource(11,R,F);
+    require(dedup({node(a),node(b),node(c)}).size()==(residency_enabled?2:3),"usage and stage subset removed only for exact native handle");
+  }
+  {
+    auto a=resource(10,R,V),b=resource(10,R,V);
+    wmtcmd_render_nop fence{},draw{},barrier{};fence.type=WMTRenderCommandWaitForFence;draw.type=WMTRenderCommandDraw;barrier.type=WMTRenderCommandMemoryBarrier;
+    auto out=dedup({node(a),&fence,&draw,node(b),&barrier});
+    std::vector<wmtcmd_render_nop *> expected{node(a),&fence,&draw};if(!residency_enabled)expected.push_back(node(b));expected.push_back(&barrier);
+    require(out==expected,"all nondeclaration commands retain exact pointer order");
+  }
+  {
+    auto a=resource(0x1000,R,V),b=resource(0x1800,R,V),c=resource(0x1000,R,V);
+    require(dedup({node(a),node(b),node(c)}).size()==3,"direct-mapped hash collision cannot imply same-resource coverage");
+  }
+  {
+    auto a=resource(0,R,V),b=resource(0,R,V),c=resource(10,0,V),d=resource(10,0,V),e=resource(10,R,0),f=resource(10,R,0);
+    require(dedup({node(a),node(b),node(c),node(d),node(e),node(f)}).size()==6,"zero resource and empty masks stay unchanged");
+  }
+  {
+    std::vector<wmtcmd_render_useresource> commands;
+    commands.reserve(140);
+    for(unsigned i=0;i<130;++i)commands.push_back(resource(0x1000+i*16,R,V));
+    commands.push_back(resource(0x1000+129*16,R,V));commands.push_back(resource(0x1000,R,V));
+    std::vector<wmtcmd_render_nop *> input;for(auto &c:commands)input.push_back(node(c));
+    auto out=dedup(input);
+    require(out.size()==(residency_enabled?131:132),"overflow evicts only cache coverage, retaining all first declarations");
+    for(unsigned i=0;i<130;++i)require(out[i]==node(commands[i]),"overflow keeps first declarations in order");
+    require(out.back()==node(commands[131]),"evicted resource stays declared after overflow");
+  }
+}
+int main(){dead_store_cases();residency_cases();std::cout<<"PASS "<<checks<<" behavioral assertions dead="<<dead_enabled<<" residency="<<residency_enabled<<'\n';}

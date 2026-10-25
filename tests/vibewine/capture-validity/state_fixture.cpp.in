@@ -1,0 +1,82 @@
+#include "Metal.hpp"
+#include "dxmt_capture.hpp"
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <string>
+#include <utility>
+static const char *scenario;
+#define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "%s:%d: %s\n", scenario, __LINE__, #x); std::exit(1); } } while (0)
+#define WARN(...) ((void)0)
+namespace dxmt::env {
+static std::string enabled, executable;
+inline std::string getEnvVar(const char *name) {
+  return std::string(name) == "MTL_CAPTURE_ENABLED" ? enabled : executable;
+}
+inline std::string getExeBaseName() { return "fixture.exe"; }
+inline std::string getUnixPath(std::string value) { return "/fixture/" + value; }
+}
+@CAPTURE_SOURCE@
+static bool native_result, other_capture;
+static unsigned starts, stops;
+extern "C" obj_handle_t MTLCaptureManager_sharedCaptureManager() { return 13; }
+extern "C" bool MTLCaptureManager_startCapture(obj_handle_t manager, WMTCaptureInfo *info) {
+  CHECK(manager == 13 && info->capture_object == 17);
+  CHECK(info->destination == WMTCaptureDestinationGPUTraceDocument && info->output_url.ptr);
+  ++starts;
+  return !other_capture && native_result;
+}
+extern "C" void MTLCaptureManager_stopCapture(obj_handle_t manager) {
+  CHECK(manager == 13 && !other_capture); ++stops;
+}
+using dxmt::CaptureState;
+static void process(CaptureState &capture_state, uint64_t frame) {
+  struct { uint64_t frame_; } chunk{frame};
+  WMT::Device device; device.handle = 17;
+  using namespace dxmt;
+  @QUEUE_SWITCH@
+}
+static CaptureState reset(const char *name, const char *enabled = "1", const char *executable = "fixture.exe") {
+  scenario = name; starts = stops = 0; native_result = true; other_capture = false;
+  dxmt::env::enabled = enabled; dxmt::env::executable = executable;
+  return CaptureState{};
+}
+int main() {
+  for (const char *enabled : {"", "0", "true", "2"}) {
+    auto state = reset("default_off", enabled);
+    state.scheduleNextFrameCapture(4); process(state, 4); process(state, 5);
+    CHECK(starts == 0 && stops == 0 && !state.takeCaptureOwnership());
+  }
+  { auto state = reset("wrong_executable", "1", "other.exe");
+    state.scheduleNextFrameCapture(4); process(state, 4); process(state, 5); CHECK(!starts && !stops); }
+  { auto state = reset("native_false_no_stop"); native_result = false;
+    state.scheduleNextFrameCapture(4); process(state, 3); CHECK(!starts);
+    process(state, 4); CHECK(starts == 1 && !state.takeCaptureOwnership());
+    process(state, 5); process(state, 100); CHECK(stops == 0);
+    // A failed attempt returns to idle and can be scheduled again.
+    native_result = true; state.scheduleNextFrameCapture(101); process(state, 101); process(state, 102);
+    CHECK(starts == 2 && stops == 1);
+  }
+  { auto state = reset("existing_capture_no_ownership_or_stop"); other_capture = true;
+    state.scheduleNextFrameCapture(4); process(state, 4); process(state, 5); process(state, 6);
+    CHECK(starts == 1 && stops == 0 && !state.takeCaptureOwnership()); }
+  { auto state = reset("successful_capture_exactly_one_stop");
+    state.scheduleNextFrameCapture(4); process(state, 4); CHECK(starts == 1 && !stops);
+    process(state, 4); state.scheduleNextFrameCapture(4); CHECK(starts == 1 && !stops);
+    process(state, 5); process(state, 6); CHECK(starts == 1 && stops == 1);
+    CHECK(!state.takeCaptureOwnership());
+  }
+  { auto state = reset("consumed_ownership_no_second_stop");
+    state.scheduleNextFrameCapture(4); process(state, 4); CHECK(state.takeCaptureOwnership());
+    process(state, 5); CHECK(starts == 1 && stops == 0);
+  }
+  { auto state = reset("ownership_one_shot");
+    state.scheduleNextFrameCapture(4); CHECK(state.getNextAction(4) == CaptureState::NextAction::StartCapture);
+    state.captureStarted(true); CHECK(state.takeCaptureOwnership()); CHECK(!state.takeCaptureOwnership()); }
+  { auto state = reset("failure_cannot_own");
+    state.scheduleNextFrameCapture(4); CHECK(state.getNextAction(4) == CaptureState::NextAction::StartCapture);
+    state.captureStarted(false); CHECK(!state.takeCaptureOwnership());
+    CHECK(state.getNextAction(5) == CaptureState::NextAction::Nothing); }
+  std::puts("PASS exact production CaptureState + queue switch: defaultoff, executable guard, failed start, external capture, retry, successful one-stop ownership");
+}

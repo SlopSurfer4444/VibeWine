@@ -71,7 +71,11 @@ TDynamicLinearTexture(
         memcpy(allocation->mappedMemory, pInitialData->pSysMem, bytes_per_image);
       }
     }
-    dynamic_ = new DynamicLinearTexture(this->texture_.ptr(), flags);
+    dynamic_ = new DynamicLinearTexture(this->texture_.ptr(), flags
+#if DXMT_IDLE_RETIREMENT
+        , device->GetDXMTDevice().queue().idleRetirement()
+#endif
+    );
   }
   Rc<StagingResource> staging(UINT) final { return nullptr; }
   Rc<DynamicBuffer> dynamicBuffer(UINT*, UINT*) final { return {}; };

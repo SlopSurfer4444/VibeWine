@@ -2,6 +2,7 @@
 #include "Metal.hpp"
 #include "dxmt_buffer.hpp"
 #include "thread.hpp"
+#include "dxmt_idle_retirement.hpp"
 #include <cstdint>
 #include <atomic>
 #include <mutex>
@@ -65,7 +66,12 @@ public:
    */
   uint64_t length;
 
-  StagingResource(WMT::Device device, uint64_t length, uint32_t bytes_per_row, uint32_t bytes_per_image);
+  StagingResource(WMT::Device device, uint64_t length, uint32_t bytes_per_row, uint32_t bytes_per_image
+#if DXMT_IDLE_RETIREMENT
+      , std::shared_ptr<IdleRetirementDomain> domain = {}
+#endif
+  );
+  ~StagingResource();
 
 private:
   static constexpr uint64_t kInvalidAllocation = ~uint64_t(0);
@@ -84,7 +90,14 @@ private:
   std::vector<uint64_t> free_slots_;
   uint64_t idle_allocation_ = kInvalidAllocation;
   std::atomic<uint32_t> refcount_ = {0u};
+#if DXMT_IDLE_RETIREMENT
+  IdleRetirementQueue<QueueEntry> fifo;
+  IdleRetirementDomain::Registration idle_registration_;
+  uint64_t created_allocations_ = 0;
+  void sweepIdle(uint64_t coherent, IdleRetirementDomain::Budget &, IdleRetirementDomain::Sample &);
+#else
   std::queue<QueueEntry> fifo;
+#endif
   dxmt::mutex mutex_;
   bool mapped = false;
   // prevent read from staging before

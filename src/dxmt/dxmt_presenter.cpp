@@ -6,6 +6,7 @@
 #include "Metal.hpp"
 #include "dxmt_format.hpp"
 #include "dxmt_presenter.hpp"
+#include "dxmt_present_geometry.hpp"
 #include "../d3d11/cs2_trace.hpp"
 #include "util_likely.hpp"
 
@@ -31,13 +32,16 @@ Presenter::Presenter(WMT::Device device, WMT::MetalLayer layer, InternalCommandL
 
 bool
 Presenter::changeLayerProperties(
-    WMTPixelFormat format, WMTColorSpace colorspace, double width, double height, uint8_t sample_count
+    WMTPixelFormat format, WMTColorSpace colorspace, double width, double height, uint8_t sample_count,
+    bool preserve_aspect
 ) {
   std::lock_guard lock(configuration_mutex_);
   bool should_invalidated = colorspace_ != colorspace;
   should_invalidated |= source_format_ != format;
   configuration_dirty_ |= should_invalidated || sample_count_ != sample_count ||
-      layer_props_.drawable_width != width || layer_props_.drawable_height != height;
+      layer_props_.drawable_width != width || layer_props_.drawable_height != height ||
+      preserve_aspect_ != preserve_aspect;
+  preserve_aspect_ = preserve_aspect;
   source_format_ = format;
   should_invalidated |= sample_count_ != sample_count;
   sample_count_ = sample_count;
@@ -155,7 +159,7 @@ Presenter::synchronizeLayerProperties() {
     if (pso_valid_) {
       configuration_ = std::make_shared<const PresentationConfiguration>(PresentationConfiguration{
           ++configuration_revision_, layer_props_, final_colorspace,
-          gamma_lut_texture_, present_blit_, present_scale_});
+          gamma_lut_texture_, present_blit_, present_scale_, preserve_aspect_});
       configuration_dirty_ = false;
     } else {
       configuration_.reset();
@@ -373,9 +377,18 @@ Presenter::encodeCommands(
   if (width == 0 || height == 0)
     return {};
 
+  auto viewport = fitPresentViewport(width, height, backbuffer.width(), backbuffer.height(),
+                                           configuration.preserve_aspect);
+  const bool has_bars = viewport.originX != 0 || viewport.originY != 0 ||
+                        viewport.width != width || viewport.height != height;
+  // Blit shaders use absolute raster position; an offset viewport must sample UVs.
+  const bool source_size_matched = !has_bars && backbuffer.width() == (uint64_t)width &&
+                                  backbuffer.height() == (uint64_t)height;
+
   WMTRenderPassInfo info;
   WMT::InitializeRenderPassInfo(info);
-  info.colors[0].load_action = WMTLoadActionDontCare;
+  info.colors[0].load_action = has_bars ? WMTLoadActionClear : WMTLoadActionDontCare;
+  info.colors[0].clear_color = {0, 0, 0, 1};
   info.colors[0].store_action = WMTStoreActionStore;
   info.colors[0].texture = drawable_texture;
   auto encoder = cmdbuf.renderCommandEncoder(info);
@@ -387,11 +400,11 @@ Presenter::encodeCommands(
   encoder.setFragmentTexture(backbuffer, 0);
   encoder.setFragmentTexture(configuration.gamma_lut_texture, 1);
   encoder.setFragmentBytes(&metadata, sizeof(metadata), 0);
-  if (backbuffer.width() == (uint64_t)width && backbuffer.height() == (uint64_t)height)
+  if (source_size_matched)
     encoder.setRenderPipelineState(configuration.present_blit);
   else
     encoder.setRenderPipelineState(configuration.present_scale);
-  encoder.setViewport({0, 0, width, height, 0, 1});
+  encoder.setViewport(viewport);
   encoder.drawPrimitives(WMTPrimitiveTypeTriangle, 0, 3);
 #else
   // The bridge walks this list synchronously. Keep its metadata and viewport
@@ -401,7 +414,6 @@ Presenter::encodeCommands(
   wmtcmd_render_setpso pipeline{};
   wmtcmd_render_setviewports viewport_command{};
   wmtcmd_render_draw draw{};
-  WMTViewport viewport{0, 0, width, height, 0, 1};
 
   source.type = gamma.type = WMTRenderCommandSetFragmentTexture;
   source.texture = backbuffer;
@@ -416,7 +428,7 @@ Presenter::encodeCommands(
   constants.index = 0;
   constants.next.set(&pipeline);
   pipeline.type = WMTRenderCommandSetPSO;
-  pipeline.pso = backbuffer.width() == (uint64_t)width && backbuffer.height() == (uint64_t)height
+  pipeline.pso = source_size_matched
                      ? configuration.present_blit.handle : configuration.present_scale.handle;
   pipeline.next.set(&viewport_command);
   viewport_command.type = WMTRenderCommandSetViewports;

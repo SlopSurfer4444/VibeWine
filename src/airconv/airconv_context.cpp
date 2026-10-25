@@ -23,6 +23,7 @@
 #include "llvm/Transforms/IPO/ForceFunctionAttrs.h"
 #include "llvm/Transforms/IPO/InferFunctionAttrs.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
+#include "llvm/ADT/DenseMap.h"
 
 #include "airconv_context.hpp"
 
@@ -36,6 +37,68 @@
 using namespace llvm;
 
 namespace dxmt {
+
+#ifndef DXMT_SHADER_CLEANUP
+#define DXMT_SHADER_CLEANUP 0
+#endif
+
+#if DXMT_SHADER_CLEANUP
+namespace {
+// Lower16BitTexRead runs after the final generic cleanup and can emit the
+// same i32 lane extraction for the low and high halfwords. Keep this experiment
+// deliberately narrower than another EarlyCSE: no memory, calls, FP, motion
+// across blocks, or changes to the implicit-barrier detector's input.
+class LateHalfwordCSEPass : public PassInfoMixin<LateHalfwordCSEPass> {
+  static bool eligible(Instruction &I) {
+    if (auto *EE = dyn_cast<ExtractElementInst>(&I)) {
+      auto *VT = dyn_cast<FixedVectorType>(EE->getVectorOperandType());
+      auto *Index = dyn_cast<ConstantInt>(EE->getIndexOperand());
+      return VT && VT->getNumElements() == 4 &&
+             VT->getElementType()->isIntegerTy(32) && Index &&
+             (Index->getBitWidth() == 32 || Index->getBitWidth() == 64) &&
+             Index->getValue().ult(4);
+    }
+    if (I.getOpcode() == Instruction::LShr && I.getType()->isIntegerTy(32)) {
+      auto *Shift = dyn_cast<ConstantInt>(I.getOperand(1));
+      return Shift && Shift->equalsInt(16);
+    }
+    return isa<TruncInst>(I) && I.getType()->isIntegerTy(16) &&
+           I.getOperand(0)->getType()->isIntegerTy(32);
+  }
+
+public:
+  PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
+    bool Changed = false;
+    for (BasicBlock &BB : F) {
+      // The restricted shapes give a bounded number of distinct operations
+      // per operand; exact identity includes poison-generating flags.
+      DenseMap<Value *, SmallVector<Instruction *, 4>> Available;
+      for (auto It = BB.begin(); It != BB.end();) {
+        Instruction &I = *It++;
+        if (!eligible(I))
+          continue;
+        auto &Candidates = Available[I.getOperand(0)];
+        Instruction *Existing = nullptr;
+        for (auto *Candidate : Candidates) {
+          if (I.isIdenticalTo(Candidate)) {
+            Existing = Candidate;
+            break;
+          }
+        }
+        if (!Existing) {
+          Candidates.push_back(&I);
+          continue;
+        }
+        I.replaceAllUsesWith(Existing);
+        I.eraseFromParent();
+        Changed = true;
+      }
+    }
+    return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
+  }
+};
+} // namespace
+#endif
 
 void initializeModule(llvm::Module &M) {
   M.setSourceFileName("airconv_generated.metal");
@@ -145,6 +208,9 @@ runOptimizationPasses(llvm::Module &M) {
 
     GlobalCleanupPM.addPass(air::Lower16BitTexReadPass());
     GlobalCleanupPM.addPass(air::SimdgroupImplicitMemBarrierPass());
+#if DXMT_SHADER_CLEANUP
+    GlobalCleanupPM.addPass(LateHalfwordCSEPass());
+#endif
 
     MPM.addPass(createModuleToFunctionPassAdaptor(std::move(GlobalCleanupPM), true /* ? */));
   }

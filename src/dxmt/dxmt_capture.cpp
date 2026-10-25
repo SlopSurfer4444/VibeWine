@@ -49,6 +49,23 @@ CaptureState::scheduleNextFrameCapture(uint64_t next) {
   next_capture_frame = next;
 }
 
+void
+CaptureState::captureStarted(bool success) {
+  owns_capture_ = success;
+  if (!success) {
+    next_capture_frame = 0;
+    state = State::Idle;
+    WARN("Metal capture did not start; no capture ownership acquired");
+  }
+}
+
+bool
+CaptureState::takeCaptureOwnership() {
+  const bool owned = owns_capture_;
+  owns_capture_ = false;
+  return owned;
+}
+
 bool
 CaptureState::shouldCaptureNextFrame() {
 #ifdef _WIN32

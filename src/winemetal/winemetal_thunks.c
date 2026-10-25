@@ -552,10 +552,11 @@ MTLCaptureManager_sharedCaptureManager() {
 
 WINEMETAL_API bool
 MTLCaptureManager_startCapture(obj_handle_t mgr, struct WMTCaptureInfo *info) {
-  struct unixcall_mtlcapturemanager_startcapture params;
+  struct unixcall_mtlcapturemanager_startcapture params = {0};
   params.capture_manager = mgr;
   WMT_MEMPTR_SET(params.info, info);
-  UNIX_CALL(54, &params);
+  if (WINE_UNIX_CALL(54, &params))
+    return false;
   return params.ret;
 }
 
@@ -1388,4 +1389,13 @@ CacheWriter_set_checked(obj_handle_t writer, const void *key, uint64_t key_lengt
   if (WINE_UNIX_CALL(148, &params))
     return WMTCacheStatusUnavailable;
   return params.ret_status;
+}
+
+WINEMETAL_API uint64_t
+MTLAllocation_allocatedSize(obj_handle_t allocation) {
+  struct unixcall_generic_obj_uint64_ret params = {0};
+  params.handle = allocation;
+  if (WINE_UNIX_CALL(149, &params))
+    return 0; // Unknown charge is not admitted to a byte-bounded residency set.
+  return params.ret;
 }

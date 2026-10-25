@@ -41,7 +41,8 @@ public:
   bool supportsCheckedLayerConfiguration() const { return checked_layer_configuration_; }
 
   bool changeLayerProperties(
-      WMTPixelFormat format, WMTColorSpace colorspace, double width, double height, uint8_t sample_count
+      WMTPixelFormat format, WMTColorSpace colorspace, double width, double height, uint8_t sample_count,
+      bool preserve_aspect = false
   );
 
   bool changeLayerColorSpace(WMTColorSpace colorspace);
@@ -59,6 +60,7 @@ public:
     WMT::Reference<WMT::Texture> gamma_lut_texture;
     WMT::Reference<WMT::RenderPipelineState> present_blit;
     WMT::Reference<WMT::RenderPipelineState> present_scale;
+    bool preserve_aspect = false;
   };
 
   struct PresentState {
@@ -96,6 +98,7 @@ private:
   uint64_t encoded_configuration_revision_ = 0;
   bool checked_layer_configuration_ = false; // fixed before publication
   bool configuration_dirty_ = true;
+  bool preserve_aspect_ = false;
   InternalCommandLibrary &lib_;
   WMTLayerProps layer_props_{};
   uint32_t sample_count_;

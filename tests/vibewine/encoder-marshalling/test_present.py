@@ -9,6 +9,7 @@ Generated source/binary are private temporary files removed after the run.
 from pathlib import Path
 import hashlib
 import json
+import platform
 import subprocess
 import tempfile
 
@@ -43,24 +44,52 @@ def main():
         ("historical_wrapper_reference", ["-DDXMT_PERF_REF_W4_BATCHING=1"]),
     ]
     results = []
+    controls = []
     with tempfile.TemporaryDirectory(prefix="dxmt-present-") as scratch:
         cpp = Path(scratch) / "present.cpp"
-        cpp.write_text(program)
-        for name, defines in variants:
+        command = ["xcrun", "clang++", "-std=c++20", "-O2", "-g", "-Wall", "-Wextra", "-Werror",
+                   "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+                   "-I", str(REPO / "src/winemetal"), "-I", str(REPO / "src/dxmt")]
+        def compile_run(candidate, name, defines):
+            cpp.write_text(candidate)
             binary = Path(scratch) / name
-            subprocess.run(["xcrun", "clang++", "-std=c++20", "-O2", "-g", "-Wall", "-Wextra", "-Werror",
-                            "-fsanitize=address,undefined", "-fno-sanitize-recover=all", *defines,
-                            "-I", str(REPO / "src/winemetal"), str(cpp), "-o", str(binary)],
+            subprocess.run([*command, *defines, str(cpp), "-o", str(binary)],
                            check=True, text=True, timeout=60)
-            result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
+            return subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
+        for name, defines in variants:
+            result = compile_run(program, name, defines)
             if result.returncode:
                 raise RuntimeError(f"{name}: exit {result.returncode}\n{result.stdout}\n{result.stderr}")
             results.append({"variant": name, "compile_defines": defines, "cases": result.stdout.splitlines()})
+        # Compile the identical whole production function for the other supported
+        # Darwin architecture; execution remains on the host architecture.
+        other = "x86_64" if platform.machine() == "arm64" else "arm64"
+        cpp.write_text(program)
+        for name, defines in variants:
+            subprocess.run([*command, "-arch", other, *defines, "-c", str(cpp),
+                            "-o", str(Path(scratch) / (name + ".o"))], check=True, timeout=60)
+        mutations = [
+            ("offset_viewport_wrong_absolute_blit", "!has_bars && backbuffer.width() == (uint64_t)width &&\n                                  backbuffer.height() == (uint64_t)height",
+             "backbuffer.width() == (uint64_t)viewport.width && backbuffer.height() == (uint64_t)viewport.height"),
+            ("bars_not_cleared", "has_bars ? WMTLoadActionClear : WMTLoadActionDontCare", "WMTLoadActionDontCare"),
+            ("wrong_viewport_tail", "viewport_command.viewports.set(&viewport);", "viewport.originX += 1; viewport_command.viewports.set(&viewport);"),
+        ]
+        for mutation, before, after in mutations:
+            assert body.count(before) == 1, mutation
+            changed = program.replace(before, after)
+            # The ABI-tail mutation targets the optimized list specifically.
+            groups = variants[:2] if mutation == "wrong_viewport_tail" else variants
+            for name, defines in groups:
+                result = compile_run(changed, mutation + "_" + name, defines)
+                if result.returncode != 1 or ": " not in result.stderr or "sanitizer" in result.stderr.lower() or "runtime error:" in result.stderr:
+                    raise RuntimeError(f"mutation not rejected cleanly: {mutation}/{name}\n{result.stdout}\n{result.stderr}")
+                controls.append({"mutation": mutation, "variant": name, "rejected": True,
+                                 "failure": result.stderr.strip()})
     print(json.dumps({"passed": True,
                       "scope": "CPU synchronous stub-thunk interpretation; no Metal link/device/GPU/Wine/window",
                       "sanitizers": ["address", "undefined"],
                       "whole_function_sha256": hashlib.sha256(body.encode()).hexdigest(),
-                      "results": results}, indent=2))
+                      "results": results, "other_architecture_compile": other, "mutation_controls": controls}, indent=2))
 
 
 if __name__ == "__main__":

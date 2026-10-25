@@ -1,5 +1,6 @@
 #include "d3d11_device.hpp"
 #include "d3d11_private.h"
+#include "d3d11_precise_bindings.hpp"
 #include "d3d11_context_impl.cpp"
 #include "dxmt_buffer.hpp"
 #include "dxmt_command_queue.hpp"
@@ -164,9 +165,13 @@ public:
           state_.InputAssembler.VertexBuffers.set_dirty();
         }
         if (bind_flag & D3D11_BIND_CONSTANT_BUFFER) {
+#if defined(DXMT_PRECISE_BINDINGS) && DXMT_PRECISE_BINDINGS
+          InvalidateDiscardedConstantBuffers(state_.ShaderStages, dynamic->buffer);
+#else
           for (auto &stage : state_.ShaderStages) {
             stage.ConstantBuffers.set_dirty();
           }
+#endif
         }
         if (bind_flag & D3D11_BIND_SHADER_RESOURCE) {
           for (auto &stage : state_.ShaderStages) {

@@ -114,7 +114,11 @@ public:
     structured = pDesc->MiscFlags & D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
     allow_raw_view = pDesc->MiscFlags & D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
     if (!(desc.BindFlags & kD3D11OutputBindFlags)) {
-      dynamic_ = new DynamicBuffer(buffer_.ptr(), flags);
+      dynamic_ = new DynamicBuffer(buffer_.ptr(), flags
+#if DXMT_IDLE_RETIREMENT
+          , device->GetDXMTDevice().queue().idleRetirement()
+#endif
+      );
     }
   }
 

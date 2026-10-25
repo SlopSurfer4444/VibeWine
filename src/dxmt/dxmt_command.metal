@@ -327,8 +327,12 @@ float3 to_srgb(float3 linear) {
   float4 output = float4(0);
   if (present_backbuffer_is_ms) {
     const uint count = source_ms.get_num_samples();
+    const uint2 source_size(source_ms.get_width(), source_ms.get_height());
+    const uint2 source_pixel = present_backbuffer_size_matched
+        ? uint2(input.position.xy)
+        : min(uint2(saturate(input.uv) * float2(source_size)), source_size - 1);
     for (uint i = 0; i < count; i++) {
-      output += source_ms.read(uint2(input.position.xy), i);
+      output += source_ms.read(source_pixel, i);
     }
     output /= count;
   } else {

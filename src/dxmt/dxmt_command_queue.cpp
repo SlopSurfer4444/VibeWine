@@ -62,6 +62,10 @@ CommandQueue::CommandQueue(WMT::Device device) :
   };
   event = device.newSharedEvent();
 
+#if DXMT_RESIDENCY_SETS
+  InitializeResidencySet();
+#endif
+
   std::string env = env::getEnvVar("DXMT_CAPTURE_FRAME");
 
   if (!env.empty()) {
@@ -74,6 +78,22 @@ CommandQueue::CommandQueue(WMT::Device device) :
 
 CommandQueue::~CommandQueue() {
   ShutdownAndJoin();
+}
+
+void
+CommandQueue::InitializeResidencySet() {
+#if DXMT_RESIDENCY_SETS
+  uint64_t major = 0, minor = 0, patch = 0;
+  WMTGetOSVersion(&major, &minor, &patch);
+  if (major >= 15) {
+    WMT::Error error;
+    residency_set_ = device.newResidencySet(256, error);
+    if (residency_set_)
+      commandQueue.addResidencySet(residency_set_);
+    else
+      WARN("Bounded residency set unavailable; preserving resource declarations");
+  }
+#endif
 }
 
 void
@@ -92,6 +112,18 @@ CommandQueue::ShutdownAndJoin() {
   SharedEventListener_destroy(shared_event_listener);
   encodeThread.join();
   finishThread.join();
+#if DXMT_RESIDENCY_SETS
+  if (residency_set_) {
+    // Shutdown can stop the finish worker before all queued work retires. Only
+    // the opt-in set needs this drain before removal and native-reference release.
+    for (auto &chunk : chunks) {
+      if (chunk.attached_cmdbuf && chunk.attached_cmdbuf.status() <= WMTCommandBufferStatusScheduled)
+        chunk.attached_cmdbuf.waitUntilCompleted();
+    }
+    ResidencyBackend backend{residency_set_};
+    residency_policy_.clearAfterDrain(backend);
+  }
+#endif
   for (unsigned i = 0; i < kCommandChunkCount; i++) {
     auto &chunk = chunks[i];
     chunk.reset();
@@ -147,6 +179,13 @@ CommandQueue::CommitChunkInternal(CommandChunk &chunk, uint64_t seq) {
   }
   auto pool = WMT::MakeAutoreleasePool();
 
+#if DXMT_RESIDENCY_SETS
+  if (residency_set_) {
+    ResidencyBackend backend{residency_set_};
+    residency_policy_.retire(cpu_coherent.signaledValue(), backend);
+  }
+#endif
+
   switch (capture_state.getNextAction(chunk.frame_)) {
   case CaptureState::NextAction::StartCapture: {
     WMTCaptureInfo info;
@@ -161,12 +200,13 @@ CommandQueue::CommitChunkInternal(CommandChunk &chunk, uint64_t seq) {
     WARN("A new capture will be saved to ", fileUrl);
     info.output_url.set(fileUrl.c_str());
 
-    capture_mgr.startCapture(info);
+    capture_state.captureStarted(capture_mgr.startCapture(info));
     break;
   }
   case CaptureState::NextAction::StopCapture: {
     auto capture_mgr = WMT::CaptureManager::sharedCaptureManager();
-    capture_mgr.stopCapture();
+    if (capture_state.takeCaptureOwnership())
+      capture_mgr.stopCapture();
     break;
   }
   case CaptureState::NextAction::Nothing: {
@@ -267,6 +307,14 @@ CommandQueue::WaitForFinishThread() {
       cs2trace::detailRecord(trace_gen,91,t,t,traceSerial(),0,internal_seq,trace_frame);
     }
     cpu_coherent.signal(internal_seq);
+#if DXMT_IDLE_RETIREMENT
+    const auto idle_sample = idle_retirement_->sweep(internal_seq);
+    if (idle_diagnostics_.enabled()) {
+      char line[1024];
+      if (idle_diagnostics_.record(cs2trace::now(), idle_sample, GetCurrentProcessId(), traceSerial(), line))
+        std::fputs(line, stderr);
+    }
+#endif
     if (trace_gen) {
       auto t = cs2trace::now();
       cs2trace::detailRecord(trace_gen,92,t,t,traceSerial(),0,internal_seq,trace_frame);
@@ -285,6 +333,9 @@ CommandQueue::WaitForFinishThread() {
 }
 
 void CommandQueue::Retain(uint64_t seq, Allocation* allocation) {
+#if DXMT_RESIDENCY_SETS
+  residency_policy_.touch(allocation, seq);
+#endif
   auto &chunk = chunks[seq % kCommandChunkCount];
   auto &tracker = chunk.ref_tracker;
   constexpr size_t block_size = decltype(reftracker_storage_allocator)::block_size;
@@ -293,5 +344,34 @@ void CommandQueue::Retain(uint64_t seq, Allocation* allocation) {
     tracker.addStorage(temp_buffer.ptr, block_size);
   }
 };
+
+bool
+CommandQueue::TryReadOnlyResidency(BufferAllocation *allocation, DXMT_RESOURCE_RESIDENCY requested, uint64_t seq) {
+#if DXMT_RESIDENCY_SETS
+  if (!residency_set_ || !allocation)
+    return false;
+  const auto flags = allocation->flags();
+  // GpuManaged is a storage mode, not Metal hazard tracking: these standalone
+  // buffers are created untracked. GpuReadonly is set for D3D11 immutable data.
+  // Its NoTracking alias is also used by counters, which never call this hook.
+  const bool eligible = flags.test(BufferAllocationFlag::GpuReadonly) &&
+                        !flags.any(BufferAllocationFlag::AllocatedOnHeap, BufferAllocationFlag::CpuPlaced,
+                                   BufferAllocationFlag::OwnedByCommandList) &&
+                        (requested & DXMT_RESOURCE_RESIDENCY_READ) && !(requested & DXMT_RESOURCE_RESIDENCY_WRITE);
+  if (!eligible)
+    return false;
+  const auto buffer = allocation->buffer();
+  const auto owner = static_cast<Allocation *>(allocation);
+  const auto cached_charge = residency_policy_.cachedCharge(buffer.handle, owner);
+  const auto bytes = cached_charge ? cached_charge : buffer.allocatedSize();
+  ResidencyBackend backend{residency_set_};
+  return residency_policy_.cover(ResidencyBufferCandidate{buffer, allocation}, bytes, seq, eligible, backend, owner);
+#else
+  (void)allocation;
+  (void)requested;
+  (void)seq;
+  return false;
+#endif
+}
 
 } // namespace dxmt

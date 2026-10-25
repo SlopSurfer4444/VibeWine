@@ -1395,17 +1395,32 @@ _MTLCaptureManager_sharedCaptureManager(void *obj) {
 static NTSTATUS
 _MTLCaptureManager_startCapture(void *obj) {
   struct unixcall_mtlcapturemanager_startcapture *params = obj;
-  MTLCaptureDescriptor *desc = [[MTLCaptureDescriptor alloc] init];
+  params->ret = false;
+  MTLCaptureManager *manager = (MTLCaptureManager *)params->capture_manager;
   const struct WMTCaptureInfo *info = params->info.ptr;
+  // Never take ownership of a capture started by Xcode or another caller.
+  if (!manager || !info || !info->capture_object || !info->output_url.ptr ||
+      manager.isCapturing || ![manager supportsDestination:(MTLCaptureDestination)info->destination])
+    return STATUS_SUCCESS;
+  MTLCaptureDescriptor *desc = [[MTLCaptureDescriptor alloc] init];
   desc.destination = (MTLCaptureDestination)info->destination;
   desc.captureObject = (id)info->capture_object;
   NSString *path_str = [[NSString alloc] initWithCString:info->output_url.ptr encoding:NSUTF8StringEncoding];
   NSURL *url = [[NSURL alloc] initFileURLWithPath:path_str];
   desc.outputURL = url;
-  [(MTLCaptureManager *)params->capture_manager startCaptureWithDescriptor:desc error:nil];
+  NSError *error = nil;
+  params->ret = [manager startCaptureWithDescriptor:desc error:&error];
   [url release];
   [path_str release];
   [desc release];
+  return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+_MTLAllocation_allocatedSize(void *obj) {
+  struct unixcall_generic_obj_uint64_ret *params = obj;
+  id<MTLAllocation> allocation = (id<MTLAllocation>)params->handle;
+  params->ret = allocation ? allocation.allocatedSize : 0;
   return STATUS_SUCCESS;
 }
 
@@ -3204,6 +3219,7 @@ const void *__wine_unix_call_funcs[] = {
     &_Cache_alloc_init_checked,
     &_CacheReader_get_checked,
     &_CacheWriter_set_checked,
+    &_MTLAllocation_allocatedSize,
 };
 
 #ifndef DXMT_NATIVE
@@ -3357,5 +3373,6 @@ const void *__wine_unix_call_wow64_funcs[] = {
     &_Cache_alloc_init_checked,
     &_CacheReader_get_checked,
     &_CacheWriter_set_checked,
+    &_MTLAllocation_allocatedSize,
 };
 #endif

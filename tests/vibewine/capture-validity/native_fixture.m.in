@@ -1,0 +1,215 @@
+// Production bridge functions with Foundation-backed fake Metal objects.
+// This fixture uses no real Metal objects, GPU, Wine, or capture session.
+#import <Foundation/Foundation.h>
+#include <stdlib.h>
+#include <stddef.h>
+#include <stdio.h>
+#include "winemetal_thunks.h"
+
+#define CHECK(condition) do { \
+  if (!(condition)) { \
+    fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__, #condition); \
+    exit(1); \
+  } \
+} while (0)
+
+typedef int NTSTATUS;
+#define STATUS_SUCCESS 0
+
+// Foundation may load Metal transitively. Keep runtime class/protocol names unique
+// while compiling the extracted production function bodies without text changes.
+#define MTLCaptureManager FixtureCaptureManager
+#define MTLCaptureDescriptor FixtureCaptureDescriptor
+#define MTLAllocation FixtureAllocationProtocol
+typedef NSInteger MTLCaptureDestination;
+@protocol MTLAllocation <NSObject>
+@property(readonly) NSUInteger allocatedSize;
+@end
+
+static unsigned descriptorsAlive;
+@interface MTLCaptureDescriptor : NSObject
+@property MTLCaptureDestination destination;
+@property(retain) id captureObject;
+@property(retain) NSURL *outputURL;
+@end
+@implementation MTLCaptureDescriptor
+- (id)init { self = [super init]; if (self) ++descriptorsAlive; return self; }
+- (void)dealloc {
+  --descriptorsAlive;
+  [_captureObject release];
+  [_outputURL release];
+  [super dealloc];
+}
+@end
+
+@interface MTLCaptureManager : NSObject
+@property BOOL isCapturing;
+@property BOOL supported;
+@property BOOL nativeResult;
+@property unsigned startCalls;
+@property unsigned stopCalls;
+@property(retain) id expectedObject;
+@property(retain) NSString *expectedPath;
+@property MTLCaptureDestination expectedDestination;
+- (BOOL)supportsDestination:(MTLCaptureDestination)destination;
+- (BOOL)startCaptureWithDescriptor:(MTLCaptureDescriptor *)descriptor error:(NSError **)error;
+- (void)stopCapture;
+@end
+@implementation MTLCaptureManager
+- (BOOL)supportsDestination:(MTLCaptureDestination)destination {
+  CHECK(destination == _expectedDestination);
+  return _supported;
+}
+- (BOOL)startCaptureWithDescriptor:(MTLCaptureDescriptor *)descriptor error:(NSError **)error {
+  ++_startCalls;
+  CHECK(descriptor.destination == _expectedDestination);
+  CHECK(descriptor.captureObject == _expectedObject);
+  CHECK([descriptor.outputURL isFileURL]);
+  CHECK([[descriptor.outputURL path] isEqualToString:_expectedPath]);
+  CHECK(error && *error == nil);
+  if (!_nativeResult)
+    *error = [NSError errorWithDomain:@"fixture.native.failure" code:1 userInfo:nil];
+  else
+    _isCapturing = YES;
+  return _nativeResult;
+}
+- (void)stopCapture { ++_stopCalls; _isCapturing = NO; }
+- (void)dealloc { [_expectedObject release]; [_expectedPath release]; [super dealloc]; }
+@end
+
+@interface FixtureAllocation : NSObject <MTLAllocation>
+@property NSUInteger nativeBytes;
+@property unsigned reads;
+@end
+@implementation FixtureAllocation
+- (NSUInteger)allocatedSize { ++_reads; return _nativeBytes; }
+@end
+
+// EXACT_NATIVE_FUNCTIONS
+
+static BOOL dispatchFails, dispatchLeavesResult, dispatchFailureWritesResult;
+static unsigned dispatchCalls;
+static NTSTATUS fixture_unix_call(unsigned code, void *params) {
+  ++dispatchCalls;
+  if (code == 54) {
+    // Both the failure and successful-no-write cases expose uninitialized ret.
+    CHECK(!((struct unixcall_mtlcapturemanager_startcapture *)params)->ret);
+  }
+  if (dispatchFails) {
+    if (dispatchFailureWritesResult) {
+      if (code == 54)
+        ((struct unixcall_mtlcapturemanager_startcapture *)params)->ret = true;
+      else if (code == 149)
+        ((struct unixcall_generic_obj_uint64_ret *)params)->ret = UINT64_MAX;
+    }
+    return 0xc0000001;
+  }
+  if (dispatchLeavesResult) return STATUS_SUCCESS;
+  switch (code) {
+  case 54: return _MTLCaptureManager_startCapture(params);
+  case 55: return _MTLCaptureManager_stopCapture(params);
+  case 149: return _MTLAllocation_allocatedSize(params);
+  default: CHECK(false); return 1;
+  }
+}
+#define WINE_UNIX_CALL(code, params) fixture_unix_call(code, params)
+#define UNIX_CALL(code, params) CHECK(!fixture_unix_call(code, params))
+// EXACT_PE_THUNKS
+
+_Static_assert(sizeof(struct unixcall_mtlcapturemanager_startcapture) == 24, "start capture ABI size");
+_Static_assert(offsetof(struct unixcall_mtlcapturemanager_startcapture, ret) == 16, "capture result ABI offset");
+_Static_assert(sizeof(struct unixcall_generic_obj_uint64_ret) == 16, "allocation ABI size");
+_Static_assert(sizeof(struct WMTCaptureInfo) == 24, "capture info ABI size");
+
+static void direct_rejection(obj_handle_t manager, struct WMTCaptureInfo *info) {
+  struct unixcall_mtlcapturemanager_startcapture params = {
+    .capture_manager = manager, .info = {.ptr = info}, .ret = true
+  };
+  CHECK(_MTLCaptureManager_startCapture(&params) == STATUS_SUCCESS);
+  CHECK(!params.ret); // Native early returns must overwrite stale success.
+  CHECK(!descriptorsAlive);
+}
+
+int main(void) {
+  @autoreleasepool {
+    MTLCaptureManager *manager = [MTLCaptureManager new];
+    NSObject *captureObject = [NSObject new];
+    manager.expectedObject = captureObject;
+    manager.expectedPath = @"/tmp/fixture capture \u2603.gputrace";
+    manager.expectedDestination = WMTCaptureDestinationGPUTraceDocument;
+    const char *path = [manager.expectedPath UTF8String];
+    struct WMTCaptureInfo info = {
+      .capture_object = (obj_handle_t)captureObject,
+      .output_url = {.ptr = path},
+      .destination = WMTCaptureDestinationGPUTraceDocument,
+    };
+    obj_handle_t handle = (obj_handle_t)manager;
+
+    // Rejected input cannot create a descriptor, start or stop a capture.
+    direct_rejection(0, &info);
+    direct_rejection(handle, NULL);
+    struct WMTCaptureInfo invalid = info;
+    invalid.capture_object = 0;
+    direct_rejection(handle, &invalid);
+    invalid = info; invalid.output_url.ptr = NULL;
+    direct_rejection(handle, &invalid);
+
+    manager.supported = NO;
+    direct_rejection(handle, &info);
+    CHECK(!MTLCaptureManager_startCapture(handle, &info));
+    CHECK(!manager.startCalls && !manager.stopCalls && !manager.isCapturing);
+
+    manager.supported = YES;
+    manager.isCapturing = YES;
+    direct_rejection(handle, &info);
+    CHECK(!MTLCaptureManager_startCapture(handle, &info));
+    CHECK(!manager.startCalls && !manager.stopCalls && manager.isCapturing);
+
+    manager.isCapturing = NO;
+    manager.nativeResult = NO;
+    CHECK(!MTLCaptureManager_startCapture(handle, &info));
+    CHECK(manager.startCalls == 1 && !manager.stopCalls && !manager.isCapturing);
+    CHECK(!descriptorsAlive);
+
+    // Failed dispatch and a no-write dispatch both fail closed.
+    dispatchFails = YES;
+    CHECK(!MTLCaptureManager_startCapture(handle, &info));
+    dispatchFailureWritesResult = YES;
+    CHECK(!MTLCaptureManager_startCapture(handle, &info));
+    dispatchFailureWritesResult = NO;
+    dispatchFails = NO; dispatchLeavesResult = YES;
+    CHECK(!MTLCaptureManager_startCapture(handle, &info));
+    dispatchLeavesResult = NO;
+    CHECK(manager.startCalls == 1 && !manager.stopCalls);
+
+    manager.nativeResult = YES;
+    CHECK(MTLCaptureManager_startCapture(handle, &info));
+    CHECK(manager.startCalls == 2 && !manager.stopCalls && manager.isCapturing);
+    CHECK(!descriptorsAlive);
+    // A second start must preserve the already active capture.
+    CHECK(!MTLCaptureManager_startCapture(handle, &info));
+    CHECK(manager.startCalls == 2 && !manager.stopCalls && manager.isCapturing);
+    MTLCaptureManager_stopCapture(handle);
+    CHECK(manager.stopCalls == 1 && !manager.isCapturing);
+
+    FixtureAllocation *allocation = [FixtureAllocation new];
+    allocation.nativeBytes = UINT64_C(0x100010000); // Greater than 32-bit/requested length.
+    CHECK(MTLAllocation_allocatedSize((obj_handle_t)allocation) == UINT64_C(0x100010000));
+    CHECK(allocation.reads == 1);
+    allocation.nativeBytes = 0;
+    CHECK(!MTLAllocation_allocatedSize((obj_handle_t)allocation));
+    CHECK(allocation.reads == 2);
+    CHECK(!MTLAllocation_allocatedSize(0));
+    dispatchFails = YES;
+    CHECK(!MTLAllocation_allocatedSize((obj_handle_t)allocation));
+    dispatchFailureWritesResult = YES;
+    CHECK(!MTLAllocation_allocatedSize((obj_handle_t)allocation));
+    dispatchFailureWritesResult = NO;
+    dispatchFails = NO;
+    CHECK(allocation.reads == 2);
+    [allocation release]; [manager release]; [captureObject release];
+    CHECK(dispatchCalls > 0 && !descriptorsAlive);
+  }
+  puts("PASS exact native/PE capture functions: rejection, existing owner, native false, success, dispatch failure; actual allocation bytes");
+  return 0;
+}

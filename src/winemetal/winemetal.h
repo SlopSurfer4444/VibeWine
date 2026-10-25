@@ -76,6 +76,9 @@ WINEMETAL_API uint64_t MTLDevice_recommendedMaxWorkingSetSize(obj_handle_t devic
 
 WINEMETAL_API uint64_t MTLDevice_currentAllocatedSize(obj_handle_t device);
 
+// Appended bridge entry: actual native allocation charge, not requested length.
+WINEMETAL_API uint64_t MTLAllocation_allocatedSize(obj_handle_t allocation);
+
 WINEMETAL_API obj_handle_t MTLDevice_name(obj_handle_t device);
 
 WINEMETAL_API uint32_t
