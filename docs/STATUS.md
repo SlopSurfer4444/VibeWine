@@ -6,6 +6,12 @@ and packed IR growth, compiler-stage attribution and long-aggregate recovery.
 Wine remains `5d4b43e4`. The installed ten-switch renderer and DS3 launch policy
 are preserved; this wave does not establish new gameplay/FPS acceptance.
 
+The first remote hot-path CI exposed a historical-fixture qualification error:
+current fusion adjacency was incorrectly required from retained pre-fusion
+source. A test-only repair preserves strict current assertions, explicitly
+qualifies the legacy caller and adds five rejection controls. All five affected
+local suites pass; this pin contains that repair. Remote rerun is separate.
+
 Reconciled **26 October 2026**. Source/build details for this wave are recorded
 in its report; dated documents retain their original historical claims.
 
