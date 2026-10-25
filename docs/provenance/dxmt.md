@@ -2,7 +2,11 @@
 
 ## FPS source wave, 25 October 2026
 
-Current development pin: DXMT `25eff5e1` (build tree-equivalent `cb5fa11d`).
+Current development pin: DXMT `c7e4ab45`, adding attributed borrowed-error
+ownership and failed-pipeline work cancellation. Both complete matched variants
+build. The installed experiment remains the preceding `25eff5e1` checkpoint
+(build tree-equivalent `cb5fa11d`). See the
+[new neighbor wave](../integrations/neighbor-wave-20261025.md).
 The [integration evidence](../diagnostics/fps-wave-20261025.md) separates
 source, complete selected builds and covered GPU correctness from installation
 and gameplay performance. The [exact-tree publication map](fps-wave-publication-20261025.json)

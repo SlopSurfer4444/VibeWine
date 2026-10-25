@@ -3,6 +3,30 @@
 This is a direction for contributions, not a release promise. Start with the
 [component source](README.md#get-the-source) and [contribution guide](CONTRIBUTING.md).
 
+## Neighbor convergence wave — 25 October 2026
+
+Current checkpoint: publish the verified preceding source drop, refresh neighbor
+sources, integrate the strongest general repairs and converge on a precise next
+performance experiment. Root owns integration, Git and build/publication; the
+playable installed runtime is preserved. This roadmap remains the canonical
+dependency/state record; private execution receipts support its claims.
+
+| ID | Deliverable / dependency | Acceptance and current state |
+| --- | --- | --- |
+| N0 | Experimental source drop | Published `v0.1.0-experimental.20261025` at `5be9c7d6`; recursive archive's 14,564 tracked blobs, two generated files, licenses, pins and uploaded digests independently checked |
+| N1 | Fresh Wine/DXMT/neighbor audit | Accepted bounded primary-source audit; exact donors, license-at-revision checks, overlaps and held candidates in [the review](docs/integrations/neighbor-wave-20261025.md) |
+| N2 | General renderer repairs / N1 | Integrated `1c678b32` + `c7e4ab45`; production ownership/work-cancellation positives, failing baselines and mutations; both fresh 161-target builds pass; GPU/game/install pending |
+| N3 | Address-wait publication / N1 | Integrated `5d4b43e4`; native/Rosetta checks preserve prior timeout behavior; source verifier and i386/x86_64 production compilation pass; complete runtime integration pending |
+| N4 | Publish combined source / N2,N3 | Component refs and hub pins published only after local checks; source checkpoint, installed selection unchanged |
+| N5 | Performance convergence / N1 | Prioritize phase-marked full-profile presentation/queue latency; demand-aware compile capacity and explicit discard/IR retention remain conditional next experiments, not completed optimizations |
+
+The source checkpoint does not close the earlier gameplay/latency/memory gates.
+New metrics must distinguish presented/on-glass observations, skipped-only
+intervals, phase labels and actual per-frame distributions. Keep comparison
+settings/power/cache/load fixed and retain a reference. Do not reduce queue depth,
+add compiler workers or copy an entire vendor history without a discriminating
+test. No new game launch or installed-runtime mutation belongs to this checkpoint.
+
 ## Active integrated wave — 23 October 2026
 
 ### FPS implementation wave — 25 October 2026

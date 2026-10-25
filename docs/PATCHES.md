@@ -6,6 +6,9 @@ or a claim that every feature is enabled in the installed test runtime.
 | Area | Origin | Scope / default | Source and evidence |
 | --- | --- | --- | --- |
 | DXMT renderer/compiler baseline | Upstream 3Shain/DXMT, identified Git ancestry | General renderer | [DXMT history and nine logical local changes](provenance/dxmt.md) |
+| Native borrowed NSError ownership | Adapted g-cqd `cbf3c18c`; extended local API and same-object replacement handling | General correctness; successful shader/cache output unchanged | [Neighbor wave](integrations/neighbor-wave-20261025.md), [native production-bound controls](../components/dxmt/tests/vibewine/error-ownership/README.md) |
+| Failed-PSO dependent-work cancellation | Adapted g-cqd render/compute guards, with preserved uploads and per-encoder reset | General D3D11; no title gate or compiler-success claim | [Production paths and controls](../components/dxmt/docs/failed-pipeline-20261025.md) |
+| Address queue publication ordering | Adapted Paul Gofman/Wine `81e52628`; previous timeout drain retained | General synchronization; PE production compilation and native/translated controls | [Neighbor wave](integrations/neighbor-wave-20261025.md), [Wine provenance](../components/wine/vibewine/UPSTREAM_BACKPORTS.md) |
 | Staging, dynamic and ring allocation lifetime | Local VibeWine changes | General DXMT ownership/reclamation | [DXMT provenance](provenance/dxmt.md), [GPU/fixture results](diagnostics/full-bundle-20261023.md) |
 | DXGI count/fill, resize/presentation and shader error paths | Local corrections on the upstream baseline | General correctness | [DXMT provenance](provenance/dxmt.md) |
 | Matched WineMetal/AIRCONV and Metal guards | Upstream plus ported local bridge behavior/guards | General bridge/compiler; presentation gates remain separate | [Matched bundle](provenance/dxmt.md) |

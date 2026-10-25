@@ -7,7 +7,13 @@ windows, Retina, accessibility, game compatibility and performance you can
 measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
-**Current checkpoint: 25 October 2026.** The owner selected the new combined experiment
+**Current checkpoint: 25 October 2026.** The [first source drop](docs/releases/2026-10-25-source-preview.md)
+is published. A [subsequent neighbor wave](docs/integrations/neighbor-wave-20261025.md)
+adds checked general Metal-error ownership, failed-pipeline work cancellation and
+address-wait publication fixes. Both complete renderer variants build; this new
+source follow-up has not replaced the playable installed experiment.
+
+The owner selected the preceding combined experiment
 for diagnostic DS3 play; the previous playable endpoint remains recoverable. Source
 adds seven independently gated renderer experiments, MSync rollback repair and
 bounded attribution, alongside early scene submission. Both complete matched
@@ -57,7 +63,7 @@ python3 scripts/workspace.py check
 | [Telemetry](tools/telemetry/README.md) and [gameplay tools](tools/gameplay/README.md) | Analysis, bounded test control and reproducible test protocols | `main` |
 | [Experiments](experiments/README.md) | Opt-in instrumentation and native presentation probes | `main` |
 
-The workspace pins Wine `85864be4` and DXMT `25eff5e1`. Components are pinned
+The workspace pins Wine `5d4b43e4` and DXMT `c7e4ab45`. Components are pinned
 submodules hosted on branches in this same repository.
 Updating a component branch does not silently update the workspace pin. GitHub's
 main-branch ZIP omits submodule contents; use a recursive clone or the component

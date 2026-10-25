@@ -2,7 +2,11 @@
 
 ## FPS source wave, 25 October 2026
 
-Current development pin: Wine `85864be4` (paired Unix NTDLL/server).
+Current development pin: Wine `5d4b43e4`, adding Paul Gofman's attributed
+address-queue publication repair while preserving the earlier timeout drain.
+The changed PE unit compiles for i386/x86_64; the installed paired Unix
+NTDLL/server remains the preceding `85864be4` source checkpoint. See the
+[new neighbor wave](../integrations/neighbor-wave-20261025.md).
 The [integration evidence](../diagnostics/fps-wave-20261025.md) separates
 source, complete selected builds and covered GPU correctness from installation
 and gameplay performance. The [exact-tree publication map](fps-wave-publication-20261025.json)

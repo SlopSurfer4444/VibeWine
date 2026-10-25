@@ -55,6 +55,8 @@ jobs:
       - run: python3 components/wine/vibewine/tests/msync_registration.py --source-dir components/wine
       - run: python3 components/wine/vibewine/tests/address-wait/run.py --sanitize
       - run: python3 components/wine/vibewine/tests/address-wait/run.py --revision d2237a9a82d9960360ce8400242ddeae6646c347 --expect-regression --sanitize
+      - run: python3 components/wine/vibewine/tests/address-wait/run_publication.py --sanitize
+      - run: python3 components/wine/vibewine/tests/address-wait/run_publication.py --revision 85864be47d483d4518f729baef48cbf52ea1e5cf --expect-regression --sanitize
       - run: python3 components/wine/vibewine/tests/vulkan-portability/run.py
       - run: python3 components/wine/vibewine/tests/vulkan-portability/run.py --revision d2237a9a82d9960360ce8400242ddeae6646c347 --expect-regression
       - run: python3 tests/vibewine/compile_regressions.py
@@ -62,4 +64,14 @@ jobs:
       - run: python3 tests/vibewine/context-locks/run.py --sanitize
         working-directory: components/dxmt
       - run: python3 tests/vibewine/context-locks/run.py --source-ref e7b02196a31dc633ac802c9c27b88dbdd8f40dca --expect-unlocked-baseline --sanitize
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/failed-pipeline/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/failed-pipeline/run.py --source-ref 25eff5e13003d5e7f6b7cf6e1c76e9e6f3363e27 --expect-baseline-failure
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/failed-pipeline/run.py --mutation unguarded
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/failed-pipeline/run.py --mutation sticky
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/failed-pipeline/run.py --mutation early-stage
         working-directory: components/dxmt

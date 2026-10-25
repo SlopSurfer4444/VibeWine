@@ -1,0 +1,255 @@
+{
+  "schema": 1,
+  "date": "2026-10-25",
+  "scope": "Source and matched renderer compile checkpoint; no installed selection, GPU error-path or game/FPS acceptance",
+  "source": {
+    "hubPredecessor": "5be9c7d6",
+    "dxmt": "c7e4ab455d7a666768ea8cd1f7e719d879bd1218",
+    "wine": "5d4b43e48f48d83254468596a0df8592d62e3242",
+    "dxmtPredecessor": "25eff5e13003d5e7f6b7cf6e1c76e9e6f3363e27",
+    "winePredecessor": "85864be47d483d4518f729baef48cbf52ea1e5cf"
+  },
+  "donors": [
+    {
+      "repo": "g-cqd/dxmt",
+      "commit": "cbf3c18cee85195b1519d33e4980001b854f1beb",
+      "licenseAtCommit": "MIT",
+      "scope": "NSError ownership"
+    },
+    {
+      "repo": "g-cqd/dxmt",
+      "commit": "cb535b372e41a7dc8f6b39606d9da22c2d8a09f9",
+      "licenseAtCommit": "MIT",
+      "scope": "Render failure guards"
+    },
+    {
+      "repo": "g-cqd/dxmt",
+      "commit": "82b4f16e0bee910779a6434fe68eede89aa5198d",
+      "licenseAtCommit": "MIT",
+      "scope": "Compute failure guards"
+    },
+    {
+      "repo": "wine-mirror/wine",
+      "commit": "81e52628b25ac173d04796e8a9b9cda637d3e233",
+      "author": "Paul Gofman",
+      "licenseAtCommit": "LGPL-2.1-or-later",
+      "scope": "Address queue publication ordering"
+    }
+  ],
+  "checks": [
+    {
+      "lane": "error-residency",
+      "commandsPassed": 2,
+      "logs": [
+        {
+          "id": "error-residency-0.log",
+          "sha256": "a3dbc6cfe71381bf9b36694e733d0cf6acd6f4edc2c7d522569c51fb56b0f923"
+        },
+        {
+          "id": "error-residency-1.log",
+          "sha256": "2e2b3eeb5294818bc6a9cfa508efbf6b8cf603eca03798cd783aedf1ab46d8ed"
+        }
+      ]
+    },
+    {
+      "lane": "failed-pipeline",
+      "commandsPassed": 6,
+      "logs": [
+        {
+          "id": "failed-pipeline-0.log",
+          "sha256": "b81eb11e1328b6a45873941d3fbe40f8d0c673ae9959bbe3eff5249cf914c903"
+        },
+        {
+          "id": "failed-pipeline-1.log",
+          "sha256": "ced3d8b61d1633b2c8c75b48d2a4c5046ca9aac6e4d10e6c58049d86621067aa"
+        },
+        {
+          "id": "failed-pipeline-2.log",
+          "sha256": "77857535310e87fe9d7bb441bf668f48d4da61c66fc8fc3f920c3b4317295fdc"
+        },
+        {
+          "id": "failed-pipeline-3.log",
+          "sha256": "4a3d1d00eb6e4805b7fa2a304e0ed3b40bc6ae4f897718aa62ede2e28d884f4b"
+        },
+        {
+          "id": "failed-pipeline-4.log",
+          "sha256": "7ef99bc49208bd408321bba15bef6ddb1264a83a1825aa08bed115e3700b2768"
+        },
+        {
+          "id": "failed-pipeline-5.log",
+          "sha256": "4ca3d66827eafa3519ef328cd09ad5e88d2ddd72108098cf9a73da973d9e3a9e"
+        }
+      ]
+    },
+    {
+      "lane": "wine-address",
+      "commandsPassed": 6,
+      "logs": [
+        {
+          "id": "wine-address-0.log",
+          "sha256": "54487443ee0fabb4f9fc2918bfbfbb88670e07529cb71f32d99451b1ecd6a918"
+        },
+        {
+          "id": "wine-address-1.log",
+          "sha256": "01aceec8b8d81d850ab9c819636335679d98898c91a404e4b7874a5b5d1540f7"
+        },
+        {
+          "id": "wine-address-2.log",
+          "sha256": "85f2a6b77de74702a9808dfd9233e3a76db59ee5e3339af88a7da105bf10a47e"
+        },
+        {
+          "id": "wine-address-3.log",
+          "sha256": "54487443ee0fabb4f9fc2918bfbfbb88670e07529cb71f32d99451b1ecd6a918"
+        },
+        {
+          "id": "wine-address-4.log",
+          "sha256": "01aceec8b8d81d850ab9c819636335679d98898c91a404e4b7874a5b5d1540f7"
+        },
+        {
+          "id": "wine-address-5.log",
+          "sha256": "85f2a6b77de74702a9808dfd9233e3a76db59ee5e3339af88a7da105bf10a47e"
+        }
+      ]
+    }
+  ],
+  "wineSourceFilesVerified": 11179,
+  "wineProductionUnitCompilation": [
+    {
+      "arch": "i386",
+      "returncode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "arch": "x86_64",
+      "returncode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "rendererBuilds": [
+    {
+      "mode": "false",
+      "phase": "configure",
+      "returncode": 0,
+      "source": "c7e4ab455d7a666768ea8cd1f7e719d879bd1218",
+      "wineSource": "5d4b43e48f48d83254468596a0df8592d62e3242",
+      "elapsedSeconds": 9.109545124999999,
+      "logSha256": "8f6142ff92e4522acb206dce251a1d56eedb94173f967b9fbac7eed9fd63ab2e"
+    },
+    {
+      "mode": "false",
+      "phase": "compile",
+      "returncode": 0,
+      "source": "c7e4ab455d7a666768ea8cd1f7e719d879bd1218",
+      "wineSource": "5d4b43e48f48d83254468596a0df8592d62e3242",
+      "elapsedSeconds": 80.066615167,
+      "logSha256": "9f310744bae26bba65cc3a7f89049656086fd5703762990b1a3020d362181a82"
+    },
+    {
+      "mode": "true",
+      "phase": "configure",
+      "returncode": 0,
+      "source": "c7e4ab455d7a666768ea8cd1f7e719d879bd1218",
+      "wineSource": "5d4b43e48f48d83254468596a0df8592d62e3242",
+      "elapsedSeconds": 8.860130208000001,
+      "logSha256": "28189d2403b0f68978742715e10678e573e6c8bb72b76a2516044f8fd738e599"
+    },
+    {
+      "mode": "true",
+      "phase": "compile",
+      "returncode": 0,
+      "source": "c7e4ab455d7a666768ea8cd1f7e719d879bd1218",
+      "wineSource": "5d4b43e48f48d83254468596a0df8592d62e3242",
+      "elapsedSeconds": 100.72897108300002,
+      "logSha256": "b1e66639f7f8afe1f9d85c3133dbc1191e44f1f801a236aa2f48e3ab9d389949"
+    }
+  ],
+  "principalBuildOutputs": [
+    {
+      "mode": "false",
+      "path": "src/d3d11/d3d11.dll",
+      "bytes": 5251072,
+      "sha256": "cbd6c21959226843bdcc519b8e561ca0bd6ca55de55fc9e1343aafd2643b38f2"
+    },
+    {
+      "mode": "false",
+      "path": "src/dxgi/dxgi.dll",
+      "bytes": 1773568,
+      "sha256": "3ecb3392423650664ca12af8d3749eb30e998e2c8b5d9033bfe8e9b967791e8a"
+    },
+    {
+      "mode": "false",
+      "path": "src/d3d10/d3d10core.dll",
+      "bytes": 1495040,
+      "sha256": "53d7a84bb9c8e1a328d2e8d181210f0a1a3df4c9e1e48bfe5d7dbf1234a6adb4"
+    },
+    {
+      "mode": "false",
+      "path": "src/winemetal/winemetal.dll",
+      "bytes": 118784,
+      "sha256": "e4261f3473979f862004223b93e50b684c07491b4dadf23db9368eb1c770eb6f"
+    },
+    {
+      "mode": "false",
+      "path": "src/winemetal/unix/winemetal.so",
+      "bytes": 51879680,
+      "sha256": "1a5eb34b813844a16a951615c3c0a1d062b802d69320576892e6dedb8abce798"
+    },
+    {
+      "mode": "false",
+      "path": "src/airconv/darwin/airconv",
+      "bytes": 51780264,
+      "sha256": "d3b64366197b8469cc5474e121389586601466235051cb735a0494a09769ba5c"
+    },
+    {
+      "mode": "true",
+      "path": "src/d3d11/d3d11.dll",
+      "bytes": 5279744,
+      "sha256": "77ca8cfbcb53938709feea6c85ac3bef9ae6533bf8ef4a4a57d6cb1be6089bd2"
+    },
+    {
+      "mode": "true",
+      "path": "src/dxgi/dxgi.dll",
+      "bytes": 1773568,
+      "sha256": "8e9bdf29df53a59f6ac3c3ee90b3ae499312851187c551d3f56ce7c7392f6392"
+    },
+    {
+      "mode": "true",
+      "path": "src/d3d10/d3d10core.dll",
+      "bytes": 1495040,
+      "sha256": "cee2bf00c2ed11cb84ce12dbb8effc478b899b3a62ec45ed7d12c0aac98922ae"
+    },
+    {
+      "mode": "true",
+      "path": "src/winemetal/winemetal.dll",
+      "bytes": 118784,
+      "sha256": "6b7a5964f12607aba5ed1cb2ee3d1a55e47fdb40220847ad0593b0078a61a39f"
+    },
+    {
+      "mode": "true",
+      "path": "src/winemetal/unix/winemetal.so",
+      "bytes": 51885192,
+      "sha256": "d7622271e8261ddf3b3ccbba99a325f4431848de58ea293bfaa75ef9b205da90"
+    },
+    {
+      "mode": "true",
+      "path": "src/airconv/darwin/airconv",
+      "bytes": 51785768,
+      "sha256": "86d27f5a6e0b9b93fa65cf6d6b03b9b2b4d9d65e146fa2df581050c743359e69"
+    }
+  ],
+  "limits": [
+    "Both renderer builds retain the existing configured Wine build tools/generated headers and external toolchain/SDK inputs; no full reproducible Wine distribution",
+    "D3D12 API callers checked by separate syntax fixture; not a full D3D12 runtime build",
+    "No new GPU error-path/installed/game/controlledperformance acceptance",
+    "CI declarations are not remote pass results",
+    "Private game capture/telemetry is not included"
+  ],
+  "installedRuntimeChanged": false,
+  "controlledFpsGainClaimed": false,
+  "sourceRelease": {
+    "tag": "v0.1.0-experimental.20261025",
+    "hub": "5be9c7d6",
+    "archiveSha256": "1e889b3a0bec4970ea2ec28d61b8b8e357d3d1ac4729b22bfbdb2a941570da6c",
+    "frozenBeforeNeighborRepairs": true
+  }
+}
