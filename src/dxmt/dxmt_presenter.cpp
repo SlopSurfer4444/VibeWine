@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstring>
 #include "wave7_feedback.h"
+#include "wave7_visibility.h"
 #include "Metal.hpp"
 #include "dxmt_format.hpp"
 #include "dxmt_presenter.hpp"
@@ -275,8 +276,34 @@ void Presenter::closePresentationFeedback() {
   feedback_session_ = 0;
 }
 
+void Presenter::observeVisibility(uint32_t generation, uint64_t revision) {
+  if (!generation || !swapchain_serial_ || cs2trace::profile()!=cs2trace::Profile::PresentationWaits ||
+      generation!=cs2trace::generation()) return;
+  const auto received=cs2trace::now();
+  if (visibility_generation_==generation && received>=visibility_last_poll_ns_ &&
+      received-visibility_last_poll_ns_<W7VS_REFRESH_NS) return;
+  visibility_generation_=generation;
+  visibility_last_poll_ns_=received;
+  W7VSRequest request{};
+  request.size=sizeof(request); request.version=W7VS_VERSION;
+  request.generation=generation; request.layer=layer_.handle;
+  request.status=W7VS_UNSUPPORTED;
+  if (MTLCommandBuffer_property(static_cast<obj_handle_t>(reinterpret_cast<uintptr_t>(&request)),
+      static_cast<WMTCommandBufferProperty>(W7VS_PROPERTY))!=W7VS_REPLY)
+    request.status=W7VS_UNSUPPORTED;
+  if (generation!=cs2trace::generation()) return;
+  const auto &v=request.snapshot;
+  // Four same-receipt events form one sampled observation; never per-frame
+  // presentation proof. Native observation time is a tagged payload, not QPC.
+  cs2trace::record(generation,100,received,received,swapchain_serial_,request.status,v.layer_identity,v.sequence);
+  cs2trace::record(generation,101,received,received,swapchain_serial_,uint32_t(v.flags),v.observed_ns,v.age_ns);
+  cs2trace::record(generation,102,received,received,swapchain_serial_,0,v.window_id,v.display_id);
+  cs2trace::record(generation,103,received,received,swapchain_serial_,0,v.occlusion_state,revision);
+}
+
 void Presenter::observePresentation(WMT::MetalDrawable drawable, uint64_t frame_id,
                                    uint64_t revision, uint32_t generation) {
+  observeVisibility(generation, revision);
   const auto active_generation = cs2trace::generation();
   if (feedback_session_ && feedback_generation_ != active_generation)
     closePresentationFeedback();

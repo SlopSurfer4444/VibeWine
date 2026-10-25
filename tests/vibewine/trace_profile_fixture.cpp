@@ -47,7 +47,7 @@ int main(int argc,char **argv) {
   assert(profile()==Profile::PresentationWaits);assert(generation()==10);check_marker(0,10,Profile::PresentationWaits);
   for(uint32_t type=0;type<120;type++) {
     bool accepted=type==1 || type==2 || (type>=6 && type<=16) || (type>=20 && type<=25) || type==33 || type==40 ||
-      (type>=44 && type<=49) || type==61 || type==62 || (type>=70 && type<=78) || (type>=89 && type<=92) || (type>=96 && type<=99);
+      (type>=44 && type<=49) || type==61 || type==62 || (type>=70 && type<=78) || (type>=89 && type<=92) || (type>=96 && type<=103);
     assert(profileAllows(type)==accepted);auto before=h->next;
     record(10,type,10,20,123,7,8,9);assert(h->next==before+uint64_t(accepted));
     if(accepted){auto e=events()[before];assert(e.type==type && e.object==123 && e.flags==7 && e.padding[0]==8 && e.padding[1]==9);}

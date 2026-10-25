@@ -86,6 +86,9 @@ public:
                            uint64_t revision, uint32_t generation);
 
 private:
+  void observeVisibility(uint32_t generation, uint64_t revision);
+  uint32_t visibility_generation_ = 0;
+  uint64_t visibility_last_poll_ns_ = 0;
   void drainPresentationFeedback();
   void closePresentationFeedback();
   bool buildRenderPipelineState(bool is_pq, bool with_hdr_metadata, bool is_ms, bool gamma_enable);

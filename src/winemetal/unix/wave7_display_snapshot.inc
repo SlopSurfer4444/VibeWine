@@ -7,6 +7,7 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <time.h>
+#include "../wave7_visibility.h"
 
 bool GetDisplayColorGamut(ColorSyncProfileRef profile, struct WMTDisplayDescription *desc_out);
 NSScreen *GetNSScreenForDisplayID(CGDirectDisplayID display_id);
@@ -54,6 +55,9 @@ static NSHashTable *w7ds_layers, *w7ds_closed_windows;
 @public
   struct W7DSLayerSnapshot snapshot;
   BOOL ready, refresh_queued;
+  /* Pulled only by the optional presentation diagnostic; independent of skip. */
+  struct W7VSSnapshot diagnostic_visibility;
+  BOOL diagnostic_visibility_queued;
 @package
   BOOL acquired_drawable;
   id visibility_window; /* runtime-managed weak storage; main-only access */

@@ -18,6 +18,7 @@ typedef int NTSTATUS;
 #define STATUS_UNSUCCESSFUL 0xC0000001
 #include "wave7_feedback.inc"
 #include "wave7_display_snapshot.inc"
+#include "wave7_visibility.inc"
 #include "wave7_acquire_diag.inc"
 #include "wave7_ds3_profile.inc"
 
@@ -2776,6 +2777,9 @@ _MTLCommandBuffer_property(void *obj) {
   id<MTLCommandBuffer> cmdbuf = (id<MTLCommandBuffer>)params->handle;
   double ns = 1000000000;
   switch (params->arg) {
+  case W7VS_PROPERTY:
+    params->ret = w7vs_dispatch((struct W7VSRequest *)(uintptr_t)params->handle);
+    break;
   case W7FB_PROPERTY:
     params->ret = w7fb_dispatch((struct W7FBRequest *)(uintptr_t)params->handle);
     break;

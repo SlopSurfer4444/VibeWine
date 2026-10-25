@@ -14,7 +14,7 @@ constexpr bool profileTypeAllowed(Profile profile,uint32_t type) {
   case Profile::PresentationWaits:return type==1 || type==2 || (type>=6 && type<=16) ||
     (type>=20 && type<=25) || type==33 || type==40 || (type>=44 && type<=49) ||
     type==61 || type==62 || (type>=70 && type<=78) || (type>=89 && type<=92) ||
-    (type>=96 && type<=99);
+    (type>=96 && type<=103);
   case Profile::Invalid:return false;
  }
  return false;
