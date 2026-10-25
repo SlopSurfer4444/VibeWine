@@ -18,5 +18,9 @@ option('vibewine_residency_sets', type : 'boolean', value : false)
 option('vibewine_idle_retirement', type : 'boolean', value : false)
 option('vibewine_fixed_output_metalfx', type : 'boolean', value : false)
 option('vibewine_shader_cleanup', type : 'boolean', value : false)
+option('vibewine_demand_scheduler', type : 'boolean', value : false,
+  description : 'Experimental bounded demand-aware shader compiler scheduling')
+option('vibewine_discard_hints', type : 'boolean', value : false,
+  description : 'Experimental exact full-color discard store admission')
 option('vibewine_perf_reference', type : 'combo', choices : ['none', 'w4', 'getters', 'batching'], value : 'none',
   description : 'Build-only corrected W4 performance reference; none keeps all optimizations')

@@ -13,6 +13,10 @@
 #include "cs2_compile_lab.hpp"
 #include <shared_mutex>
 
+#ifndef DXMT_DEMAND_SCHEDULER
+#define DXMT_DEMAND_SCHEDULER 0
+#endif
+
 namespace dxmt {
 
 class MTLD3D11InputLayout final
@@ -128,6 +132,10 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
       return arguments_info_buffer + reflection_.NumConstantBuffers;
     };
     virtual CompiledShader *get_shader(ShaderVariant variant) {
+      // All public lookups come from a real graphics/compute PSO requirement.
+      return get_shader(variant, task_urgency::demand);
+    }
+    CompiledShader *get_shader(ShaderVariant variant, task_urgency urgency) {
       std::lock_guard<dxmt::mutex> lock(variants_mutex);
       auto c = variants.insert({variant, nullptr});
       if (c.second) {
@@ -136,7 +144,11 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
               return CreateVariantShader(cache->device, this, var);
             },
             variant);
-        cache->scheduler_.submit(c.first->second.get());
+        cache->scheduler_.submit(c.first->second.get(), urgency);
+      } else if (urgency == task_urgency::demand) {
+        // Promotion never submits a second queue node or touches an already
+        // completed task. The cache mutex still owns the variant identity.
+        cache->scheduler_.promote(c.first->second.get());
       }
       return c.first->second.get();
     }
@@ -288,7 +300,8 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
       // follow the normal path; no draw is skipped or uses a substitute shader.
       for (uint32_t unorm_mask : {0u, 1u})
         for (bool no_depth : {false, true})
-          managed_shader->get_shader(ShaderVariantPixel{0xffffffffu, false, no_depth, unorm_mask});
+          managed_shader->get_shader(ShaderVariantPixel{0xffffffffu, false, no_depth, unorm_mask},
+              task_urgency::speculative);
     }
     *ppShader = ref(new TShaderBase<ID3D11PixelShader, MTLD3D10PixelShader>(device, managed_shader));
     return S_OK;
@@ -416,7 +429,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
     if (!inserted) {
       D3D11_ASSERT(0 && "duplicated graphics pipeline");
     } else {
-      scheduler_.submit(iter->second.get());
+      scheduler_.submit(iter->second.get(), task_urgency::demand);
     }
     *ppPipeline = iter->second.get();
   }
@@ -434,7 +447,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
     if (!inserted) {
       D3D11_ASSERT(0 && "duplicated geometry pipeline");
     } else {
-      scheduler_.submit(iter->second.get());
+      scheduler_.submit(iter->second.get(), task_urgency::demand);
     }
     *ppPipeline = iter->second.get();
   }
@@ -452,7 +465,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
     if (!inserted) {
       D3D11_ASSERT(0 && "duplicated tessellation pipeline");
     } else {
-      scheduler_.submit(iter->second.get());
+      scheduler_.submit(iter->second.get(), task_urgency::demand);
     }
     *ppPipeline = iter->second.get();
   }
@@ -469,7 +482,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
     if (!inserted) {
       D3D11_ASSERT(0 && "duplicated compute pipeline");
     } else {
-      scheduler_.submit(iter->second.get());
+      scheduler_.submit(iter->second.get(), task_urgency::demand);
     }
     *ppPipeline = iter->second.get();
   }
@@ -480,7 +493,7 @@ public:
       device(pDevice),
       blend_states(pDevice),
       so_layouts(pDevice),
-      scheduler_(env::getEnvVar("DXMT_SCHEDULER_BACKLOG_GROWTH") == "1") {
+      scheduler_(env::getEnvVar("DXMT_SCHEDULER_BACKLOG_GROWTH") == "1", DXMT_DEMAND_SCHEDULER != 0) {
     if (cs2lab::enabled())
       Logger::info(str::format("CS2LAB build=early-compile-v1 early_compile=", cs2lab::earlyCompile()));
   };

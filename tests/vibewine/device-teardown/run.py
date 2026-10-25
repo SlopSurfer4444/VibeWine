@@ -113,7 +113,7 @@ def main():
                                 env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=' + ('0' if platform.system() == 'Darwin' else '1'),
                                      'UBSAN_OPTIONS': 'halt_on_error=1', 'TSAN_OPTIONS': 'exitcode=66:abort_on_error=0'})
             expected = ('PASS source ownership: API final release and finish-thread final release\n' if suite == 'ownership'
-                        else 'PASS queue shutdown: repeated, concurrent, pending worker and destructor\n' if suite == 'shutdown'
+                        else 'PASS queue shutdown: repeated, concurrent, pending worker, destructor and capture ownership\n' if suite == 'shutdown'
                         else 'PASS retirement: origins, private hook, pending drain, setup failures and module pin\n' if suite == 'retirement'
                         else 'PASS integrated retirement: actual private-data capture chain\n')
             if args.expect_bypass:

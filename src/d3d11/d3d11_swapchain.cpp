@@ -975,6 +975,7 @@ public:
   SyncFrameState SyncFrame(uint64_t current_frame_id) {
     if (frame_latency_fence_) {
       if (current_frame_id > frame_latency) {
+        cs2trace::PresentationScope exact(97,trace_serial_,current_frame_id,current_frame_id-frame_latency,frame_latency);
         cs2trace::Scope trace{.type=8,.object=current_frame_id};
         frame_latency_fence_->wait(current_frame_id - frame_latency);
       }
@@ -1054,6 +1055,9 @@ public:
     if (auto gen = cs2trace::generation()) {
       auto t = cs2trace::now();
       cs2trace::record(gen,25,t,t,trace_serial_,0,cmd_queue.traceSerial(),cmd_queue.CurrentFrameSeq()-1);
+      // Native presenter and queue frame counters have different origins.
+      if (cs2trace::profile()==cs2trace::Profile::PresentationWaits)
+        cs2trace::record(gen,99,t,t,trace_serial_,0,state.frame_id,cmd_queue.CurrentFrameSeq()-1);
     }
     auto chunk = cmd_queue.CurrentChunk();
     chunk->signal_frame_latency_fence_ = cmd_queue.CurrentFrameSeq();

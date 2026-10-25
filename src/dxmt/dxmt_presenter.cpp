@@ -342,7 +342,8 @@ Presenter::encodeCommands(
     WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, const PresentationConfiguration &configuration,
     DXMTPresentMetadata metadata, uint32_t trace_generation,
     std::function<void(WMT::RenderCommandEncoder)> &&wait_fences,
-    std::function<void(WMT::RenderCommandEncoder)> &&update_fences
+    std::function<void(WMT::RenderCommandEncoder)> &&update_fences,
+    uint64_t trace_frame_id
 ) {
   if (!checked_layer_configuration_)
     return {};
@@ -362,6 +363,7 @@ Presenter::encodeCommands(
     encoded_configuration_revision_ = configuration.revision;
   }
   auto drawable = [&]() {
+    cs2trace::PresentationScope exact(98,swapchain_serial_,trace_frame_id,configuration.revision,0,trace_generation);
     cs2trace::Scope trace{.type=12,.object=(uint64_t)this};
     return layer_.nextDrawable();
   }();

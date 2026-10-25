@@ -1263,28 +1263,75 @@ public:
     UpdateTexture(TextureUpdateCommand(Dst, DstSubresource, pDstBox), pSrcData, SrcRowPitch, SrcDepthPitch, CopyFlags);
   }
 
+  // S2 only carries explicit full-base color discard intent to the encode
+  // thread. Unsupported resources/views remain legal optimization no-ops.
+  void
+  DiscardColorResource(ID3D11Resource *resource, TextureViewKey view, bool entire_resource) {
+#if defined(DXMT_DISCARD_HINTS) && DXMT_DISCARD_HINTS
+    if (!resource)
+      return;
+    D3D11_RESOURCE_DIMENSION dimension;
+    resource->GetType(&dimension);
+    if (dimension != D3D11_RESOURCE_DIMENSION_TEXTURE2D)
+      return;
+    D3D11_TEXTURE2D_DESC desc;
+    static_cast<ID3D11Texture2D *>(resource)->GetDesc(&desc);
+    if (desc.Usage != D3D11_USAGE_DEFAULT || desc.CPUAccessFlags || desc.MiscFlags ||
+        desc.MipLevels != 1 || desc.ArraySize != 1 || desc.SampleDesc.Count != 1 ||
+        !(desc.BindFlags & D3D11_BIND_RENDER_TARGET) || (desc.BindFlags & D3D11_BIND_DEPTH_STENCIL))
+      return;
+    auto texture = GetTexture(resource);
+    if (!texture || (!entire_resource && uint64_t(view) != uint64_t(texture->fullView)))
+      return;
+    view = texture->fullView;
+    // This is an ordered state command, not a new draw/copy. Strong descriptor
+    // ownership survives deferred lists and replay; backing identity is checked
+    // at execution, after any earlier renames. Do not move this before endPass.
+    InvalidateCurrentPass(true);
+    EmitST([texture = std::move(texture), view](ArgumentEncodingContext &enc) {
+      enc.discardColorStore(texture.ptr(), view);
+    });
+#endif
+  }
+
   void
   STDMETHODCALLTYPE
   DiscardResource(ID3D11Resource *pResource) override {
-    /*
-    All the Discard* API is not implemented and that's probably fine (as it's
-    more like a hint of optimization, and Metal manages resources on its own)
-    FIXME: for render targets we can use this information: LoadActionDontCare
-    FIXME: A Map with D3D11_MAP_WRITE type could become D3D11_MAP_WRITE_DISCARD?
-    */
+#if defined(DXMT_DISCARD_HINTS) && DXMT_DISCARD_HINTS
+    std::lock_guard<mutex_t> lock(mutex);
+    DiscardColorResource(pResource, {}, true);
+#else
     ERR_ONCE("Not implemented");
+#endif
   }
 
   void
   STDMETHODCALLTYPE
   DiscardView(ID3D11View *pResourceView) override {
-    DiscardView1(pResourceView, 0, 0);
+    DiscardView1(pResourceView, nullptr, 0);
   }
 
   void
   STDMETHODCALLTYPE
   DiscardView1(ID3D11View *pResourceView, const D3D11_RECT *pRects, UINT NumRects) override {
+#if defined(DXMT_DISCARD_HINTS) && DXMT_DISCARD_HINTS
+    std::lock_guard<mutex_t> lock(mutex);
+    // Even a full-sized rectangle is out of this first admission contract.
+    if (!pResourceView || pRects || NumRects)
+      return;
+    if (auto expected = com_cast<ID3D11RenderTargetView>(pResourceView)) {
+      auto *rtv = static_cast<D3D11RenderTargetView *>(expected.ptr());
+      D3D11_RENDER_TARGET_VIEW_DESC desc;
+      rtv->GetDesc(&desc);
+      if (desc.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2D || desc.Texture2D.MipSlice)
+        return;
+      Com<ID3D11Resource> resource;
+      rtv->GetResource(&resource);
+      DiscardColorResource(resource.ptr(), rtv->viewId(), false);
+    }
+#else
     ERR_ONCE("Not implemented");
+#endif
   }
 #pragma endregion
 

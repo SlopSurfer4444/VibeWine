@@ -17,20 +17,49 @@ using mutex = std::mutex;
 constexpr unsigned kCommandChunkCount = 4;
 struct State {
   std::atomic<unsigned> listener_stops = 0, thread_exits = 0, resets = 0;
-  std::atomic<bool> listener_stop = false, release_finish = true;
+  std::atomic<bool> listener_stop = false, release_finish = true, owns_capture = false;
+  std::atomic<unsigned> ownership_takes = 0, capture_stops = 0;
 };
 void SharedEventListener_destroy(State *state) {
   state->listener_stops++;
   state->listener_stop = true;
   state->listener_stop.notify_all();
 }
+// Count only this queue's capture ownership, and observe the actual join seam.
+struct CaptureState {
+  State *state;
+  std::thread *encode, *finish;
+  bool takeCaptureOwnership() {
+    assert(!encode->joinable() && !finish->joinable());
+    state->ownership_takes++;
+    return state->owns_capture.exchange(false);
+  }
+};
+} // namespace dxmt
+namespace WMT {
+struct CaptureManager {
+  static inline dxmt::State *state = nullptr;
+  static CaptureManager &sharedCaptureManager() {
+    static CaptureManager manager;
+    return manager;
+  }
+  void stopCapture() {
+    assert(state && !state->owns_capture.load());
+    assert(state->ownership_takes == 1 && state->resets == 0);
+    state->capture_stops++;
+  }
+};
+} // namespace WMT
+namespace dxmt {
 struct CommandChunk {
   State *state = nullptr;
   void reset() { state->resets++; }
 };
 class CommandQueue {
 public:
-  explicit CommandQueue(State &state) : state_(state), shared_event_listener(&state) {
+  explicit CommandQueue(State &state) :
+      state_(state), shared_event_listener(&state), capture_state{&state, &encodeThread, &finishThread} {
+    WMT::CaptureManager::state = &state;
     for (auto &chunk : chunks) chunk.state = &state;
     encodeThread = std::thread([this] {
       ready_for_encode.wait(1);
@@ -61,34 +90,51 @@ private:
   std::thread encodeThread, finishThread;
   State *shared_event_listener;
   std::thread event_listener_thread;
+  CaptureState capture_state;
 };
 #include "shutdown-under-test.hpp"
 }
 using namespace dxmt;
 
 int main() {
-  State idle;
-  {
-    CommandQueue queue(idle);
-    queue.ShutdownAndJoin();
-    queue.ShutdownAndJoin();
+  for (bool owned : {false, true}) {
+    State idle;
+    idle.owns_capture = owned;
+    {
+      CommandQueue queue(idle);
+      queue.ShutdownAndJoin();
+      queue.ShutdownAndJoin();
+    }
+    assert(idle.listener_stops == 1 && idle.thread_exits == 3 && idle.resets == 4);
+    assert(idle.ownership_takes == 1 && idle.capture_stops == unsigned(owned));
+    assert(!idle.owns_capture);
   }
-  assert(idle.listener_stops == 1 && idle.thread_exits == 3 && idle.resets == 4);
-  State pending;
-  pending.release_finish = false;
-  std::atomic<unsigned> returns = 0;
-  {
-    CommandQueue queue(pending);
-    std::thread first([&] { queue.ShutdownAndJoin(); returns++; });
-    while (!pending.listener_stops.load()) std::this_thread::yield();
-    std::thread second([&] { queue.ShutdownAndJoin(); returns++; });
-    // A still-running finish worker must retire before either caller returns.
-    assert(returns == 0 && pending.resets == 0);
-    pending.release_finish = true;
-    pending.release_finish.notify_all();
-    first.join(); second.join();
-    assert(returns == 2);
+  for (bool owned : {false, true}) {
+    State pending;
+    pending.owns_capture = owned;
+    pending.release_finish = false;
+    std::atomic<unsigned> returns = 0;
+    {
+      CommandQueue queue(pending);
+      std::thread first([&] { queue.ShutdownAndJoin(); returns++; });
+      while (!pending.listener_stops.load()) std::this_thread::yield();
+      std::thread second([&] { queue.ShutdownAndJoin(); returns++; });
+      // A still-running finish worker must retire before either caller returns.
+      assert(returns == 0 && pending.resets == 0);
+      assert(pending.ownership_takes == 0 && pending.capture_stops == 0);
+      pending.release_finish = true;
+      pending.release_finish.notify_all();
+      first.join(); second.join();
+      assert(returns == 2);
+    }
+    assert(pending.listener_stops == 1 && pending.thread_exits == 3 && pending.resets == 4);
+    assert(pending.ownership_takes == 1 && pending.capture_stops == unsigned(owned));
+    assert(!pending.owns_capture);
   }
-  assert(pending.listener_stops == 1 && pending.thread_exits == 3 && pending.resets == 4);
-  std::cout << "PASS queue shutdown: repeated, concurrent, pending worker and destructor\n";
+  State destructor_only;
+  destructor_only.owns_capture = true;
+  { CommandQueue queue(destructor_only); }
+  assert(destructor_only.listener_stops == 1 && destructor_only.thread_exits == 3 && destructor_only.resets == 4);
+  assert(destructor_only.ownership_takes == 1 && destructor_only.capture_stops == 1 && !destructor_only.owns_capture);
+  std::cout << "PASS queue shutdown: repeated, concurrent, pending worker, destructor and capture ownership\n";
 }

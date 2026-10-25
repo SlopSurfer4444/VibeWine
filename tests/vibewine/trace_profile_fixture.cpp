@@ -43,6 +43,42 @@ int main(int argc,char **argv) {
   record(10,3,10,20);assert(profile()==Profile::Invalid && h->next==1);
   arm(9);record(9,42,10,20);check_marker(1,9,Profile::Invalid);
   h->control=controlWord(9,CaptureState::Closed);record(9,3,10,20);assert(h->next==2);
+ } else if(!std::strcmp(argv[1],"presentation-waits")) {
+  assert(profile()==Profile::PresentationWaits);assert(generation()==10);check_marker(0,10,Profile::PresentationWaits);
+  for(uint32_t type=0;type<120;type++) {
+    bool accepted=type==1 || type==2 || (type>=6 && type<=16) || (type>=20 && type<=25) || type==33 || type==40 ||
+      (type>=44 && type<=49) || type==61 || type==62 || (type>=70 && type<=78) || (type>=89 && type<=92) || (type>=96 && type<=99);
+    assert(profileAllows(type)==accepted);auto before=h->next;
+    record(10,type,10,20,123,7,8,9);assert(h->next==before+uint64_t(accepted));
+    if(accepted){auto e=events()[before];assert(e.type==type && e.object==123 && e.flags==7 && e.padding[0]==8 && e.padding[1]==9);}
+  }
+  auto before=h->next;
+  for(unsigned i=0;i<100000;i++){record(10,42,10,20);detailRecord(10,80,10,20,1);}
+  assert(h->next==before && !h->dropped);
+  {PresentationScope exact(96,100,9,7,3);}
+  assert(h->next==before+1);auto e=events()[before];
+  assert(e.type==96 && e.object==100 && e.padding[0]==9 && e.padding[1]==7 && e.flags==3 && e.end>=e.start);
+  // Excluded compiler details did not spend the shared detailed budget.
+  before=h->next;auto token=beginDetail(100);
+  detailInterval(token,90,10,20,0,2,9);detailInstant(token,91,0,2,9);detailInstant(token,92,0,2,9);
+  detailInstant(token,92,0,2,9);detailInstant(token,92,0,2,9);
+  assert(h->next==before+4 && events()[before+3].type==89 && events()[before+3].flags==1);
+  setenv("DXMT_CS2_TRACE_PROFILE","compile-waits",1);assert(profile()==Profile::PresentationWaits);
+  arm(9);before=h->next;assert(generation()==9);check_marker(before,9,Profile::PresentationWaits);
+  detailInstant(token,92,0,2,9);assert(events()[before+1].type==89 && events()[before+1].flags==2);
+  before=h->next;{PresentationScope unarmed(98,100,5,4,0,0);}assert(h->next==before);
+  {PresentationScope stale(98,100,5,4,0,10);}assert(h->next==before+1 && events()[before].type==89 && events()[before].flags==2 && events()[before].padding[0]==10);
+  arm(8);before=h->next;std::vector<std::thread> threads;
+  for(unsigned t=0;t<8;t++)threads.emplace_back([]{for(unsigned i=0;i<100;i++){record(8,42,10,20);record(8,99,10,10,100,0,i+1,i);}});
+  for(auto& thread:threads)thread.join();assert(h->next==before+801);
+  unsigned markers=0;for(auto i=before;i<h->next;i++){assert(events()[i].committed==i+1 && events()[i].reserved==8);markers+=events()[i].type==95;}
+  assert(markers==1 && !controlWriters(h->control));
+  arm(6);before=h->next;close_at_publication=true;record(6,99,10,10,100,0,5,4);
+  assert(h->next==before+1);check_marker(before,6,Profile::PresentationWaits);
+  assert(controlState(h->control)==CaptureState::Closed && !controlWriters(h->control) && h->boundaryRejected==1);
+  arm(5);generation();before=h->next;h->capacity=before+2;
+  record(5,98,10,20,100,0,5,4);record(5,98,20,30,100,0,6,4);record(5,98,30,40,100,0,7,4);
+  assert(h->next==before+3 && h->dropped==1);
  } else {
   assert(!std::strcmp(argv[1],"compile-waits") && profile()==Profile::CompileWaits);
   // First attempt is excluded, but policy is discoverable in the capture.
@@ -91,5 +127,6 @@ int main(int argc,char **argv) {
   record(5,3,10,20);record(5,4,10,20);record(5,5,10,20);
   assert(h->next==next+3 && h->dropped==1 && !controlWriters(h->control));
  }
+ if(profile()!=Profile::PresentationWaits){auto before=h->next;{PresentationScope exact(96,100,9,7,3);}assert(h->next==before);}
  assert(!controlWriters(h->control));
 }

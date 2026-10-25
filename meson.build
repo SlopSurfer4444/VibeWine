@@ -153,6 +153,8 @@ foreach option_name, define_name : {
   'vibewine_idle_retirement' : 'DXMT_IDLE_RETIREMENT',
   'vibewine_fixed_output_metalfx' : 'DXMT_FIXED_OUTPUT_METALFX',
   'vibewine_shader_cleanup' : 'DXMT_SHADER_CLEANUP',
+  'vibewine_demand_scheduler' : 'DXMT_DEMAND_SCHEDULER',
+  'vibewine_discard_hints' : 'DXMT_DISCARD_HINTS',
 }
   experiment_define = '-D' + define_name + '=' + get_option(option_name).to_int().to_string()
   add_project_arguments(experiment_define, language: ['c', 'cpp'])

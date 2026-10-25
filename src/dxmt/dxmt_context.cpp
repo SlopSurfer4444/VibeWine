@@ -18,6 +18,7 @@
 
 #include "dxmt_context.hpp"
 #include "dxmt_pass_optimizations.hpp"
+#include "dxmt_discard_hints.hpp"
 #include "Metal.hpp"
 #include "dxmt_command_queue.hpp"
 #include "dxmt_deptrack.hpp"
@@ -630,6 +631,14 @@ ArgumentEncodingContext::waitEvent(WMT::Reference<WMT::Event> &&event, uint64_t 
   endPass();
 }
 
+void
+ArgumentEncodingContext::discardColorStore(Texture *texture, TextureViewKey view) {
+  assert(!encoder_current);
+#if defined(DXMT_DISCARD_HINTS) && DXMT_DISCARD_HINTS
+  discardhint::DiscardLastColorStore(encoder_last, texture, view);
+#endif
+}
+
 RenderEncoderData *
 ArgumentEncodingContext::startRenderPass(
     uint8_t dsv_planar_flags, uint8_t dsv_readonly_flags, uint8_t render_target_count, uint64_t encoder_argbuf_size
@@ -1177,7 +1186,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
           },
           [&](WMT::RenderCommandEncoder encoder) {
             data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id], WMTRenderStageFragment); });
-          }
+          }, data->frame_id
       );
 #ifdef DXMT_DEBUG
       auto t1 = clock::now();

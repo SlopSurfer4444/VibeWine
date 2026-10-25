@@ -343,7 +343,8 @@ public:
 #ifdef DXMT_DEBUG
       auto t0 = clock::now();
 #endif
-      { cs2trace::Scope trace{.type=11,.object=next_frame,.flags=max_latency};
+      { cs2trace::PresentationScope exact(96,traceSerial(),presented_frame,next_frame-max_latency,max_latency);
+        cs2trace::Scope trace{.type=11,.object=next_frame,.flags=max_latency};
         frame_latency_fence_.wait(next_frame - max_latency); }
 #ifdef DXMT_DEBUG
       wait_interval = clock::now() - t0;

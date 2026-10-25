@@ -4,6 +4,21 @@
 #include <cstddef>
 namespace dxmt::cs2trace {
 // Changed magic prevents version-1 controllers mutating this control word.
+// Additive coverage metadata (event 95). Invalid=2 remains reserved forever.
+enum class Profile : uint32_t { Full=0, CompileWaits=1, Invalid=2, PresentationWaits=3 };
+constexpr bool profileTypeAllowed(Profile profile,uint32_t type) {
+ switch(profile) {
+  case Profile::Full:return true;
+  case Profile::CompileWaits:return type==3 || type==4 || type==5 || type==17 || type==19 ||
+    (type>=80 && type<=89) || type==93 || type==94;
+  case Profile::PresentationWaits:return type==1 || type==2 || (type>=6 && type<=16) ||
+    (type>=20 && type<=25) || type==33 || type==40 || (type>=44 && type<=49) ||
+    type==61 || type==62 || (type>=70 && type<=78) || (type>=89 && type<=92) ||
+    (type>=96 && type<=99);
+  case Profile::Invalid:return false;
+ }
+ return false;
+}
 constexpr uint64_t Magic=0x4353325452414332ULL, Version=2, Capacity=131072;
 constexpr uint64_t WriterMask=(1ULL<<30)-1, StateMask=3ULL<<30;
 enum class CaptureState : uint64_t { Closed=0, Open=1ULL<<30, Closing=2ULL<<30 };

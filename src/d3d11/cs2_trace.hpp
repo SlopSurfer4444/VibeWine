@@ -11,24 +11,14 @@ namespace dxmt::cs2trace {
 inline uint64_t now() {return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();}
 // Process-lifetime policy: changing the environment after first use cannot mix
 // event coverage within one producer. Empty preserves the existing full stream.
-enum class Profile : uint32_t { Full=0, CompileWaits=1, Invalid=2 };
 inline Profile profile() {
  static const auto value=[] {
   auto text=env::getEnvVar("DXMT_CS2_TRACE_PROFILE");
-  return text.empty()?Profile::Full:text=="compile-waits"?Profile::CompileWaits:Profile::Invalid;
+  return text.empty()?Profile::Full:text=="compile-waits"?Profile::CompileWaits:text=="presentation-waits"?Profile::PresentationWaits:Profile::Invalid;
  }();return value;
 }
 inline bool profileAllows(uint32_t type) {
- switch(profile()) {
-  case Profile::Full:return true;
-  // Retain compiler readiness/compilation/PSO, archive, bounded task/persistence
-  // probes and checked cache timings. No draw, frame, Present, Map/GetData API,
-  // GPU chunk, presentation-feedback or completion-finish event stream.
-  case Profile::CompileWaits:return type==3 || type==4 || type==5 || type==17 || type==19 ||
-    (type>=80 && type<=89) || type==93 || type==94;
-  case Profile::Invalid:return false;
- }
- return false;
+ return profileTypeAllowed(profile(),type);
 }
 inline uint32_t detailLimit();
 inline Header* buffer() {
@@ -53,7 +43,7 @@ inline void profileMetadataAdmitted(Header *h,uint32_t gen) {
  auto &last=profileMetadataGeneration();auto prior=last.load(std::memory_order_relaxed);
  if(prior==gen || !last.compare_exchange_strong(prior,gen,std::memory_order_relaxed))return;
  // Type 95 is v2 additive metadata, not a timing scope. Schema/object=1,
- // flags=1 compile-waits or 2 invalid/fail-closed; detail0=detail budget,
+ // flags=1 compile-waits, 2 invalid/fail-closed, 3 presentation-waits; detail0=detail budget,
  // detail1=lifetime capacity. One marker per admitted generation, outside the
  // detailed-probe budget. Even invalid profiles remain explicitly observable.
  auto t=now();writeAdmittedEvent(h,gen,95,t,t,1,uint32_t(profile()),detailLimit(),Capacity,GetCurrentThreadId());
@@ -128,6 +118,26 @@ inline void detailInstant(DetailToken token,uint32_t type,uint32_t flags=0,uint6
 inline void detailInterval(DetailToken token,uint32_t type,uint64_t start,uint64_t end,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
  if(token.gen)detailRecord(token.gen,type,start,end,token.serial,flags,detail0,detail1);
 }
+// Profile-only uncensored identity-rich presentation scopes. Existing legacy
+// scopes and default/full behavior remain byte-for-byte compatible in coverage.
+struct PresentationScope {
+ uint32_t gen=0,type; uint64_t object,detail0,detail1,start=0; uint32_t flags;
+ PresentationScope(uint32_t event,uint64_t identity,uint64_t p0,uint64_t p1,uint32_t result,uint32_t generation)
+   :type(event),object(identity),detail0(p0),detail1(p1),flags(result) {
+  // An explicitly captured zero generation stays unarmed even if encoding runs
+  // after a later arm. Never upgrade an asynchronous token to a new capture.
+  if(profile()==Profile::PresentationWaits) {gen=generation;if(gen)start=now();}
+ }
+ PresentationScope(uint32_t event,uint64_t identity,uint64_t p0,uint64_t p1,uint32_t result=0)
+   :PresentationScope(event,identity,p0,p1,result,profile()==Profile::PresentationWaits?cs2trace::generation():0) {}
+ ~PresentationScope(){
+  if(!gen)return;
+  auto active=cs2trace::generation();
+  if(active && active!=gen) {auto t=now();record(active,89,t,t,0,2,gen,0);return;}
+  record(gen,type,start,now(),object,flags,detail0,detail1);
+ }
+ PresentationScope(const PresentationScope&)=delete;
+};
 struct ApiScope {
  uint32_t gen=generation(),type;uint64_t object,detail0=0,detail1=0;uint32_t result=0xffffffffu;uint64_t start=gen?now():0;
  ApiScope(uint32_t event,uint64_t identity,uint64_t arg0=0,uint64_t arg1=0):type(event),object(identity),detail0(arg0),detail1(arg1){}

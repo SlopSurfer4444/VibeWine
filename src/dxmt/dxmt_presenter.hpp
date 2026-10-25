@@ -76,7 +76,8 @@ public:
       WMT::CommandBuffer cmdbuf, WMT::Texture backbuffer, const PresentationConfiguration &configuration,
       DXMTPresentMetadata metadata, uint32_t trace_generation,
       std::function<void(WMT::RenderCommandEncoder)> &&wait_fences,
-      std::function<void(WMT::RenderCommandEncoder)> &&update_fences
+      std::function<void(WMT::RenderCommandEncoder)> &&update_fences,
+      uint64_t trace_frame_id = 0
   );
 
   // Called only on the single encoding thread, before native present.

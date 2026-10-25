@@ -1,0 +1,194 @@
+/* ADAPTERS */
+#include <mutex>
+#include <string>
+using namespace dxmt;
+static unsigned checks;
+static void require(bool ok,const char *message) {
+  ++checks;if(!ok){std::cerr<<"behavioral assertion: "<<message<<'\n';std::exit(1);}
+}
+#if defined(DXMT_DISCARD_HINTS) && DXMT_DISCARD_HINTS
+constexpr bool enabled=true;
+#else
+constexpr bool enabled=false;
+#endif
+using UINT=unsigned;
+using mutex_t=std::mutex;
+#define ERR_ONCE(...) ((void)0)
+struct D3D11_RECT { int left,top,right,bottom; };
+enum D3D11_RESOURCE_DIMENSION { D3D11_RESOURCE_DIMENSION_BUFFER=1,D3D11_RESOURCE_DIMENSION_TEXTURE2D=3 };
+constexpr unsigned D3D11_USAGE_DEFAULT=0,D3D11_USAGE_DYNAMIC=2,D3D11_BIND_RENDER_TARGET=32,D3D11_BIND_DEPTH_STENCIL=64;
+constexpr unsigned D3D11_RTV_DIMENSION_TEXTURE2D=4;
+struct D3D11_TEXTURE2D_DESC {
+  unsigned Usage{},CPUAccessFlags{},MiscFlags{},MipLevels{1},ArraySize{1};
+  struct {unsigned Count{1};} SampleDesc;
+  unsigned BindFlags{D3D11_BIND_RENDER_TARGET};
+};
+struct D3D11_RENDER_TARGET_VIEW_DESC { unsigned ViewDimension{D3D11_RTV_DIMENSION_TEXTURE2D};struct {unsigned MipSlice{};}Texture2D; };
+struct TextureOwner {
+  std::shared_ptr<Texture> value;
+  explicit operator bool()const{return bool(value);}
+  Texture *ptr()const{return value.get();}
+  Texture *operator->()const{return ptr();}
+};
+struct ID3D11Resource {
+  std::shared_ptr<Texture> texture;
+  virtual ~ID3D11Resource()=default;
+  D3D11_RESOURCE_DIMENSION dim{D3D11_RESOURCE_DIMENSION_TEXTURE2D};
+  void GetType(D3D11_RESOURCE_DIMENSION *d){*d=dim;}
+};
+struct ID3D11Texture2D:ID3D11Resource {
+  D3D11_TEXTURE2D_DESC desc;
+  void GetDesc(D3D11_TEXTURE2D_DESC *d){*d=desc;}
+};
+[[maybe_unused]] static TextureOwner GetTexture(ID3D11Resource *r){return {r->texture};}
+struct ID3D11View {virtual ~ID3D11View()=default;};
+struct ID3D11RenderTargetView:ID3D11View {};
+struct D3D11RenderTargetView:ID3D11RenderTargetView {
+  ID3D11Resource *resource{};TextureViewKey key;D3D11_RENDER_TARGET_VIEW_DESC desc;
+  void GetDesc(D3D11_RENDER_TARGET_VIEW_DESC *d){*d=desc;}
+  void GetResource(ID3D11Resource **p){*p=resource;}
+  TextureViewKey viewId()const{return key;}
+};
+template<class T>struct Com {
+  T *value{};T *ptr()const{return value;}explicit operator bool()const{return value;}
+  T **operator&(){return &value;}
+};
+template<class T>static Com<T> com_cast(ID3D11View *p){return {dynamic_cast<T*>(p)};}
+class Api {
+public:
+  mutex_t mutex;
+  std::vector<std::function<void(ArgumentEncodingContext&)>> commands;
+  unsigned ends{};
+  void InvalidateCurrentPass(bool defer){require(defer,"discard cannot force commit");++ends;}
+  template<class F>void EmitST(F f){commands.emplace_back(std::move(f));}
+  void drain(ArgumentEncodingContext &ctx){for(auto &f:commands)f(ctx);commands.clear();}
+/* API_METHODS */
+};
+struct Surface {
+  ID3D11Texture2D resource;
+  TextureAllocation allocation;
+  TextureView base;
+  D3D11RenderTargetView rtv;
+  Surface(){
+    static obj_handle_t next=0x10000;next+=16;
+    resource.texture=std::make_shared<Texture>();auto &t=*resource.texture;
+    base.texture.handle=allocation.object.handle=next;native_extents[next]={t.w,t.h};
+    allocation.descriptor=&t;allocation.allocation_flags.set(TextureAllocationFlag::GpuPrivate);
+    t.current_alloc=&allocation;base.allocation=&allocation;
+    base.key.mip_count=base.key.mip_end=base.key.array_end=1;t.fullView=base.key;
+    rtv.key=base.key;rtv.resource=&resource;
+  }
+};
+static void init(RenderEncoderData &r,Surface &s){
+  auto &t=*s.resource.texture;
+  r.type=EncoderType::Render;r.render_target_count=1;r.render_target_array_length=0;
+  r.render_target_width=t.w;r.render_target_height=t.h;
+  r.colors[0].attachment=&s.base;r.colors[0].load_action=WMTLoadActionLoad;r.colors[0].store_action=WMTStoreActionStore;
+  r.cmd_head.type=WMTRenderCommandNop;r.cmd_tail=reinterpret_cast<wmtcmd_base*>(&r.cmd_head);
+}
+static void positive(){
+  for(unsigned api=0;api<3;++api){
+    Surface s;RenderEncoderData r{};init(r,s);ArgumentEncodingContext ctx;ctx.encoder_last=&r;Api a;
+    r.fence_wait.set(11);r.fence_update.set(12);r.fence_wait_vertex.set(13);r.fence_update_vertex.set(14);r.use_visibility_result=true;
+    auto *tail=r.cmd_tail;
+    if(api==0)a.DiscardResource(&s.resource);else if(api==1)a.DiscardView(&s.rtv);else a.DiscardView1(&s.rtv,nullptr,0);
+    require(r.colors[0].store_action==WMTStoreActionStore,"recording never mutates encoder early");
+    a.drain(ctx);
+    require(r.colors[0].store_action==(enabled?WMTStoreActionDontCare:WMTStoreActionStore),"explicit API changes actual preceding Store only when enabled");
+    require(a.ends==(enabled?1u:0u),"full API creates one ordered end-pass boundary only when enabled");
+    require(r.colors[0].load_action==WMTLoadActionLoad,"preceding load unchanged");
+    require(r.type==EncoderType::Render&&r.cmd_tail==tail&&r.use_visibility_result,"draw/query/command identity preserved");
+    require(r.fence_wait.test(11)&&r.fence_update.test(12)&&r.fence_wait_vertex.test(13)&&r.fence_update_vertex.test(14),"all fences preserved");
+    RenderEncoderData later{};init(later,s);
+    require(ctx.isEncoderSignatureMatched(&r,&later)==!enabled,"merge cannot cross admitted discard store");
+    require(later.colors[0].load_action==WMTLoadActionLoad&&later.colors[0].store_action==WMTStoreActionStore,"future pass actions unchanged");
+    if(enabled){
+      // A recorded list's lambda is replayable and chooses the execution-time
+      // encoder. API/resource public objects can disappear after recording.
+      a.DiscardView(&s.rtv);auto replay=a.commands; a.drain(ctx);
+      require(r.colors[0].store_action==WMTStoreActionDontCare,"repeated discard idempotent");
+      ctx.encoder_last=&later;for(auto &f:replay)f(ctx);
+      require(later.colors[0].store_action==WMTStoreActionDontCare,"recorded lambda replay uses fresh physical pass");
+    }
+  }
+}
+static void merge_cases(){
+  Surface s;ArgumentEncodingContext ctx;
+  auto *earlier=new RenderEncoderData{};init(*earlier,s);
+  RenderEncoderData marked{};init(marked,s);ctx.encoder_last=&marked;
+  ctx.discardColorStore(s.resource.texture.get(),s.resource.texture->fullView);
+  ctx.checkEncoderRelation(earlier,&marked);
+  require(earlier->type==EncoderType::Null,"earlier ordinary pass still merges into marked destination");
+  require(marked.colors[0].store_action==(enabled?WMTStoreActionDontCare:WMTStoreActionStore),"earlier pass merge preserves discard destination Store action");
+  ::operator delete(earlier); // production merge already destroyed the node
+  if(enabled){
+    RenderEncoderData after{};init(after,s);ctx.checkEncoderRelation(&marked,&after);
+    require(marked.type==EncoderType::Render&&after.type==EncoderType::Render,"actual optimizer preserves later discard boundary");
+    require(after.colors[0].load_action==WMTLoadActionLoad,"later pass retains ordinary load after failed merge");
+  }
+}
+static void helper_rejections(){
+  using Change=std::function<void(Surface&,RenderEncoderData&,Surface&)>;
+  const std::vector<std::pair<const char*,Change>> cases{
+    {"null color",[](auto&,auto&r,auto&){r.colors[0].attachment={};}},
+    {"resolve",[](auto&,auto&r,auto&o){r.colors[0].resolve_attachment=&o.base;}},
+    {"resolve store",[](auto&,auto&r,auto&){r.colors[0].store_action=WMTStoreActionStoreAndMultisampleResolve;}},
+    {"different native current allocation",[](auto&s,auto&,auto&o){s.resource.texture->current_alloc=&o.allocation;}},
+    {"different descriptor",[](auto&s,auto&,auto&o){s.allocation.descriptor=o.resource.texture.get();}},
+    {"alias/reinterpret view",[](auto&s,auto&,auto&){s.base.key.index=1;}},
+    {"mapped",[](auto&s,auto&,auto&){s.allocation.mappedMemory=&s;}},
+    {"nonprivate",[](auto&s,auto&,auto&){s.allocation.allocation_flags.clr(TextureAllocationFlag::GpuPrivate);}},
+    {"shared",[](auto&s,auto&,auto&){s.allocation.allocation_flags.set(TextureAllocationFlag::Shared);}},
+    {"heap",[](auto&s,auto&,auto&){s.allocation.allocation_flags.set(TextureAllocationFlag::AllocatedOnHeap);}},
+    {"mips",[](auto&s,auto&,auto&){s.resource.texture->mips=2;}},
+    {"slices",[](auto&s,auto&,auto&){s.resource.texture->arrays=2;}},
+    {"MSAA",[](auto&s,auto&,auto&){s.resource.texture->samples=4;}},
+    {"3D",[](auto&s,auto&,auto&){s.resource.texture->type=WMTTextureType3D;}},
+    {"depth",[](auto&,auto&r,auto&o){r.depth.attachment=&o.base;}},
+    {"stencil",[](auto&,auto&r,auto&o){r.stencil.attachment=&o.base;}},
+    {"MRT",[](auto&,auto&r,auto&){r.render_target_count=2;}},
+    {"layered",[](auto&,auto&r,auto&){r.render_target_array_length=2;}},
+    {"partial extent",[](auto&,auto&r,auto&){--r.render_target_width;}},
+    {"native extent",[](auto&s,auto&,auto&){--native_extents.at(s.base.texture.handle).first;}},
+    {"attachment level",[](auto&,auto&r,auto&){r.colors[0].level=1;}},
+    {"attachment slice",[](auto&,auto&r,auto&){r.colors[0].slice=1;}},
+    {"attachment plane",[](auto&,auto&r,auto&){r.colors[0].depth_plane=1;}},
+  };
+  for(auto &[name,change]:cases){Surface s,o;RenderEncoderData r{};init(r,s);change(s,r,o);auto store=r.colors[0].store_action;
+    require(!discardhint::DiscardLastColorStore(&r,s.resource.texture.get(),s.resource.texture->fullView),name);
+    require(r.colors[0].store_action==store,"rejected hint preserves action");}
+  for(auto type:{EncoderType::Null,EncoderType::Blit,EncoderType::Compute,EncoderType::Clear,EncoderType::Resolve,EncoderType::SignalEvent,EncoderType::WaitForEvent,EncoderType::SampleTimestamp}){
+    Surface s;EncoderData last{};last.type=type;ArgumentEncodingContext ctx;ctx.encoder_last=&last;Api a;
+    a.DiscardResource(&s.resource);a.drain(ctx);require(last.type==type,"intervening read/copy/resolve/event not searched past");}
+  Surface s;require(!discardhint::DiscardLastColorStore(nullptr,s.resource.texture.get(),s.resource.texture->fullView),"no pass no state");
+}
+static void api_rejections(){
+  using Change=std::function<void(Surface&)>;
+  const std::vector<std::pair<const char*,Change>> cases{
+    {"dynamic",[](auto&s){s.resource.desc.Usage=D3D11_USAGE_DYNAMIC;}},
+    {"CPU",[](auto&s){s.resource.desc.CPUAccessFlags=1;}},
+    {"misc shared/alias",[](auto&s){s.resource.desc.MiscFlags=1;}},
+    {"mips",[](auto&s){s.resource.desc.MipLevels=2;}},
+    {"arrays",[](auto&s){s.resource.desc.ArraySize=2;}},
+    {"samples",[](auto&s){s.resource.desc.SampleDesc.Count=2;}},
+    {"no RTV",[](auto&s){s.resource.desc.BindFlags=0;}},
+    {"DSV",[](auto&s){s.resource.desc.BindFlags|=D3D11_BIND_DEPTH_STENCIL;}},
+    {"buffer",[](auto&s){s.resource.dim=D3D11_RESOURCE_DIMENSION_BUFFER;}},
+  };
+  for(auto &[name,change]:cases){Surface s;RenderEncoderData r{};init(r,s);change(s);ArgumentEncodingContext ctx;ctx.encoder_last=&r;Api a;a.DiscardResource(&s.resource);a.drain(ctx);require(r.colors[0].store_action==WMTStoreActionStore,name);require(a.ends==0,"unsupported API no pass split");}
+  {Surface s;RenderEncoderData r{};init(r,s);ArgumentEncodingContext ctx;ctx.encoder_last=&r;Api a;D3D11_RECT partial{0,0,8,8};
+    a.DiscardView1(&s.rtv,&partial,1);a.DiscardView1(&s.rtv,&partial,0);a.DiscardView1(&s.rtv,nullptr,1);
+    a.DiscardView1(nullptr,nullptr,0);a.DiscardResource(nullptr);ID3D11View unsupported;a.DiscardView(&unsupported);
+    require(a.commands.empty()&&a.ends==0&&r.colors[0].store_action==WMTStoreActionStore,"partial rect/malformed/null/unsupported view no-op");}
+  {Surface s;RenderEncoderData r{};init(r,s);ArgumentEncodingContext ctx;ctx.encoder_last=&r;Api a;s.rtv.key.index=1;a.DiscardView(&s.rtv);require(a.commands.empty(),"reinterpret view rejected before split");}
+}
+static void lifetime(){
+  if(!enabled)return;
+  Api a;ArgumentEncodingContext ctx;EncoderData null{};null.type=EncoderType::Null;ctx.encoder_last=&null;
+  std::weak_ptr<Texture> weak;
+  {Surface s;weak=s.resource.texture;a.DiscardResource(&s.resource);}
+  require(!weak.expired(),"recorded intent retains descriptor until lambda destruction");
+  // No physical pass remains: do not dereference the fixture's now-dead backing.
+  a.drain(ctx);require(weak.expired(),"recorded descriptor released when command owner drops it");
+}
+int main(){positive();merge_cases();helper_rejections();api_rejections();lifetime();std::cout<<"PASS checks="<<checks<<" enabled="<<enabled<<'\n';}

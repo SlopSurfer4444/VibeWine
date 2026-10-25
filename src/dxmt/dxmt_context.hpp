@@ -711,6 +711,9 @@ public:
 
   void endPass();
 
+  // Ordered explicit full-base color hint; never persists into a future pass.
+  void discardColorStore(Texture *texture, TextureViewKey view);
+
   constexpr EncoderData *
   currentEncoder() {
     assert(encoder_current);
