@@ -47,6 +47,14 @@ current playable closure remains selected. Source implementation is complete;
 game performance acceptance remains open.
 This direction does not close F1–F3 or make the optional experiments mandatory.
 
+A [deeper source investigation from 25 October](docs/integrations/fps-hypotheses-20261025.md)
+adds conditional candidates: precise CB invalidation, dead attachment stores after
+clear folding, residency declaration deduplication after render-pass merging,
+bounded reuse of the existing D3D12 residency-set machinery, and remaining
+memory/synchronization boundaries. Each has a causal signature, smallest useful
+experiment and rejection criteria. These are source hypotheses; no new runtime
+was installed and no numerical FPS improvement is claimed by that investigation.
+
 The owner requested maximum useful macOS integration, frame-time improvement and
 autonomous DS3 testing in one end-to-end wave. This section is the current shared
 plan, authorized by the owner's subsequent go-ahead. Activation is not an
