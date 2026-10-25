@@ -1,0 +1,484 @@
+{
+  "schema": 1,
+  "date": "2026-10-25",
+  "scope": "source, complete selected DXMT builds and covered isolated GPU correctness; no installation or game/FPS acceptance",
+  "dxmtBuildSource": "36385509b9941f2e2c8f22046a5406c89e4d592b",
+  "dxmtPublicBuildEquivalent": "cb5fa11dcfae8eb3c31d5499094371913910d662",
+  "dxmtSourcePin": "25eff5e13003d5e7f6b7cf6e1c76e9e6f3363e27",
+  "wineBuildSource": "294e1344edf98fce361cf7cad3f10e208bac97d8",
+  "winePublicEquivalent": "85864be47d483d4518f729baef48cbf52ea1e5cf",
+  "nativeLLVM": "15.0.7",
+  "differingMesonOptions": {
+    "vibewine_scene_submission": [
+      false,
+      true
+    ],
+    "vibewine_precise_bindings": [
+      false,
+      true
+    ],
+    "vibewine_dead_attachment_stores": [
+      false,
+      true
+    ],
+    "vibewine_physical_residency_dedup": [
+      false,
+      true
+    ],
+    "vibewine_residency_sets": [
+      false,
+      true
+    ],
+    "vibewine_idle_retirement": [
+      false,
+      true
+    ],
+    "vibewine_fixed_output_metalfx": [
+      false,
+      true
+    ],
+    "vibewine_shader_cleanup": [
+      false,
+      true
+    ]
+  },
+  "builds": [
+    {
+      "mode": "false",
+      "artifactsSha256": {
+        "src/d3d11/d3d11.dll": "615f9007d653c0095036d5bf2f67260c6e29c39bfab324bc9a673b8955e928eb",
+        "src/dxgi/dxgi.dll": "b193a03ce5063fb544c7abd05511443a00688d318f242fcef6b19cfdde23b3ff",
+        "src/d3d10/d3d10core.dll": "2bb38f3b4ed57538963583fbf434a974bc87c6bd98684b1a48b37f251d8599ed",
+        "src/winemetal/winemetal.dll": "0d2ea582d70f1e7a1bc3098ef60d2b7a27dfd07f78b0101413641f9c7432b5ab",
+        "src/winemetal/unix/winemetal.so": "6f87baed04fad824708a54743d38c58ee7110c394e9c5896bd5513e3d34de4be",
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010"
+      }
+    },
+    {
+      "mode": "true",
+      "artifactsSha256": {
+        "src/d3d11/d3d11.dll": "2228d215bcf0d8eadacf755eff0f8f2b81e75a8112511b021070ac23afa81c70",
+        "src/dxgi/dxgi.dll": "ac154ec98b76036ca8950bbfd3350b152679973407edae89ce5ae43662df24f4",
+        "src/d3d10/d3d10core.dll": "3e5907914a07f0bb2ac32c9cdd184968b0ed00f59f7a06e1c4c2692e8972aac9",
+        "src/winemetal/winemetal.dll": "7a091cb60f9499fa8f3a99c460ad028fdbae347d8c10d2a3dd433c512270245c",
+        "src/winemetal/unix/winemetal.so": "47b9c361e6f5510bdd6917b541e600d17ff4f1c57d11a3d680a0b845c35e1a33",
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010"
+      }
+    }
+  ],
+  "gpu": [
+    {
+      "label": "fps-off-final-normal",
+      "exitCode": 0,
+      "liveBirthVerified": true,
+      "mappedLibrariesVerified": true,
+      "hashesUnchanged": true,
+      "ownedServerCleanupPassed": true,
+      "report": {
+        "schema": 1,
+        "status": "pass",
+        "exit_code": 0,
+        "negative_control": "none",
+        "stages_passed": 5,
+        "stages_unsupported": 0,
+        "checks": 237,
+        "non_stage_checks": 132,
+        "negative_controls_rejected": 0,
+        "modules": {
+          "d3d11.dll": "C:\\windows\\system32\\d3d11.dll",
+          "dxgi.dll": "C:\\windows\\system32\\DXGI.DLL",
+          "winemetal.dll": "C:\\windows\\system32\\winemetal.dll",
+          "d3dcompiler_47.dll": "C:\\windows\\system32\\D3DCOMPILER_47.dll"
+        },
+        "stages": [
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "draw_basic",
+            "status": "pass",
+            "checks": 20,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "mrt_depth",
+            "status": "pass",
+            "checks": 29,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "compute",
+            "status": "pass",
+            "checks": 21,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "msaa",
+            "status": "pass",
+            "checks": 18,
+            "detail": "verified_four_samples",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "query_later_chunk",
+            "status": "pass",
+            "checks": 17,
+            "detail": "verified",
+            "hr": "0x00000000"
+          }
+        ],
+        "evidence": "captured_guest_stdout_only"
+      },
+      "privateResultSha256": "e31d9432c0869113748811d8681724f8ed1c764620ebab77f9c703803f70bc30"
+    },
+    {
+      "label": "fps-on-final-normal",
+      "exitCode": 0,
+      "liveBirthVerified": true,
+      "mappedLibrariesVerified": true,
+      "hashesUnchanged": true,
+      "ownedServerCleanupPassed": true,
+      "report": {
+        "schema": 1,
+        "status": "pass",
+        "exit_code": 0,
+        "negative_control": "none",
+        "stages_passed": 5,
+        "stages_unsupported": 0,
+        "checks": 231,
+        "non_stage_checks": 132,
+        "negative_controls_rejected": 0,
+        "modules": {
+          "d3d11.dll": "C:\\windows\\system32\\d3d11.dll",
+          "dxgi.dll": "C:\\windows\\system32\\DXGI.DLL",
+          "winemetal.dll": "C:\\windows\\system32\\winemetal.dll",
+          "d3dcompiler_47.dll": "C:\\windows\\system32\\D3DCOMPILER_47.dll"
+        },
+        "stages": [
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "draw_basic",
+            "status": "pass",
+            "checks": 16,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "mrt_depth",
+            "status": "pass",
+            "checks": 29,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "compute",
+            "status": "pass",
+            "checks": 20,
+            "detail": "verified",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "msaa",
+            "status": "pass",
+            "checks": 17,
+            "detail": "verified_four_samples",
+            "hr": "0x00000000"
+          },
+          {
+            "schema": 1,
+            "type": "stage",
+            "name": "query_later_chunk",
+            "status": "pass",
+            "checks": 17,
+            "detail": "verified",
+            "hr": "0x00000000"
+          }
+        ],
+        "evidence": "captured_guest_stdout_only"
+      },
+      "privateResultSha256": "6f5bd9b474673e94c4324d39fa839e6f0db9bfc0341b21e68308bf0b39cb3bc5"
+    },
+    {
+      "label": "pass-off-proof-normal",
+      "exitCode": 0,
+      "liveBirthVerified": true,
+      "mappedLibrariesVerified": true,
+      "hashesUnchanged": true,
+      "ownedServerCleanupPassed": true,
+      "report": {
+        "status": "pass",
+        "cases": 4,
+        "images": 5,
+        "modules": {
+          "d3d11.dll": "C:\\windows\\system32\\d3d11.dll",
+          "dxgi.dll": "C:\\windows\\system32\\DXGI.DLL",
+          "winemetal.dll": "C:\\windows\\system32\\winemetal.dll",
+          "d3dcompiler_47.dll": "C:\\windows\\system32\\D3DCOMPILER_47.dll"
+        }
+      },
+      "privateResultSha256": "f0c505f3247501588ebe5b8dae4faa547ebb1d53460e1957071c92616c837458"
+    },
+    {
+      "label": "pass-on-proof-normal",
+      "exitCode": 0,
+      "liveBirthVerified": true,
+      "mappedLibrariesVerified": true,
+      "hashesUnchanged": true,
+      "ownedServerCleanupPassed": true,
+      "report": {
+        "status": "pass",
+        "cases": 4,
+        "images": 5,
+        "modules": {
+          "d3d11.dll": "C:\\windows\\system32\\d3d11.dll",
+          "dxgi.dll": "C:\\windows\\system32\\DXGI.DLL",
+          "winemetal.dll": "C:\\windows\\system32\\winemetal.dll",
+          "d3dcompiler_47.dll": "C:\\windows\\system32\\D3DCOMPILER_47.dll"
+        }
+      },
+      "privateResultSha256": "bea74a96f8c219a11dd1fa3d5937e465e9fe9fa5dcc38c18b347c46a10039499"
+    },
+    {
+      "label": "pass-on-proof-pixel",
+      "exitCode": 20,
+      "liveBirthVerified": true,
+      "mappedLibrariesVerified": true,
+      "hashesUnchanged": true,
+      "ownedServerCleanupPassed": true,
+      "report": {
+        "status": "negative_rejected",
+        "modules": {
+          "d3d11.dll": "C:\\windows\\system32\\d3d11.dll",
+          "dxgi.dll": "C:\\windows\\system32\\DXGI.DLL",
+          "winemetal.dll": "C:\\windows\\system32\\winemetal.dll",
+          "d3dcompiler_47.dll": "C:\\windows\\system32\\D3DCOMPILER_47.dll"
+        }
+      },
+      "privateResultSha256": "a291b0b09ab684a6fe9d92f6368771b303da9651f8b752e927d9ad1a647906e0"
+    }
+  ],
+  "productionPresentHelper": [
+    {
+      "mode": "false",
+      "label": "normal",
+      "exit": 0,
+      "librarySha256": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010",
+      "fixtureSha256": "fd9f1cc0b80cad1f6aeda408712d57226cc5cc3d4a588c6511d9b437e4deb849",
+      "records": [
+        {
+          "case": "single_matched",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 12
+        },
+        {
+          "case": "msaa_matched",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 12
+        },
+        {
+          "case": "single_offset",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 24
+        },
+        {
+          "case": "msaa_offset",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 24
+        },
+        {
+          "case": "single_scaled_offset",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 72
+        },
+        {
+          "case": "msaa_scaled_offset",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 72
+        },
+        {
+          "summary": "pass",
+          "cases": 6,
+          "scope": "offscreen-native-production-present-shaders"
+        }
+      ]
+    },
+    {
+      "mode": "false",
+      "label": "negative",
+      "exit": 20,
+      "librarySha256": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010",
+      "fixtureSha256": "fd9f1cc0b80cad1f6aeda408712d57226cc5cc3d4a588c6511d9b437e4deb849",
+      "records": [
+        {
+          "case": "single_matched",
+          "pass": false,
+          "gpuCompleted": true,
+          "x": 0,
+          "y": 0,
+          "actual": [
+            255,
+            0,
+            0,
+            255
+          ],
+          "expected": [
+            0,
+            0,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "true",
+      "label": "normal",
+      "exit": 0,
+      "librarySha256": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010",
+      "fixtureSha256": "fd9f1cc0b80cad1f6aeda408712d57226cc5cc3d4a588c6511d9b437e4deb849",
+      "records": [
+        {
+          "case": "single_matched",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 12
+        },
+        {
+          "case": "msaa_matched",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 12
+        },
+        {
+          "case": "single_offset",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 24
+        },
+        {
+          "case": "msaa_offset",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 24
+        },
+        {
+          "case": "single_scaled_offset",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 72
+        },
+        {
+          "case": "msaa_scaled_offset",
+          "pass": true,
+          "gpuCompleted": true,
+          "pixelsChecked": 72
+        },
+        {
+          "summary": "pass",
+          "cases": 6,
+          "scope": "offscreen-native-production-present-shaders"
+        }
+      ]
+    },
+    {
+      "mode": "true",
+      "label": "negative",
+      "exit": 20,
+      "librarySha256": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010",
+      "fixtureSha256": "fd9f1cc0b80cad1f6aeda408712d57226cc5cc3d4a588c6511d9b437e4deb849",
+      "records": [
+        {
+          "case": "single_matched",
+          "pass": false,
+          "gpuCompleted": true,
+          "x": 0,
+          "y": 0,
+          "actual": [
+            255,
+            0,
+            0,
+            255
+          ],
+          "expected": [
+            0,
+            0,
+            255,
+            255
+          ]
+        }
+      ]
+    }
+  ],
+  "buildPhases": [
+    {
+      "mode": "false",
+      "phase": "configure",
+      "source": "36385509b9941f2e2c8f22046a5406c89e4d592b",
+      "wine_source": "294e1344edf98fce361cf7cad3f10e208bac97d8",
+      "returncode": 0,
+      "stop_reason": null,
+      "log_sha256": "b290cf7ff745dd38a4585a6a9f0493641919ae403d258c2a683587a84c0dc7b6"
+    },
+    {
+      "mode": "false",
+      "phase": "compile",
+      "source": "36385509b9941f2e2c8f22046a5406c89e4d592b",
+      "wine_source": "294e1344edf98fce361cf7cad3f10e208bac97d8",
+      "returncode": 0,
+      "stop_reason": null,
+      "log_sha256": "cc570033fcb2c6f264026f8f110ec55b3e14d077ffb521702ea1874cc00ec2c3"
+    },
+    {
+      "mode": "true",
+      "phase": "configure",
+      "source": "36385509b9941f2e2c8f22046a5406c89e4d592b",
+      "wine_source": "294e1344edf98fce361cf7cad3f10e208bac97d8",
+      "returncode": 0,
+      "stop_reason": null,
+      "log_sha256": "8a6de4decda891e36d059402abff64bc77dbbeaa7b8646df9f4055383a3779a2"
+    },
+    {
+      "mode": "true",
+      "phase": "compile",
+      "source": "36385509b9941f2e2c8f22046a5406c89e4d592b",
+      "wine_source": "294e1344edf98fce361cf7cad3f10e208bac97d8",
+      "returncode": 0,
+      "stop_reason": null,
+      "log_sha256": "d5b727e31cebbfa7c493b9abe010ede52217790f11082dc5ea0363f953c80714"
+    }
+  ],
+  "wineArtifactSha256": {
+    "unixNtdll": "a851b90d09990a7b37b49bbad0dd7e6b3712c27f84e8f5e88911eeeb487df92d",
+    "wineserver": "66f7e8b75c7486931285af2600ef61d701b8d45d5e9142903bdd92657ee6e941"
+  },
+  "limits": [
+    "generic GPU buffers do not exercise precise dynamic DISCARD or immutable residency admission",
+    "actual pool-memory effect and contested WaitAll runtime not established",
+    "shader pixels are not production presenter/CAMetalDrawable or actual MetalFX scaler proof",
+    "readable capture and split scene/final frame boundaries pending",
+    "installed selection, ordinary game lifecycle, controlled per-switch/combined FPS/latency/memory comparison pending"
+  ]
+}

@@ -1,5 +1,14 @@
 # DXMT patch provenance
 
+## FPS source wave, 25 October 2026
+
+Current development pin: DXMT `25eff5e1` (build tree-equivalent `cb5fa11d`).
+The [integration evidence](../diagnostics/fps-wave-20261025.md) separates
+source, complete selected builds and covered GPU correctness from installation
+and gameplay performance. The [exact-tree publication map](fps-wave-publication-20261025.json)
+binds local build revisions to public source. The prior playable selection is
+unchanged by this wave; the dated checkpoints below retain their original scope.
+
 ## Current follow-up, 24 October 2026
 
 The matched build source is `356cc60d500f11d59dd2cb215250b2a08b07e8ba`;

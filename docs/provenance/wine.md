@@ -1,5 +1,14 @@
 # Wine patch origins and installed-source gap
 
+## FPS source wave, 25 October 2026
+
+Current development pin: Wine `85864be4` (paired Unix NTDLL/server).
+The [integration evidence](../diagnostics/fps-wave-20261025.md) separates
+source, complete selected builds and covered GPU correctness from installation
+and gameplay performance. The [exact-tree publication map](fps-wave-publication-20261025.json)
+binds local build revisions to public source. The prior playable selection is
+unchanged by this wave; the dated checkpoints below retain their original scope.
+
 ## Integrated candidate checkpoint, 2026-10-23
 
 New candidate source: `e20af58312ef059e54f8d16767ee7b74cb8358e5`; selected PE/native/client/server closure, FreeType headers 2.14.3 and retained library-search paths. It was built and signed in a separate

@@ -5,10 +5,10 @@ dated snapshot documents retain their original historical claims.
 
 | Layer | Current state | What it does not establish |
 | --- | --- | --- |
-| Development source | Wine `e20af583`; DXMT `e11476e3` (early scene submission in `91add796`, followed by the native GPU fixture) | A component branch tip is not an installed runtime |
-| Matched build | Selected Wine modules and matching client/server; D3D11, DXGI, D3D10Core, WineMetal PE/native and static AIRCONV; compiler cache epoch 2 | Full reproducible Wine distribution or every optional feature |
+| Development source | Wine `85864be4`; DXMT `25eff5e1`: seven gated renderer experiments, MSync WaitAll rollback/attribution, and prior early scene submission | A component branch tip is not an installed runtime |
+| Matched build | Both complete 161-target DXMT variants, paired Unix NTDLL/server; PE/native/helper and LLVM 15.0.7; compiler epoch 2 off / 3 cleanup on | Full reproducible Wine distribution or every optional feature |
 | Installation | Selected 22-file closure installed in the owner's ordinary DS3 runtime; hash readback matched and repeated installation made no changes; prior recovery retained | This follow-up's real-game exit/relaunch or FPS acceptance |
-| New experiment | Default-off scene submission: same-source off/on release builds, 336 source-extracted admission cases, 16 native Metal adapter cases, two rejected source mutations and five offscreen D3D11 stages per variant pass | Production Present integration, exposed GPU idle, displayed FPS, input latency or memory improvement |
+| New experiments | Seven new default-off switches plus independent scene submission; focused CPU controls, five generic GPU stages and four dedicated pass cases per build, six native shader images per helper and connected pixel negatives pass | Dynamic DISCARD/residency admission, real MetalFX, production Present/capture, displayed FPS, latency or memory improvement |
 | Latest correctness checks | Terminal release old-fail/new-pass controls on arm64 and Rosetta, real NTDLL lifecycle controls, production MinGW-header compilation, five offscreen GPU stages and three rejected broken controls | A cure for every game hang |
 | Latest diagnostics | 178 offline telemetry checks; process-bound observed phase labels and opt-in compiler/wait coverage; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
 | Game observations | Earlier owner reports described usable play under background load; a previous unlabeled 1080p stream was retained | Controlled before/after FPS, clean gameplay-only timing or a causal network repair |
@@ -16,9 +16,13 @@ dated snapshot documents retain their original historical claims.
 The **installed** graphics still correspond to local DXMT
 `356cc60d500f11d59dd2cb215250b2a08b07e8ba` and its tree-identical
 [public equivalent](provenance/focused-publication-20261024.json).
-The two new experimental builds use `91add796`; only their scene-submission
-boolean differs, with all earlier optimizations enabled. A diagnostic matched
-control package was prepared offline; neither variant was installed or promoted.
+The latest experimental pair uses local build source `36385509`, public
+tree-equivalent `cb5fa11d`; later pin changes are test/documentation only. Eight
+booleans differ: seven new switches and scene submission. Both use the paired
+new Wine MSync source. The previous scene-only control package remains a separate
+checkpoint. No variant from the new wave was installed or promoted. See
+[the integration evidence](diagnostics/fps-wave-20261025.md) and
+[exact hashes and accepted checks](diagnostics/fps-wave-20261025.json).
 The 25 October baseline attempt launched the unchanged installed game, observed
 menu responses and repeated connection-loss dialogs, then ended it with macOS
 Quit. No stable offline world or controlled gameplay timing was accepted.
@@ -29,6 +33,10 @@ See [the focused changes and checks](diagnostics/focused-followup-20261024.md)
 and the [earlier integrated build record](diagnostics/integrated-wave-20261023.md).
 
 ## Open acceptance
+
+- Per-switch and combined performance/latency/memory comparison, actual dynamic
+  DISCARD and immutable residency GPU admission, idle memory effects, contested
+  WaitAll runtime, actual MetalFX scaler/presenter and readable split-frame capture.
 
 - Real-game normal exit and a fresh launch with Steam left open on the latest
   installed follow-up; investigate any surviving CPU-heavy process.

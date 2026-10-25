@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "kind": "exact-tree-public-equivalents",
+  "components": {
+    "dxmt": {
+      "base": "e11476e33117b454bac60b997532f9823e34855b",
+      "map": [
+        {
+          "buildSource": "9758299f7eb2fc7afc5cd3288c1c4b89107f68f0",
+          "publicEquivalent": "94ddc4bac2ec1345624c9f54e2645bda91266439",
+          "tree": "0c8f3e7aebb0768ac156f2dcd9b0987b3ab8e60a",
+          "treeEqual": true
+        },
+        {
+          "buildSource": "e1fdda9c5f5bd2f512900cf5565144c0b8c5ac5f",
+          "publicEquivalent": "eef8dfb46a08e6bb808b08b9e3b024afedc3cd58",
+          "tree": "3e721c43c7df8576a7a5cecb53146ca9c55c98f3",
+          "treeEqual": true
+        },
+        {
+          "buildSource": "36385509b9941f2e2c8f22046a5406c89e4d592b",
+          "publicEquivalent": "cb5fa11dcfae8eb3c31d5499094371913910d662",
+          "tree": "c4e6617f5cb68f08e443cfb845f1ab87c210e0c6",
+          "treeEqual": true
+        },
+        {
+          "buildSource": "fcf77589071d758bf7210d43c4820ea808645209",
+          "publicEquivalent": "25eff5e13003d5e7f6b7cf6e1c76e9e6f3363e27",
+          "tree": "64bef840e02c16c7e9ef8853d779349005cca86b",
+          "treeEqual": true,
+          "scope": "test and documentation only; production build source unchanged"
+        }
+      ],
+      "publicHead": "25eff5e13003d5e7f6b7cf6e1c76e9e6f3363e27"
+    },
+    "wine": {
+      "base": "e20af58312ef059e54f8d16767ee7b74cb8358e5",
+      "map": [
+        {
+          "buildSource": "294e1344edf98fce361cf7cad3f10e208bac97d8",
+          "publicEquivalent": "85864be47d483d4518f729baef48cbf52ea1e5cf",
+          "tree": "021966abc39ea20b6d0bf16a15857309d322e113",
+          "treeEqual": true
+        }
+      ],
+      "publicHead": "85864be47d483d4518f729baef48cbf52ea1e5cf"
+    }
+  },
+  "limits": "Publication metadata and test-only followups do not rerun or upgrade build/game evidence. Published ancestry is not rewritten."
+}

@@ -5,6 +5,35 @@ This is a direction for contributions, not a release promise. Start with the
 
 ## Active integrated wave — 23 October 2026
 
+### FPS implementation wave — 25 October 2026
+
+The owner authorized implementing the complete deeper-hypothesis wave together.
+Integration owner is root; component editors do not stage, commit, install or
+run concurrent live GPU tests. Source baseline: hub `105afe99`, DXMT `e11476e3`,
+Wine `e20af583`. Preserve the installed playable closure, saves, caches, VPN and
+unrelated sessions until a matched candidate passes relevant acceptance.
+Reuse this roadmap as the current dependency/state record.
+
+| ID | Required deliverable / owner | Dependencies and acceptance | State |
+| --- | --- | --- | --- |
+| P1 | Resource-exact CB invalidation / bindings editor | Production-bound old/new-data and rename/replay controls; default-off experiment | Source/CPU/build accepted: both architectures, 27 scenarios/selection, baseline and nine mutations rejected; real dynamic-DISCARD GPU path pending |
+| P2 | Dead attachment-store elimination and physical-pass residency dedup / pass editor | Exact overwrite/coverage proof, preserved hazards and negative controls | Source/CPU/build and covered GPU accepted: five CPU configurations, baseline/nine mutations rejected; four GPU cases/five images per variant plus connected pixel negative |
+| P3 | Bounded D3D11 residency sets / residency editor | Existing D3D12/bridge reuse, safe membership/retirement, OS fallback and bounded policy | Source/CPU/build accepted: bounded exact-identity charge cache, alias-safe Retain touch, paired flag syntax and negative controls; actual immutable residency admission pending |
+| P4 | Completed-idle allocation attribution and safe reclamation / memory editor | Per-queue coherence ownership; preserve current/inflight/recorded references, bounded work | Source/CPU/build accepted: all five creation sites, lifetime/race/cap/sequence/starvation controls; bounded partial-scan summaries tested; real memory attribution pending |
+| P5 | MSync send/ACK attribution and WaitAll rollback repair / sync editor | Native send-pressure discriminator and deterministic ownership/wake/timeout controls | Source/CPU/native pressure/build accepted: 15 WaitAll cases, baseline/negative controls, attribution bounds; paired Unix NTDLL/server used in private GPU runs; contested WaitAll runtime pending |
+| P6 | Fixed-output spatial MetalFX / scaler editor | Low render/fixed output, resize/color/image checks, separate quality mode | Source/CPU/build accepted: 153 assertions/selection/both architectures, baseline/18 mutations rejected; actual scaler/output images pending |
+| P7 | GPU-capture validity and shader-cost experiment / root | Real capture start/error handling, reusable shader profiling; no blind precision demotion | Source/CPU/build and native shader images accepted: final-frame capture shutdown, integer CSE controls and cache epoch split; six pixel cases on each build helper plus negative; actual capture/presenter pending |
+| P8 | Combined source/build/GPU/game comparison and publication / root | P1–P7 admitted independently; matched PE/native/helper; controls and ordinary lifecycle; numerical gain only from controlled gameplay | Source/build/covered GPU complete: both 161-target variants linked, five generic GPU stages and four dedicated pass cases per variant accepted with mapped identity proof; source review clear. Installed/game/FPS/latency/memory acceptance remains open; see dated evidence |
+
+The [25 October integration evidence](docs/diagnostics/fps-wave-20261025.md) records exact source/build identities, covered GPU results and remaining live gates.
+
+One wave does not mean one opaque default. Keep independent experiment switches
+and a reference so results remain attributable. Source, fixture, full build,
+installed identity and actual game performance remain separate acceptance states.
+If a hypothesis is falsified, record that result rather than shipping an unsafe
+optimization. Diagnostic producers must reuse the existing bounded contracts;
+new registry/cache ownership must be explicit before activation.
+
 ### Focused follow-up — 24 October 2026
 
 The owner accepted a focused exit, frame-hitch and scene-metrics pass after a

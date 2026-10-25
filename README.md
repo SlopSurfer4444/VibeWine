@@ -9,10 +9,11 @@ reproduction, a focused patch and evidence of what you checked.
 
 **Current checkpoint: 25 October 2026.** The selected 24 October Wine/DXMT
 closure remains installed in the owner's DS3 runtime. New development source
-adds a default-off early scene submission experiment: matched builds, admission
-regressions and native/offscreen GPU checks pass. Game FPS, latency and memory
-comparisons remain pending; the latest game attempt did not establish a stable
-offline world. [Changes, checks and limits](docs/diagnostics/focused-followup-20261024.md).
+adds seven independently gated renderer experiments, MSync rollback repair and
+bounded attribution, alongside early scene submission. Both complete matched
+builds and covered native/offscreen GPU checks pass. Installation and controlled
+game FPS, latency and memory comparisons remain pending.
+[Changes, checks and limits](docs/diagnostics/fps-wave-20261025.md).
 
 This repository distributes source, not a ready-to-install Wine runtime.
 [Selected upstream/fork backports](docs/integrations/fork-review-20261023.md),
@@ -54,7 +55,7 @@ python3 scripts/workspace.py check
 | [Telemetry](tools/telemetry/README.md) and [gameplay tools](tools/gameplay/README.md) | Analysis, bounded test control and reproducible test protocols | `main` |
 | [Experiments](experiments/README.md) | Opt-in instrumentation and native presentation probes | `main` |
 
-The workspace pins Wine `e20af583` and DXMT `e11476e3`. Components are pinned
+The workspace pins Wine `85864be4` and DXMT `25eff5e1`. Components are pinned
 submodules hosted on branches in this same repository.
 Updating a component branch does not silently update the workspace pin. GitHub's
 main-branch ZIP omits submodule contents; use a recursive clone or the component
