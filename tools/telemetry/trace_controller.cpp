@@ -61,7 +61,7 @@ static uint64_t recordBudget(const char *arg) {
 }
 static const char *clockDomain(uint32_t type) {
   if(type==24)return "native_gpu_ns";
-  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=110))return "cpu_steady_ns";
+  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=119))return "cpu_steady_ns";
   return "unknown";
 }
 static const char *profileName(uint32_t flags) {
@@ -86,8 +86,36 @@ static bool compilerProbeValid(const trace::Decoded &e) {
  return e.padding0 && e.padding1<=1 && (e.type!=105 || !e.padding1) && e.flags>=1 && e.flags<=3;
 }
 static bool retirementProbeValid(const trace::Decoded &e) {
- if(e.type<108 || e.type>110)return true;
+ if(!((e.type>=108 && e.type<=110) || (e.type>=117 && e.type<=119)))return true;
  return e.object && e.padding0 && e.thread && e.start && e.end>=e.start && !e.flags;
+}
+
+static bool completionCardsValid(const std::vector<trace::Decoded> &events,bool stallProfile) {
+ using Group=std::array<const trace::Decoded*,6>;
+ std::map<std::tuple<uint32_t,uint64_t,uint64_t,uint64_t>,Group> groups;
+ bool valid=true;
+ std::map<std::pair<uint64_t,uint64_t>,std::vector<const trace::Decoded*>> retirements;
+ for(const auto &e:events)if((e.type>=108 && e.type<=110) || (e.type>=117 && e.type<=119))retirements[{e.object,e.padding0}].push_back(&e);
+ for(const auto &e:events)if(e.type>=111 && e.type<=116) {
+  if(!stallProfile || !e.object || !e.thread || !e.start || e.end<e.start || e.end-e.start<dxmt::cs2trace::StallWaitThresholdNs)valid=false;
+  auto &slot=groups[{e.thread,e.object,e.start,e.end}][e.type-111];
+  if(slot)valid=false;slot=&e;
+ }
+ std::set<std::pair<uint64_t,uint64_t>> identities;
+ for(const auto &[key,g]:groups) {
+  (void)key;
+  if(std::any_of(g.begin(),g.end(),[](auto p){return !p;})){valid=false;continue;}
+  const auto &a=*g[0],&b=*g[1],&c=*g[2],&d=*g[3],&e=*g[4],&f=*g[5];
+  const auto before=a.flags&7u,after=(a.flags>>3)&7u;
+  if(!a.padding0 || before>3 || after>5 || (a.flags&~255u) || b.flags || c.flags || e.flags || f.flags || d.flags>32)valid=false;
+  if(b.padding0!=UINT64_MAX && (a.padding1==UINT64_MAX || b.padding0!=a.padding1+1))valid=false;
+  if((!b.padding1 && c.padding0) || (!(a.flags&64u) && c.padding1) || f.padding1 ||
+     ((a.flags&128u) && after!=4) || (!(a.flags&128u) && f.padding0))valid=false;
+  if(d.padding0<=a.padding0 || d.padding1<=a.padding0 || e.padding0>=a.padding0)valid=false;
+  for(const auto *phase:retirements[{a.object,a.padding0}])if(phase->thread!=a.thread || phase->padding1!=a.padding1 || phase->start<a.end)valid=false;
+  if(!identities.emplace(a.object,a.padding0).second)valid=false;
+ }
+ return valid;
 }
 int main(int argc,char **argv) {
   try {
@@ -121,7 +149,7 @@ int main(int argc,char **argv) {
         if(e.type!=95 && !dxmt::cs2trace::profileEventAllowed(dxmt::cs2trace::Profile(profile->flags),e.type,e.start,e.end))profileValid=false;
       if(profile && profile->flags==4) {
         uint64_t context=0,capMarkers=0;
-        for(const auto &e:s.events)if((e.type>=80 && e.type<=89) || e.type==93 || e.type==94 || (e.type>=104 && e.type<=107)) {
+        for(const auto &e:s.events)if((e.type>=80 && e.type<=89) || e.type==93 || e.type==94 || (e.type>=104 && e.type<=107) || (e.type>=111 && e.type<=119)) {
           if(e.type==89 && e.flags==1) {
             capMarkers++;
             if(e.object || !e.thread || !e.start || e.start!=e.end || e.padding0!=profile->padding0 || e.padding1)profileValid=false;
@@ -136,10 +164,12 @@ int main(int argc,char **argv) {
         }
       }
       for(const auto &e:s.events)if(!compilerProbeValid(e))profileValid=false;
+      if(!completionCardsValid(s.events,profile && profile->flags==4))profileValid=false;
       std::set<std::tuple<uint64_t,uint64_t,uint32_t>> retirementTypes;
       std::map<std::pair<uint64_t,uint64_t>,std::pair<uint64_t,uint32_t>> retirementBindings;
       std::map<std::pair<uint64_t,uint64_t>,std::map<uint32_t,const trace::Decoded*>> retirementPhases;
-      for(const auto &e:s.events)if(e.type>=108 && e.type<=110) {
+      for(const auto &e:s.events)if((e.type>=108 && e.type<=110) || (e.type>=117 && e.type<=119)) {
+        if(e.type>=117 && (!profile || profile->flags!=4))profileValid=false;
         if(!retirementProbeValid(e) || !retirementTypes.emplace(e.object,e.padding0,e.type).second)profileValid=false;
         auto [binding,inserted]=retirementBindings.emplace(std::make_pair(e.object,e.padding0),std::make_pair(e.padding1,e.thread));
         if(!inserted && binding->second!=std::make_pair(e.padding1,e.thread))profileValid=false;
@@ -151,6 +181,16 @@ int main(int argc,char **argv) {
         for(uint32_t type:{110u,108u,109u}) {
           auto phase=phases.find(type);if(phase==phases.end())continue;
           if(prior && prior->end>phase->second->start)profileValid=false;
+          prior=phase->second;
+        }
+      }
+      for(const auto &[key,phases]:retirementPhases) {
+        (void)key;const trace::Decoded *prior=nullptr;
+        for(uint32_t type:{117u,118u,119u}) {
+          auto phase=phases.find(type);if(phase==phases.end())continue;
+          if(prior && prior->end>phase->second->start)profileValid=false;
+          auto parent=phases.find(110);
+          if(parent!=phases.end() && (phase->second->start<parent->second->start || phase->second->end>parent->second->end))profileValid=false;
           prior=phase->second;
         }
       }
@@ -184,7 +224,8 @@ int main(int argc,char **argv) {
       for(const auto &e:s.events) {
         std::cout<<"{\"kind\":\"event\",\"index\":"<<e.index<<",\"generation\":"<<e.generation<<",\"type\":"<<e.type<<",\"thread\":"<<e.thread<<",\"flags\":"<<e.flags<<",\"object\":"<<e.object<<",\"start\":"<<e.start<<",\"end\":"<<e.end<<",\"padding0\":"<<e.padding0<<",\"padding1\":"<<e.padding1<<",\"clock_domain\":"<<json(clockDomain(e.type))<<",\"duration_ns\":";
         if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && e.type!=99 && !(e.type>=100 && e.type<=103) && probe::valid(e) && compilerProbeValid(e) && retirementProbeValid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
-        if(e.type>=108 && e.type<=110)std::cout<<",\"event_name\":"<<json(e.type==108?"Idle retirement sweep":e.type==109?"Ring allocator reclamation aggregate":"Command chunk reset")<<",\"retirement_identity_valid\":"<<(retirementProbeValid(e)?"true":"false")<<",\"queue\":"<<e.object<<",\"chunk_sequence\":"<<e.padding0<<",\"queue_frame\":"<<e.padding1;
+        if((e.type>=108 && e.type<=110) || (e.type>=117 && e.type<=119))std::cout<<",\"event_name\":"<<json(e.type==108?"Idle retirement sweep":e.type==109?"Ring allocator reclamation aggregate":e.type==110?"Command chunk reset":e.type==117?"Command list destruction":e.type==118?"Reference tracker clear":"Native command buffer release")<<",\"retirement_identity_valid\":"<<(retirementProbeValid(e)?"true":"false")<<",\"queue\":"<<e.object<<",\"chunk_sequence\":"<<e.padding0<<",\"queue_frame\":"<<e.padding1;
+        if(e.type>=111 && e.type<=116)std::cout<<",\"event_name\":\"Slow completion card part\",\"completion_card_part\":"<<(e.type-110);
         if(e.type>=104 && e.type<=107)std::cout<<",\"event_name\":"<<json(e.type==104?"Cache reader mutex acquisition wait":e.type==105?"AIR conversion":e.type==106?"Metal newLibrary":"Metal newFunction")<<",\"compiler_identity_valid\":"<<(compilerProbeValid(e)?"true":"false");
         if(e.type>=96 && e.type<=99)std::cout<<",\"event_name\":"<<json(e.type==96?"Queue frame-latency wait":e.type==97?"Swapchain admission wait":e.type==98?"Drawable acquire":"Queue/native frame binding")<<",\"presentation_identity_valid\":"<<(presentationProbeValid(e)?"true":"false");
         if(e.type>=100 && e.type<=103)std::cout<<",\"event_name\":"<<json(e.type==100?"Visibility sampled identity/status":e.type==101?"Visibility native freshness/flags":e.type==102?"Visibility window/display identity":"Visibility occlusion/configuration")<<",\"visibility_sample_only\":true";

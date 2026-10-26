@@ -11,7 +11,8 @@ which binary a game loads.
    `DXMT_CS2_TRACE_PROFILE=stall-waits` and the normal private trace directory.
    Profile selection lasts the process lifetime; rearming cannot change it.
    Set a finite `DXMT_CS2_TRACE_DETAIL_LIMIT` only when partial task/cache context
-   or compiler stages104–107 are needed; zero/unset disables these probes.
+   or compiler stages104–107, completion cards111–116, or reset details117–119
+   are needed; zero/unset disables these probes.
    The maximum remains32768. No launcher or installed runtime change is implied.
 2. Reuse the existing independent frame observer and explicit phase evidence
    from [SESSION_PHASES](SESSION_PHASES.md). Record the scene, route, render
@@ -67,6 +68,18 @@ which binary a game loads.
    in append order under concurrency. Missing task boundaries and fast compiler
    stages stay partial/unknown, including when one slow stage joins successfully.
    None supplies GPU busy time, complete frame attribution or FPS improvement.
+   Completion cards111–116 use the same detailed quota and are published only
+   after a completion wait returns at >=50ms. Read them through
+   `stall_capture.completion_cards`: all six parts must agree on generation,
+   queue, thread, interval and chunk/frame binding. Their optional native GPU
+   duration is a same-buffer native end-minus-start observation, not a timestamp
+   join with CPU wall. Optional `GetThreadTimes` CPU delta includes sampling
+   margins and is not pure native-call busy time. Missing, duplicate, malformed
+   or capped partial cards are rejected; an unfinished wait has no begin record
+   and remains unobserved. Queue-frontier loads are separate pre-wait samples,
+   not one atomic snapshot. Reset details117–119 preserve their nesting in110
+   and command-list/reference-clear/native-release order. See the
+   [completion checkpoint](../../docs/diagnostics/slow-completion-cards-20261026.md).
 7. Retain a compact result with exact file/generation/revision identities,
    source references, verification date, observed phase and uncertainty. The
    existing session integrator owns the mapping and private decoded derivatives:

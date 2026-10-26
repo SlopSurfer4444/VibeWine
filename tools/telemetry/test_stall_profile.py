@@ -60,7 +60,7 @@ class StallAnalyzerTests(unittest.TestCase):
     def test_every_excluded_kind_rejected_even_if_decoder_claims_valid(self):
         for t in sorted(set(range(1,112))-SLOW_TYPES-CONTEXT_TYPES-{95}):
             e=slow(t)
-            if t not in set(range(1,18))|{19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62}|set(range(20,24))|set(range(70,79))|set(range(80,111)):
+            if t not in set(range(1,18))|{19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62}|set(range(20,24))|set(range(70,79))|set(range(80,120)):
                 e['clock_domain']='native_gpu_ns' if t==24 else 'unknown'
             with self.subTest(t=t):
                 self.assertFalse(analyze(complete([marker(),e]))['producer_profile']['policy_valid'])
