@@ -306,14 +306,20 @@ CommandQueue::WaitForFinishThread() {
     chunk.readback = {};
     if (trace_gen)
       cs2trace::detailRecord(trace_gen,90,readback_start,cs2trace::now(),traceSerial(),0,internal_seq,trace_frame);
-    chunk.reset();
+    {
+      cs2trace::StallScope trace(110, traceSerial(), internal_seq, trace_frame);
+      chunk.reset();
+    }
     if (trace_gen) {
       auto t = cs2trace::now();
       cs2trace::detailRecord(trace_gen,91,t,t,traceSerial(),0,internal_seq,trace_frame);
     }
     cpu_coherent.signal(internal_seq);
 #if DXMT_IDLE_RETIREMENT
-    const auto idle_sample = idle_retirement_->sweep(internal_seq);
+    const auto idle_sample = [&] {
+      cs2trace::StallScope retirement_trace(108, traceSerial(), internal_seq, trace_frame);
+      return idle_retirement_->sweep(internal_seq);
+    }();
     if (idle_diagnostics_.enabled()) {
       char line[1024];
       if (idle_diagnostics_.record(cs2trace::now(), idle_sample, GetCurrentProcessId(), traceSerial(), line))
@@ -327,9 +333,12 @@ CommandQueue::WaitForFinishThread() {
     chunk_ongoing.fetch_sub(1, std::memory_order_release);
     chunk_ongoing.notify_one();
 
-    staging_allocator.free_blocks(internal_seq);
-    copy_temp_allocator.free_blocks(internal_seq);
-    argbuf_allocator.free_blocks(internal_seq);
+    {
+      cs2trace::StallScope trace(109, traceSerial(), internal_seq, trace_frame);
+      staging_allocator.free_blocks(internal_seq);
+      copy_temp_allocator.free_blocks(internal_seq);
+      argbuf_allocator.free_blocks(internal_seq);
+    }
 
     internal_seq++;
   }

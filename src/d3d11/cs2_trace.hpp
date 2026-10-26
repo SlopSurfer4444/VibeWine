@@ -14,7 +14,7 @@ inline uint64_t now() {return std::chrono::duration_cast<std::chrono::nanosecond
 inline Profile profile() {
  static const auto value=[] {
   auto text=env::getEnvVar("DXMT_CS2_TRACE_PROFILE");
-  return text.empty()?Profile::Full:text=="compile-waits"?Profile::CompileWaits:text=="presentation-waits"?Profile::PresentationWaits:Profile::Invalid;
+  return text.empty()?Profile::Full:text=="compile-waits"?Profile::CompileWaits:text=="presentation-waits"?Profile::PresentationWaits:text=="stall-waits"?Profile::StallWaits:Profile::Invalid;
  }();return value;
 }
 inline bool profileAllows(uint32_t type) {
@@ -43,7 +43,8 @@ inline void profileMetadataAdmitted(Header *h,uint32_t gen) {
  auto &last=profileMetadataGeneration();auto prior=last.load(std::memory_order_relaxed);
  if(prior==gen || !last.compare_exchange_strong(prior,gen,std::memory_order_relaxed))return;
  // Type 95 is v2 additive metadata, not a timing scope. Schema/object=1,
- // flags=1 compile-waits, 2 invalid/fail-closed, 3 presentation-waits; detail0=detail budget,
+ // flags=1 compile-waits, 2 invalid/fail-closed, 3 presentation-waits,
+ // 4 stall-waits; detail0=detail budget,
  // detail1=lifetime capacity. One marker per admitted generation, outside the
  // detailed-probe budget. Even invalid profiles remain explicitly observable.
  auto t=now();writeAdmittedEvent(h,gen,95,t,t,1,uint32_t(profile()),detailLimit(),Capacity,GetCurrentThreadId());
@@ -61,11 +62,17 @@ inline uint32_t generation() {
  return gen;
 }
 inline bool configured() {static bool value=!env::getEnvVar("DXMT_CS2_TRACE_DIR").empty();return value;}
+inline void detailRecord(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64_t object,uint32_t flags,uint64_t detail0,uint64_t detail1);
 inline void record(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64_t object=0,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
  if(!gen)return;
  if(profile()!=Profile::Full) {
   profileMetadata(buffer(),gen);
-  if(!profileAllows(type))return;
+  if(!profileEventAllowed(profile(),type,start,end))return;
+  // Context/compiler detail must stay opt-in and capped via the general
+  // entry point. Metadata/cap markers publish directly under writer admission.
+  if(profile()==Profile::StallWaits && (stallContextType(type) || (type>=104 && type<=107))) {
+   detailRecord(gen,type,start,end,object,flags,detail0,detail1);return;
+  }
  }
  writeEvent(buffer(),gen,type,start,end,object,flags,detail0,detail1,GetCurrentThreadId());
 }
@@ -90,7 +97,7 @@ inline void detailRecord(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,
  if(!gen || !detailLimit())return;
  // Filter before budget admission: excluded finish probes must not consume the
  // bounded compiler/persistence evidence budget or trigger its cap marker.
- if(!profileAllows(type)) {profileMetadata(buffer(),gen);return;}
+ if(!profileEventAllowed(profile(),type,start,end)) {profileMetadata(buffer(),gen);return;}
  static DetailBudget budget;
  auto active=generation();
  if(!active)return; // Ordinary capture-boundary incompleteness remains explicit.
@@ -187,6 +194,17 @@ struct SyncScope {
 struct Scope {
  uint32_t gen=generation();uint32_t type;uint64_t object=0;uint32_t flags=0;bool active=gen && profileAllows(type);uint64_t start=active?now():0;
  ~Scope(){if(active){auto end=now();if(end-start>=100000)record(gen,type,start,end,object,flags);}}
+};
+// Stall-only finish-thread phases use queue birth identity and chunk sequence;
+// no clock, capture lookup, or detail budget is needed in other profiles.
+struct StallScope {
+ uint32_t gen=0,type;uint64_t object,sequence,frame,start=0;
+ StallScope(uint32_t event,uint64_t queue,uint64_t chunk,uint64_t queueFrame)
+   :type(event),object(queue),sequence(chunk),frame(queueFrame) {
+  if(profile()==Profile::StallWaits) {gen=generation();if(gen)start=now();}
+ }
+ ~StallScope(){if(gen)record(gen,type,start,now(),object,0,sequence,frame);}
+ StallScope(const StallScope&)=delete;
 };
 struct Present {
  uint32_t gen=generation();uint64_t object;uint64_t start=gen?now():0;
