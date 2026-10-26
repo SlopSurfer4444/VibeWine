@@ -20,6 +20,7 @@
 #include "dxmt_command_queue.hpp"
 #include "Metal.hpp"
 #include "dxmt_statistics.hpp"
+#include "../d3d11/cs2_trace_completion.hpp"
 #include "util_env.hpp"
 #include "util_win32_compat.h"
 #include <atomic>
@@ -269,9 +270,40 @@ CommandQueue::WaitForFinishThread() {
     if (stopped.load())
       break;
     auto &chunk = chunks[internal_seq % kCommandChunkCount];
-    if (chunk.attached_cmdbuf.status() <= WMTCommandBufferStatusScheduled) {
-      cs2trace::Scope trace{.type=13,.object=internal_seq};
-      chunk.attached_cmdbuf.waitUntilCompleted();
+    const auto status_before = chunk.attached_cmdbuf.status();
+    if (status_before <= WMTCommandBufferStatusScheduled) {
+      cs2trace::StallCompletionWait completion(chunk.trace_generation, traceSerial(), internal_seq, chunk.frame_,
+                                             chunk.signal_frame_latency_fence_, chunk.resource_initializer_event_id);
+      if (completion.active()) {
+        // SharedEvent is the initializer event's actual native class. One
+        // opt-in getter samples its observed value immediately before waiting.
+        if (chunk.resource_initializer_event_id) {
+          WMT::SharedEvent initializer_event;
+          initializer_event.handle = initializer.event().handle;
+          completion.initializer_observed = initializer_event.signaledValue();
+        }
+        completion.ready_encode = ready_for_encode.load(std::memory_order_acquire);
+        completion.ready_commit = ready_for_commit.load(std::memory_order_acquire);
+        completion.ongoing = chunk_ongoing.load(std::memory_order_relaxed);
+        completion.coherent = cpu_coherent.signaledValue();
+        completion.latency = frame_latency_fence_.signaledValue();
+      }
+      bool slow_completion = false;
+      {
+        cs2trace::Scope trace{.type=13,.object=internal_seq};
+        completion.begin();
+        chunk.attached_cmdbuf.waitUntilCompleted();
+        slow_completion = completion.finish();
+      }
+      if (slow_completion) {
+        const auto status_after = chunk.attached_cmdbuf.status();
+        uint64_t gpu_start = 0, gpu_end = 0;
+        if (status_after == WMTCommandBufferStatusCompleted) {
+          gpu_start = chunk.attached_cmdbuf.gpuStartTime();
+          gpu_end = chunk.attached_cmdbuf.gpuEndTime();
+        }
+        completion.publish(status_before, status_after, gpu_start, gpu_end);
+      }
     }
     if (chunk.trace_generation && chunk.trace_generation == cs2trace::generation()) {
       auto t = cs2trace::now();
@@ -308,7 +340,7 @@ CommandQueue::WaitForFinishThread() {
       cs2trace::detailRecord(trace_gen,90,readback_start,cs2trace::now(),traceSerial(),0,internal_seq,trace_frame);
     {
       cs2trace::StallScope trace(110, traceSerial(), internal_seq, trace_frame);
-      chunk.reset();
+      chunk.reset(traceSerial());
     }
     if (trace_gen) {
       auto t = cs2trace::now();
@@ -323,7 +355,7 @@ CommandQueue::WaitForFinishThread() {
     if (idle_diagnostics_.enabled()) {
       char line[1024];
       if (idle_diagnostics_.record(cs2trace::now(), idle_sample, GetCurrentProcessId(), traceSerial(), line))
-        std::fputs(line, stderr);
+        Logger::diagnostic(line);
     }
 #endif
     if (trace_gen) {

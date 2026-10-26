@@ -1,6 +1,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <iostream>
 #include <stdexcept>
@@ -27,7 +28,7 @@ constexpr unsigned WMTCommandBufferStatusError = 5;
 namespace cs2trace {
 static unsigned current_generation = 7;
 static unsigned expected_detail_generation = 7;
-static bool detail = true, gpu_profile = true;
+static bool detail = true, gpu_profile = true, completion_profile = false, completion_slow = false;
 unsigned generation() { return current_generation; }
 unsigned detailLimit() { return detail; }
 bool profileAllows(unsigned type) { return type == 24 && gpu_profile; }
@@ -40,12 +41,37 @@ struct Scope {
 // Spy only: real admission, bounded recording and timestamps are tested by the
 // trace producer suite. This fixture verifies production call placement/data.
 struct StallScope {
-  unsigned type;
+  unsigned type; bool active = true;
   StallScope(unsigned value, uint64_t queue, uint64_t sequence, uint64_t frame) : type(value) {
     require(queue == 42 && sequence == 1 && frame == 77, "stall scope identity");
     event("begin-" + std::to_string(type));
   }
-  ~StallScope() { event("end-" + std::to_string(type)); }
+  StallScope(unsigned value, uint64_t queue, uint64_t sequence, uint64_t frame, unsigned gen) : type(value), active(gen != 0) {
+    require((queue == 42 || queue == 0) && sequence == (gen ? 1u : 0u) && frame == (gen ? 77u : 0u), "reset scope identity");
+    require(gen == 0 || (queue && detail && gen == 7), "reset generation binding");
+    if (active) event("begin-" + std::to_string(type));
+  }
+  ~StallScope() { if (active) event("end-" + std::to_string(type)); }
+};
+struct StallCompletionWait {
+  unsigned gen; uint64_t initializer_observed = 0, ready_encode = 0, ready_commit = 0, coherent = 0, latency = 0;
+  unsigned ongoing = 0;
+  uint64_t target, init_target;
+  StallCompletionWait(unsigned captured, uint64_t queue, uint64_t sequence, uint64_t frame, uint64_t final_target, uint64_t initializer_target)
+    :gen(completion_profile && detail && captured == current_generation ? captured : 0), target(final_target), init_target(initializer_target) {
+    require(queue == 42 && sequence == 1 && frame == 77, "completion identity before wait");
+  }
+  bool active() const {return gen != 0;}
+  void begin() {if(gen)event("completion-begin");}
+  bool finish() {if(gen)event("completion-finish");return gen && completion_slow;}
+  void publish(unsigned before, unsigned after, uint64_t gpu_start, uint64_t gpu_end) {
+    require(before <= 3 && (after == 4 || after == 5), "completion exact status pair");
+    require(ready_encode == 4 && ready_commit == 3 && ongoing == 1 && coherent == 0 && latency == 54, "prewait frontiers");
+    require(initializer_observed == (init_target ? 8u : 0u), "initializer observed value");
+    require((target == 55 || target == ~0ull) && (init_target == 9 || init_target == 0), "completion target");
+    require((after == 4 && gpu_start == 10) || (after == 5 && gpu_start == 0 && gpu_end == 0), "GPU sampled only completed");
+    event("completion-publish");
+  }
 };
 void record(unsigned, unsigned type, uint64_t, uint64_t, uint64_t queue,
             unsigned, uint64_t sequence, uint64_t frame) {
@@ -59,6 +85,15 @@ void detailRecord(unsigned gen, unsigned type, uint64_t, uint64_t, uint64_t queu
 }
 }
 
+namespace WMT {
+struct Event { uint64_t handle = 17; };
+struct SharedEvent {
+  uint64_t handle;
+  uint64_t signaledValue() {require(handle == 17, "initializer native identity");event("initializer-observed");return 8;}
+};
+}
+struct Initializer {WMT::Event event(){return {};}};
+struct Logger {static void diagnostic(const char *){event("diagnostic-delivery");}};
 struct Text { Text description() const { return {}; } const char *getUTF8String() const { return "mock"; } };
 struct Logs {
   bool present = false;
@@ -68,9 +103,10 @@ struct Logs {
 struct CommandBuffer {
   unsigned state = WMTCommandBufferStatusCompleted;
   bool with_logs = false;
+  unsigned terminal_after_wait = WMTCommandBufferStatusCompleted;
   uint64_t gpu_start = 10, gpu_end = 20;
   unsigned status() { event("status"); return state; }
-  void waitUntilCompleted() { event("wait"); state = WMTCommandBufferStatusCompleted; }
+  void waitUntilCompleted() { event("wait"); state = terminal_after_wait; }
   Text error() { return {}; }
   Logs logs() { event("logs"); return {with_logs}; }
   uint64_t gpuStartTime() { event("gpu-start"); return gpu_start; }
@@ -82,9 +118,10 @@ struct Readback {
 struct Chunk {
   CommandBuffer attached_cmdbuf;
   unsigned trace_generation = 7;
-  uint64_t frame_ = 77, signal_frame_latency_fence_ = 55;
+  uint64_t frame_ = 77, signal_frame_latency_fence_ = 55, resource_initializer_event_id = 9;
   Readback readback;
-  void reset() {
+  void reset(uint64_t queue = 0) {
+    require(queue == 42, "reset queue identity");
     event("reset");
     // Poison identities to detect fetching either one after resource release.
     trace_generation = 0; frame_ = 0; signal_frame_latency_fence_ = ~0ull;
@@ -94,6 +131,7 @@ struct Stopped { bool value = false; bool load() const { return value; } };
 struct Ready {
   Stopped *stopped;
   unsigned calls = 0;
+  uint64_t load(std::memory_order) {event("ready-commit-observed");return 3;}
   void wait(uint64_t sequence, std::memory_order) {
     require(sequence == ++calls, "ready wait sequence");
     event("ready-" + std::to_string(sequence));
@@ -104,9 +142,11 @@ struct Fence {
   std::string name;
   uint64_t expected;
   void signal(uint64_t value) { require(value == expected, "fence sequence"); event(name); }
+  uint64_t signaledValue() {event(name+"-observed");return name == "cpu-fence" ? 0 : 54;}
 };
 struct Counter {
   unsigned value = 1;
+  unsigned load(std::memory_order) {event("ongoing-observed");return value;}
   void fetch_sub(unsigned delta, std::memory_order order) {
     require(delta == 1 && value == 1 && order == std::memory_order_release, "counter decrement");
     --value; event("counter-decrement");
@@ -132,6 +172,8 @@ struct Diagnostics {
 class CommandQueue {
 public:
   static constexpr unsigned kCommandChunkCount = 32;
+  struct EncodeReady {uint64_t load(std::memory_order) {event("ready-encode-observed");return 4;}} ready_for_encode;
+  Initializer initializer;
   Stopped stopped;
   Ready ready_for_commit{&stopped};
   std::array<Chunk, kCommandChunkCount> chunks;
@@ -147,15 +189,60 @@ public:
 
 // EXACT_WAIT_FOR_FINISH_THREAD
 
+struct ResetList {void reset(){event("list-destroy");}};
+struct ResetRefs {void clear(){event("ref-clear");}};
+struct ResetBuffer {ResetBuffer &operator=(std::nullptr_t){event("native-buffer-release");return *this;}};
+// Poisoned scalar conversion makes a default/unpublished identity read an
+// observable failure even though UBSan does not track uninitialized integers.
+struct ResetIdentity {
+  uint64_t value; bool initialized;
+  operator uint64_t() const {if(!initialized){std::cerr << "FAIL unpublished identity read\n";std::exit(1);}return value;}
+};
+struct ResetChunk {
+  uint64_t signal_frame_latency_fence_ = 55;
+  ResetIdentity chunk_id{1,true}, frame_{77,true};
+  unsigned trace_generation = 7;
+  Readback readback;
+  ResetList list_enc;
+  ResetRefs ref_tracker;
+  ResetBuffer attached_cmdbuf;
+// EXACT_RESET_METHOD
+};
+static void run_reset_cases() {
+  for (bool details : {false, true}) for (uint64_t queue : {uint64_t(0), uint64_t(42)}) {
+    cs2trace::detail = details; events.clear();
+    ResetChunk chunk; chunk.reset(queue);
+    std::vector<std::string> expected{"readback-release"};
+    const char *operations[] = {"list-destroy", "ref-clear", "native-buffer-release"};
+    for (unsigned phase = 0; phase != 3; ++phase) {
+      if(details && queue)expected.push_back("begin-" + std::to_string(117+phase));
+      expected.push_back(operations[phase]);
+      if(details && queue)expected.push_back("end-" + std::to_string(117+phase));
+    }
+    require(events == expected && chunk.signal_frame_latency_fence_ == ~0ull && chunk.frame_ == 77, "reset subphase order/binding");
+  }
+  for (bool details : {false, true}) for (uint64_t queue : {uint64_t(0), uint64_t(42)}) {
+    cs2trace::detail = details; events.clear();
+    ResetChunk unpublished;
+    unpublished.trace_generation = 0;
+    unpublished.chunk_id.initialized = false;
+    unpublished.frame_.initialized = false;
+    unpublished.reset(queue);
+    require(events == std::vector<std::string>{"readback-release", "list-destroy", "ref-clear", "native-buffer-release"}, "unpublished reset no identity read");
+  }
+}
+
 static void run_case(unsigned status, bool matching_generation, bool details,
                      bool gpu, bool logs, bool latency, bool diagnostics,
-                     bool invalid_gpu = false, bool stale_generation = false) {
+                     bool invalid_gpu = false, bool stale_generation = false, bool completion = false, bool slow = false, bool wait_error = false, bool initializer_dependency = true) {
   events.clear();
-  cs2trace::detail = details; cs2trace::gpu_profile = gpu;
+  cs2trace::detail = details; cs2trace::gpu_profile = gpu; cs2trace::completion_profile = completion; cs2trace::completion_slow = slow;
   CommandQueue queue;
   auto &chunk = queue.chunks[1];
   chunk.attached_cmdbuf.state = status;
   chunk.attached_cmdbuf.with_logs = logs;
+  chunk.attached_cmdbuf.terminal_after_wait = wait_error ? WMTCommandBufferStatusError : WMTCommandBufferStatusCompleted;
+  chunk.resource_initializer_event_id = initializer_dependency ? 9 : 0;
   if (invalid_gpu) chunk.attached_cmdbuf.gpu_end = 0;
   chunk.trace_generation = matching_generation ? 7 : stale_generation ? 8 : 0;
   cs2trace::expected_detail_generation = chunk.trace_generation;
@@ -165,8 +252,20 @@ static void run_case(unsigned status, bool matching_generation, bool details,
   require(queue.WaitForFinishThread() == 0, "finish return");
   std::vector<std::string> expected{"ready-1", "status"};
   if (status <= WMTCommandBufferStatusScheduled) {
-    expected.insert(expected.end(), {"wait", "wait-scope-end"});
-    status = WMTCommandBufferStatusCompleted;
+    const bool active = completion && details && matching_generation;
+    if (active) {
+      if (initializer_dependency) expected.push_back("initializer-observed");
+      expected.insert(expected.end(), {"ready-encode-observed", "ready-commit-observed", "ongoing-observed", "cpu-fence-observed", "latency-fence-observed", "completion-begin"});
+    }
+    expected.push_back("wait");
+    if (active) expected.push_back("completion-finish");
+    expected.push_back("wait-scope-end");
+    status = wait_error ? WMTCommandBufferStatusError : WMTCommandBufferStatusCompleted;
+    if (active && slow) {
+      expected.push_back("status");
+      if (status == WMTCommandBufferStatusCompleted) expected.insert(expected.end(), {"gpu-start", "gpu-end"});
+      expected.push_back("completion-publish");
+    }
   }
   if (matching_generation) {
     expected.insert(expected.end(), {"status", "record-23"});
@@ -210,6 +309,13 @@ int main() {
     run_case(WMTCommandBufferStatusCompleted, true, false, true, false, true, true);
     run_case(WMTCommandBufferStatusCompleted, true, true, true, false, true, true, true);
     run_case(WMTCommandBufferStatusCompleted, false, true, true, false, true, true, false, true);
+    run_case(WMTCommandBufferStatusScheduled, true, true, false, false, true, true, false, false, true, true);
+    run_case(WMTCommandBufferStatusScheduled, true, true, false, true, true, true, false, false, true, true, true);
+    run_case(WMTCommandBufferStatusScheduled, true, true, false, false, false, false, false, false, true, false);
+    run_case(WMTCommandBufferStatusScheduled, true, false, false, false, true, false, false, false, true, true);
+    run_case(WMTCommandBufferStatusScheduled, false, true, false, false, true, false, false, true, true, true);
+    run_case(WMTCommandBufferStatusScheduled, true, true, false, false, true, false, false, false, true, true, false, false);
+    run_reset_cases();
     events.clear();
     CommandQueue stopped; stopped.stopped.value = true;
     require(stopped.WaitForFinishThread() == 0 && events.empty(), "initial stop");
