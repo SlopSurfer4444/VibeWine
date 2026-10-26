@@ -61,14 +61,14 @@ static uint64_t recordBudget(const char *arg) {
 }
 static const char *clockDomain(uint32_t type) {
   if(type==24)return "native_gpu_ns";
-  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=107))return "cpu_steady_ns";
+  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=110))return "cpu_steady_ns";
   return "unknown";
 }
 static const char *profileName(uint32_t flags) {
-  return flags==1?"compile-waits":flags==2?"invalid-fail-closed":flags==3?"presentation-waits":"unknown";
+  return flags==1?"compile-waits":flags==2?"invalid-fail-closed":flags==3?"presentation-waits":flags==4?"stall-waits":"unknown";
 }
 static bool profileMarkerValid(const trace::Decoded &e) {
-  return e.object==1 && (e.flags!=3 || e.thread) && (e.flags==1 || e.flags==2 || e.flags==3) && e.start==e.end &&
+  return e.object==1 && ((e.flags!=3 && e.flags!=4) || e.thread) && (e.flags!=4 || e.start) && (e.flags>=1 && e.flags<=4) && e.start==e.end &&
     e.padding0<=dxmt::cs2trace::DetailBudget::MaxRecords && e.padding1==trace::Capacity;
 }
 static bool presentationProbeValid(const trace::Decoded &e) {
@@ -84,6 +84,10 @@ static bool compilerProbeValid(const trace::Decoded &e) {
  if(!e.object || !e.thread || !e.start || e.end<e.start)return false;
  if(e.type==104)return e.padding1 && (e.flags==1 || e.flags==3);
  return e.padding0 && e.padding1<=1 && (e.type!=105 || !e.padding1) && e.flags>=1 && e.flags<=3;
+}
+static bool retirementProbeValid(const trace::Decoded &e) {
+ if(e.type<108 || e.type>110)return true;
+ return e.object && e.padding0 && e.thread && e.start && e.end>=e.start && !e.flags;
 }
 int main(int argc,char **argv) {
   try {
@@ -112,9 +116,19 @@ int main(int argc,char **argv) {
       uint32_t gen=generation(argv[3]);trace::Mapping m(argv[2],false,argv[4]);auto s=trace::decode(m,gen);
       const trace::Decoded *profile=nullptr;unsigned profileMarkers=0;
       for(const auto &e:s.events)if(e.type==95){profile=&e;profileMarkers++;}
-      bool profileValid=!profileMarkers || (profileMarkers==1 && profileMarkerValid(*profile) && (profile->flags==1 || profile->flags==3));
-      if(profile && (profile->flags==1 || profile->flags==3))for(const auto &e:s.events)
-        if(e.type!=95 && !dxmt::cs2trace::profileTypeAllowed(dxmt::cs2trace::Profile(profile->flags),e.type))profileValid=false;
+      bool profileValid=!profileMarkers || (profileMarkers==1 && profileMarkerValid(*profile) && (profile->flags==1 || profile->flags==3 || profile->flags==4));
+      if(profile && (profile->flags==1 || profile->flags==3 || profile->flags==4))for(const auto &e:s.events)
+        if(e.type!=95 && !dxmt::cs2trace::profileEventAllowed(dxmt::cs2trace::Profile(profile->flags),e.type,e.start,e.end))profileValid=false;
+      if(profile && profile->flags==4) {
+        uint64_t context=0,capMarkers=0;
+        for(const auto &e:s.events)if((e.type>=80 && e.type<=89) || e.type==93 || e.type==94 || (e.type>=104 && e.type<=107)) {
+          if(e.type==89 && e.flags==1) {
+            capMarkers++;
+            if(e.object || !e.thread || !e.start || e.start!=e.end || e.padding0!=profile->padding0 || e.padding1)profileValid=false;
+          } else context++;
+        }
+        if(context>profile->padding0 || capMarkers>1 || (capMarkers && (!profile->padding0 || context!=profile->padding0)))profileValid=false;
+      }
       if(profile && profile->flags==3) {
         std::set<std::tuple<uint32_t,uint64_t,uint64_t>> identities;
         for(const auto &e:s.events)if(e.type>=96 && e.type<=99) {
@@ -122,6 +136,24 @@ int main(int argc,char **argv) {
         }
       }
       for(const auto &e:s.events)if(!compilerProbeValid(e))profileValid=false;
+      std::set<std::tuple<uint64_t,uint64_t,uint32_t>> retirementTypes;
+      std::map<std::pair<uint64_t,uint64_t>,std::pair<uint64_t,uint32_t>> retirementBindings;
+      std::map<std::pair<uint64_t,uint64_t>,std::map<uint32_t,const trace::Decoded*>> retirementPhases;
+      for(const auto &e:s.events)if(e.type>=108 && e.type<=110) {
+        if(!retirementProbeValid(e) || !retirementTypes.emplace(e.object,e.padding0,e.type).second)profileValid=false;
+        auto [binding,inserted]=retirementBindings.emplace(std::make_pair(e.object,e.padding0),std::make_pair(e.padding1,e.thread));
+        if(!inserted && binding->second!=std::make_pair(e.padding1,e.thread))profileValid=false;
+        retirementPhases[{e.object,e.padding0}][e.type]=&e;
+      }
+      for(const auto &[key,phases]:retirementPhases) {
+        (void)key;
+        const trace::Decoded *prior=nullptr;
+        for(uint32_t type:{110u,108u,109u}) {
+          auto phase=phases.find(type);if(phase==phases.end())continue;
+          if(prior && prior->end>phase->second->start)profileValid=false;
+          prior=phase->second;
+        }
+      }
       // Additive groups are optional for old producers. If present, partial or
       // malformed evidence is never silently accepted as valid visibility.
       std::map<std::tuple<uint32_t,uint64_t,uint64_t>,std::array<const trace::Decoded*,4>> visibility;
@@ -151,7 +183,8 @@ int main(int argc,char **argv) {
       const auto profileLabel=!profileMarkers?"unspecified-full-or-legacy":profileMarkers==1 && profileMarkerValid(*profile)?profileName(profile->flags):"malformed-profile-metadata";
       for(const auto &e:s.events) {
         std::cout<<"{\"kind\":\"event\",\"index\":"<<e.index<<",\"generation\":"<<e.generation<<",\"type\":"<<e.type<<",\"thread\":"<<e.thread<<",\"flags\":"<<e.flags<<",\"object\":"<<e.object<<",\"start\":"<<e.start<<",\"end\":"<<e.end<<",\"padding0\":"<<e.padding0<<",\"padding1\":"<<e.padding1<<",\"clock_domain\":"<<json(clockDomain(e.type))<<",\"duration_ns\":";
-        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && e.type!=99 && !(e.type>=100 && e.type<=103) && probe::valid(e) && compilerProbeValid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
+        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && e.type!=99 && !(e.type>=100 && e.type<=103) && probe::valid(e) && compilerProbeValid(e) && retirementProbeValid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
+        if(e.type>=108 && e.type<=110)std::cout<<",\"event_name\":"<<json(e.type==108?"Idle retirement sweep":e.type==109?"Ring allocator reclamation aggregate":"Command chunk reset")<<",\"retirement_identity_valid\":"<<(retirementProbeValid(e)?"true":"false")<<",\"queue\":"<<e.object<<",\"chunk_sequence\":"<<e.padding0<<",\"queue_frame\":"<<e.padding1;
         if(e.type>=104 && e.type<=107)std::cout<<",\"event_name\":"<<json(e.type==104?"Cache reader mutex acquisition wait":e.type==105?"AIR conversion":e.type==106?"Metal newLibrary":"Metal newFunction")<<",\"compiler_identity_valid\":"<<(compilerProbeValid(e)?"true":"false");
         if(e.type>=96 && e.type<=99)std::cout<<",\"event_name\":"<<json(e.type==96?"Queue frame-latency wait":e.type==97?"Swapchain admission wait":e.type==98?"Drawable acquire":"Queue/native frame binding")<<",\"presentation_identity_valid\":"<<(presentationProbeValid(e)?"true":"false");
         if(e.type>=100 && e.type<=103)std::cout<<",\"event_name\":"<<json(e.type==100?"Visibility sampled identity/status":e.type==101?"Visibility native freshness/flags":e.type==102?"Visibility window/display identity":"Visibility occlusion/configuration")<<",\"visibility_sample_only\":true";

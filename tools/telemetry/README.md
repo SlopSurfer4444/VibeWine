@@ -47,7 +47,7 @@ Set `DXMT_CS2_TRACE_PROFILE=compile-waits` **before starting the producer** for
 a short discriminating compiler experiment. The selection is parsed once and
 fixed for that producer's lifetime. An empty/unset value preserves the existing
 full stream and emits no new profile marker. Every other nonempty value,
-except the supported `presentation-waits` profile described below, including
+except the supported `presentation-waits` and `stall-waits` profiles described below, including
 `full`, case changes or surrounding whitespace, fails closed: ordinary
 records are suppressed and event 95 reports `invalid-fail-closed`. Restart through
 the normal producer lifecycle to change profiles; rearming does not change it.
@@ -100,7 +100,7 @@ One event **95** identifies each observed generation of a nondefault producer,
 even when its first event attempts are filtered. It uses the existing v2 event
 layout and real writer admission/quiescence protocol. Object=1 is the profile
 metadata schema; flags=1 means `compile-waits`, flags=2 means invalid/fail-closed,
-flags=3 means `presentation-waits`;
+flags=3 means `presentation-waits`, flags=4 means `stall-waits`;
 p0 is the configured detailed record limit, p1 is the lifetime capacity 131072.
 Start=end is a CPU steady-clock instant; it is not a duration or performance
 metric. This single marker is outside the detailed record budget and consumes
@@ -201,6 +201,46 @@ is published. Do not reset/rearm to recycle slots or inflate either quota.
 
 ```sh
 python3 tools/telemetry/test_presentation_profile.py
+```
+
+## Opt-in slow CPU wall scopes
+
+`DXMT_CS2_TRACE_PROFILE=stall-waits` selects profile95 flags=4 before producer
+startup. It keeps scopes **1, 3, 5, 6–16, 19, 30–32, 40–49 and 104–110** only
+when their individual CPU wall duration is **at least 50,000,000 ns (50 ms)**.
+The test is inclusive; malformed end-before-start intervals are rejected before
+subtraction. Context **80–89 and 93–94** remains optional, bounded by the same
+`DXMT_CS2_TRACE_DETAIL_LIMIT` shared with104–107. Context and metadata alone do
+not establish a useful slow-scope capture. Metadata95 remains outside that cap.
+Counts/cache-hit records2/4/17, GPU/chunk20–25, reason33, configuration61/62,
+native feedback70–78, finish90–92, presentation96–99, visibility100–103 and
+unknown future kinds are excluded.
+
+Additive108 idle retirement sweep,109 ring allocator reclamation aggregate and
+110 command chunk reset are CPU intervals with object=queue birth serial,
+p0=chunk sequence, p1=queue frame (zero allowed), flags zero. Queue, chunk,
+thread and start must be nonzero. Duplicate queue/chunk/type records and
+conflicting frame/thread bindings for one queue/chunk fail capture acceptance.
+Observed phases must follow110 reset,108 idle sweep,109 ring reclamation without
+overlap; missing threshold-filtered phases stay unknown. Other retained scopes
+can overlap or nest, and no wall durations can be summed into CPU busy cost. Legacy Scope object payloads
+remain source pointers/local counters; the filter adds no stable identity or
+new frame joins. All durations include preemption and blocking and supply no
+GPU time, displayed cadence, gameplay FPS, or measured improvement.
+
+The decoder and analyzer independently reject wrong-profile kinds, malformed
+intervals, subthreshold scopes and detailed-cap violations. Analysis exposes
+`stall_capture`, requires at least one qualifying scope plus intact stopped
+capture evidence, and labels task/compiler context partial. Fast or absent
+compiler stages remain unknown; preserved exact identities can join only the
+context actually present. `--expected-profile stall-waits` writes the report
+and exits3 unless that capture is usable. It does not certify loaded binaries
+or complete frame coverage. Use the existing session owner, retention caps,
+manual cleanup and active/recovery holds; no new collector is installed.
+See [the bounded capture recipe](STALL_WAITS.md).
+
+```sh
+python3 tools/telemetry/test_stall_profile.py
 ```
 
 ## Interpretation

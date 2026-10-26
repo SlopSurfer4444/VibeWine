@@ -1,5 +1,10 @@
 # Current source, installation and checks
 
+Latest [late-stall diagnostic source](diagnostics/stall-waits-20261026.md) adds
+an explicit50ms CPU-wall profile and three finish-thread reclamation scopes.
+Both complete renderer configurations rebuild. This checkpoint is not installed;
+the playable runtime selection is preserved. It supplies no new game/FPS result.
+
 Latest [initializer repair](diagnostics/initializer-repair-20261026.md):
 transactional initialization, checked resource creation and failure ownership,
 with consumer queue preflight. Wine remains `5d4b43e4`; DXMT component

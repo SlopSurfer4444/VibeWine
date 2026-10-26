@@ -9,6 +9,9 @@ from compiler_attribution import compiler_attribution
 from presentation_analysis import presentation_analysis
 from visibility_analysis import visibility_analysis
 CAPACITY=131072
+STALL_WAIT_THRESHOLD_NS=50_000_000
+STALL_SCOPE_TYPES={1,3,5,19}|set(range(6,17))|set(range(30,33))|set(range(40,50))|set(range(104,111))
+STALL_CONTEXT_TYPES=set(range(80,90))|{93,94}
 REASONS={0:'Unknown',1:'Present',2:'StagingMap',3:'GetDataNotReady',4:'ExplicitFlush',5:'GPUIdle',6:'FenceSignal',7:'FenceWait',8:'PassPromotion'}
 SYNC_NAMES={30:'StagingMap CPU fence wait',31:'GetData not-ready Flush',32:'GPUIdle CPU fence wait'}
 MAP_FLAGS={1:'READ',2:'WRITE',3:'READ_WRITE'}
@@ -33,26 +36,79 @@ def producer_profile_analysis(events,summary):
     failures=[]
     if len(markers)!=1:failures.append('duplicate_profile_metadata')
     marker=markers[0]
-    valid=marker['object']==1 and marker['flags'] in (1,2,3) and marker['start']==marker['end'] and marker['padding0']<=32768 and marker['padding1']==CAPACITY
-    if marker['flags']==3 and not marker['thread']:valid=False
+    valid=marker['object']==1 and marker['flags'] in (1,2,3,4) and marker['start']==marker['end'] and marker['padding0']<=32768 and marker['padding1']==CAPACITY
+    if marker['flags'] in (3,4) and not marker['thread']:valid=False
+    if marker['flags']==4 and not marker['start']:valid=False
     if not valid:failures.append('malformed_profile_metadata')
-    name='compile-waits' if marker['flags']==1 else 'invalid-fail-closed' if marker['flags']==2 else 'presentation-waits' if marker['flags']==3 else 'unknown'
+    name={1:'compile-waits',2:'invalid-fail-closed',3:'presentation-waits',4:'stall-waits'}.get(marker['flags'],'unknown')
     if marker['flags']==2:failures.append('invalid_producer_profile_fail_closed')
     keep={3,4,5,17,19,93,94}|set(range(80,90))|set(range(104,108))
     if marker['flags']==3:keep={1,2,33,40,61,62}|set(range(6,17))|set(range(20,26))|set(range(44,50))|set(range(70,79))|set(range(89,93))|set(range(96,104))
+    if marker['flags']==4:keep=STALL_SCOPE_TYPES|STALL_CONTEXT_TYPES
     excluded=[e['index'] for e in events if e['type']!=95 and e['type'] not in keep]
-    if marker['flags'] in (1,3) and excluded:failures.append('excluded_event_in_'+name.replace('-','_')+'_profile')
+    if marker['flags'] in (1,3,4) and excluded:failures.append('excluded_event_in_'+name.replace('-','_')+'_profile')
+    if marker['flags']==4:
+        if any(e['type']!=95 and e['end']<e['start'] for e in events):failures.append('malformed_stall_interval')
+        if any(e['type'] in STALL_SCOPE_TYPES and e['end']>=e['start'] and e['end']-e['start']<STALL_WAIT_THRESHOLD_NS for e in events):failures.append('below_stall_duration_threshold')
+        detail=[e for e in events if e['type'] in STALL_CONTEXT_TYPES or 104<=e['type']<=107]
+        cap=[e for e in detail if e['type']==89 and e['flags']==1]
+        charged=[e for e in detail if not (e['type']==89 and e['flags']==1)]
+        if len(charged)>marker['padding0'] or len(cap)>1 or (cap and (not marker['padding0'] or len(charged)!=marker['padding0'])):
+            failures.append('stall_detail_budget_exceeded_or_invalid_cap_marker')
+        if any(e['object'] or not e['thread'] or not e['start'] or e['start']!=e['end'] or e['padding0']!=marker['padding0'] or e['padding1'] for e in cap):
+            failures.append('malformed_stall_detail_cap_marker')
+        if any(108<=e['type']<=110 and (not e['object'] or not e['thread'] or not e['start'] or not e['padding0'] or e['flags']) for e in events):
+            failures.append('invalid_retirement_scope_identity_or_payload')
+        retirement_types=set();retirement_bindings={};retirement_phases=defaultdict(dict)
+        for e in events:
+            if not 108<=e['type']<=110:continue
+            key=e['object'],e['padding0'];typed=(*key,e['type']);binding=e['padding1'],e['thread']
+            if typed in retirement_types and 'duplicate_retirement_scope' not in failures:failures.append('duplicate_retirement_scope')
+            retirement_types.add(typed)
+            if key in retirement_bindings and retirement_bindings[key]!=binding and 'conflicting_retirement_scope_binding' not in failures:
+                failures.append('conflicting_retirement_scope_binding')
+            retirement_bindings[key]=binding
+            retirement_phases[key][e['type']]=e
+        for phases in retirement_phases.values():
+            ordered=[phases[t] for t in (110,108,109) if t in phases]
+            if any(a['end']>b['start'] for a,b in zip(ordered,ordered[1:])) and 'invalid_retirement_phase_chronology' not in failures:
+                failures.append('invalid_retirement_phase_chronology')
     if summary.get('producer_profile_policy_valid') is False:failures.append('decoder_profile_policy_invalid')
     count=sum(e['type']!=95 for e in events)
+    slow_count=sum(e['type'] in STALL_SCOPE_TYPES and e['end']>=e['start'] and e['end']-e['start']>=STALL_WAIT_THRESHOLD_NS for e in events)
     return {'name':name,'metadata_observed':True,'metadata_event_index':marker['index'],'metadata_count':len(markers),
             'schema':marker['object'],'detail_limit':marker['padding0'],'lifetime_capacity':marker['padding1'],
-            'policy_valid':not failures,'capture_usable':not failures and count>0,'failures':failures,
+            'policy_valid':not failures,'capture_usable':not failures and (slow_count>0 if marker['flags']==4 else count>0),'failures':failures,
             'selected_event_count':count,'excluded_event_indices':excluded,
+            **({'slow_scope_count':slow_count,'duration_threshold_ns':STALL_WAIT_THRESHOLD_NS,'context_coverage':'partial_capped_observations'} if marker['flags']==4 else {}),
             'limits':['Profile is parsed once per producer lifetime; captured event 95 describes this generation.',
                       'compile-waits excludes CPU Present cadence, native feedback and GPU chunk streams; this data cannot produce gameplay/displayed FPS.',
                       'Events 3/5/19 retain the existing 100 us duration censoring; missing events are not proof of zero waits/work.',
                       'The fixed append-only 131072 slots and detailed record cap remain; no capture duration or performance gain is guaranteed.',
-                      'A metadata-only capture contains no selected-event evidence.']}
+                      'A metadata-only capture contains no selected-event evidence.']+
+                     (['stall-waits retains only CPU wall scopes >=50 ms plus bounded context; context alone is not slow-scope evidence.',
+                       'CPU wall includes preemption and blocking; this is not CPU busy cost, GPU duration, displayed cadence, or FPS.',
+                       'Fast or absent compiler stages remain unknown; context and task joins can be partial.'] if marker['flags']==4 else [])}
+
+def stall_analysis(events,summary,profile,detailed,compiler):
+    if profile['name']!='stall-waits':
+        return {'coverage':'unknown','capture_usable':False,'slow_scopes':[]}
+    scopes=[dict(event_index=e['index'],event_type=e['type'],source_object=e['object'],thread=e['thread'],
+                 flags=e['flags'],source_padding0=e['padding0'],source_padding1=e['padding1'],
+                 start_cpu_ns=e['start'],end_cpu_ns=e['end'],observed_cpu_wall_duration_ms=(e['end']-e['start'])/1e6,
+                 identity_semantics='queue birth serial and chunk sequence; frame zero allowed' if 108<=e['type']<=110 else 'source probe identity only; legacy Scope objects are pointers, not birth serials',
+                 **({'event_name':{108:'Idle retirement sweep',109:'Ring allocator reclamation aggregate',110:'Command chunk reset'}[e['type']],
+                     'queue_birth_serial':e['object'],'chunk_sequence':e['padding0'],'queue_frame':e['padding1']} if 108<=e['type']<=110 else {}))
+            for e in events if e['type'] in STALL_SCOPE_TYPES and e['end']>=e['start'] and e['end']-e['start']>=STALL_WAIT_THRESHOLD_NS]
+    integrity=summary.get('inconclusive_window') is False and summary.get('structurally_complete') is True and summary.get('producer_quiescence_verified') is True and detailed['capture_usable'] and (compiler['coverage']=='unknown' or compiler['capture_usable'])
+    return dict(coverage='observed_slow_cpu_wall_scopes' if scopes else 'unknown',capture_usable=bool(profile['capture_usable'] and integrity),
+                threshold_ns=STALL_WAIT_THRESHOLD_NS,slow_scopes=scopes,context_coverage='partial_capped_observations',
+                missing_fast_scopes='unknown_threshold_filtered_or_unobserved',summed_cpu_busy_ms=None,gpu_time_ms=None,fps=None,
+                limits=['Threshold is inclusive and applies independently to each scope; nested scopes can overlap.',
+                        'Wall intervals include blocking and preemption; they do not measure CPU busy cost or GPU work.',
+                        'Legacy object/padding payloads retain source pointer/local-counter semantics; no new identity joins are inferred.',
+                        'Missing fast stages, task context and scopes crossing capture boundaries remain unknown.',
+                        'A valid capture is bounded observed evidence, not complete frame coverage or proof of installed/runtime behavior.'])
 
 def sync_analysis(events,chunkrows,rejected):
     """Observed CPU scopes and identity-only reason joins; never infer missing cost."""
@@ -122,7 +178,7 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
         for k in ['generation','type','thread','flags']:uint32(e[k])
         if e['generation']!=gen or e['index']>=CAPACITY or e['index'] in seen:raise ValueError('generation/index mismatch or duplicate')
         seen.add(e['index'])
-        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|set(range(80,108))|{17,19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76,77,78} else 'unknown'
+        expected='native_gpu_ns' if e['type']==24 else 'cpu_steady_ns' if e['type'] in set(range(1,17))|set(range(20,24))|set(range(80,111))|{17,19,25,30,31,32,33,40,41,42,43,44,45,46,47,48,49,61,62,70,71,72,73,74,75,76,77,78} else 'unknown'
         if e.get('clock_domain')!=expected:raise ValueError('clock domain mismatch')
     rejected=defaultdict(int); cadence=[]; presentations=defaultdict(list);intervals=defaultdict(list)
     for e in events:
@@ -182,6 +238,11 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
     detailed=detail_analysis(events,summary,chunkrows,rejected)
     producer_profile=producer_profile_analysis(events,summary)
     compiler=compiler_attribution(events,summary,detailed,producer_profile,rejected)
+    if producer_profile['name']=='stall-waits':
+        compiler['coverage']='partial_threshold_filtered_scopes' if compiler['coverage']!='unknown' else 'unknown'
+        compiler['missing_stages']='unknown_threshold_filtered_or_unobserved'
+        compiler['context_coverage']='partial_capped_observations'
+        compiler['limits'].append('stall-waits retains compiler scopes only at >=50 ms; a missing fast stage cannot establish route completion, zero cost, or a cache outcome.')
     quality=[]
     if compiler['coverage']!='unknown' and not compiler['capture_usable']:quality.append('compiler_stage_attribution_invalid')
     if not producer_profile['capture_usable']:
@@ -214,13 +275,18 @@ def analyze(rows,*,expected_dimensions=None,expected_revision=None):
     if visibility['coverage']=='sampled_observations' and not visibility['sample_fields_valid']:
         producer_profile['capture_usable']=False
         quality.append('visibility_sample_fields_or_capture_integrity_invalid')
-    return {'visibility_observations':visibility,'presentation_capture':presentation,'schema':2,'generation':gen,'decoder_identity':summary.get('identity'),'scope':'observed immutable snapshot only; displayed cadence only from valid native presented feedback; no FPS gain inference','producer_profile':producer_profile,'wave7':wave7,
+    stall=stall_analysis(events,summary,producer_profile,detailed,compiler)
+    if producer_profile['name']=='stall-waits' and not stall['capture_usable']:
+        producer_profile['capture_usable']=False
+        compiler['capture_usable']=False
+        quality.append('stall_capture_integrity_or_slow_scope_evidence_invalid')
+    return {'stall_capture':stall,'visibility_observations':visibility,'presentation_capture':presentation,'schema':2,'generation':gen,'decoder_identity':summary.get('identity'),'scope':'observed immutable snapshot only; displayed cadence only from valid native presented feedback; no FPS gain inference','producer_profile':producer_profile,'wave7':wave7,
       'quality_limits':quality,'rejections':dict(rejected),'cpu_present_streams':cadence,'queue_chunk_metrics':{'joined_chunks':len(chunkrows),'successful_completed_chunks':sum(c['completion_status']==4 for c in chunkrows),'publish_to_encode':stats(queuewait),'encode_setup_commit':stats(encodecommit),'commit_to_cpu_completion_observation':stats(completion),'gpu_command_buffer_durations':stats(gpu)},'chunks':chunkrows,
       'full_api_boundaries':api,'sync_probes':sync,'detailed_probes':detailed,'compiler_stage_attribution':compiler,'interpretation':['GPU duration uses native GPU end-start only; never subtract CPU and GPU epochs.','GPU durations may overlap and must not be summed as GPU busy time.','No absent event is interpreted as zero cost; old scopes below 100 us are censored.','V2 queue identity uses birth serials; legacy Present body identity remains a pointer. Duplicate chunk keys are rejected.','Missing boundary chunks and frame ownership prevent complete-frame GPU attribution.']}
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('input',type=Path);p.add_argument('--output',type=Path,required=True)
-    p.add_argument('--expected-profile', choices=('presentation-waits','compile-waits'));p.add_argument('--expected-width',type=int);p.add_argument('--expected-height',type=int);p.add_argument('--expected-revision',type=int)
+    p.add_argument('--expected-profile', choices=('presentation-waits','compile-waits','stall-waits'));p.add_argument('--expected-width',type=int);p.add_argument('--expected-height',type=int);p.add_argument('--expected-revision',type=int)
     a=p.parse_args()
     if (a.expected_width is None)!=(a.expected_height is None):p.error('expected width and height must be supplied together')
     rows=[]
