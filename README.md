@@ -8,12 +8,13 @@ measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
 **Current checkpoint: 26 October 2026.** The
-[deep hot-path round](docs/diagnostics/deep-hotpaths-20261026.md) adds exact-setter,
-staging-copy and texture-view work reduction, cheaper optional observation and
-four default-off native/PSO/transport experiments. Two complete matched builds
-and covered GPU readbacks pass. The round also reproduces an **unfixed initializer
-transaction defect** and records accepted/rejected follow-ups. These are general
-mechanisms; installed DS3 and gameplay FPS acceptance remain separate.
+[initializer repair](docs/diagnostics/initializer-repair-20261026.md) closes the
+resource transaction defects reproduced in the preceding deep hot-path round:
+checked capacity/staging reservations, complete depth/stencil publication,
+checked creation failures and native ownership cleanup. Two complete matched
+builds plus the final queue rebuild and 24 covered GPU stages per variant pass.
+These are general mechanisms. Installed DS3 and gameplay FPS acceptance remain
+separate; the playable runtime is preserved.
 
 The [first source drop](docs/releases/2026-10-25-source-preview.md),
 [neighbor wave](docs/integrations/neighbor-wave-20261025.md),

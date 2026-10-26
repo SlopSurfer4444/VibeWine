@@ -1,0 +1,657 @@
+{
+  "schema": 1,
+  "verificationDate": "2026-10-26",
+  "componentPin": "99e1a1c39206a42eb1cd46b27c6ddb52bde5612d",
+  "productionBuildSource": "55150d0af6a2418d1aae05bc53b8b0118379dea2",
+  "baseFullBuildSource": "b49b495f2a7f45a28838fa91120bb6c06550f2cc",
+  "componentProductionByteEquivalentToBuild": true,
+  "wineSource": "5d4b43e48f48d83254468596a0df8592d62e3242",
+  "buildMethod": "two fresh full 161-target builds, then both incrementally rebuilt for the sole additional queue source change; later component changes are tests/docs only",
+  "builds": {
+    "false": {
+      "matchedPeNativeDefinitions": [
+        {
+          "unit": "winemetal_unix.c",
+          "defines": [
+            "-DDXMT_BOUNDED_ENCODER_OPTIMIZER=0",
+            "-DDXMT_COMPUTE_PASS_FUSION=0",
+            "-DDXMT_DEAD_ATTACHMENT_STORES=0",
+            "-DDXMT_DEMAND_SCHEDULER=0",
+            "-DDXMT_DISCARD_HINTS=0",
+            "-DDXMT_EMPTY_COLOR_SLOTS=0",
+            "-DDXMT_FIXED_OUTPUT_METALFX=0",
+            "-DDXMT_IDLE_RETIREMENT=0",
+            "-DDXMT_MARSHAL_PACKETS=0",
+            "-DDXMT_NATIVE_RASTER_SHADOW=0",
+            "-DDXMT_PACKED_IR_GROWTH=0",
+            "-DDXMT_PHYSICAL_RESIDENCY_DEDUP=0",
+            "-DDXMT_PRECISE_BINDINGS=0",
+            "-DDXMT_RENDER_PASS_FUSION=0",
+            "-DDXMT_RESIDENCY_SETS=0",
+            "-DDXMT_SCENE_SUBMISSION=0",
+            "-DDXMT_SEMANTIC_BLEND_HASH=0",
+            "-DDXMT_SHADER_CLEANUP=0"
+          ]
+        },
+        {
+          "unit": "d3d11_device.cpp",
+          "defines": [
+            "-DDXMT_BOUNDED_ENCODER_OPTIMIZER=0",
+            "-DDXMT_COMPUTE_PASS_FUSION=0",
+            "-DDXMT_DEAD_ATTACHMENT_STORES=0",
+            "-DDXMT_DEMAND_SCHEDULER=0",
+            "-DDXMT_DISCARD_HINTS=0",
+            "-DDXMT_EMPTY_COLOR_SLOTS=0",
+            "-DDXMT_FIXED_OUTPUT_METALFX=0",
+            "-DDXMT_IDLE_RETIREMENT=0",
+            "-DDXMT_MARSHAL_PACKETS=0",
+            "-DDXMT_NATIVE_RASTER_SHADOW=0",
+            "-DDXMT_PACKED_IR_GROWTH=0",
+            "-DDXMT_PHYSICAL_RESIDENCY_DEDUP=0",
+            "-DDXMT_PRECISE_BINDINGS=0",
+            "-DDXMT_RENDER_PASS_FUSION=0",
+            "-DDXMT_RESIDENCY_SETS=0",
+            "-DDXMT_SCENE_SUBMISSION=0",
+            "-DDXMT_SEMANTIC_BLEND_HASH=0",
+            "-DDXMT_SHADER_CLEANUP=0"
+          ]
+        }
+      ],
+      "artifacts": {
+        "src/d3d11/d3d11.dll": {
+          "bytes": 5296128,
+          "sha256": "058c345b96648a0329b01558c4b41b23594335e7e68c731c1c7456cd9c009f10",
+          "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows"
+        },
+        "src/dxgi/dxgi.dll": {
+          "bytes": 1773568,
+          "sha256": "69a52510a8325e7a1e5d24cc8110a68fe717ee041554bc3ba0208667a00ef805",
+          "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows"
+        },
+        "src/d3d10/d3d10core.dll": {
+          "bytes": 1495040,
+          "sha256": "e4fceb90ac0feea5852ed25da02836ddb38dfe35d58be7265f43a86ffd51995e",
+          "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows"
+        },
+        "src/winemetal/winemetal.dll": {
+          "bytes": 118784,
+          "sha256": "da4f91280ace9e497d4ce9b22bf5cb471ab707d51912e38103b503092f8877b7",
+          "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows"
+        },
+        "src/winemetal/unix/winemetal.so": {
+          "bytes": 51944000,
+          "sha256": "b626d36b6b110dd71177575bc0666aac0f4aad1060175f0f8131c66a83320def",
+          "type": "Mach-O 64-bit dynamically linked shared library x86_64"
+        },
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": {
+          "bytes": 163006,
+          "sha256": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010",
+          "type": "MetalLib executable (MacOS), version 1.2.9"
+        },
+        "src/airconv/darwin/airconv": {
+          "bytes": 51844224,
+          "sha256": "38781ff7b19cdeae69eabaa0475764a6ee528f320ab175fd6a46d0af800955cf",
+          "type": "Mach-O 64-bit executable x86_64"
+        }
+      },
+      "compileCommandsSha256": "f319a7ff9980bd8817a29cf5753aa591bba6523501bd29b3ee149578a1758e7b"
+    },
+    "true": {
+      "matchedPeNativeDefinitions": [
+        {
+          "unit": "winemetal_unix.c",
+          "defines": [
+            "-DDXMT_BOUNDED_ENCODER_OPTIMIZER=1",
+            "-DDXMT_COMPUTE_PASS_FUSION=1",
+            "-DDXMT_DEAD_ATTACHMENT_STORES=1",
+            "-DDXMT_DEMAND_SCHEDULER=1",
+            "-DDXMT_DISCARD_HINTS=1",
+            "-DDXMT_EMPTY_COLOR_SLOTS=1",
+            "-DDXMT_FIXED_OUTPUT_METALFX=1",
+            "-DDXMT_IDLE_RETIREMENT=1",
+            "-DDXMT_MARSHAL_PACKETS=1",
+            "-DDXMT_NATIVE_RASTER_SHADOW=1",
+            "-DDXMT_PACKED_IR_GROWTH=1",
+            "-DDXMT_PHYSICAL_RESIDENCY_DEDUP=1",
+            "-DDXMT_PRECISE_BINDINGS=1",
+            "-DDXMT_RENDER_PASS_FUSION=1",
+            "-DDXMT_RESIDENCY_SETS=1",
+            "-DDXMT_SCENE_SUBMISSION=1",
+            "-DDXMT_SEMANTIC_BLEND_HASH=1",
+            "-DDXMT_SHADER_CLEANUP=1"
+          ]
+        },
+        {
+          "unit": "d3d11_device.cpp",
+          "defines": [
+            "-DDXMT_BOUNDED_ENCODER_OPTIMIZER=1",
+            "-DDXMT_COMPUTE_PASS_FUSION=1",
+            "-DDXMT_DEAD_ATTACHMENT_STORES=1",
+            "-DDXMT_DEMAND_SCHEDULER=1",
+            "-DDXMT_DISCARD_HINTS=1",
+            "-DDXMT_EMPTY_COLOR_SLOTS=1",
+            "-DDXMT_FIXED_OUTPUT_METALFX=1",
+            "-DDXMT_IDLE_RETIREMENT=1",
+            "-DDXMT_MARSHAL_PACKETS=1",
+            "-DDXMT_NATIVE_RASTER_SHADOW=1",
+            "-DDXMT_PACKED_IR_GROWTH=1",
+            "-DDXMT_PHYSICAL_RESIDENCY_DEDUP=1",
+            "-DDXMT_PRECISE_BINDINGS=1",
+            "-DDXMT_RENDER_PASS_FUSION=1",
+            "-DDXMT_RESIDENCY_SETS=1",
+            "-DDXMT_SCENE_SUBMISSION=1",
+            "-DDXMT_SEMANTIC_BLEND_HASH=1",
+            "-DDXMT_SHADER_CLEANUP=1"
+          ]
+        }
+      ],
+      "artifacts": {
+        "src/d3d11/d3d11.dll": {
+          "bytes": 5328896,
+          "sha256": "51f00132eb80b8b930277cb63e3dc9a42e702cf7846c70e7ca2d3d69c426071d",
+          "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows"
+        },
+        "src/dxgi/dxgi.dll": {
+          "bytes": 1773568,
+          "sha256": "03b6901fcd2f3e83a4a266823012d2974ececacc7c25ca903c1b127002d947d4",
+          "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows"
+        },
+        "src/d3d10/d3d10core.dll": {
+          "bytes": 1495040,
+          "sha256": "43a3b376f1e31779cf987b31645ef2ec68000722f2401cad1aa67739249ebb76",
+          "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows"
+        },
+        "src/winemetal/winemetal.dll": {
+          "bytes": 118784,
+          "sha256": "dc7f5be86738f178c7df96870b6c972071d06852b77706a02861641369ac4205",
+          "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows"
+        },
+        "src/winemetal/unix/winemetal.so": {
+          "bytes": 51949512,
+          "sha256": "cfd8fa40fc21465df080d41c16c93d454a3632ec17ab279bd7cb2b6edd8437e8",
+          "type": "Mach-O 64-bit dynamically linked shared library x86_64"
+        },
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": {
+          "bytes": 163006,
+          "sha256": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010",
+          "type": "MetalLib executable (MacOS), version 1.2.9"
+        },
+        "src/airconv/darwin/airconv": {
+          "bytes": 51845640,
+          "sha256": "1cc1c06a7a778195120a7771f618af0874ec4cabf28ddc6b1f618dfdfd46c624",
+          "type": "Mach-O 64-bit executable x86_64"
+        }
+      },
+      "compileCommandsSha256": "1467a0b32686d17080fbef6bc03d896860fdeca2a091f4e06e93887b849cdd04"
+    }
+  },
+  "bridge": {
+    "addedOrdinal": 150,
+    "dispatchEntries": 151,
+    "previousOrdinalsPreserved": "0-149 including null 83",
+    "matchingPeNativeRequired": true
+  },
+  "cpuChecks": {
+    "transaction": "31 cases ASan/UBSan, exact initializer/ring/tracker and Metal.hpp, mocked native C endpoints",
+    "checkedRing": "native ASan/UBSan atomic reservation/reuse/metadata failure checks; existing retention suite passes",
+    "creation": "119 cases plus 5 rejected mutants, extracted production factories; mocked COM/native/KMT endpoints",
+    "queue": "complete production method, 4 async/debug configurations plus 4 rejected old-order controls, ASan/UBSan",
+    "machCleanup": "real private native Mach rights, PE/native dispatch, 11 production Texture allocation failure cases and mutations; imported rights preserved",
+    "compatibility": "native capture ABI, checked SQLite cache, texture-view prefix and historical 16 known-defect observations pass their distinct contracts",
+    "gpuParserTests": 13,
+    "telemetryTests": 221,
+    "workspaceTests": 13
+  },
+  "gpu": {
+    "positiveStagesPerVariant": 24,
+    "processBoundRuns": 17,
+    "intentionalNegativeControlsRejected": 7,
+    "runs": [
+      {
+        "label": "initializer-repair-empty-off-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 4,
+        "stagesUnsupported": 0,
+        "checks": 347,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "71f0db66da8c276320ff813cc3e533b2269a06a92a20bd3d30bae016039731d5"
+      },
+      {
+        "label": "initializer-repair-empty-on-depth",
+        "case": "depth",
+        "exitCode": 20,
+        "status": "negative_control_rejected",
+        "stagesPassed": 3,
+        "stagesUnsupported": 0,
+        "checks": 353,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "11273759b53f2439addac0f68c52665e9c604cb6580a8d47d1f5404754eac39e"
+      },
+      {
+        "label": "initializer-repair-empty-on-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 4,
+        "stagesUnsupported": 0,
+        "checks": 343,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "b208e4c5681f179e04328486a0f54eca3e012c0f4604a93533b84ce452166d10"
+      },
+      {
+        "label": "initializer-repair-init-off-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 7,
+        "stagesUnsupported": 0,
+        "checks": 157,
+        "stages": [
+          {
+            "name": "private_buffer_zero",
+            "status": "pass",
+            "checks": 8,
+            "detail": "verified"
+          },
+          {
+            "name": "padded_upload_subresources",
+            "status": "pass",
+            "checks": 21,
+            "detail": "verified"
+          },
+          {
+            "name": "zero_texture_growth",
+            "status": "pass",
+            "checks": 16,
+            "detail": "verified"
+          },
+          {
+            "name": "render_target_zero",
+            "status": "pass",
+            "checks": 13,
+            "detail": "verified"
+          },
+          {
+            "name": "depth_stencil_zero",
+            "status": "pass",
+            "checks": 23,
+            "detail": "verified"
+          },
+          {
+            "name": "depth_stencil_upload",
+            "status": "pass",
+            "checks": 31,
+            "detail": "verified"
+          },
+          {
+            "name": "padded_volume_upload",
+            "status": "pass",
+            "checks": 8,
+            "detail": "verified"
+          }
+        ],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "3ab20379e6f3938e5afaccf1c818f5a32fa42f764be8af44dcfb70469b723f4b"
+      },
+      {
+        "label": "initializer-repair-init-on-depth",
+        "case": "depth",
+        "exitCode": 20,
+        "status": "negative_control_rejected",
+        "stagesPassed": 5,
+        "stagesUnsupported": 0,
+        "checks": 226,
+        "stages": [
+          {
+            "name": "private_buffer_zero",
+            "status": "pass",
+            "checks": 10,
+            "detail": "verified"
+          },
+          {
+            "name": "padded_upload_subresources",
+            "status": "pass",
+            "checks": 20,
+            "detail": "verified"
+          },
+          {
+            "name": "zero_texture_growth",
+            "status": "pass",
+            "checks": 16,
+            "detail": "verified"
+          },
+          {
+            "name": "render_target_zero",
+            "status": "pass",
+            "checks": 15,
+            "detail": "verified"
+          },
+          {
+            "name": "depth_stencil_zero",
+            "status": "pass",
+            "checks": 24,
+            "detail": "verified"
+          },
+          {
+            "name": "depth_stencil_upload",
+            "status": "fail",
+            "checks": 8,
+            "detail": "negative_initializer_depth_query"
+          }
+        ],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "f989862b9f62597adf0a32af6b798948c3c00a7f6d901fa438e190e9d9e3a1e1"
+      },
+      {
+        "label": "initializer-repair-init-on-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 7,
+        "stagesUnsupported": 0,
+        "checks": 294,
+        "stages": [
+          {
+            "name": "private_buffer_zero",
+            "status": "pass",
+            "checks": 14,
+            "detail": "verified"
+          },
+          {
+            "name": "padded_upload_subresources",
+            "status": "pass",
+            "checks": 21,
+            "detail": "verified"
+          },
+          {
+            "name": "zero_texture_growth",
+            "status": "pass",
+            "checks": 16,
+            "detail": "verified"
+          },
+          {
+            "name": "render_target_zero",
+            "status": "pass",
+            "checks": 21,
+            "detail": "verified"
+          },
+          {
+            "name": "depth_stencil_zero",
+            "status": "pass",
+            "checks": 23,
+            "detail": "verified"
+          },
+          {
+            "name": "depth_stencil_upload",
+            "status": "pass",
+            "checks": 30,
+            "detail": "verified"
+          },
+          {
+            "name": "padded_volume_upload",
+            "status": "pass",
+            "checks": 8,
+            "detail": "verified"
+          }
+        ],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "cf29db5c81c58a3e6646245d464adf571a7dba22fe033719c4fcb776ef3e0835"
+      },
+      {
+        "label": "initializer-repair-init-on-upload",
+        "case": "upload",
+        "exitCode": 20,
+        "status": "negative_control_rejected",
+        "stagesPassed": 1,
+        "stagesUnsupported": 0,
+        "checks": 137,
+        "stages": [
+          {
+            "name": "private_buffer_zero",
+            "status": "pass",
+            "checks": 10,
+            "detail": "verified"
+          },
+          {
+            "name": "padded_upload_subresources",
+            "status": "fail",
+            "checks": 11,
+            "detail": "negative_initializer_upload_golden"
+          }
+        ],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "51a477c3d5a0442e6eed89d0e4824d9e4aec3ced6082c621e7f0843ff61c1b61"
+      },
+      {
+        "label": "initializer-repair-off-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 5,
+        "stagesUnsupported": 0,
+        "checks": 143,
+        "stages": [
+          {
+            "name": "draw_basic",
+            "status": "pass",
+            "checks": 18,
+            "detail": "verified"
+          },
+          {
+            "name": "mrt_depth",
+            "status": "pass",
+            "checks": 29,
+            "detail": "verified"
+          },
+          {
+            "name": "compute",
+            "status": "pass",
+            "checks": 27,
+            "detail": "verified"
+          },
+          {
+            "name": "msaa",
+            "status": "pass",
+            "checks": 17,
+            "detail": "verified_four_samples"
+          },
+          {
+            "name": "query_later_chunk",
+            "status": "pass",
+            "checks": 17,
+            "detail": "verified"
+          }
+        ],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "5e1aa819b76fd73f9546a94abe76fec1bcabf290bdb6a280681a7656143364f4"
+      },
+      {
+        "label": "initializer-repair-on-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 5,
+        "stagesUnsupported": 0,
+        "checks": 139,
+        "stages": [
+          {
+            "name": "draw_basic",
+            "status": "pass",
+            "checks": 20,
+            "detail": "verified"
+          },
+          {
+            "name": "mrt_depth",
+            "status": "pass",
+            "checks": 30,
+            "detail": "verified"
+          },
+          {
+            "name": "compute",
+            "status": "pass",
+            "checks": 19,
+            "detail": "verified"
+          },
+          {
+            "name": "msaa",
+            "status": "pass",
+            "checks": 18,
+            "detail": "verified_four_samples"
+          },
+          {
+            "name": "query_later_chunk",
+            "status": "pass",
+            "checks": 17,
+            "detail": "verified"
+          }
+        ],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "20d1c3cce2eb89abda52707b44a51248435774ee9a9d79cbbc56b1e3f6c109ca"
+      },
+      {
+        "label": "initializer-repair-on-pixel",
+        "case": "pixel",
+        "exitCode": 20,
+        "status": "negative_control_rejected",
+        "stagesPassed": 0,
+        "stagesUnsupported": 0,
+        "checks": 56,
+        "stages": [
+          {
+            "name": "draw_basic",
+            "status": "fail",
+            "checks": 27,
+            "detail": "negative_control_pixel"
+          }
+        ],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "6bd7ada16662c3638f9b92b84902398d7b36de543f63c59ed48a8279fdaef30b"
+      },
+      {
+        "label": "initializer-repair-resolve-off-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 2,
+        "stagesUnsupported": 0,
+        "checks": 81,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "22c282a5c181cf095a7008750f2aa4df07deecfeea1ab5a1d6dc04f26e95983e"
+      },
+      {
+        "label": "initializer-repair-resolve-on-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 2,
+        "stagesUnsupported": 0,
+        "checks": 119,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "6852c136112983c4e9e4a12fb0b5180cb1033f7ccc9496f713126b22198a611e"
+      },
+      {
+        "label": "initializer-repair-resolve-on-wrong-golden",
+        "case": "wrong-golden",
+        "exitCode": 20,
+        "status": "negative_control_rejected",
+        "stagesPassed": 0,
+        "stagesUnsupported": 0,
+        "checks": 81,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "e2676d13f88fcf077eb70ceab4f247785b8c997b1948d991e9282a6a7d26f0a3"
+      },
+      {
+        "label": "initializer-repair-staging-off-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 6,
+        "stagesUnsupported": 0,
+        "checks": 197,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "5939ffaf66189db1f85c7b76e59296fcdfc384440f7160358b04a088a9f39e63"
+      },
+      {
+        "label": "initializer-repair-staging-on-normal",
+        "case": "normal",
+        "exitCode": 0,
+        "status": "pass",
+        "stagesPassed": 6,
+        "stagesUnsupported": 0,
+        "checks": 209,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "dc2fcb4e80211a7c2bd9dd973366a798f3072903b06f7cee163f6b4b0d6ee823"
+      },
+      {
+        "label": "initializer-repair-staging-on-staging",
+        "case": "staging",
+        "exitCode": 20,
+        "status": "negative_control_rejected",
+        "stagesPassed": 0,
+        "stagesUnsupported": 0,
+        "checks": 34,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "d44684d5f152a11c1858f4f230767e19e50c24cc133fba9f9926ac86ec85e953"
+      },
+      {
+        "label": "initializer-repair-staging-on-view",
+        "case": "view",
+        "exitCode": 20,
+        "status": "negative_control_rejected",
+        "stagesPassed": 4,
+        "stagesUnsupported": 0,
+        "checks": 110,
+        "stages": [],
+        "sameProcessBirthAndSevenMappings": true,
+        "cleanupSucceeded": true,
+        "rawResultSha256": "c06b2b21d2d5f8be1222b261d6bcb54c89b97f123f3f4f831dc6dbe3810cc121"
+      }
+    ],
+    "restoration": {
+      "restored": true,
+      "baselinePlanSha256": "8ef94069199b5fa81fee658eba54c96a6539c98f29bcc5126e13438d4ce4d70a",
+      "allBaselineFilesVerified": true,
+      "privatePrefixIdentityVerified": true,
+      "noIpcSockets": true
+    }
+  },
+  "rawReceiptBytesAtClosure": 612554,
+  "installedRuntimeChanged": false,
+  "gameLaunched": false,
+  "fpsResult": null,
+  "limitations": [
+    "No actual GPU out-of-memory or asynchronous device/command-buffer failure injection",
+    "No GPU shared KMT/bootstrap creation or complete successful KeyedMutex lifecycle validation",
+    "Zero readbacks alone do not prove an internal zero command executed; CPU command-count controls supplement them",
+    "Covered padded array/mip/3D data uploads do not establish all BC, alias, attachment or GS/TS/presentation surfaces",
+    "Retained Wine/dependencies scaffold, not a fresh complete Wine distribution",
+    "No DS3 gameplay, displayed frame timing or performance comparison in this repair"
+  ]
+}

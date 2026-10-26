@@ -1,12 +1,13 @@
 # VibeWine roadmap
 
-The [26 October deep round](docs/diagnostics/deep-hotpaths-20261026.md)
-closes nine source improvements and four default-off experiments with paired
-build/covered GPU evidence. The next correctness priority is the reproduced
-initializer reserve/fill/publish transaction and checked callers. The next
-measurement priorities are actual presentation binding/finite closure, consumer
-compiler dependencies and controlled A/A then A/B gameplay. Source/build success
-preserves the installed playable runtime and does not promote every experiment.
+The [26 October initializer repair](docs/diagnostics/initializer-repair-20261026.md)
+closes the reproduced reserve/fill/publish transaction and checked creation
+callers, including consumer preflight and fresh failure-path native ownership.
+Paired builds and 24 covered GPU stages per variant pass. Actual native GPU
+failure/device-lost liveness, full shared lifetime and presentation binding remain
+separate work. The next measurement priorities are finite capture closure,
+consumer compiler dependencies and controlled A/A then A/B gameplay. The
+installed playable runtime is preserved; this repair makes no FPS claim.
 
 This is a direction for contributions, not a release promise. Start with the
 [component source](README.md#get-the-source) and [contribution guide](CONTRIBUTING.md).

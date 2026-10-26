@@ -131,3 +131,19 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/empty-color-slots/run.py
         working-directory: components/dxmt
+      - run: python3 tests/vibewine/ring-checked/run.py --sanitize
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/initializer-transaction/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/initializer-creation/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/mach-port-cleanup/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/capture-validity/test_native.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/checked-cache/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/initializer-queue/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/initializer-transaction/gpu/test_analyze.py
+        working-directory: components/dxmt

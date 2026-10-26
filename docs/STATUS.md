@@ -1,21 +1,21 @@
 # Current source, installation and checks
 
-Latest [deep hot-path round](diagnostics/deep-hotpaths-20261026.md):
-nine general changes, four additional default-off switches, focused failure and
-operation-count controls. Wine remains `5d4b43e4`. Installed ten-switch graphics
-and DS3 launch policy are preserved; no game/FPS result is inferred.
+Latest [initializer repair](diagnostics/initializer-repair-20261026.md):
+transactional initialization, checked resource creation and failure ownership,
+with consumer queue preflight. Wine remains `5d4b43e4`; DXMT component
+`99e1a1c3` has production bytes equal to built `55150d0a`. The installed
+playable runtime and DS3 launch policy are preserved.
 
-The earlier historical-fixture qualification repair passed remote CI40241985216.
-This later source pin adds the new focused suites; its remote result is separate
-from local full builds and native GPU evidence.
+The preceding deep-round hosted run 40246188105 passed. This repair adds new
+source gates; its hosted result is separate from local builds and GPU receipts.
 
 Reconciled **26 October 2026**. Source/build details for this wave are recorded
 in its report; dated documents retain their original historical claims.
 
 | Layer | Current state | What it does not establish |
 | --- | --- | --- |
-| Development source | Wine `5d4b43e4`; DXMT hot-path source checkpoint pinned by this hub, following `96940d73` | A component branch tip is not an installed runtime |
-| Latest source/build checks | DXMT production `101d5ff7`: two fresh161-target builds, eighteen boolean switches off/on; seventeen generic/resolve/active-MRT/depth/staging/view GPU stages per variant; five connected negatives; nine new focused suites,221 telemetry and13 workspace tests | Installation, GS/TS GPU execution, 3D/BC/alias GPU coverage, native failure equivalence, DS3 FPS or observer overhead |
+| Development source | Wine `5d4b43e4`; DXMT `99e1a1c3` initializer repair pinned by this hub | A component branch tip is not an installed runtime |
+| Latest source/build checks | Initializer repair: two fresh161-target builds and final one-unit incremental rebuilds; eighteen switches matched off/on; 24 covered GPU stages per variant and seven intended negative rejections; source/failure/sanitizer controls,221 telemetry and13 workspace tests | Installation, native GPU OOM/async device-error liveness, full shared KMT/bootstrap lifecycle, presentation or DS3 FPS |
 | Source prerelease | `v0.1.0-experimental.20261025`, frozen at hub `5be9c7d6`, Wine `85864be4` / DXMT `25eff5e1`; complete recursive source archive independently matched to Git and uploaded digests | Not an installable binary distribution or a release of the later neighbor source |
 | Matched build | Both fresh 161-target DXMT variants from local `036aaae9` (public tree-equivalent `e1772a42`) with ten experiment booleans off/on; matched PE/native/helper, retained Unix NTDLL/server and LLVM 15.0.7; compiler epoch 2 off / 3 cleanup on | Full reproducible Wine distribution or every optional feature |
 | Installation | Latest ten-switch experimental DXMT installed: five graphics artifacts updated, 17 Wine artifacts retained; exact readback and no-op passed. Separate helper delivery requests fixed-output MetalFX from the ordinary DS3 icon; prior recovery retained | Stable release promotion, actual game MetalFX activation, new exit/relaunch or FPS acceptance |
