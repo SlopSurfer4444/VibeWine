@@ -145,5 +145,7 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/initializer-queue/run.py
         working-directory: components/dxmt
+      - run: python3 tests/vibewine/stall-finish/run.py
+        working-directory: components/dxmt
       - run: python3 tests/vibewine/initializer-transaction/gpu/test_analyze.py
         working-directory: components/dxmt

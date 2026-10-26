@@ -98,7 +98,7 @@ class TraceProfileTests(unittest.TestCase):
         self.assertIn('invalid_producer_profile_fail_closed', result['producer_profile']['failures'])
 
     def test_malformed_duplicate_or_excluded_data_cannot_pass_profile(self):
-        invalid = [[marker(**change)] for change in [dict(object=0), dict(flags=0), dict(flags=4),
+        invalid = [[marker(**change)] for change in [dict(object=0), dict(flags=0), dict(flags=5),
                    dict(end=101), dict(padding0=32769), dict(padding1=tests_cli.CAPACITY-1)]]
         invalid += [[marker(), marker()], [marker(), event(42, 200, 300)],
                     [marker(), event(90, 200, 300)]]
