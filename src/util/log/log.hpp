@@ -48,6 +48,12 @@ public:
   static void err(const std::string &message);
   static void log(LogLevel level, const std::string &message);
 
+  // Explicitly opted-in diagnostics only. Accepts one nonempty line of at most
+  // 1011 payload bytes (plus an optional trailing newline), independently of the
+  // normal log level. True means the console route accepted the record, not
+  // that a downstream capture persisted it. The caller owns rate/count limits.
+  static bool diagnostic(const char *line);
+
   static LogLevel logLevel() { return s_instance.m_minLevel; }
 
 private:
@@ -62,6 +68,8 @@ private:
   bool m_initialized = false;
   PFN_wineLogOutput m_wineLogOutput = nullptr;
 
+  void initialize(); // called with m_mutex held
+  bool emitLine(const std::string &line); // same console and file route
   void emitMsg(LogLevel level, const std::string &message);
 
   std::string getFileName(const std::string &base);

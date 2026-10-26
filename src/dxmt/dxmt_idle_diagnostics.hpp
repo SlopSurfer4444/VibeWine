@@ -4,21 +4,32 @@
 
 namespace dxmt {
 
-// Finish-thread owned, optional bounded summaries into the existing stderr route.
+// Finish-thread owned, optional bounded summaries into the Logger diagnostic route.
+// The first record acknowledges enablement; it is not a pool sample. Each queue
+// gets at most 64 records including that acknowledgement, at most 1023 bytes each.
 // Fields describe a partial scan and pool references, never process RSS/freed RAM.
 class IdleRetirementDiagnostics {
   static constexpr uint64_t kPeriodNs = 10ull * 1000 * 1000 * 1000;
   bool enabled_;
   uint32_t snapshots_ = 0;
-  uint64_t started_ = 0, last_ = 0, released_ = 0, bytes_ = 0;
+  uint64_t last_ = 0, released_ = 0, bytes_ = 0;
 public:
   explicit IdleRetirementDiagnostics(bool enabled) : enabled_(enabled) {}
   bool enabled() const { return enabled_ && snapshots_ < 64; }
   bool record(uint64_t now, const IdleRetirementDomain::Sample &sample,
               uint64_t pid, uint64_t queue, char (&line)[1024]) {
     if (!enabled()) return false;
-    if (!started_) { started_ = last_ = now; }
     released_ += sample.released_count; bytes_ += sample.released_bytes;
+    if (!snapshots_) {
+      const auto n = std::snprintf(line, sizeof(line),
+        "VIBE_IDLE_START pid=%llu queue=%llu enabled=1 time_ns=%llu\n",
+        (unsigned long long)pid, (unsigned long long)queue, (unsigned long long)now);
+      if (n <= 0 || size_t(n) >= sizeof(line)) {
+        enabled_ = false; line[0] = 0; return false;
+      }
+      ++snapshots_; last_ = now;
+      return true;
+    }
     if (now < last_ || now - last_ < kPeriodNs) return false;
     const auto n = std::snprintf(line, sizeof(line),
       "VIBE_IDLE pid=%llu queue=%llu snapshot=%u start_ns=%llu end_ns=%llu seq=%llu "

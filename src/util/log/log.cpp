@@ -9,6 +9,7 @@
  */
 
 #include <iostream>
+#include <array>
 #include <utility>
 
 #include "log.hpp"
@@ -47,6 +48,58 @@ void Logger::log(LogLevel level, const std::string &message) {
   s_instance.emitMsg(level, message);
 }
 
+void Logger::initialize() {
+  if (std::exchange(m_initialized, true))
+    return;
+#ifdef _WIN32
+  HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+  if (ntdll)
+    m_wineLogOutput = reinterpret_cast<PFN_wineLogOutput>(
+        GetProcAddress(ntdll, "__wine_dbg_output"));
+#endif
+  auto path = getFileName(m_fileName);
+  if (!path.empty())
+    m_fileStream = std::ofstream(str::topath(path.c_str()).c_str());
+}
+
+bool Logger::emitLine(const std::string &line) {
+  // Wine's export acknowledges buffering, not the underlying Unix write.
+  bool accepted;
+  if (m_wineLogOutput)
+    accepted = m_wineLogOutput(line.c_str()) == static_cast<int>(line.size());
+  else {
+    std::cerr << line;
+    accepted = bool(std::cerr);
+  }
+  if (m_fileStream)
+    m_fileStream << line;
+  return accepted;
+}
+
+bool Logger::diagnostic(const char *line) {
+  if (!line)
+    return false;
+  size_t size = 0;
+  // Bounded scan; callers must supply accessible, NUL-terminated input.
+  while (size < 1024 && line[size])
+    ++size;
+  if (!size || size == 1024)
+    return false;
+  if (line[size - 1] == '\n')
+    --size;
+  // Wine's debug buffer is 1020 bytes and requires a spare byte. Account for
+  // the seven-byte prefix and newline before calling that non-truncating API.
+  if (!size || size > 1011)
+    return false;
+  for (size_t i = 0; i < size; ++i)
+    if (line[i] == '\n' || line[i] == '\r')
+      return false;
+
+  std::lock_guard<dxmt::mutex> lock(s_instance.m_mutex);
+  s_instance.initialize();
+  return s_instance.emitLine("info:  " + std::string(line, size) + "\n");
+}
+
 void Logger::emitMsg(LogLevel level, const std::string &message) {
   if (level >= m_minLevel) {
     std::lock_guard<dxmt::mutex> lock(m_mutex);
@@ -56,19 +109,7 @@ void Logger::emitMsg(LogLevel level, const std::string &message) {
 
     const char *prefix = s_prefixes.at(static_cast<uint32_t>(level));
 
-    if (!std::exchange(m_initialized, true)) {
-#ifdef _WIN32
-      HMODULE ntdll = GetModuleHandleA("ntdll.dll");
-
-      if (ntdll)
-        m_wineLogOutput = reinterpret_cast<PFN_wineLogOutput>(
-            GetProcAddress(ntdll, "__wine_dbg_output"));
-#endif
-      auto path = getFileName(m_fileName);
-
-      if (!path.empty())
-        m_fileStream = std::ofstream(str::topath(path.c_str()).c_str());
-    }
+    initialize();
 
     std::stringstream stream(message);
     std::string line;
@@ -79,15 +120,8 @@ void Logger::emitMsg(LogLevel level, const std::string &message) {
 
       std::string adjusted = outstream.str();
 
-      if (!adjusted.empty()) {
-        if (m_wineLogOutput)
-          m_wineLogOutput(adjusted.c_str());
-        else
-          std::cerr << adjusted;
-      }
-
-      if (m_fileStream)
-        m_fileStream << adjusted;
+      if (!adjusted.empty())
+        emitLine(adjusted);
     }
   }
 }
