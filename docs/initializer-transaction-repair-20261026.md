@@ -35,6 +35,13 @@ Internal submission reports `SubmissionFailed`; explicit `flushToWait()` throws
 empty successful submission or a sentinel wait. Destination-size/source-pitch
 arithmetic and CPU alignment arithmetic are checked before reservation.
 
+`CommandQueue::CommitCurrentChunk()` completes this fallible initializer preflight
+before advancing the consumer event sequence or changing unpublished chunk
+metadata. A failure leaves those values, publication counters and statistics
+unchanged; a successful retry uses the next unconsumed event. The complete-method
+`initializer-queue` fixture checks both asynchronous/synchronous encoding paths
+with debug enabled/disabled and rejects the old ordering.
+
 The focused fixture compiles the actual initializer, tracker, ring and Metal C++
 wrapper with ASan/UBSan against a mocked native C boundary. Its README describes
 coverage and seams. This establishes CPU transaction behavior, not installed

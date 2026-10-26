@@ -1,0 +1,142 @@
+#include <array>
+#include <atomic>
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <stdexcept>
+
+namespace dxmt {
+struct Counter {
+  uint64_t value = 0, notifications = 0, waits = 0, waited = 0;
+  uint64_t load(std::memory_order) const { return value; }
+  uint64_t fetch_add(uint64_t n, std::memory_order) { auto old = value; value += n; return old; }
+  void notify_one() { ++notifications; }
+  void wait(uint64_t expected, std::memory_order) { ++waits; waited = expected; }
+  bool operator==(const Counter &) const = default;
+};
+struct CommandChunk {
+  uint64_t chunk_id = 101, chunk_event_id = 102, frame_ = 103;
+  uint64_t trace_generation = 104, resource_initializer_event_id = 105;
+  bool operator==(const CommandChunk &) const = default;
+};
+struct Statistics {
+  uint64_t command_buffer_count = 11, commit_interval = 12;
+  bool operator==(const Statistics &) const = default;
+};
+struct Initializer {
+  bool fail = true;
+  uint64_t event = 73, calls = 0;
+  uint64_t flushToWait() { ++calls; if (fail) throw std::runtime_error("injected preparation failure"); return event; }
+};
+struct Coherent {
+  uint64_t value = 3;
+  uint64_t signaledValue() const { return value; }
+};
+struct Allocator {
+  uint64_t calls = 0, last = 0;
+  void free_blocks(uint64_t value) { ++calls; last = value; }
+  bool operator==(const Allocator &) const = default;
+};
+struct clock { static uint64_t now() { static uint64_t tick = 0; return ++tick; } };
+namespace cs2trace {
+struct Events {
+  uint64_t generation = 0, records = 0, reasons = 0, scopes = 0;
+  bool operator==(const Events &) const = default;
+};
+inline Events events;
+uint64_t generation() { ++events.generation; return 97; }
+uint64_t now() { return 1; }
+void record(uint64_t, unsigned, uint64_t, uint64_t, uint64_t, unsigned, uint64_t, uint64_t) { ++events.records; }
+void commitReason(uint64_t, uint64_t, uint64_t, uint64_t) { ++events.reasons; }
+struct Scope { unsigned type; uint64_t object; ~Scope() { ++events.scopes; } };
+}
+class CommandQueue {
+public:
+  static constexpr uint64_t kCommandChunkCount = 8;
+  Counter ready_for_encode{5}, chunk_ongoing{3};
+  std::array<CommandChunk, kCommandChunkCount> chunks;
+  uint64_t current_event_seq_id = 41, frame_count = 59;
+  Initializer initializer;
+  Statistics statistics;
+  Allocator cpu_command_allocator;
+  Coherent cpu_coherent;
+  uint64_t internal_calls = 0, internal_seq = 0, internal_chunk = 0;
+  uint64_t GetNextEventSeqId() { return ++current_event_seq_id; }
+  uint64_t traceSerial() const { return 7; }
+  template<class Fn> void UpdateCurrentFrameStatistics(Fn fn) { fn(statistics); }
+  void CommitChunkInternal(CommandChunk &chunk, uint64_t seq) {
+    ++internal_calls; internal_seq = seq; internal_chunk = chunk.chunk_id;
+    assert(chunk.chunk_event_id == current_event_seq_id);
+    assert(chunk.resource_initializer_event_id == initializer.event);
+  }
+  void CommitCurrentChunk();
+};
+// EXACT_COMMIT_CURRENT_CHUNK
+struct Snapshot {
+  Counter ready, ongoing;
+  std::array<CommandChunk, CommandQueue::kCommandChunkCount> chunks;
+  uint64_t event;
+  Statistics statistics;
+  Allocator allocator;
+  uint64_t internal_calls, internal_seq, internal_chunk;
+  cs2trace::Events traces;
+  explicit Snapshot(const CommandQueue &q) : ready(q.ready_for_encode), ongoing(q.chunk_ongoing), chunks(q.chunks),
+    event(q.current_event_seq_id), statistics(q.statistics), allocator(q.cpu_command_allocator),
+    internal_calls(q.internal_calls), internal_seq(q.internal_seq), internal_chunk(q.internal_chunk), traces(cs2trace::events) {}
+  bool operator==(const Snapshot &) const = default;
+};
+}
+
+int main() {
+  using namespace dxmt;
+  CommandQueue queue;
+  const Snapshot before(queue);
+  bool threw = false;
+  try { queue.CommitCurrentChunk(); } catch (const std::runtime_error &) { threw = true; }
+  if (!threw || !(Snapshot(queue) == before)) {
+    std::fputs("FAIL initializer failure mutated unpublished queue state\n", stderr);
+    return 1;
+  }
+  assert(queue.initializer.calls == 1);
+  queue.initializer.fail = false;
+  queue.CommitCurrentChunk();
+  assert(queue.initializer.calls == 2 && queue.current_event_seq_id == 42);
+  assert(queue.ready_for_encode.value == 6);
+  const auto &chunk = queue.chunks[5];
+  assert(chunk.chunk_id == 5 && chunk.chunk_event_id == 42 && chunk.frame_ == 59);
+  assert(chunk.trace_generation == 97 && chunk.resource_initializer_event_id == 73);
+  assert(queue.statistics.command_buffer_count == 12);
+  assert(queue.cpu_command_allocator.calls == 1 && queue.cpu_command_allocator.last == 3);
+  assert(cs2trace::events.generation == 1);
+#if ASYNC_ENCODING
+  assert(queue.ready_for_encode.notifications == 1 && queue.chunk_ongoing.value == 4);
+  assert(queue.chunk_ongoing.waits == 1 && queue.chunk_ongoing.waited == 7);
+  assert(queue.internal_calls == 0);
+  assert(cs2trace::events.records == 1 && cs2trace::events.reasons == 1 && cs2trace::events.scopes == 1);
+#ifdef DXMT_DEBUG
+  assert(queue.statistics.commit_interval == 13);
+#else
+  assert(queue.statistics.commit_interval == 12);
+#endif
+#else
+  assert(queue.ready_for_encode.notifications == 0 && queue.chunk_ongoing.value == 3 && queue.chunk_ongoing.waits == 0);
+  assert(queue.internal_calls == 1 && queue.internal_seq == 5 && queue.internal_chunk == 5);
+  assert(cs2trace::events.records == 0 && cs2trace::events.reasons == 0 && cs2trace::events.scopes == 0);
+  assert(queue.statistics.commit_interval == 12);
+#endif
+  // An idle initializer returns zero; preserve this success value rather than
+  // carrying the preceding event into the next published chunk.
+  queue.initializer.event = 0;
+  queue.CommitCurrentChunk();
+  assert(queue.initializer.calls == 3 && queue.current_event_seq_id == 43 && queue.ready_for_encode.value == 7);
+  assert(queue.chunks[6].chunk_id == 6 && queue.chunks[6].chunk_event_id == 43);
+  assert(queue.chunks[6].resource_initializer_event_id == 0);
+  assert(queue.statistics.command_buffer_count == 13 && queue.cpu_command_allocator.calls == 2);
+  std::printf("PASS exact CommitCurrentChunk failure/retry/idle async=%d debug=%d\n", ASYNC_ENCODING,
+#ifdef DXMT_DEBUG
+    1
+#else
+    0
+#endif
+  );
+}

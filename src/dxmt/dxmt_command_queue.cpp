@@ -139,13 +139,14 @@ CommandQueue::ShutdownAndJoin() {
 
 void
 CommandQueue::CommitCurrentChunk() {
+  auto initializer_event = initializer.flushToWait();
   auto chunk_id = ready_for_encode.load(std::memory_order_relaxed);
   auto &chunk = chunks[chunk_id % kCommandChunkCount];
   chunk.chunk_id = chunk_id;
   chunk.chunk_event_id = GetNextEventSeqId();
   chunk.frame_ = frame_count;
   chunk.trace_generation = cs2trace::generation();
-  chunk.resource_initializer_event_id = initializer.flushToWait();
+  chunk.resource_initializer_event_id = initializer_event;
   UpdateCurrentFrameStatistics([](auto &statistics) { statistics.command_buffer_count++; });
 #if ASYNC_ENCODING
   if (chunk.trace_generation) {
