@@ -46,3 +46,6 @@ option('vibewine_marshal_packets', type : 'boolean', value : false,
 
 option('vibewine_empty_color_slots', type : 'boolean', value : false,
   description : 'Experimental canonical empty color attachment descriptor suppression')
+
+option('vibewine_initializer_inclusive_reuse', type : 'boolean', value : false,
+  description : 'Experimental initializer-only upload reuse at inclusive completion equality')

@@ -169,6 +169,21 @@ private:
   }
 
   using UploadHeap = RingBumpState<StagingBufferBlockAllocator, kResourceInitializerGpuUploadHeapSize>;
+  // The generic ring accepts an exclusive reuse frontier. Only this upload
+  // owner has an inclusive event completion value: signal N follows every
+  // source read in submission N. Never advance across the pending generation
+  // or wrap the event sentinel. The experiment remains disabled by default.
+  static uint64_t uploadReuseBoundary(uint64_t current, uint64_t completed) {
+#if defined(DXMT_INITIALIZER_INCLUSIVE_REUSE) && DXMT_INITIALIZER_INCLUSIVE_REUSE
+    if (!current || current == std::numeric_limits<uint64_t>::max() || completed >= current)
+      return 0;
+    return completed + 1; // completed < current <= UINT64_MAX - 1
+#else
+    (void)current;
+    return completed;
+#endif
+  }
+
   InitStatus reserveGpu(std::span<const size_t> sizes, std::span<UploadHeap::Reservation> reservations);
 
   bool retainAllocation(Allocation *allocation);

@@ -558,7 +558,8 @@ ResourceInitializer::encode(WMT::CommandBuffer cmdbuf) {
 InitStatus
 ResourceInitializer::reserveGpu(std::span<const size_t> sizes, std::span<UploadHeap::Reservation> reservations) {
   if (gpu_command_heap_allocator.allocateChecked(
-          current_seq_id_, cached_coherent_seq_id, sizes, kResourceInitializerGpuUploadHeapAlignment, reservations))
+          current_seq_id_, uploadReuseBoundary(current_seq_id_, cached_coherent_seq_id), sizes,
+          kResourceInitializerGpuUploadHeapAlignment, reservations))
     return InitStatus::Success;
   bool retry = false;
   if (!idle()) {
@@ -575,7 +576,8 @@ ResourceInitializer::reserveGpu(std::span<const size_t> sizes, std::span<UploadH
   }
   // One additional attempt only if submission/coherence could free storage.
   if (retry && gpu_command_heap_allocator.allocateChecked(
-          current_seq_id_, cached_coherent_seq_id, sizes, kResourceInitializerGpuUploadHeapAlignment, reservations))
+          current_seq_id_, uploadReuseBoundary(current_seq_id_, cached_coherent_seq_id), sizes,
+          kResourceInitializerGpuUploadHeapAlignment, reservations))
     return InitStatus::Success;
   return InitStatus::OutOfMemory;
 }

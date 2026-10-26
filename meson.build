@@ -160,6 +160,7 @@ foreach option_name, define_name : {
   'vibewine_compute_pass_fusion' : 'DXMT_COMPUTE_PASS_FUSION',
   'vibewine_packed_ir_growth' : 'DXMT_PACKED_IR_GROWTH',
   'vibewine_empty_color_slots' : 'DXMT_EMPTY_COLOR_SLOTS',
+  'vibewine_initializer_inclusive_reuse' : 'DXMT_INITIALIZER_INCLUSIVE_REUSE',
   'vibewine_native_raster_shadow' : 'DXMT_NATIVE_RASTER_SHADOW',
   'vibewine_marshal_packets' : 'DXMT_MARSHAL_PACKETS',
   'vibewine_semantic_blend_hash' : 'DXMT_SEMANTIC_BLEND_HASH',

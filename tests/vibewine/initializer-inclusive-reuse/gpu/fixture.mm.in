@@ -1,0 +1,186 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+#import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <limits>
+#include <list>
+#include <mutex>
+#include <new>
+#include <span>
+#include <stdexcept>
+#include <thread>
+#include <utility>
+
+namespace dxmt {
+using mutex = std::mutex;
+template <typename T> constexpr T align(T size, size_t alignment) {
+  return (size + alignment - 1) & ~(alignment - 1);
+}
+}
+#define WARN(...) ((void)0)
+// PRODUCTION_RING
+static_assert(dxmt::kStagingBlockSizeForDeferredContext == 0x200000);
+class InitializerBoundary {
+public:
+// PRODUCTION_BOUNDARY
+};
+
+static constexpr size_t block_size = 4096;
+static void require(bool value, const char *message) {
+  if (!value) throw std::runtime_error(message);
+}
+struct Counts { size_t calls = 0; bool deny = false; };
+struct MetalAllocator {
+  struct Block {
+    id<MTLBuffer> buffer = nil;
+    Block() = default;
+    Block(const Block &) = delete;
+    Block(Block &&other) : buffer(other.buffer) { other.buffer = nil; }
+  };
+  id<MTLDevice> device;
+  Counts *counts;
+  Block allocate(size_t bytes) {
+    ++counts->calls;
+    if (counts->deny) return {};
+    Block block;
+    block.buffer = [device newBufferWithLength:bytes
+      options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeUntracked];
+    return block;
+  }
+  bool valid(const Block &block) const { return block.buffer != nil; }
+};
+using Ring = dxmt::RingBumpState<MetalAllocator, block_size>;
+
+struct Gate {
+  id<MTLSharedEvent> event;
+  explicit Gate(id<MTLDevice> device) : event([device newSharedEvent]) {
+    require(event != nil, "nil gate event");
+  }
+  void release() { event.signaledValue = 1; }
+  ~Gate() { release(); } // Release queued readers even when a check throws.
+};
+static void wait(id<MTLCommandBuffer> command, id<MTLSharedEvent> completed, uint64_t value) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (command.status != MTLCommandBufferStatusCompleted && command.status != MTLCommandBufferStatusError) {
+    require(std::chrono::steady_clock::now() < deadline, "GPU command deadline");
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  if (command.error) std::fprintf(stderr, "Metal error: %.512s\n", command.error.description.UTF8String);
+  require(command.status == MTLCommandBufferStatusCompleted, "GPU command failed");
+  require(completed.signaledValue == value, "completion event mismatch");
+}
+static unsigned char pattern(unsigned plane, unsigned generation, size_t offset) {
+  return static_cast<unsigned char>((offset * 29 + plane * 71 + generation * 113 + (offset >> 3)) % 251);
+}
+static void fill(const Ring::Reservation &source, unsigned plane, unsigned generation) {
+  auto *bytes = static_cast<unsigned char *>(source.block->buffer.contents) + source.offset;
+  for (size_t i = 0; i < block_size; ++i) bytes[i] = pattern(plane, generation, i);
+}
+static bool matches(id<MTLBuffer> destination, unsigned plane, unsigned generation) {
+  auto *bytes = static_cast<const unsigned char *>(destination.contents);
+  for (size_t i = 0; i < block_size; ++i)
+    if (bytes[i] != pattern(plane, generation, i)) return false;
+  return true;
+}
+static id<MTLCommandBuffer> copy(id<MTLCommandQueue> queue, std::span<Ring::Reservation> sources,
+    std::span<id<MTLBuffer>> destinations, id<MTLSharedEvent> completed, uint64_t value,
+    id<MTLSharedEvent> gate = nil) {
+  id<MTLCommandBuffer> command = [queue commandBuffer]; require(command != nil, "nil command");
+  if (gate) [command encodeWaitForEvent:gate value:1];
+  id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder]; require(encoder != nil, "nil blit encoder");
+  for (size_t i = 0; i < sources.size(); ++i)
+    [encoder copyFromBuffer:sources[i].block->buffer sourceOffset:sources[i].offset
+      toBuffer:destinations[i] destinationOffset:0 size:block_size];
+  [encoder endEncoding];
+  [command encodeSignalEvent:completed value:value];
+  [command commit];
+  return command;
+}
+static void scenario(id<MTLDevice> device, id<MTLCommandQueue> queue, size_t planes, bool premature) {
+  Counts counts;
+  Ring ring{MetalAllocator{device, &counts}};
+  std::array<size_t, 2> sizes{block_size, block_size};
+  std::array<Ring::Reservation, 2> first{}, second{};
+  auto first_span = std::span(first).first(planes), second_span = std::span(second).first(planes);
+  require(ring.allocateChecked(1, InitializerBoundary::uploadReuseBoundary(1, 0),
+    std::span(sizes).first(planes), 256, first_span), "first reservation");
+  require(counts.calls == planes, "unexpected initial allocation count");
+  if (planes == 2) require(first[0].block != first[1].block, "first planes overlap");
+  std::array<id<MTLBuffer>, 2> a{}, b{}, backing{};
+  for (size_t i = 0; i < planes; ++i) {
+    backing[i] = first[i].block->buffer;
+    fill(first[i], i, 1);
+    a[i] = [device newBufferWithLength:block_size options:MTLResourceStorageModeShared];
+    b[i] = [device newBufferWithLength:block_size options:MTLResourceStorageModeShared];
+    require(a[i] != nil && b[i] != nil, "nil readback buffer");
+    std::memset(a[i].contents, 0xCC, block_size);
+  }
+  if (planes == 2) require(backing[0] != backing[1], "first native backings alias");
+  id<MTLSharedEvent> completed = [device newSharedEvent]; require(completed != nil, "nil completed event");
+  Gate gate(device);
+  auto first_command = copy(queue, first_span, std::span(a).first(planes), completed, 1, gate.event);
+  // A genuinely queued command exists, while the source read remains GPU gated.
+  std::this_thread::sleep_for(std::chrono::milliseconds(25));
+  require(completed.signaledValue == 0, "delay gate did not hold completion");
+  for (size_t i = 0; i < planes; ++i) {
+    const auto *bytes = static_cast<const unsigned char *>(a[i].contents);
+    for (size_t j = 0; j < block_size; ++j) require(bytes[j] == 0xCC, "read occurred before gate release");
+  }
+  counts.deny = true;
+  const auto pending_boundary = premature ? uint64_t(2) : InitializerBoundary::uploadReuseBoundary(2, completed.signaledValue);
+  const auto pending_ok = ring.allocateChecked(2, pending_boundary,
+    std::span(sizes).first(planes), 256, second_span);
+  if (premature) {
+    require(pending_ok, "negative premature reuse did not occur");
+    for (size_t i = 0; i < planes; ++i) fill(second[i], i, 2);
+    gate.release(); wait(first_command, completed, 1);
+    require(!matches(a[0], 0, 1) && matches(a[0], 0, 2), "negative premature overwrite was not observed");
+    throw std::runtime_error("EXPECTED_NEGATIVE premature source reuse corrupted delayed A");
+  }
+  require(!pending_ok, "pending source incorrectly reused");
+  for (size_t i = 0; i < planes; ++i) require(second[i].block == nullptr && second[i].offset == 0, "failed output changed");
+  gate.release(); wait(first_command, completed, 1);
+  for (size_t i = 0; i < planes; ++i) require(matches(a[i], i, 1), "A readback before reuse");
+  const auto calls = counts.calls;
+  require(ring.allocateChecked(2, InitializerBoundary::uploadReuseBoundary(2, completed.signaledValue),
+    std::span(sizes).first(planes), 256, second_span), "equality reuse denied");
+  require(counts.calls == calls, "equality allocated new native backing");
+  for (size_t i = 0; i < planes; ++i) {
+    require(second[i].block == first[i].block && second[i].offset == 0 &&
+      second[i].block->buffer == backing[i], "backing identity/offset not reused");
+    fill(second[i], i, 2);
+  }
+  if (planes == 2) require(second[0].block != second[1].block &&
+    second[0].block->buffer != second[1].block->buffer, "reused planes overlap");
+  auto second_command = copy(queue, second_span, std::span(b).first(planes), completed, 2);
+  wait(second_command, completed, 2);
+  for (size_t i = 0; i < planes; ++i) {
+    require(matches(a[i], i, 1), "A changed after source reuse");
+    require(matches(b[i], i, 2), "B readback after reuse");
+  }
+  std::printf("PASS planes=%zu completed_equality=1 exact_backing_reuse=1 pending_denied=1 bytes_verified=%zu\n",
+    planes, 2 * planes * block_size);
+}
+int main(int argc, char **argv) {
+  @autoreleasepool {
+    const bool premature = argc == 2 && std::strcmp(argv[1], "--premature-reuse") == 0;
+    if (argc > 2 || (argc == 2 && !premature)) return 2;
+    try {
+      id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+      if (!device) { std::fprintf(stderr, "UNAVAILABLE no Metal device\n"); return 77; }
+      id<MTLCommandQueue> queue = [device newCommandQueue]; require(queue != nil, "nil queue");
+      scenario(device, queue, 1, premature);
+      scenario(device, queue, 2, false);
+      std::puts("NATIVE_METAL_RING_BOUNDARY_PASSED");
+      return 0;
+    } catch (const std::exception &error) {
+      std::fprintf(stderr, "FAIL %s\n", error.what());
+      return std::strstr(error.what(), "EXPECTED_NEGATIVE") ? 20 : 30;
+    }
+  }
+}
