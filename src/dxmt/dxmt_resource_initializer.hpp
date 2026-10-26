@@ -22,6 +22,8 @@
 #include "dxmt_context.hpp"
 #include "dxmt_ring_bump_allocator.hpp"
 #include "dxmt_texture.hpp"
+#include <limits>
+#include <span>
 
 namespace dxmt {
 
@@ -32,27 +34,36 @@ constexpr size_t kResourceInitializerChunks = 2;
 
 static_assert(kResourceInitializerChunks > 1);
 
+enum class InitStatus { Success, OutOfMemory, SubmissionFailed };
+
+struct InitResult {
+  InitStatus status;
+  uint64_t sequence; // meaningful only on success; never use a failure as an event value
+  explicit operator bool() const { return status == InitStatus::Success; }
+};
+
 class ResourceInitializer {
 public:
   ResourceInitializer(WMT::Device device);
   ~ResourceInitializer();
 
-  uint64_t initWithZero(BufferAllocation *buffer, uint64_t offset, uint64_t length);
+  InitResult initWithZero(BufferAllocation *buffer, uint64_t offset, uint64_t length);
 
-  uint64_t initDepthStencilWithZero(
+  InitResult initDepthStencilWithZero(
       const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level, uint32_t dsv_planar
   );
-  uint64_t
+  InitResult
   initRenderTargetWithZero(const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level);
-  uint64_t initWithZero(const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level);
-  uint64_t initWithData(
+  InitResult initWithZero(const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level);
+  InitResult initWithData(
       const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level, const void *data,
       size_t row_pitch, size_t depth_pitch, uint32_t format_flags
   );
 
   /*
    * Flush pending works and return the event id to wait
-   * 0 may be returned, meaning no work to wait
+   * 0 may be returned, meaning no work to wait. Throws MTLD3DError if
+   * command-buffer/encoder creation fails; the pending prefix remains queued.
    */
   uint64_t flushToWait();
 
@@ -69,9 +80,9 @@ public:
   }
 
 private:
-  uint64_t flushInternal();
+  InitResult flushInternal();
 
-  uint64_t initDepthStencilWithData(
+  InitResult initDepthStencilWithData(
       const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level, const void *data,
       size_t row_pitch, bool is_d24s8
   );
@@ -92,50 +103,73 @@ private:
 
   void reset();
 
-  void encode(WMT::CommandBuffer cmdbuf);
+  bool encode(WMT::CommandBuffer cmdbuf);
+
+  // Check capacity without publishing nodes or retaining resources. The single
+  // possible tracker spill is included even when its inline storage has room.
+  template <typename... Commands>
+  InitStatus prepareCpu() {
+    if (!cpu_command_heap || !upload_queue_ || !upload_queue_event_)
+      return InitStatus::OutOfMemory;
+    if (current_seq_id_ == std::numeric_limits<uint64_t>::max())
+      return InitStatus::SubmissionFailed;
+    auto fits = [&] {
+      size_t cursor = cpu_command_heap_offset;
+      auto add = [&](size_t size, size_t alignment) {
+        if (cursor > kResourceInitializerCpuCommandHeapSize)
+          return false;
+        size_t padding = (alignment - cursor % alignment) % alignment;
+        if (padding > kResourceInitializerCpuCommandHeapSize - cursor)
+          return false;
+        cursor += padding;
+        if (size > kResourceInitializerCpuCommandHeapSize - cursor)
+          return false;
+        cursor += size;
+        return true;
+      };
+      return add(sizeof(intptr_t[32]), alignof(intptr_t[32])) &&
+             (add(sizeof(Commands), alignof(Commands)) && ...);
+    };
+    if (fits())
+      return InitStatus::Success;
+    if (idle())
+      return InitStatus::OutOfMemory;
+    auto submitted = flushInternal();
+    if (!submitted)
+      return submitted.status;
+    return fits() ? InitStatus::Success : InitStatus::OutOfMemory;
+  }
 
   template <typename T>
-  T *
-  allocateCpuHeap() {
+  T *allocateCpuHeap() {
     constexpr size_t size = sizeof(T);
     constexpr size_t alignment = alignof(T);
-    size_t adjustment = align_forward_adjustment((void *)cpu_command_heap_offset, alignment);
+    if (!cpu_command_heap || cpu_command_heap_offset > kResourceInitializerCpuCommandHeapSize)
+      return nullptr;
+    size_t adjustment = (alignment - cpu_command_heap_offset % alignment) % alignment;
+    if (adjustment > kResourceInitializerCpuCommandHeapSize - cpu_command_heap_offset)
+      return nullptr;
     auto aligned = cpu_command_heap_offset + adjustment;
-    if (aligned + size > kResourceInitializerCpuCommandHeapSize)
+    if (size > kResourceInitializerCpuCommandHeapSize - aligned)
       return nullptr;
     cpu_command_heap_offset = aligned + size;
     return reinterpret_cast<T *>(ptr_add(cpu_command_heap, aligned));
   }
 
-  template <typename T>
-  bool
-  allocateBlit(T **p) {
-    if (auto ptr = (wmtcmd_base *)allocateCpuHeap<T>()) {
-      blit_cmd_tail->next.set(ptr);
-      blit_cmd_tail = ptr;
-      ptr->next.set(nullptr);
-      *p = (T *)ptr;
-      return true;
-    }
-    return false;
+  void publishBlit(wmtcmd_base *first, wmtcmd_base *last) {
+    last->next.set(nullptr);
+    blit_cmd_tail->next.set(first);
+    blit_cmd_tail = last;
   }
 
-  bool
-  allocateClear(WMTRenderPassInfo **p) {
-    if (auto ptr = allocateCpuHeap<ClearRenderPassInfo>()) {
-      clear_render_pass_tail->next = ptr;
-      clear_render_pass_tail = ptr;
-      ptr->next = nullptr;
-      WMT::InitializeRenderPassInfo(ptr->info);
-      *p = &ptr->info;
-      return true;
-    }
-    return false;
+  void publishClear(ClearRenderPassInfo *pass) {
+    pass->next = nullptr;
+    clear_render_pass_tail->next = pass;
+    clear_render_pass_tail = pass;
   }
 
-  WMT::Buffer allocateGpuHeap(size_t size, size_t &offset);
-
-  WMT::Buffer allocateZeroBuffer(size_t size);
+  using UploadHeap = RingBumpState<StagingBufferBlockAllocator, kResourceInitializerGpuUploadHeapSize>;
+  InitStatus reserveGpu(std::span<const size_t> sizes, std::span<UploadHeap::Reservation> reservations);
 
   bool retainAllocation(Allocation *allocation);
 
@@ -152,7 +186,7 @@ private:
   size_t cpu_command_heap_size;
   size_t cpu_command_heap_offset;
 
-  RingBumpState<StagingBufferBlockAllocator, kResourceInitializerGpuUploadHeapSize> gpu_command_heap_allocator;
+  UploadHeap gpu_command_heap_allocator;
 
   wmtcmd_blit_nop blit_cmd_head;
   wmtcmd_base *blit_cmd_tail;

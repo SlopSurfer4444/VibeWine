@@ -2699,6 +2699,15 @@ _WMTBootstrapRegister(void *obj) {
 }
 
 static NTSTATUS
+_WMTMachPortDeallocate(void *obj) {
+  struct unixcall_mach_port_deallocate *params = obj;
+  if (!params->mach_port)
+    return STATUS_SUCCESS;
+  return mach_port_deallocate(mach_task_self(), params->mach_port) == KERN_SUCCESS
+      ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+}
+
+static NTSTATUS
 _WMTBootstrapLookUp(void *obj) {
   struct unixcall_bootstrap *params = obj;
   mach_port_t rp = 0;
@@ -3275,6 +3284,7 @@ const void *__wine_unix_call_funcs[] = {
     &_CacheReader_get_checked,
     &_CacheWriter_set_checked,
     &_MTLAllocation_allocatedSize,
+    &_WMTMachPortDeallocate,
 };
 
 #ifndef DXMT_NATIVE
@@ -3429,5 +3439,6 @@ const void *__wine_unix_call_wow64_funcs[] = {
     &_CacheReader_get_checked,
     &_CacheWriter_set_checked,
     &_MTLAllocation_allocatedSize,
+    &_WMTMachPortDeallocate,
 };
 #endif

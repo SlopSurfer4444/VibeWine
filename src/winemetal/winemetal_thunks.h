@@ -372,6 +372,11 @@ struct unixcall_setmetalcachepath {
   uint64_t ret_success;
 };
 
+struct unixcall_mach_port_deallocate {
+  uint32_t mach_port;
+};
+STATIC_ASSERT(sizeof(struct unixcall_mach_port_deallocate) == 4);
+
 struct unixcall_bootstrap {
   char name[128];
   uint32_t mach_port;

@@ -20,45 +20,38 @@
 #include "dxmt_resource_initializer.hpp"
 #include "dxmt_format.hpp"
 #include "util_math.hpp"
+#include "util_error.hpp"
 #include <cstdint>
+#include <cstring>
 #include <mutex>
 
 namespace dxmt {
 
-#define ALLOC_BLIT(type, cmd)                                                                                          \
-  type *cmd = nullptr;                                                                                                 \
-  if (!allocateBlit(&cmd)) {                                                                                           \
-    flushInternal();                                                                                                   \
-    continue;                                                                                                          \
-  }
+namespace {
 
-#define ALLOC_CLEAR(info)                                                                                              \
-  WMTRenderPassInfo *info;                                                                                             \
-  if (!allocateClear(&info)) {                                                                                         \
-    flushInternal();                                                                                                   \
-    continue;                                                                                                          \
-  }
+bool checkedMultiply(size_t a, size_t b, size_t &result) {
+  if (b && a > std::numeric_limits<size_t>::max() / b)
+    return false;
+  result = a * b;
+  return true;
+}
 
-#define ALLOC_GPU(buffer, size)                                                                                        \
-  WMT::Buffer buffer;                                                                                                  \
-  size_t buffer##_offset;                                                                                              \
-  if (!(buffer = allocateGpuHeap(size, buffer##_offset))) {                                                            \
-    flushInternal();                                                                                                   \
-    continue;                                                                                                          \
-  }
+// Validate the largest source byte offset before pointer arithmetic. Source
+// storage itself remains the caller's responsibility, as in the upload API.
+bool checkedSourceRange(size_t depth, size_t image_pitch, size_t rows, size_t row_pitch, size_t length) {
+  size_t image_offset, row_offset;
+  if (!checkedMultiply(depth - 1, image_pitch, image_offset) ||
+      !checkedMultiply(rows - 1, row_pitch, row_offset) ||
+      row_offset > std::numeric_limits<size_t>::max() - image_offset)
+    return false;
+  return length <= std::numeric_limits<size_t>::max() - image_offset - row_offset;
+}
 
-#define ALLOC_ZERO(buffer, size)                                                                                       \
-  WMT::Buffer buffer;                                                                                                  \
-  if (!(buffer = allocateZeroBuffer(size))) {                                                                          \
-    flushInternal();                                                                                                   \
-    continue;                                                                                                          \
-  }
+uint32_t mipExtent(uint32_t extent, uint32_t level) {
+  return level < 32 ? std::max(1u, extent >> level) : 1u;
+}
 
-#define RETAIN(allocation)                                                                                             \
-  if (!retainAllocation(allocation)) {                                                                                 \
-    flushInternal();                                                                                                   \
-    continue;                                                                                                          \
-  }
+} // namespace
 
 ResourceInitializer::ResourceInitializer(WMT::Device device) :
     device_(device),
@@ -74,38 +67,49 @@ ResourceInitializer::ResourceInitializer(WMT::Device device) :
 }
 
 ResourceInitializer::~ResourceInitializer() {
+  ref_tracker.clear();
   free(cpu_command_heap);
 }
 
-uint64_t
+InitResult
 ResourceInitializer::initWithZero(BufferAllocation *buffer, uint64_t offset, uint64_t length) {
   std::lock_guard<dxmt::mutex> lock(mutex_);
 
-  do {
-    RETAIN(buffer);
-    ALLOC_BLIT(wmtcmd_blit_fillbuffer, fill);
+  auto status = prepareCpu<wmtcmd_blit_fillbuffer>();
+  if (status != InitStatus::Success)
+    return {status, 0};
+  if (!retainAllocation(buffer)) // capacity includes a possible tracker spill
+    return {InitStatus::OutOfMemory, 0};
+  auto fill = allocateCpuHeap<wmtcmd_blit_fillbuffer>();
+  {
     fill->type = WMTBlitCommandFillBuffer;
     fill->buffer = buffer->buffer();
     fill->offset = offset;
     fill->length = length;
     fill->value = 0;
+    publishBlit((wmtcmd_base *)fill, (wmtcmd_base *)fill);
+  }
 
-  } while (0);
-
-  return current_seq_id_;
+  return {InitStatus::Success, current_seq_id_};
 }
 
-uint64_t
+InitResult
 ResourceInitializer::initDepthStencilWithZero(
     const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level, uint32_t dsv_planar
 ) {
-  auto width_sub = std::max(1u, texture->width() >> level);
-  auto height_sub = std::max(1u, texture->height() >> level);
+  auto width_sub = mipExtent(texture->width(), level);
+  auto height_sub = mipExtent(texture->height(), level);
 
   std::lock_guard<dxmt::mutex> lock(mutex_);
-  do {
-    RETAIN(allocation);
-    ALLOC_CLEAR(info);
+  auto status = prepareCpu<ClearRenderPassInfo>();
+  if (status != InitStatus::Success)
+    return {status, 0};
+  if (!retainAllocation(allocation))
+    return {InitStatus::OutOfMemory, 0};
+  auto pass = allocateCpuHeap<ClearRenderPassInfo>();
+  auto info = &pass->info;
+  WMT::InitializeRenderPassInfo(*info);
+  {
 
     info->render_target_array_length = 0;
     info->render_target_width = width_sub;
@@ -127,24 +131,31 @@ ResourceInitializer::initDepthStencilWithZero(
       info->stencil.level = level;
     }
 
-  } while (0);
+    publishClear(pass);
+  }
 
-  return current_seq_id_;
+  return {InitStatus::Success, current_seq_id_};
 }
 
-uint64_t
+InitResult
 ResourceInitializer::initRenderTargetWithZero(
     const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level
 ) {
-  auto width_sub = std::max(1u, texture->width() >> level);
-  auto height_sub = std::max(1u, texture->height() >> level);
+  auto width_sub = mipExtent(texture->width(), level);
+  auto height_sub = mipExtent(texture->height(), level);
 
   std::lock_guard<dxmt::mutex> lock(mutex_);
-  do {
-    RETAIN(allocation);
-    ALLOC_CLEAR(info);
+  auto status = prepareCpu<ClearRenderPassInfo>();
+  if (status != InitStatus::Success)
+    return {status, 0};
+  if (!retainAllocation(allocation))
+    return {InitStatus::OutOfMemory, 0};
+  auto pass = allocateCpuHeap<ClearRenderPassInfo>();
+  auto info = &pass->info;
+  WMT::InitializeRenderPassInfo(*info);
+  {
 
-    info->render_target_array_length = texture->textureType() == WMTTextureType3D ? (texture->depth() >> level) : 0;
+    info->render_target_array_length = texture->textureType() == WMTTextureType3D ? mipExtent(texture->depth(), level) : 0;
     info->render_target_width = width_sub;
     info->render_target_height = height_sub;
     info->colors[0].texture = allocation->texture();
@@ -154,12 +165,13 @@ ResourceInitializer::initRenderTargetWithZero(
     info->colors[0].slice = slice;
     info->colors[0].level = level;
 
-  } while (0);
+    publishClear(pass);
+  }
 
-  return current_seq_id_;
+  return {InitStatus::Success, current_seq_id_};
 }
 
-uint64_t
+InitResult
 ResourceInitializer::initWithZero(
     const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level
 ) {
@@ -170,9 +182,9 @@ ResourceInitializer::initWithZero(
     return initRenderTargetWithZero(texture, allocation, slice, level);
   }
 
-  auto width_sub = std::max(1u, texture->width() >> level);
-  auto height_sub = std::max(1u, texture->height() >> level);
-  auto depth_sub = std::max(1u, texture->depth() >> level);
+  auto width_sub = mipExtent(texture->width(), level);
+  auto height_sub = mipExtent(texture->height(), level);
+  auto depth_sub = mipExtent(texture->depth(), level);
 
   auto block_size = 1u;
 
@@ -199,17 +211,49 @@ ResourceInitializer::initWithZero(
 
   bool is_3d_tex = texture->textureType() == WMTTextureType3D;
   size_t texel_size = MTLGetTexelSize(texture->pixelFormat());
-  size_t bytes_per_row_needed = texel_size * align(width_sub, block_size) / block_size;
-  size_t bytes_per_image_needed = bytes_per_row_needed * align(height_sub, block_size) / block_size;
-  size_t total_bytes_needed = bytes_per_image_needed * depth_sub;
+  size_t bytes_per_row_needed;
+  if (!checkedMultiply(texel_size, (size_t(width_sub) + block_size - 1) / block_size, bytes_per_row_needed))
+    return {InitStatus::OutOfMemory, 0};
+  size_t bytes_per_image_needed;
+  if (!checkedMultiply(bytes_per_row_needed, (size_t(height_sub) + block_size - 1) / block_size, bytes_per_image_needed))
+    return {InitStatus::OutOfMemory, 0};
+  size_t total_bytes_needed;
+  if (!checkedMultiply(bytes_per_image_needed, depth_sub, total_bytes_needed))
+    return {InitStatus::OutOfMemory, 0};
 
   std::lock_guard<dxmt::mutex> lock(mutex_);
 
-  do {
-    ALLOC_ZERO(zero, total_bytes_needed);
-    RETAIN(allocation);
-    ALLOC_BLIT(wmtcmd_blit_copy_from_buffer_to_texture, copy);
+  if (!cpu_command_heap || !upload_queue_ || !upload_queue_event_)
+    return {InitStatus::OutOfMemory, 0};
 
+  // A replacement stays local until its fill and dependent copy are ready.
+  // Flush the old valid prefix before dropping the cached owner's reference.
+  WMT::Reference<WMT::Buffer> candidate;
+  bool replace = zero_buffer_size_ < total_bytes_needed || !zero_buffer_;
+  if (replace) {
+    WMTBufferInfo info{};
+    info.length = total_bytes_needed;
+    info.options = WMTResourceStorageModePrivate | WMTResourceHazardTrackingModeUntracked;
+    candidate = device_.newBuffer(info);
+    if (!candidate)
+      return {InitStatus::OutOfMemory, 0};
+    if (zero_buffer_ && !idle()) {
+      auto submitted = flushInternal();
+      if (!submitted)
+        return submitted;
+    }
+  }
+  auto status = replace
+      ? prepareCpu<wmtcmd_blit_fillbuffer, wmtcmd_blit_copy_from_buffer_to_texture>()
+      : prepareCpu<wmtcmd_blit_copy_from_buffer_to_texture>();
+  if (status != InitStatus::Success)
+    return {status, 0};
+  if (!retainAllocation(allocation))
+    return {InitStatus::OutOfMemory, 0};
+  auto fill = replace ? allocateCpuHeap<wmtcmd_blit_fillbuffer>() : nullptr;
+  auto copy = allocateCpuHeap<wmtcmd_blit_copy_from_buffer_to_texture>();
+  WMT::Buffer zero = replace ? WMT::Buffer{candidate.handle} : WMT::Buffer{zero_buffer_.handle};
+  {
     copy->type = WMTBlitCommandCopyFromBufferToTexture;
     copy->src = zero;
     copy->src_offset = 0;
@@ -221,19 +265,32 @@ ResourceInitializer::initWithZero(
     copy->level = level;
     copy->origin = {0, 0, 0};
 
-  } while (0);
+    if (fill) {
+      fill->type = WMTBlitCommandFillBuffer;
+      fill->buffer = zero;
+      fill->offset = 0;
+      fill->length = total_bytes_needed;
+      fill->value = 0;
+      fill->next.set((wmtcmd_base *)copy);
+      publishBlit((wmtcmd_base *)fill, (wmtcmd_base *)copy);
+      zero_buffer_ = std::move(candidate);
+      zero_buffer_size_ = total_bytes_needed;
+    } else {
+      publishBlit((wmtcmd_base *)copy, (wmtcmd_base *)copy);
+    }
+  }
 
-  return current_seq_id_;
+  return {InitStatus::Success, current_seq_id_};
 }
 
-uint64_t
+InitResult
 ResourceInitializer::initWithData(
     const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level, const void *data,
     size_t row_pitch, size_t depth_pitch, uint32_t format_flags
 ) {
-  auto width_sub = std::max(1u, texture->width() >> level);
-  auto height_sub = std::max(1u, texture->height() >> level);
-  auto depth_sub = std::max(1u, texture->depth() >> level);
+  auto width_sub = mipExtent(texture->width(), level);
+  auto height_sub = mipExtent(texture->height(), level);
+  auto depth_sub = mipExtent(texture->depth(), level);
 
   auto block_size = 1u;
 
@@ -265,23 +322,43 @@ ResourceInitializer::initWithData(
   bool is_1d_tex = (texture->textureType() == WMTTextureType1D) || (texture->textureType() == WMTTextureType1DArray);
   bool is_3d_tex = texture->textureType() == WMTTextureType3D;
   size_t texel_size = MTLGetTexelSize(texture->pixelFormat());
-  size_t bytes_per_row_needed = texel_size * align(width_sub, block_size) / block_size;
+  size_t bytes_per_row_needed;
+  if (!checkedMultiply(texel_size, (size_t(width_sub) + block_size - 1) / block_size, bytes_per_row_needed))
+    return {InitStatus::OutOfMemory, 0};
   size_t bytes_per_row_increment = is_1d_tex ? bytes_per_row_needed : row_pitch;
   size_t bytes_per_row_valid = is_1d_tex ? bytes_per_row_needed : std::min(row_pitch, bytes_per_row_needed);
-  size_t bytes_per_image_needed = bytes_per_row_needed * align(height_sub, block_size) / block_size;
+  size_t bytes_per_image_needed;
+  if (!checkedMultiply(bytes_per_row_needed, (size_t(height_sub) + block_size - 1) / block_size, bytes_per_image_needed))
+    return {InitStatus::OutOfMemory, 0};
   size_t bytes_per_image_increment = is_3d_tex ? depth_pitch : bytes_per_image_needed;
   size_t bytes_per_image_valid = is_3d_tex ? std::min(depth_pitch, bytes_per_image_needed) : bytes_per_image_needed;
-  size_t total_bytes_needed = bytes_per_image_needed * depth_sub;
+  size_t total_bytes_needed;
+  if (!checkedMultiply(bytes_per_image_needed, depth_sub, total_bytes_needed))
+    return {InitStatus::OutOfMemory, 0};
+
+  bool copy_rows = bytes_per_row_increment != bytes_per_row_needed;
+  size_t source_rows = copy_rows ? (size_t(height_sub) + block_size - 1) / block_size : 1;
+  if (!checkedSourceRange(depth_sub, bytes_per_image_increment, source_rows,
+                          bytes_per_row_increment, copy_rows ? bytes_per_row_valid : bytes_per_image_valid))
+    return {InitStatus::OutOfMemory, 0};
 
   std::lock_guard<dxmt::mutex> lock(mutex_);
-  do {
-    RETAIN(allocation);
-    ALLOC_BLIT(wmtcmd_blit_copy_from_buffer_to_texture, copy);
-    ALLOC_GPU(temp, total_bytes_needed);
-
+  auto status = prepareCpu<wmtcmd_blit_copy_from_buffer_to_texture>();
+  if (status != InitStatus::Success)
+    return {status, 0};
+  UploadHeap::Reservation reservation{};
+  status = reserveGpu({&total_bytes_needed, 1}, {&reservation, 1});
+  if (status != InitStatus::Success)
+    return {status, 0};
+  if (!retainAllocation(allocation))
+    return {InitStatus::OutOfMemory, 0};
+  auto copy = allocateCpuHeap<wmtcmd_blit_copy_from_buffer_to_texture>();
+  auto temp = reservation.block->buffer;
+  auto temp_offset = reservation.offset;
+  {
     for (auto depth = 0u; depth < depth_sub; depth++) {
       if (bytes_per_row_increment != bytes_per_row_needed) {
-        for (auto row = 0u; row < (align(height_sub, block_size) / block_size); row++) {
+        for (auto row = 0u; row < ((size_t(height_sub) + block_size - 1) / block_size); row++) {
           auto offset = temp_offset + depth * bytes_per_image_needed + row * bytes_per_row_needed;
           auto length = bytes_per_row_valid;
           auto src_data = ptr_add(data, depth * bytes_per_image_increment + row * bytes_per_row_increment);
@@ -306,48 +383,65 @@ ResourceInitializer::initWithData(
     copy->level = level;
     copy->origin = {0, 0, 0};
 
-  } while (0);
+    publishBlit((wmtcmd_base *)copy, (wmtcmd_base *)copy);
+  }
 
-  return current_seq_id_;
+  return {InitStatus::Success, current_seq_id_};
 }
 
-uint64_t
+InitResult
 ResourceInitializer::initDepthStencilWithData(
     const Texture *texture, TextureAllocation *allocation, uint32_t slice, uint32_t level, const void *data,
     size_t row_pitch, bool is_d24s8
 ) {
-  auto width_sub = std::max(1u, texture->width() >> level);
-  auto height_sub = std::max(1u, texture->height() >> level);
+  auto width_sub = mipExtent(texture->width(), level);
+  auto height_sub = mipExtent(texture->height(), level);
 
-  size_t depth_bytes_per_row = 4 * width_sub;
-  size_t stencil_bytes_per_row = align(width_sub, 4u);
+  size_t depth_bytes_per_row = size_t(4) * width_sub;
+  size_t stencil_bytes_per_row = (size_t(width_sub) + 3) & ~size_t(3);
+  size_t depth_bytes_per_image, stencil_bytes_per_image;
+  if (!checkedMultiply(depth_bytes_per_row, height_sub, depth_bytes_per_image) ||
+      !checkedMultiply(stencil_bytes_per_row, height_sub, stencil_bytes_per_image))
+    return {InitStatus::OutOfMemory, 0};
 
-  size_t depth_bytes_per_image = depth_bytes_per_row * height_sub;
-  size_t stencil_bytes_per_image = stencil_bytes_per_row * height_sub;
+  if (!checkedSourceRange(1, 0, height_sub, row_pitch, size_t(width_sub) * (is_d24s8 ? 4 : 8)))
+    return {InitStatus::OutOfMemory, 0};
 
   std::lock_guard<dxmt::mutex> lock(mutex_);
-  do {
-    RETAIN(allocation);
-    ALLOC_BLIT(wmtcmd_blit_copy_from_buffer_to_texture_withblitoption, depth_copy);
-    ALLOC_BLIT(wmtcmd_blit_copy_from_buffer_to_texture_withblitoption, stencil_copy);
-    ALLOC_GPU(depth_buf, depth_bytes_per_image);
-    ALLOC_GPU(stencil_buf, stencil_bytes_per_image);
-
+  auto status = prepareCpu<wmtcmd_blit_copy_from_buffer_to_texture_withblitoption,
+                           wmtcmd_blit_copy_from_buffer_to_texture_withblitoption>();
+  if (status != InitStatus::Success)
+    return {status, 0};
+  const size_t sizes[] = {depth_bytes_per_image, stencil_bytes_per_image};
+  UploadHeap::Reservation reservations[2]{};
+  status = reserveGpu(sizes, reservations);
+  if (status != InitStatus::Success)
+    return {status, 0};
+  if (!retainAllocation(allocation))
+    return {InitStatus::OutOfMemory, 0};
+  auto depth_copy = allocateCpuHeap<wmtcmd_blit_copy_from_buffer_to_texture_withblitoption>();
+  auto stencil_copy = allocateCpuHeap<wmtcmd_blit_copy_from_buffer_to_texture_withblitoption>();
+  auto depth_buf = reservations[0].block->buffer;
+  auto depth_buf_offset = reservations[0].offset;
+  auto stencil_buf = reservations[1].block->buffer;
+  auto stencil_buf_offset = reservations[1].offset;
+  {
     for (auto row = 0u; row < height_sub; row++) {
       auto src_data = ptr_add(data, row * row_pitch);
 
       if (is_d24s8) {
         for (auto x = 0u; x < width_sub; x++) {
-          uint32_t packed = *(const uint32_t *)((const char *)src_data + x * 4);
+          uint32_t packed;
+          memcpy(&packed, (const char *)src_data + size_t(x) * 4, sizeof(packed));
           float depth_val = (float)(packed & 0xFFFFFF) / (float)(0xFFFFFF);
           uint8_t stencil_val = (uint8_t)(packed >> 24);
-          depth_buf.updateContents(depth_buf_offset + row * depth_bytes_per_row + x * 4, &depth_val, 4);
+          depth_buf.updateContents(depth_buf_offset + row * depth_bytes_per_row + size_t(x) * 4, &depth_val, 4);
           stencil_buf.updateContents(stencil_buf_offset + row * stencil_bytes_per_row + x, &stencil_val, 1);
         }
       } else {
         for (auto x = 0u; x < width_sub; x++) {
-          depth_buf.updateContents(depth_buf_offset + row * depth_bytes_per_row + x * 4, (const char *)src_data + x * 8, 4);
-          stencil_buf.updateContents(stencil_buf_offset + row * stencil_bytes_per_row + x, (const uint8_t *)src_data + x * 8 + 4, 1);
+          depth_buf.updateContents(depth_buf_offset + row * depth_bytes_per_row + size_t(x) * 4, (const char *)src_data + size_t(x) * 8, 4);
+          stencil_buf.updateContents(stencil_buf_offset + row * stencil_bytes_per_row + x, (const uint8_t *)src_data + size_t(x) * 8 + 4, 1);
         }
       }
     }
@@ -376,24 +470,33 @@ ResourceInitializer::initDepthStencilWithData(
     stencil_copy->origin = {0, 0, 0};
     stencil_copy->options = WMTBlitOptionStencilFromDepthStencil;
 
-  } while (0);
+    depth_copy->next.set((wmtcmd_base *)stencil_copy);
+    publishBlit((wmtcmd_base *)depth_copy, (wmtcmd_base *)stencil_copy);
+  }
 
-  return current_seq_id_;
+  return {InitStatus::Success, current_seq_id_};
 }
 
-std::uint64_t
+InitResult
 ResourceInitializer::flushInternal() {
+  if (idle())
+    return {InitStatus::Success, 0};
+  if (!upload_queue_ || !upload_queue_event_ || current_seq_id_ == std::numeric_limits<uint64_t>::max())
+    return {InitStatus::SubmissionFailed, 0};
   auto pool = WMT::MakeAutoreleasePool();
-
-  auto seq_id = current_seq_id_++;
   auto cmdbuf = upload_queue_.commandBuffer();
-  encode(cmdbuf);
+  // No sequence, reference, ring or list mutation until the complete valid
+  // prefix has been encoded. Discard an uncommitted partial command buffer.
+  if (!cmdbuf || !encode(cmdbuf))
+    return {InitStatus::SubmissionFailed, 0};
+  auto seq_id = current_seq_id_;
   cmdbuf.encodeSignalEvent(upload_queue_event_, seq_id);
   cmdbuf.commit();
+  ++current_seq_id_;
   reset();
   cached_coherent_seq_id = upload_queue_event_.signaledValue();
   gpu_command_heap_allocator.free_blocks(cached_coherent_seq_id);
-  return seq_id;
+  return {InitStatus::Success, seq_id};
 }
 
 uint64_t
@@ -410,7 +513,10 @@ ResourceInitializer::flushToWait() {
     return current_seq_id_ - 1;
   }
 
-  return flushInternal();
+  auto submitted = flushInternal();
+  if (!submitted)
+    throw MTLD3DError("Resource initialization submission failed");
+  return submitted.sequence;
 }
 
 void
@@ -427,73 +533,63 @@ ResourceInitializer::reset() {
   ref_tracker.clear();
 }
 
-void
+bool
 ResourceInitializer::encode(WMT::CommandBuffer cmdbuf) {
 
   auto clear_pass = clear_render_pass_head.next;
   while (clear_pass) {
     auto r = cmdbuf.renderCommandEncoder(clear_pass->info);
+    if (!r)
+      return false;
     r.endEncoding();
     clear_pass = clear_pass->next;
   }
 
   if (blit_cmd_head.next.ptr) {
     auto b = cmdbuf.blitCommandEncoder();
+    if (!b)
+      return false;
     b.encodeCommands(&blit_cmd_head);
     b.endEncoding();
   }
+  return true;
 }
 
-WMT::Buffer
-ResourceInitializer::allocateGpuHeap(size_t size, size_t &offset) {
-  auto [block, offset_] = gpu_command_heap_allocator.allocate(
-      current_seq_id_, cached_coherent_seq_id, size, kResourceInitializerGpuUploadHeapAlignment
-  );
-  offset = offset_;
-  return block.buffer;
+InitStatus
+ResourceInitializer::reserveGpu(std::span<const size_t> sizes, std::span<UploadHeap::Reservation> reservations) {
+  if (gpu_command_heap_allocator.allocateChecked(
+          current_seq_id_, cached_coherent_seq_id, sizes, kResourceInitializerGpuUploadHeapAlignment, reservations))
+    return InitStatus::Success;
+  bool retry = false;
+  if (!idle()) {
+    auto submitted = flushInternal();
+    if (!submitted)
+      return submitted.status;
+    retry = true;
+  } else {
+    auto coherent = upload_queue_event_.signaledValue();
+    retry = coherent > cached_coherent_seq_id;
+    cached_coherent_seq_id = coherent;
+    if (retry)
+      gpu_command_heap_allocator.free_blocks(coherent);
+  }
+  // One additional attempt only if submission/coherence could free storage.
+  if (retry && gpu_command_heap_allocator.allocateChecked(
+          current_seq_id_, cached_coherent_seq_id, sizes, kResourceInitializerGpuUploadHeapAlignment, reservations))
+    return InitStatus::Success;
+  return InitStatus::OutOfMemory;
 }
 
 bool
 ResourceInitializer::retainAllocation(Allocation *allocation) {
   constexpr size_t block_size = 0x20;
-  while (unlikely(!ref_tracker.track(allocation))) {
-    auto temp = allocateCpuHeap<intptr_t[block_size]>();
-    if (!temp)
-      return false;
-    ref_tracker.addStorage(temp, block_size * sizeof(intptr_t));
-  }
-  return true;
-}
-
-WMT::Buffer
-ResourceInitializer::allocateZeroBuffer(size_t size) {
-  if (zero_buffer_size_ < size) {
-    if (zero_buffer_size_) {
-      flushInternal(); // keep a reference of old zero buffer
-      zero_buffer_size_ = 0;
-      return {};
-    }
-
-    wmtcmd_blit_fillbuffer *fill = nullptr;
-    if (!allocateBlit(&fill)) {
-      return {};
-    }
-
-    WMTBufferInfo buffer_info;
-    buffer_info.gpu_address = 0;
-    buffer_info.length = size;
-    buffer_info.memory.set(nullptr);
-    buffer_info.options = WMTResourceStorageModePrivate | WMTResourceHazardTrackingModeUntracked;
-    zero_buffer_ = device_.newBuffer(buffer_info);
-    zero_buffer_size_ = size;
-
-    fill->type = WMTBlitCommandFillBuffer;
-    fill->buffer = zero_buffer_;
-    fill->length = size;
-    fill->offset = 0;
-    fill->value = 0;
-  }
-  return zero_buffer_;
+  if (ref_tracker.track(allocation))
+    return true;
+  auto temp = allocateCpuHeap<intptr_t[block_size]>();
+  if (!temp)
+    return false;
+  ref_tracker.addStorage(temp, block_size * sizeof(intptr_t));
+  return ref_tracker.track(allocation);
 }
 
 } // namespace dxmt

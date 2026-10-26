@@ -22,6 +22,7 @@
 #include "dxmt_dynamic.hpp"
 #include "dxmt_format.hpp"
 #include "d3d11_resource.hpp"
+#include <new>
 
 namespace dxmt {
 
@@ -80,8 +81,13 @@ private:
   };
 
 public:
-  D3D11Buffer(const tag_buffer::DESC1 *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData, MTLD3D11Device *device) :
-      TResourceBase<tag_buffer>(*pDesc, device) {
+  D3D11Buffer(const tag_buffer::DESC1 *pDesc, MTLD3D11Device *device) :
+      TResourceBase<tag_buffer>(*pDesc, device) {}
+
+  HRESULT
+  Initialize(const D3D11_SUBRESOURCE_DATA *pInitialData) {
+    const auto *pDesc = &desc;
+    auto *device = m_parent;
     buffer_ = new Buffer(pDesc->ByteWidth, device->GetMTLDevice());
     Flags<BufferAllocationFlag> flags;
     if (!m_parent->IsTraced() && pDesc->Usage == D3D11_USAGE_DYNAMIC)
@@ -103,11 +109,15 @@ public:
 #endif
     }
     auto allocation = buffer_->allocate(flags);
+    if (!allocation || !allocation->buffer())
+      return E_OUTOFMEMORY;
     auto &initializer = device->GetDXMTDevice().queue().initializer;
     if (pInitialData) {
       allocation->updateContents(0, pInitialData->pSysMem, pDesc->ByteWidth);
     } else if (flags.test(BufferAllocationFlag::GpuPrivate)) {
-      initializer.initWithZero(allocation.ptr(), 0, buffer_->length());
+      auto result = initializer.initWithZero(allocation.ptr(), 0, buffer_->length());
+      if (!result)
+        return result.status == InitStatus::OutOfMemory ? E_OUTOFMEMORY : E_FAIL;
     }
     auto _ = buffer_->rename(std::move(allocation));
     D3D11_ASSERT(_.ptr() == nullptr);
@@ -120,6 +130,7 @@ public:
 #endif
       );
     }
+    return S_OK;
   }
 
   HRESULT
@@ -318,8 +329,19 @@ CreateBuffer(
     MTLD3D11Device *pDevice, const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData,
     ID3D11Buffer **ppBuffer
 ) {
-  *ppBuffer = reinterpret_cast<ID3D11Buffer *>(ref(new D3D11Buffer(pDesc, pInitialData, pDevice)));
-  return S_OK;
+  if (!ppBuffer)
+    return S_FALSE;
+  *ppBuffer = nullptr;
+  try {
+    Com<D3D11Buffer> buffer = new D3D11Buffer(pDesc, pDevice);
+    HRESULT hr = buffer->Initialize(pInitialData);
+    if (FAILED(hr))
+      return hr;
+    *ppBuffer = reinterpret_cast<ID3D11Buffer *>(buffer.takeOwnership());
+    return S_OK;
+  } catch (const std::bad_alloc &) {
+    return E_OUTOFMEMORY;
+  }
 }
 
 } // namespace dxmt

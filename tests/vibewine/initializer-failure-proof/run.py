@@ -65,6 +65,7 @@ def main():
                         help="Explicitly request reproduction of known bugs; success does not mean correctness")
     parser.add_argument("--source-dir", type=Path,
                         help="DXMT source root; defaults to the checkout containing this diagnostic")
+    parser.add_argument("--source-ref", help="Read an immutable historical Git revision, e.g. 66bae06c")
     args = parser.parse_args()
     if not args.expect_known_defects:
         parser.error("diagnostic mode only: pass --expect-known-defects to reproduce known bugs; "
@@ -80,7 +81,19 @@ def main():
     source = (args.source_dir or tests.parents[2]).resolve()
     # Snapshot every input once. Both the receipt and compiler consume these
     # bytes, so concurrent changes to the checkout cannot misbind the receipt.
-    source_bytes = {name: (source / name).read_bytes() for name in PRODUCTION + DEPENDENCIES}
+    revision = None
+    if args.source_ref:
+        revision = subprocess.check_output(
+            ["git", "-C", str(source), "rev-parse", "--verify", "--end-of-options", args.source_ref + "^{commit}"],
+            text=True, timeout=10).strip()
+        source_bytes = {name: subprocess.check_output(
+            ["git", "-C", str(source), "show", revision + ":" + name], timeout=10)
+            for name in PRODUCTION + DEPENDENCIES}
+    else:
+        source_bytes = {name: (source / name).read_bytes() for name in PRODUCTION + DEPENDENCIES}
+    if b"struct InitResult" in source_bytes["src/dxmt/dxmt_resource_initializer.hpp"]:
+        parser.error("this diagnostic expects the historical faulty API; use --source-ref 66bae06c "
+                     "or run tests/vibewine/initializer-transaction/run.py for repaired behavior")
     fixture_bytes = {name: (tests / name).read_bytes() for name in FIXTURES + ("run.py",)}
     contents = {name: data.decode("utf-8") for name, data in source_bytes.items()}
     context = contents["src/dxmt/dxmt_context.hpp"]
@@ -105,6 +118,7 @@ def main():
         "mode": "expect-known-defects",
         "meaning": "successful diagnosis reproduces bugs; NOT repair acceptance",
         "source_head": head.stdout.strip() if head.returncode == 0 else None,
+        "historical_source_revision": revision,
         "source_sha256": {name: hashlib.sha256(source_bytes[name]).hexdigest()
                           for name in PRODUCTION + DEPENDENCIES},
         "fixture_sha256": {name: hashlib.sha256(fixture_bytes[name]).hexdigest()

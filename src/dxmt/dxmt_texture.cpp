@@ -203,7 +203,15 @@ Texture::allocate(Flags<TextureAllocationFlag> flags) {
     return new TextureAllocation(this, std::move(buffer), buffer_info.memory.get(), info, bytes_per_row_, flags);
   }
   auto texture = flags.test(TextureAllocationFlag::Shared) ? device_.newSharedTexture(info) : device_.newTexture(info);
-  return new TextureAllocation(this, std::move(texture), info, flags);
+  try {
+    return new TextureAllocation(this, std::move(texture), info, flags);
+  } catch (...) {
+    // newSharedTexture created this send right. Ownership cannot reach the
+    // creation factory's failure guard until its allocation wrapper exists.
+    if (flags.test(TextureAllocationFlag::Shared) && info.mach_port)
+      WMTMachPortDeallocate(info.mach_port);
+    throw;
+  }
 }
 
 Rc<TextureAllocation>

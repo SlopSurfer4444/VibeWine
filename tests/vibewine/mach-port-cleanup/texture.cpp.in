@@ -1,0 +1,158 @@
+#include <mach/mach.h>
+#include <cstdio>
+#include <cstdlib>
+#include <memory>
+#include <new>
+#include <utility>
+#include <vector>
+#include "winemetal.h"
+
+extern "C" void fixture_expect_port(uint32_t);
+extern "C" unsigned fixture_dispatches(void);
+extern "C" int fixture_seam_failed(void);
+static bool fail_new, fail_resize, native_nil;
+static unsigned live_textures, new_calls, buffer_calls;
+static mach_port_t owned_port;
+static bool fixture_failed;
+#define REQUIRE(expr) do { if (!(expr)) { std::fprintf(stderr, "CHECK failed at %d: %s\n", __LINE__, #expr); fixture_failed = true; return false; } } while(0)
+
+// Fixture-only equivalent of the project's enum flag operation support.
+inline WMTResourceOptions &operator|=(WMTResourceOptions &left, WMTResourceOptions right) {
+  left = static_cast<WMTResourceOptions>(static_cast<uint64_t>(left) | static_cast<uint64_t>(right));
+  return left;
+}
+enum class TextureAllocationFlag { CpuWriteCombined=1, CpuInvisible=2, GpuManaged=4, Shared=8, ShaderReadonly=16 };
+template<class T> struct Flags {
+  unsigned value = 0;
+  Flags() = default;
+  Flags(T flag) : value(static_cast<unsigned>(flag)) {}
+  bool test(T flag) const { return value & static_cast<unsigned>(flag); }
+};
+template<class T> struct ThrowAllocator : std::allocator<T> {
+  using value_type = T;
+  T *allocate(size_t n) { if (fail_resize) throw std::bad_alloc(); return std::allocator<T>::allocate(n); }
+  template<class U> struct rebind { using other = ThrowAllocator<U>; };
+};
+namespace WMT {
+struct Texture {};
+struct Buffer {};
+template<class T> struct Reference {
+  bool live = false;
+  Reference() = default;
+  explicit Reference(bool value) : live(value) { if (live) ++live_textures; }
+  Reference(const Reference &) = delete;
+  Reference(Reference &&other) noexcept : live(std::exchange(other.live, false)) {}
+  ~Reference() { if (live) --live_textures; }
+};
+struct Device {
+  Reference<Texture> newSharedTexture(WMTTextureInfo &info) {
+    ++new_calls;
+    if (native_nil) return Reference<Texture>{};
+    if (mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &owned_port) != KERN_SUCCESS ||
+        mach_port_insert_right(mach_task_self(), owned_port, owned_port, MACH_MSG_TYPE_MAKE_SEND) != KERN_SUCCESS) std::abort();
+    info.mach_port = owned_port;
+    fixture_expect_port(owned_port);
+    return Reference<Texture>(true);
+  }
+  Reference<Texture> newTexture(WMTTextureInfo &) { ++new_calls; return Reference<Texture>(!native_nil); }
+  Reference<Buffer> newBuffer(WMTBufferInfo &) { ++buffer_calls; return Reference<Buffer>(true); }
+};
+}
+template<class T> struct Rc {
+  std::unique_ptr<T> ptr;
+  Rc(T *value) : ptr(value) {}
+};
+struct Texture;
+struct TextureAllocation {
+  Texture *descriptor;
+  void *mappedMemory = nullptr;
+  WMT::Reference<WMT::Texture> obj_;
+  Flags<TextureAllocationFlag> flags_;
+  uint64_t gpuResourceID = 0;
+  mach_port_t machPort = 0;
+  std::vector<int, ThrowAllocator<int>> fenceTrackers;
+  static void *operator new(size_t bytes) { if (fail_new) throw std::bad_alloc(); return ::operator new(bytes); }
+  static void operator delete(void *p) noexcept { ::operator delete(p); }
+  TextureAllocation(Texture *, WMT::Reference<WMT::Texture> &&, const WMTTextureInfo &, Flags<TextureAllocationFlag>);
+  TextureAllocation(Texture *owner, WMT::Reference<WMT::Buffer> &&, void *, const WMTTextureInfo &, unsigned, Flags<TextureAllocationFlag>) : descriptor(owner) {}
+};
+struct Texture {
+  WMTTextureInfo info_{};
+  uint64_t bytes_per_image_ = 0;
+  unsigned bytes_per_row_ = 0;
+  WMT::Device device_;
+  unsigned arrayLength() const { return 1; }
+  unsigned miplevelCount() const { return 1; }
+  Rc<TextureAllocation> allocate(Flags<TextureAllocationFlag>);
+};
+// EXACT_TEXTURE_CONSTRUCTOR
+// EXACT_TEXTURE_ALLOCATE
+
+static bool refs(mach_port_t port, mach_port_right_t kind, unsigned expected) {
+  mach_port_urefs_t actual = 0;
+  return mach_port_get_refs(mach_task_self(), port, kind, &actual) == KERN_SUCCESS && actual == expected;
+}
+static void cleanup_owned_port() {
+  if (!owned_port) return;
+  mach_port_urefs_t actual = 0;
+  if (mach_port_get_refs(mach_task_self(), owned_port, MACH_PORT_RIGHT_SEND, &actual) != KERN_SUCCESS) fixture_failed = true;
+  else if (actual && mach_port_mod_refs(mach_task_self(), owned_port, MACH_PORT_RIGHT_SEND, -(mach_port_delta_t)actual) != KERN_SUCCESS) fixture_failed = true;
+  if (mach_port_mod_refs(mach_task_self(), owned_port, MACH_PORT_RIGHT_RECEIVE, -1) != KERN_SUCCESS) fixture_failed = true;
+  owned_port = 0;
+}
+static bool run_case(bool shared, bool new_failure, bool resize_failure, bool nil, bool buffer, mach_port_t borrowed) {
+  fail_new = new_failure;
+  fail_resize = resize_failure;
+  native_nil = nil;
+  unsigned before = fixture_dispatches();
+  unsigned before_buffers = buffer_calls;
+  unsigned before_textures = new_calls;
+  Texture source;
+  source.info_.mach_port = borrowed; // Stale/borrowed input must never be released by this allocation.
+  source.bytes_per_image_ = buffer ? 64 : 0;
+  bool threw = false;
+  {
+    try { auto allocation = source.allocate(shared ? Flags(TextureAllocationFlag::Shared) : Flags<TextureAllocationFlag>()); }
+    catch (const std::bad_alloc &) { threw = true; }
+  }
+  REQUIRE(threw == (new_failure || (!buffer && resize_failure)));
+  REQUIRE(live_textures == 0);
+  REQUIRE(buffer_calls == before_buffers + (buffer ? 1 : 0));
+  REQUIRE(new_calls == before_textures + (buffer ? 0 : 1));
+  bool port_created = shared && !nil && !buffer;
+  REQUIRE(fixture_dispatches() == before + (port_created && threw ? 1 : 0));
+  REQUIRE(!fixture_seam_failed());
+  REQUIRE(refs(borrowed, MACH_PORT_RIGHT_SEND, 1));
+  REQUIRE(refs(borrowed, MACH_PORT_RIGHT_RECEIVE, 1));
+  if (port_created) {
+    REQUIRE(owned_port != 0);
+    REQUIRE(refs(owned_port, MACH_PORT_RIGHT_SEND, threw ? 0 : 1));
+    REQUIRE(refs(owned_port, MACH_PORT_RIGHT_RECEIVE, 1));
+  } else REQUIRE(owned_port == 0);
+  return true;
+}
+int main() {
+  mach_port_t borrowed = 0;
+  if (mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &borrowed) != KERN_SUCCESS ||
+      mach_port_insert_right(mach_task_self(), borrowed, borrowed, MACH_MSG_TYPE_MAKE_SEND) != KERN_SUCCESS) return 2;
+  struct Case { bool shared, new_failure, resize_failure, nil, buffer; } cases[] = {
+    {true, true, false, false, false}, {true, false, true, false, false},
+    {true, false, false, false, false}, {true, true, false, true, false},
+    {true, false, true, true, false}, {true, false, false, true, false},
+    {false, true, false, false, false}, {false, false, true, false, false},
+    {false, false, false, false, false}, {false, false, false, false, true},
+    {false, true, false, false, true},
+  };
+  unsigned passed = 0;
+  for (auto c : cases) {
+    bool ok = run_case(c.shared, c.new_failure, c.resize_failure, c.nil, c.buffer, borrowed);
+    cleanup_owned_port();
+    if (!ok || fixture_failed) break;
+    ++passed;
+  }
+  if (mach_port_mod_refs(mach_task_self(), borrowed, MACH_PORT_RIGHT_SEND, -1) != KERN_SUCCESS) fixture_failed = true;
+  if (mach_port_mod_refs(mach_task_self(), borrowed, MACH_PORT_RIGHT_RECEIVE, -1) != KERN_SUCCESS) fixture_failed = true;
+  if (fixture_failed) return 1;
+  std::printf("PASS %u exact Texture::allocate/constructor cases; real port cleanup; borrowed input survives; reference unwind balances\n", passed);
+  return 0;
+}

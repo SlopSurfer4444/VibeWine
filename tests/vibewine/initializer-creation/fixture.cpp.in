@@ -1,0 +1,232 @@
+#include "mocks.hpp"
+
+namespace dxmt {
+class D3D11Buffer;
+using ID3D11Buffer = D3D11Buffer;
+class D3D11Buffer : public TResourceBase<tag_buffer>, public RefObject<D3D11Buffer, Seam::BufferOwner> {
+public:
+  Rc<Buffer> buffer_;
+  Rc<DynamicBuffer> dynamic_;
+  bool structured = false, allow_raw_view = false;
+public:
+// BUFFER_CONSTRUCTOR
+// BUFFER_INITIALIZE
+};
+// BUFFER_FACTORY
+
+template<class tag_texture> class DeviceTexture : public TResourceBase<tag_texture, IMTLMinLODClampable>,
+                                                public RefObject<DeviceTexture<tag_texture>, Seam::TextureOwner> {
+  Rc<RenamableTexturePool> renamable_;
+  D3DKMT_HANDLE local_kmt_ = 0, global_kmt_ = 0;
+public:
+// TEXTURE_OWNER
+};
+// MACH_GUARD
+// TEXTURE_FACTORY
+
+using Owner = DeviceTexture<tag_texture_2d>;
+static unsigned cases = 0;
+static unsigned char data_bytes[6][64] = {};
+static unsigned char golden(unsigned sub, unsigned byte) { return ((sub + 1) * 29 + byte * 7) % 251 + 1; }
+static std::array<D3D11_SUBRESOURCE_DATA, 6> data() {
+  std::array<D3D11_SUBRESOURCE_DATA, 6> result;
+  for (unsigned i = 0; i < result.size(); ++i) {
+    for (unsigned j = 0; j < sizeof(data_bytes[i]); ++j) data_bytes[i][j] = golden(i, j);
+    result[i] = {data_bytes[i], 32 + i, 64 + i};
+  }
+  return result;
+}
+static void reset() { audit = {}; }
+static void finish(MTLD3D11Device& device) {
+  require(audit.port_releases == audit.fresh_ports - audit.registered_ports, "fresh unpublished Mach right released exactly once");
+  require(audit.port_releases_while_allocation_alive == audit.port_releases, "Mach right released while native allocation lifetime remains independent");
+  device.dxmt.queue_.initializer.drain();
+  require(audit.alive_owners == 0 && audit.alive_textures == 0 && audit.alive_buffers == 0 &&
+          audit.alive_pools == 0 && audit.alive_dynamic == 0 && audit.alive_mutex == 0 &&
+          audit.alive_allocations == 0, "all temporary ownership released after deferred drain");
+  ++cases;
+}
+static HRESULT texture(MTLD3D11Device& device, const Desc& desc, const D3D11_SUBRESOURCE_DATA* initial, Owner** owner) {
+  return CreateDeviceTextureInternal<tag_texture_2d>(&device, &desc, initial, owner);
+}
+static void prefix(MTLD3D11Device& device, unsigned accepted) {
+  require(device.dxmt.queue_.initializer.retained_textures.size() == accepted, "exact valid prefix retained");
+  require(audit.alive_allocations == int(accepted != 0), "prefix allocation survives failed creation");
+  require(audit.alive_textures == 0 && audit.alive_owners == 0, "failed texture is unpublished and descriptor released");
+}
+static void texture_bytes(MTLD3D11Device& device, Owner* owner, bool upload, unsigned count) {
+  device.dxmt.queue_.initializer.drain();
+  for (unsigned sub = 0; sub < count; ++sub) for (unsigned byte = 0; byte < 64; ++byte)
+    require(owner->texture_->current()->bytes[sub][byte] == (upload ? golden(sub, byte) : 0), "texture byte golden after deferred completion");
+}
+static void test_texture_failures() {
+  auto initial = data();
+  for (bool shared : {false, true}) for (bool upload : {false, true})
+    for (InitStatus status : {InitStatus::OutOfMemory, InitStatus::SubmissionFailed})
+      for (int index = 0; index < 6; ++index) {
+        reset(); MTLD3D11Device device; Desc desc; if (shared) desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+        audit.init_failure_at = index; audit.init_failure = status;
+        Owner* owner = reinterpret_cast<Owner*>(uintptr_t(1));
+        auto hr = texture(device, desc, upload ? initial.data() : nullptr, &owner);
+        require(hr == (status == InitStatus::OutOfMemory ? E_OUTOFMEMORY : E_FAIL), "failure category preserved");
+        require(owner == nullptr, "failure output remains null");
+        require(audit.calls == index + 1, "stop at first failed subresource");
+        require(audit.uploads == (upload ? index + 1 : 0) && audit.zeros == (upload ? 0 : index + 1), "correct initializer overload");
+        for (int i = 0; i <= index; ++i) {
+          require(audit.visited[i] == unsigned(i / 3 * 100 + i % 3), "subresource order preserved");
+          if (upload) {
+            require(audit.uploaded_data[i] == initial[i].pSysMem, "subresource data pointer preserved");
+            require(audit.pitches[i] == std::pair<size_t, size_t>{initial[i].SysMemPitch, initial[i].SysMemSlicePitch}, "subresource pitches preserved");
+          }
+        }
+        require(audit.d3d_creates == 0 && audit.registrations == 0 && audit.names == 0, "no shared publication before initialization succeeds");
+        prefix(device, unsigned(index)); finish(device);
+      }
+}
+static void test_texture_allocations_and_success() {
+  auto initial = data();
+  for (bool shared : {false, true}) for (bool null_wrapper : {false, true}) {
+    reset(); MTLD3D11Device device; Desc desc; if (shared) desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+    if (null_wrapper) audit.wrapper_null = true; else audit.native_null = true;
+    Owner* owner = reinterpret_cast<Owner*>(uintptr_t(1));
+    require(texture(device, desc, nullptr, &owner) == E_OUTOFMEMORY && owner == nullptr, "native failure returns null and OOM");
+    require(audit.calls == 0 && audit.renames == 0 && audit.d3d_creates == 0 && audit.registrations == 0, "native allocation failure has no downstream use");
+    finish(device);
+  }
+  for (bool upload : {false, true}) for (bool cpu_access : {false, true}) {
+    reset(); MTLD3D11Device device; Desc desc; desc.CPUAccessFlags = cpu_access; desc.Usage = D3D11_USAGE_IMMUTABLE; desc.BindFlags = 0;
+    Owner* owner = nullptr;
+    require(texture(device, desc, upload ? initial.data() : nullptr, &owner) == S_OK && owner != nullptr, "texture success publishes owner");
+    require(audit.calls == 6 && audit.renames == 1, "all subresources initialized once");
+    Flags<TextureAllocationFlag> flags; flags.bits = audit.texture_flags;
+    require(flags.test(cpu_access ? TextureAllocationFlag::GpuManaged : TextureAllocationFlag::GpuPrivate) &&
+            flags.test(TextureAllocationFlag::GpuReadonly) && flags.test(TextureAllocationFlag::ShaderReadonly), "texture allocation flags preserved");
+    texture_bytes(device, owner, upload, 6); delete owner; prefix(device, 0); finish(device);
+  }
+  for (bool upload : {false, true}) for (int failure : {-1, 0, 1}) {
+    reset(); MTLD3D11Device device; Desc desc; desc.MipLevels = desc.ArraySize = 1; desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    audit.init_failure_at = failure < 0 ? -1 : 0;
+    audit.init_failure = failure == 1 ? InitStatus::SubmissionFailed : InitStatus::OutOfMemory;
+    Owner* owner = reinterpret_cast<Owner*>(uintptr_t(1));
+    auto hr = texture(device, desc, upload ? initial.data() : nullptr, &owner);
+    require(hr == (failure == -1 ? S_OK : failure == 0 ? E_OUTOFMEMORY : E_FAIL), "renamable initialization status");
+    require(audit.pools == 1 && audit.calls == 1, "renamable path exercised");
+    if (failure == -1) { require(owner != nullptr, "renamable owner published"); texture_bytes(device, owner, upload, 1); delete owner; prefix(device, 0); }
+    else { require(owner == nullptr, "failed renamable owner null"); prefix(device, 0); }
+    finish(device);
+  }
+  for (bool null_wrapper : {false, true}) {
+    reset(); MTLD3D11Device device; Desc desc; desc.MipLevels = desc.ArraySize = 1; desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    if (null_wrapper) audit.wrapper_null = true; else audit.native_null = true;
+    Owner* owner = reinterpret_cast<Owner*>(uintptr_t(1));
+    require(texture(device, desc, nullptr, &owner) == E_OUTOFMEMORY && !owner, "renamable native failure returns OOM and null");
+    require(audit.pools == 1 && audit.calls == 0 && audit.renames == 0, "renamable native failure precedes initialization"); finish(device);
+  }
+  reset(); MTLD3D11Device device; Desc desc; audit.normalize_desc = true;
+  Owner* owner = nullptr;
+  require(texture(device, desc, nullptr, &owner) == S_OK && owner, "normalized descriptor creates texture");
+  require(owner->desc.Format == 23 && owner->desc.MipLevels == 2 && owner->desc.ArraySize == 1 && audit.calls == 2, "normalized descriptor stored and enumerated");
+  texture_bytes(device, owner, false, 2); delete owner; finish(device);
+}
+static void test_shared() {
+  auto initial = data();
+  for (bool upload : {false, true}) for (unsigned shared_flag : {D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX}) {
+    reset(); MTLD3D11Device device; Desc desc; desc.MiscFlags = shared_flag;
+    Owner* owner = nullptr;
+    require(texture(device, desc, upload ? initial.data() : nullptr, &owner) == S_OK && owner, "shared success publishes owner");
+    require(audit.d3d_creates == 1 && audit.registrations == 1 && audit.d3d_destroys == 0, "shared ownership transferred to published owner");
+    require(audit.fresh_ports == 1 && audit.port_releases == 0, "published shared Mach right follows existing retention policy");
+    require(audit.ordering.size() == 8 && audit.ordering[6] == "d3d-create" && audit.ordering[7] == "register", "bootstrap registration follows initialization and D3DKMT ownership");
+    texture_bytes(device, owner, upload, 6); delete owner;
+    require(audit.d3d_destroys == 1, "shared resource released exactly once");
+    prefix(device, 0); finish(device);
+  }
+  for (int failure = 0; failure < 6; ++failure) {
+    reset(); MTLD3D11Device device; Desc desc; desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+    if (failure == 0) audit.invalid_device = true;
+    if (failure == 1) audit.mach_null = true;
+    if (failure == 2) audit.keyed_fail = true;
+    if (failure == 3) audit.d3dkmt_fail = true;
+    if (failure == 4) audit.register_fail = true;
+    if (failure == 5) audit.throw_new = Seam::KeyedMutex;
+    Owner* owner = reinterpret_cast<Owner*>(uintptr_t(1));
+    require(texture(device, desc, nullptr, &owner) == (failure == 5 ? E_OUTOFMEMORY : E_FAIL), "shared failure HRESULT");
+    require(owner == nullptr, "shared failure has null output");
+    require(audit.d3d_creates == int(failure == 3 || failure == 4), "shared external creation count");
+    require(audit.registrations == int(failure == 4), "shared publication attempted only after acquired resource");
+    require(audit.d3d_destroys == int(failure == 4), "shared resource released exactly once");
+    prefix(device, failure < 2 ? 0 : 6); finish(device);
+  }
+}
+static void test_bad_alloc() {
+  for (bool shared : {false, true}) for (Seam seam : {Seam::Texture, Seam::TextureAllocation, Seam::TextureOwner}) {
+    reset(); MTLD3D11Device device; Desc desc; if (shared) desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+    audit.throw_new = seam;
+    Owner* owner = reinterpret_cast<Owner*>(uintptr_t(1));
+    require(texture(device, desc, nullptr, &owner) == E_OUTOFMEMORY && owner == nullptr, "actual texture new bad_alloc translated with null output");
+    require(audit.d3d_creates == 0 && audit.registrations == 0, "host allocation failure precedes shared publication");
+    prefix(device, seam == Seam::TextureOwner ? 6 : 0); finish(device);
+  }
+  reset(); MTLD3D11Device device; Desc desc; desc.MipLevels = desc.ArraySize = 1; desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+  audit.throw_new = Seam::TexturePool; Owner* owner = reinterpret_cast<Owner*>(uintptr_t(1));
+  require(texture(device, desc, nullptr, &owner) == E_OUTOFMEMORY && owner == nullptr, "renamable new bad_alloc translated");
+  prefix(device, 0); finish(device);
+}
+static void test_buffers() {
+  auto initial = data();
+  for (bool upload : {false, true}) for (unsigned usage : {D3D11_USAGE_DEFAULT, D3D11_USAGE_IMMUTABLE, D3D11_USAGE_DYNAMIC})
+    for (bool output : {false, true}) for (bool traced : {false, true}) {
+      reset(); MTLD3D11Device device; Desc desc; desc.Usage = usage; desc.BindFlags = output ? D3D11_BIND_RENDER_TARGET : 0; audit.traced = traced;
+      desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED | D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+      ID3D11Buffer* owner = nullptr;
+      require(CreateBuffer(&device, &desc, upload ? initial.data() : nullptr, &owner) == S_OK && owner, "buffer success publishes owner");
+      bool private_clear = !upload && output && usage != D3D11_USAGE_DYNAMIC;
+      require(audit.calls == int(private_clear) && audit.updates == int(upload) && audit.dynamic == int(!output), "buffer initialization and dynamic paths preserved");
+      if (upload) require(audit.updated_data == initial[0].pSysMem && audit.updated_length == 64, "buffer upload data and byte count");
+      Flags<BufferAllocationFlag> flags; flags.bits = audit.buffer_flags;
+      require(flags.test(BufferAllocationFlag::CpuWriteCombined) == (!traced && usage == D3D11_USAGE_DYNAMIC) &&
+              flags.test(BufferAllocationFlag::GpuReadonly) == (usage == D3D11_USAGE_IMMUTABLE) &&
+              flags.test(BufferAllocationFlag::SuballocateFromOnePage) == (usage == D3D11_USAGE_DYNAMIC), "buffer allocation flags preserved");
+      require(flags.test(BufferAllocationFlag::GpuPrivate) == private_clear &&
+              flags.test(BufferAllocationFlag::GpuManaged) == (usage != D3D11_USAGE_DYNAMIC && (upload || !output)), "buffer storage flags preserved");
+      device.dxmt.queue_.initializer.drain();
+      for (unsigned byte = 0; byte < 64; ++byte)
+        require(owner->buffer_->current_->bytes[byte] == (upload ? golden(0, byte) : private_clear ? 0 : 0xcc), "buffer byte golden after upload or deferred clear");
+      delete owner;
+      require(audit.alive_allocations == 0, "completed buffer allocation released with owner");
+      finish(device);
+    }
+  for (InitStatus status : {InitStatus::OutOfMemory, InitStatus::SubmissionFailed}) {
+    reset(); MTLD3D11Device device; Desc desc; audit.init_failure_at = 0; audit.init_failure = status;
+    ID3D11Buffer* owner = reinterpret_cast<ID3D11Buffer*>(uintptr_t(1));
+    require(CreateBuffer(&device, &desc, nullptr, &owner) == (status == InitStatus::OutOfMemory ? E_OUTOFMEMORY : E_FAIL), "failure category preserved");
+    require(owner == nullptr && audit.renames == 0, "failed buffer initialization cannot publish or rename"); finish(device);
+  }
+  for (bool upload : {false, true}) for (bool null_wrapper : {false, true}) {
+    reset(); MTLD3D11Device device; Desc desc; if (null_wrapper) audit.wrapper_null = true; else audit.native_null = true;
+    ID3D11Buffer* owner = reinterpret_cast<ID3D11Buffer*>(uintptr_t(1));
+    require(CreateBuffer(&device, &desc, upload ? initial.data() : nullptr, &owner) == E_OUTOFMEMORY && !owner, "buffer native failure returns OOM and null");
+    require(audit.calls == 0 && audit.updates == 0 && audit.renames == 0, "failed buffer native allocation unused"); finish(device);
+  }
+  for (Seam seam : {Seam::BufferOwner, Seam::Buffer, Seam::BufferAllocation, Seam::DynamicBuffer}) {
+    reset(); MTLD3D11Device device; Desc desc; desc.BindFlags = 0; audit.throw_new = seam;
+    ID3D11Buffer* owner = reinterpret_cast<ID3D11Buffer*>(uintptr_t(1));
+    require(CreateBuffer(&device, &desc, nullptr, &owner) == E_OUTOFMEMORY && !owner, "actual buffer new bad_alloc translated with null output"); finish(device);
+  }
+}
+static void test_validation() {
+  reset(); MTLD3D11Device device; Desc desc;
+  require(CreateBuffer(&device, &desc, nullptr, nullptr) == S_FALSE, "buffer null output validates without allocating");
+  require(texture(device, desc, nullptr, nullptr) == S_FALSE, "texture null output validates without allocating");
+  require(audit.calls == 0 && audit.alive_owners == 0 && audit.alive_textures == 0, "validation-only creates no resources");
+  audit.descriptor_invalid = true;
+  require(texture(device, desc, nullptr, nullptr) == E_INVALIDARG, "invalid descriptor preserved without output");
+  Owner* owner = reinterpret_cast<Owner*>(uintptr_t(1));
+  require(texture(device, desc, nullptr, &owner) == E_INVALIDARG && !owner, "invalid descriptor clears output"); finish(device);
+}
+} // namespace dxmt
+int main() {
+  using namespace dxmt;
+  test_texture_failures(); test_texture_allocations_and_success(); test_shared(); test_bad_alloc(); test_buffers(); test_validation();
+  std::printf("PASS: %u resource creation cases; deferred prefix drain and exact ownership accounting\n", cases);
+}

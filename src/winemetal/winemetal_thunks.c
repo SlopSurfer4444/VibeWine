@@ -1399,3 +1399,12 @@ MTLAllocation_allocatedSize(obj_handle_t allocation) {
     return 0; // Unknown charge is not admitted to a byte-bounded residency set.
   return params.ret;
 }
+
+// Additive ABI: never insert a new operation ahead of existing unix-call IDs.
+WINEMETAL_API void
+WMTMachPortDeallocate(mach_port_t mach_port) {
+  if (!mach_port)
+    return;
+  struct unixcall_mach_port_deallocate params = {mach_port};
+  UNIX_CALL(150, &params);
+}

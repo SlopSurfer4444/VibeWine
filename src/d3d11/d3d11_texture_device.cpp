@@ -26,6 +26,7 @@
 #include "dxmt_texture.hpp"
 #include "d3d11_resource.hpp"
 #include "util_win32_compat.h"
+#include <new>
 
 namespace dxmt {
 
@@ -154,6 +155,12 @@ public:
         this->texture_ = std::move(u_texture);
         this->keyed_mutex_ = std::move(keyed_mutex);
       }
+
+  void
+  setSharedHandles(D3DKMT_HANDLE localHandle, D3DKMT_HANDLE globalHandle) noexcept {
+    local_kmt_ = localHandle;
+    global_kmt_ = globalHandle;
+  }
 
   ~DeviceTexture() {
     if (local_kmt_) {
@@ -354,16 +361,37 @@ struct SharedResourceData {
   D3DKMT_HANDLE mutex_handle;
 };
 
+// A newly created shared texture owns a fresh Mach send right before it has a
+// published bootstrap name. Drop only that right if resource creation fails;
+// pending initializer commands retain the native texture independently.
+class SharedTextureMachPortGuard {
+  mach_port_t port_;
+
+public:
+  explicit SharedTextureMachPortGuard(mach_port_t port) : port_(port) {}
+  SharedTextureMachPortGuard(const SharedTextureMachPortGuard &) = delete;
+  SharedTextureMachPortGuard &operator=(const SharedTextureMachPortGuard &) = delete;
+  ~SharedTextureMachPortGuard() {
+    if (port_)
+      WMTMachPortDeallocate(port_);
+  }
+  void release() noexcept { port_ = 0; }
+};
+
 template <typename tag>
 HRESULT CreateDeviceTextureInternal(MTLD3D11Device *pDevice,
                                     const typename tag::DESC1 *pDesc,
                                     const D3D11_SUBRESOURCE_DATA *pInitialData,
-                                    typename tag::COM_IMPL **ppTexture) {
+                                    typename tag::COM_IMPL **ppTexture) try {
+  if (ppTexture)
+    *ppTexture = nullptr;
   WMTTextureInfo info;
   typename tag::DESC1 finalDesc;
   if (FAILED(CreateMTLTextureDescriptor(pDevice, pDesc, &finalDesc, &info))) {
     return E_INVALIDARG;
   }
+  if (!ppTexture)
+    return S_FALSE;
   bool single_subresource = info.mipmap_level_count == 1 && info.array_length == 1 &&
                             !(finalDesc.MiscFlags & D3D11_RESOURCE_MISC_TEXTURECUBE);
   auto texture = Rc<Texture>(new Texture(info, pDevice->GetMTLDevice()));
@@ -373,21 +401,28 @@ HRESULT CreateDeviceTextureInternal(MTLD3D11Device *pDevice,
 
   auto &initializer = pDevice->GetDXMTDevice().queue().initializer;
 
-  auto initialize = [&](Rc<TextureAllocation> &&allocation) {
+  auto initialize = [&](Rc<TextureAllocation> &&allocation) -> HRESULT {
+    if (!allocation || !allocation->texture())
+      return E_OUTOFMEMORY;
     texture->rename(std::move(allocation));
     if (!pInitialData) {
       for (auto sub : EnumerateSubresources(finalDesc)) {
-        initializer.initWithZero(texture.ptr(), texture->current(), sub.ArraySlice, sub.MipLevel);
+        auto result = initializer.initWithZero(texture.ptr(), texture->current(), sub.ArraySlice, sub.MipLevel);
+        if (!result)
+          return result.status == InitStatus::OutOfMemory ? E_OUTOFMEMORY : E_FAIL;
       }
     } else {
       for (auto sub : EnumerateSubresources(finalDesc)) {
         auto &data = pInitialData[sub.SubresourceId];
-        initializer.initWithData(
+        auto result = initializer.initWithData(
             texture.ptr(), texture->current(), sub.ArraySlice, sub.MipLevel, data.pSysMem, data.SysMemPitch,
             data.SysMemSlicePitch, format_desc.Flag
         );
+        if (!result)
+          return result.status == InitStatus::OutOfMemory ? E_OUTOFMEMORY : E_FAIL;
       }
     }
+    return S_OK;
   };
 
   auto shared_flag =
@@ -407,26 +442,41 @@ HRESULT CreateDeviceTextureInternal(MTLD3D11Device *pDevice,
       flags.set(TextureAllocationFlag::ShaderReadonly);
     flags.set(TextureAllocationFlag::Shared);
     auto allocation = texture->allocate(flags);
-
+    if (!allocation)
+      return E_OUTOFMEMORY;
+    SharedTextureMachPortGuard port_guard(allocation->machPort);
+    if (!allocation->texture())
+      return E_OUTOFMEMORY;
     mach_port_t mach_port = allocation->machPort;
     if (!mach_port) {
       ERR("DeviceTexture: Failed to get mach port for shared texture");
       return E_FAIL;
     }
+    // Initialization may queue a valid prefix. The initializer retains those
+    // allocations until completion even if a later subresource fails. No shared
+    // names or D3DKMT resources exist until the entire initialization succeeds.
+    HRESULT hr = initialize(std::move(allocation));
+    if (FAILED(hr))
+      return hr;
+
     SharedResourceData runtimeData;
     MakeUniqueSharedName(runtimeData.mach_port_name);
-    if (!WMTBootstrapRegister(runtimeData.mach_port_name, mach_port)) {
-      ERR("DeviceTexture: Failed to register mach port for shared texture");
-      return E_FAIL;
-    }
     runtimeData.dimension = tag::dimension;
     memcpy(&runtimeData.desc, pDesc, sizeof(typename tag::DESC1));
 
     Rc<KeyedMutex> keyed_mutex = {};
     if (finalDesc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX) {
       keyed_mutex = KeyedMutex::create(pDevice->GetMTLDevice());
+      if (!keyed_mutex)
+        return E_FAIL;
     }
     runtimeData.mutex_handle = keyed_mutex ? keyed_mutex->globalHandle() : 0;
+
+    // Allocate the COM owner before obtaining external handles. Handle adoption
+    // is noexcept, and the destructor closes hResource on any later failure.
+    Com<DeviceTexture<tag>> resource = new DeviceTexture<tag>(
+        &finalDesc, std::move(texture), 0, 0, std::move(keyed_mutex), pDevice
+    );
 
     D3DKMT_CREATEALLOCATION create = {};
     create.hDevice = pDevice->GetLocalD3DKMT();
@@ -450,11 +500,15 @@ HRESULT CreateDeviceTextureInternal(MTLD3D11Device *pDevice,
       return E_FAIL;
     }
 
-    initialize(std::move(allocation));
-    *ppTexture = reinterpret_cast<typename tag::COM_IMPL *>(
-        ref(new DeviceTexture<tag>(&finalDesc, std::move(texture), create.hResource,
-                                   create.hGlobalShare, std::move(keyed_mutex), pDevice))
-    );
+    resource->setSharedHandles(create.hResource, create.hGlobalShare);
+    // Register last: no subsequent host allocation or initialization can fail
+    // after the name becomes externally visible.
+    if (!WMTBootstrapRegister(runtimeData.mach_port_name, mach_port)) {
+      ERR("DeviceTexture: Failed to register mach port for shared texture");
+      return E_FAIL;
+    }
+    *ppTexture = reinterpret_cast<typename tag::COM_IMPL *>(resource.takeOwnership());
+    port_guard.release();
     return S_OK;
   }
 
@@ -466,15 +520,21 @@ HRESULT CreateDeviceTextureInternal(MTLD3D11Device *pDevice,
     flags.set(TextureAllocationFlag::GpuReadonly);
   if (single_subresource && (finalDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL)) {
     Rc<RenamableTexturePool> renamable = new RenamableTexturePool(texture.ptr(), 32, flags);
-    initialize(renamable->getNext(0));
+    HRESULT hr = initialize(renamable->getNext(0));
+    if (FAILED(hr))
+      return hr;
     *ppTexture = reinterpret_cast<typename tag::COM_IMPL *>(
         ref(new DeviceTexture<tag>(&finalDesc, std::move(texture), std::move(renamable), pDevice)));
   } else {
-    initialize(texture->allocate(flags));
+    HRESULT hr = initialize(texture->allocate(flags));
+    if (FAILED(hr))
+      return hr;
     *ppTexture = reinterpret_cast<typename tag::COM_IMPL *>(
         ref(new DeviceTexture<tag>(&finalDesc, std::move(texture), pDevice)));
   }
   return S_OK;
+} catch (const std::bad_alloc &) {
+  return E_OUTOFMEMORY;
 }
 
 HRESULT

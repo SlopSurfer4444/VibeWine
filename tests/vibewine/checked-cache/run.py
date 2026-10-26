@@ -10,7 +10,41 @@ here = Path(__file__).resolve().parent
 root = here.parents[2]
 native = root / 'src/winemetal/unix/cache.c'
 thunks = (root / 'src/winemetal/winemetal_thunks.c').read_text()
-checked = thunks[thunks.index('\nWINEMETAL_API obj_handle_t\nCache_alloc_init_checked'):]
+
+
+def checked_thunk(source, name, result_type):
+    # Each cache fixture owns one complete function, never the rest of the
+    # bridge file: later additive ABI operations have independent dispatchers.
+    assert len(re.findall(rf'^{re.escape(name)}\(', source, re.MULTILINE)) == 1, name
+    signature = rf'^WINEMETAL_API {result_type}\n{re.escape(name)}\([^\n]*\) \{{'
+    assert len(re.findall(signature, source, re.MULTILINE)) == 1, name
+    matches = re.findall(signature + r'[\s\S]*?^\}', source, re.MULTILINE)
+    assert len(matches) == 1, name
+    function = matches[0]
+    assert function.endswith('\n}') and function.count('{') == function.count('}'), name
+    assert function.count('WINEMETAL_API') == 1, name
+    return function
+
+
+cache_thunks = [
+    ('Cache_alloc_init_checked', 'obj_handle_t'),
+    ('CacheReader_get_checked', 'obj_handle_t'),
+    ('CacheWriter_set_checked', 'uint32_t'),
+]
+checked = '\n\n'.join(checked_thunk(thunks, name, result_type) for name, result_type in cache_thunks)
+
+# Qualify the extraction boundary itself: a duplicate, incomplete definition,
+# or changed return signature must fail rather than silently selecting a body.
+control = checked_thunk(thunks, *cache_thunks[0])
+for malformed in (control + '\n' + control, control[:-1],
+                  control.replace('WINEMETAL_API obj_handle_t', 'WINEMETAL_API uint32_t', 1)):
+    try:
+        checked_thunk(malformed, *cache_thunks[0])
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError('cache thunk extraction accepted malformed definition')
+
 tables = (root / 'src/winemetal/unix/winemetal_unix.c').read_text()
 for name in ['__wine_unix_call_funcs', '__wine_unix_call_wow64_funcs']:
     body = tables.split(name + '[] = {', 1)[1].split('};', 1)[0]

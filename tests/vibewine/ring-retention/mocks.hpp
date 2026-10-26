@@ -9,6 +9,9 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <span>
+#include <limits>
+#include <new>
 #include <queue>
 #include <thread>
 #include <utility>

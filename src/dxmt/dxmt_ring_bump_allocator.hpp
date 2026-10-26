@@ -6,6 +6,10 @@
 #include "util_math.hpp"
 #include <mutex>
 #include <list>
+#include <array>
+#include <limits>
+#include <new>
+#include <span>
 
 namespace dxmt {
 
@@ -23,6 +27,16 @@ public:
 
   std::pair<typename Allocator::Block &, uint64_t>
   allocate(uint64_t seq_id, uint64_t coherent_id, size_t size, size_t alignment);
+
+  struct Reservation {
+    typename Allocator::Block *block = nullptr;
+    uint64_t offset = 0;
+  };
+
+  // The initializer reserves at most two planes. Failure preserves both the
+  // ring and the caller's outputs, including when a later plane cannot fit.
+  bool allocateChecked(uint64_t seq_id, uint64_t coherent_id, std::span<const size_t> sizes,
+                       size_t alignment, std::span<Reservation> out);
 
   void free_blocks(uint64_t coherent_id);
 
@@ -62,7 +76,7 @@ public:
   class Block {
   public:
     WMT::Reference<WMT::Buffer> buffer;
-    uint64_t gpu_address;
+    uint64_t gpu_address = 0;
 
     Block() = default;
     Block(const Block &copy) = delete;
@@ -78,9 +92,11 @@ public:
     return block;
   };
 
+  bool valid(const Block &block) const { return bool(block.buffer); }
+
 private:
   WMT::Device device_;
-  WMTBufferInfo buffer_info_;
+  WMTBufferInfo buffer_info_{};
 };
 
 class StagingBufferBlockAllocator {
@@ -94,8 +110,8 @@ public:
   class Block {
   public:
     WMT::Reference<WMT::Buffer> buffer;
-    uint64_t gpu_address;
-    void *mapped_address;
+    uint64_t gpu_address = 0;
+    void *mapped_address = nullptr;
 
     ~Block() {
       if (mapped_address) {
@@ -119,7 +135,7 @@ public:
   allocate(size_t block_size) {
     Block block{};
     block.mapped_address = placed_buffer_ ? malloc(block_size) : nullptr;
-    WMTBufferInfo info;
+    WMTBufferInfo info{};
     info.options = buffer_info_;
     info.memory.set(block.mapped_address);
     info.length = block_size;
@@ -127,6 +143,10 @@ public:
     block.gpu_address = info.gpu_address;
     return block;
   };
+
+  bool valid(const Block &block) const {
+    return block.buffer && (!placed_buffer_ || block.mapped_address);
+  }
 
 private:
   WMT::Device device_;
@@ -138,7 +158,7 @@ class HostBufferBlockAllocator {
 public:
   class Block {
   public:
-    void *ptr;
+    void *ptr = nullptr;
 
     Block() = default;
 
@@ -162,7 +182,121 @@ public:
     block.ptr = malloc(block_size);
     return block;
   };
+
+  bool valid(const Block &block) const { return block.ptr != nullptr; }
 };
+
+template <typename Allocator, size_t BlockSize, class mutex>
+bool
+RingBumpState<Allocator, BlockSize, mutex>::allocateChecked(
+    uint64_t seq_id, uint64_t coherent_id, std::span<const size_t> sizes,
+    size_t alignment, std::span<Reservation> out
+) {
+  if (sizes.empty() || sizes.size() > 2 || out.size() != sizes.size() ||
+      alignment == 0 || (alignment & (alignment - 1)) != 0)
+    return false;
+  for (auto size : sizes) {
+    // Native lengths and offsets are uint64_t. Also reject an unrepresentable
+    // aligned extent before touching the allocator or ring metadata.
+    if (size == 0 || size > std::numeric_limits<uint64_t>::max() ||
+        size > std::numeric_limits<size_t>::max() - (alignment - 1))
+      return false;
+  }
+
+  std::lock_guard<mutex> lock(mutex_);
+  using Iterator = typename std::list<Allocation>::iterator;
+  struct Plan {
+    Iterator entry;
+    size_t used;
+    bool candidate;
+  };
+  std::array<Plan, 2> plans{};
+  std::array<Reservation, 2> reservations{};
+  size_t plan_count = 0;
+  std::list<Allocation> pending;
+
+  auto reserve = [&](size_t used, size_t total, size_t size, size_t &offset) {
+    if (used > std::numeric_limits<size_t>::max() - (alignment - 1))
+      return false;
+    offset = (used + alignment - 1) & ~(alignment - 1);
+    return offset <= total && size <= total - offset;
+  };
+
+  try {
+    for (size_t i = 0; i < sizes.size(); ++i) {
+      const auto size = sizes[i];
+      size_t offset = 0;
+      if (plan_count && reserve(plans[plan_count - 1].used,
+                                plans[plan_count - 1].entry->total_size, size, offset)) {
+        auto &plan = plans[plan_count - 1];
+        plan.used = offset + size;
+        reservations[i] = {&plan.entry->block, offset};
+        continue;
+      }
+
+      Iterator selected = fifo.end();
+      size_t used = 0;
+      if (!plan_count && !fifo.empty()) {
+        auto tail = std::prev(fifo.end());
+        if (reserve(tail->allocated_size, tail->total_size, size, offset)) {
+          selected = tail;
+          used = offset + size;
+        }
+      }
+      if (selected == fifo.end()) {
+        for (auto it = fifo.begin(); it != fifo.end(); ++it) {
+          if (it->last_used_seq_id >= coherent_id)
+            break;
+          bool already_selected = false;
+          for (size_t j = 0; j < plan_count; ++j)
+            already_selected |= !plans[j].candidate && plans[j].entry == it;
+          if (!already_selected && it->total_size == BlockSize &&
+              reserve(0, it->total_size, size, offset)) {
+            selected = it;
+            used = offset + size;
+            break;
+          }
+        }
+      }
+      if (selected != fifo.end()) {
+        if (!allocator_.valid(selected->block))
+          return false;
+        plans[plan_count++] = {selected, used, false};
+        reservations[i] = {&selected->block, offset};
+        continue;
+      }
+
+      const auto total = std::max(size, BlockSize);
+      if (total > std::numeric_limits<uint64_t>::max())
+        return false;
+      auto block = allocator_.allocate(total);
+      if (!allocator_.valid(block))
+        return false;
+      // Both native allocation and list-node allocation can fail. Pending
+      // owns every prepared block until a completely nonallocating commit.
+      pending.push_back({0, total, seq_id, 0, std::move(block)});
+      auto candidate = std::prev(pending.end());
+      plans[plan_count++] = {candidate, size, true};
+      reservations[i] = {&candidate->block, 0};
+    }
+  } catch (const std::bad_alloc &) {
+    return false;
+  }
+
+  for (size_t i = 0; i < plan_count; ++i) {
+    auto &plan = plans[i];
+    plan.entry->allocated_size = plan.used;
+    plan.entry->last_used_seq_id = seq_id;
+    plan.entry->inc_time_to_live = 0;
+    if (plan.candidate)
+      fifo.splice(fifo.end(), pending, plan.entry);
+    else
+      fifo.splice(fifo.end(), fifo, plan.entry);
+  }
+  for (size_t i = 0; i < sizes.size(); ++i)
+    out[i] = reservations[i];
+  return true;
+}
 
 template <typename Allocator, size_t BlockSize, class mutex>
 std::pair<typename Allocator::Block &, uint64_t>

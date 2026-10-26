@@ -64,3 +64,14 @@ Source anchors in the tested baseline:
 This proves CPU-side control flow and command publication under the selected fault seams. It does **not** prove actual GPU execution, native object lifetime, asynchronous completion, host malloc/list-allocation failure handling, queue/event/command-buffer creation failure handling, a fixed caller HRESULT contract, game compatibility, performance, or FPS. Observed malformed command types are recorded by the mock; a real native decoder may assert, ignore, or interpret stale payloads differently.
 
 These small public fixture sources and this README are permanent minimal reproducer material. The runner creates no durable raw collection by default. If output is retained under the existing wave evidence contract, its invoking task owner must keep aggregate raw captures below 64 MiB with a seven-day TTL, retain active evidence until review, and retire exact task-owned captures manually after the hold ends. Source/build artifacts remain in their existing contract class; this diagnostic does not install a cleaner or authorize unrelated deletion.
+
+## After the initializer repair
+
+The corrected InitResult API intentionally differs from this historical diagnostic.
+Use `python3 tests/vibewine/initializer-failure-proof/run.py --expect-known-defects
+--source-ref 66bae06c` (one command) to snapshot the exact faulty production
+revision from Git. The runner records the resolved immutable commit and hashes;
+no checkout, reset, script execution or runtime selection occurs. Without that
+revision, repaired sources are explicitly rejected rather than treated as a
+successful bug reproduction. Use `initializer-transaction/run.py` for correctness.
+The sixteen historical observations remain unchanged and outside ordinary CI.

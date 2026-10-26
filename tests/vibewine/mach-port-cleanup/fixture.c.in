@@ -1,0 +1,84 @@
+#include <mach/mach.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "winemetal_thunks.h"
+
+typedef int32_t NTSTATUS;
+#define STATUS_SUCCESS 0
+#define STATUS_UNSUCCESSFUL ((NTSTATUS)0xc0000001)
+_Static_assert(sizeof(struct unixcall_mach_port_deallocate) == 4, "wire size");
+_Static_assert(sizeof(((struct unixcall_mach_port_deallocate *)0)->mach_port) == 4, "port width");
+// EXACT_NATIVE
+
+static unsigned dispatches, expected_opcode = 150;
+static uint32_t expected_port;
+static int seam_failed, wire_only;
+static NTSTATUS dispatch(unsigned opcode, void *obj) {
+  struct unixcall_mach_port_deallocate *params = obj;
+  ++dispatches;
+  if (opcode != expected_opcode || params->mach_port != expected_port) {
+    seam_failed = 1;
+    return STATUS_UNSUCCESSFUL;
+  }
+  return wire_only ? STATUS_SUCCESS : _WMTMachPortDeallocate(obj);
+}
+#define UNIX_CALL(opcode, obj) dispatch(opcode, obj)
+// EXACT_THUNK
+
+void fixture_expect_port(uint32_t port) { expected_port = port; }
+unsigned fixture_dispatches(void) { return dispatches; }
+int fixture_seam_failed(void) { return seam_failed; }
+#ifndef FIXTURE_LIBRARY
+#define CHECK(expr) do { if (!(expr)) { fprintf(stderr, "CHECK failed at %d: %s\n", __LINE__, #expr); failed = 1; goto cleanup; } } while (0)
+int main(void) {
+  mach_port_t ports[2] = {0, 0};
+  mach_port_urefs_t refs = 0;
+  unsigned before;
+  int failed = 0;
+  struct unixcall_mach_port_deallocate zero = {0};
+  CHECK(_WMTMachPortDeallocate(&zero) == STATUS_SUCCESS);
+  WMTMachPortDeallocate(0);
+  CHECK(dispatches == 0);
+  expected_port = UINT32_C(0xfedcba98);
+  wire_only = 1;
+  WMTMachPortDeallocate(expected_port);
+  CHECK(!seam_failed && dispatches == 1);
+  wire_only = 0;
+  for (unsigned i = 0; i < 2; ++i) {
+    CHECK(mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &ports[i]) == KERN_SUCCESS);
+    CHECK(mach_port_insert_right(mach_task_self(), ports[i], ports[i], MACH_MSG_TYPE_MAKE_SEND) == KERN_SUCCESS);
+  }
+  expected_port = ports[0];
+  before = dispatches;
+  WMTMachPortDeallocate(ports[0]);
+  CHECK(!seam_failed && dispatches == before + 1);
+  CHECK(mach_port_get_refs(mach_task_self(), ports[0], MACH_PORT_RIGHT_SEND, &refs) == KERN_SUCCESS && refs == 0);
+  CHECK(mach_port_get_refs(mach_task_self(), ports[0], MACH_PORT_RIGHT_RECEIVE, &refs) == KERN_SUCCESS && refs == 1);
+  CHECK(mach_port_get_refs(mach_task_self(), ports[1], MACH_PORT_RIGHT_SEND, &refs) == KERN_SUCCESS && refs == 1);
+  CHECK(mach_port_mod_refs(mach_task_self(), ports[1], MACH_PORT_RIGHT_SEND, 2) == KERN_SUCCESS);
+  expected_port = ports[1];
+  for (unsigned remaining = 2; ; --remaining) {
+    before = dispatches;
+    WMTMachPortDeallocate(ports[1]);
+    CHECK(!seam_failed && dispatches == before + 1);
+    CHECK(mach_port_get_refs(mach_task_self(), ports[1], MACH_PORT_RIGHT_SEND, &refs) == KERN_SUCCESS && refs == remaining);
+    CHECK(mach_port_get_refs(mach_task_self(), ports[1], MACH_PORT_RIGHT_RECEIVE, &refs) == KERN_SUCCESS && refs == 1);
+    if (!remaining) break;
+  }
+  // A receive-only test-owned port is a safe native failure case.
+  struct unixcall_mach_port_deallocate receive_only = {ports[0]};
+  CHECK(_WMTMachPortDeallocate(&receive_only) == STATUS_UNSUCCESSFUL);
+  CHECK(mach_port_get_refs(mach_task_self(), ports[0], MACH_PORT_RIGHT_RECEIVE, &refs) == KERN_SUCCESS && refs == 1);
+cleanup:
+  for (unsigned i = 0; i < 2; ++i) {
+    if (!ports[i]) continue;
+    if (mach_port_get_refs(mach_task_self(), ports[i], MACH_PORT_RIGHT_SEND, &refs) != KERN_SUCCESS) failed = 1;
+    else if (refs && mach_port_mod_refs(mach_task_self(), ports[i], MACH_PORT_RIGHT_SEND, -(mach_port_delta_t)refs) != KERN_SUCCESS) failed = 1;
+    if (mach_port_mod_refs(mach_task_self(), ports[i], MACH_PORT_RIGHT_RECEIVE, -1) != KERN_SUCCESS) failed = 1;
+  }
+  if (!failed) puts("PASS zero/no-dispatch, uint32 wire, real single/multiple sendrefs, receive survival, unrelated owned port, native failure");
+  return failed;
+}
+
+#endif

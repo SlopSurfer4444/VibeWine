@@ -31,7 +31,8 @@ def main() -> None:
         entries = [entry.strip() for entry in body.split(',') if entry.strip()]
         assert entries[54:56] == ['&_MTLCaptureManager_startCapture', '&_MTLCaptureManager_stopCapture']
         assert entries[149] == '&_MTLAllocation_allocatedSize'
-        assert len(entries) == 150, f'{table}: allocation getter must be appended at 149'
+        assert entries[150] == '&_WMTMachPortDeallocate'
+        assert len(entries) == 151, f'{table}: Mach cleanup must be appended at 150'
 
     template = (here / 'native_fixture.m.in').read_text()
     source_text = template.replace('// EXACT_NATIVE_FUNCTIONS', '\n\n'.join(
