@@ -70,7 +70,7 @@ inline void record(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64
   if(!profileEventAllowed(profile(),type,start,end))return;
   // Context/compiler detail must stay opt-in and capped via the general
   // entry point. Metadata/cap markers publish directly under writer admission.
-  if(profile()==Profile::StallWaits && (stallContextType(type) || (type>=104 && type<=107))) {
+  if(profile()==Profile::StallWaits && (stallContextType(type) || (type>=104 && type<=107) || (type>=111 && type<=119))) {
    detailRecord(gen,type,start,end,object,flags,detail0,detail1);return;
   }
  }
@@ -93,14 +93,16 @@ inline DetailToken beginDetail(uint64_t owner) {
  auto gen=detailLimit()?generation():0;
  return {gen,gen?newSerial():0,owner};
 }
-inline void detailRecord(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64_t object,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
- if(!gen || !detailLimit())return;
- // Filter before budget admission: excluded finish probes must not consume the
- // bounded compiler/persistence evidence budget or trigger its cap marker.
- if(!profileEventAllowed(profile(),type,start,end)) {profileMetadata(buffer(),gen);return;}
+struct DetailPayload { uint32_t type,flags; uint64_t detail0,detail1; };
+// One admitted writer owns the whole bundle. STOP drains every admitted member;
+// the shared per-record budget can still leave a visibly partial capped bundle.
+inline void detailRecords(uint32_t gen,uint64_t start,uint64_t end,uint64_t object,const DetailPayload *payload,size_t count) {
+ if(!gen || !detailLimit() || !count)return;
+ for(size_t i=0;i<count;i++)
+  if(!profileEventAllowed(profile(),payload[i].type,start,end)) {profileMetadata(buffer(),gen);return;}
  static DetailBudget budget;
  auto active=generation();
- if(!active)return; // Ordinary capture-boundary incompleteness remains explicit.
+ if(!active)return;
  auto h=buffer();
  if(!h || !admit(h,active))return;
  struct Exit {Header *h;~Exit(){releaseWriter(h);}} exit{h};
@@ -108,15 +110,19 @@ inline void detailRecord(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,
  auto publish=[&](uint32_t event,uint64_t a,uint64_t b,uint64_t identity,uint32_t result,uint64_t p0,uint64_t p1) {
   writeAdmittedEvent(h,active,event,a,b,identity,result,p0,p1,GetCurrentThreadId());
  };
- // A stale asynchronous token must never become evidence in a later capture.
- // One budgeted marker fails that capture rather than silently joining it.
- auto admitted=budget.claim(active,detailLimit());
- if(admitted==DetailBudget::Result::exhausted_first) {
-  auto t=now();publish(89,t,t,0,1,detailLimit(),0);return;
+ for(size_t i=0;i<count;i++) {
+  auto admitted=budget.claim(active,detailLimit());
+  if(admitted==DetailBudget::Result::exhausted_first) {
+   auto t=now();publish(89,t,t,0,1,detailLimit(),0);return;
+  }
+  if(admitted!=DetailBudget::Result::accepted)return;
+  if(active!=gen) {auto t=now();publish(89,t,t,0,2,gen,0);return;}
+  const auto &p=payload[i];publish(p.type,start,end,object,p.flags,p.detail0,p.detail1);
  }
- if(admitted!=DetailBudget::Result::accepted)return;
- if(active!=gen) {auto t=now();publish(89,t,t,0,2,gen,0);return;}
- publish(type,start,end,object,flags,detail0,detail1);
+}
+inline void detailRecord(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64_t object,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
+ const DetailPayload payload{type,flags,detail0,detail1};
+ detailRecords(gen,start,end,object,&payload,1);
 }
 inline void detailInstant(DetailToken token,uint32_t type,uint32_t flags=0,uint64_t detail0=0,uint64_t detail1=0) {
  if(!token.gen)return;
@@ -199,10 +205,12 @@ struct Scope {
 // no clock, capture lookup, or detail budget is needed in other profiles.
 struct StallScope {
  uint32_t gen=0,type;uint64_t object,sequence,frame,start=0;
- StallScope(uint32_t event,uint64_t queue,uint64_t chunk,uint64_t queueFrame)
+ StallScope(uint32_t event,uint64_t queue,uint64_t chunk,uint64_t queueFrame,uint32_t capturedGeneration)
    :type(event),object(queue),sequence(chunk),frame(queueFrame) {
-  if(profile()==Profile::StallWaits) {gen=generation();if(gen)start=now();}
+  if(profile()==Profile::StallWaits) {gen=capturedGeneration;if(gen)start=now();}
  }
+ StallScope(uint32_t event,uint64_t queue,uint64_t chunk,uint64_t queueFrame)
+   :StallScope(event,queue,chunk,queueFrame,profile()==Profile::StallWaits?generation():0) {}
  ~StallScope(){if(gen)record(gen,type,start,now(),object,0,sequence,frame);}
  StallScope(const StallScope&)=delete;
 };

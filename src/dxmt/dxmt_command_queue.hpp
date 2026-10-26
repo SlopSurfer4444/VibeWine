@@ -159,12 +159,26 @@ public:
   CommandChunk() {}
 
   void
-  reset() noexcept {
+  reset(uint64_t traceQueue = 0) noexcept {
     signal_frame_latency_fence_ = ~0ull;
     readback = {};
-    list_enc.reset();
-    ref_tracker.clear();
-    attached_cmdbuf = nullptr;
+    const auto gen = traceQueue && cs2trace::detailLimit() ? trace_generation : 0;
+    // Unpublished/default chunks have no initialized sequence or frame. Avoid
+    // reading those fields during shutdown resets with diagnostics unarmed.
+    const auto trace_chunk = gen ? chunk_id : 0;
+    const auto trace_frame = gen ? frame_ : 0;
+    {
+      cs2trace::StallScope trace(117, traceQueue, trace_chunk, trace_frame, gen);
+      list_enc.reset();
+    }
+    {
+      cs2trace::StallScope trace(118, traceQueue, trace_chunk, trace_frame, gen);
+      ref_tracker.clear();
+    }
+    {
+      cs2trace::StallScope trace(119, traceQueue, trace_chunk, trace_frame, gen);
+      attached_cmdbuf = nullptr;
+    }
   }
 };
 

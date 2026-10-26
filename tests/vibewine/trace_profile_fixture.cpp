@@ -38,9 +38,9 @@ int main(int argc,char **argv) {
   for(uint32_t type=0;type<120;type++) {
    const bool context=(type>=80 && type<=89) || type==93 || type==94;
    const bool duration=type==1 || type==3 || type==5 || (type>=6 && type<=16) || type==19 ||
-     (type>=30 && type<=32) || (type>=40 && type<=49) || (type>=104 && type<=110);
+     (type>=30 && type<=32) || (type>=40 && type<=49) || (type>=104 && type<=119);
    assert(profileAllows(type)==(context || duration));
-   if(context || (type>=104 && type<=107))continue;
+   if(context || (type>=104 && type<=107) || (type>=111 && type<=119))continue;
    auto before=h->next;record(10,type,100,100+StallWaitThresholdNs,123,0,8,9);
    assert(h->next==before+uint64_t(duration));
    if(duration){auto e=events()[before];assert(e.type==type && e.end-e.start==50000000 && e.object==123);}

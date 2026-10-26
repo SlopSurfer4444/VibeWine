@@ -21,7 +21,7 @@ constexpr bool profileTypeAllowed(Profile profile,uint32_t type) {
     (type>=96 && type<=103);
   case Profile::StallWaits:return type==1 || type==3 || type==5 || (type>=6 && type<=16) ||
     type==19 || (type>=30 && type<=32) || (type>=40 && type<=49) ||
-    stallContextType(type) || (type>=104 && type<=110);
+    stallContextType(type) || (type>=104 && type<=119);
   case Profile::Invalid:return false;
  }
  return false;
