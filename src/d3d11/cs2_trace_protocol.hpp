@@ -5,7 +5,11 @@
 namespace dxmt::cs2trace {
 // Changed magic prevents version-1 controllers mutating this control word.
 // Additive coverage metadata (event 95). Invalid=2 remains reserved forever.
-enum class Profile : uint32_t { Full=0, CompileWaits=1, Invalid=2, PresentationWaits=3 };
+enum class Profile : uint32_t { Full=0, CompileWaits=1, Invalid=2, PresentationWaits=3, StallWaits=4 };
+constexpr uint64_t StallWaitThresholdNs=50000000;
+constexpr bool stallContextType(uint32_t type) {
+ return (type>=80 && type<=89) || type==93 || type==94;
+}
 constexpr bool profileTypeAllowed(Profile profile,uint32_t type) {
  switch(profile) {
   case Profile::Full:return true;
@@ -15,9 +19,20 @@ constexpr bool profileTypeAllowed(Profile profile,uint32_t type) {
     (type>=20 && type<=25) || type==33 || type==40 || (type>=44 && type<=49) ||
     type==61 || type==62 || (type>=70 && type<=78) || (type>=89 && type<=92) ||
     (type>=96 && type<=103);
+  case Profile::StallWaits:return type==1 || type==3 || type==5 || (type>=6 && type<=16) ||
+    type==19 || (type>=30 && type<=32) || (type>=40 && type<=49) ||
+    stallContextType(type) || (type>=104 && type<=110);
   case Profile::Invalid:return false;
  }
  return false;
+}
+// Apply before publication and before any detailed-probe quota. Subtract only
+// after interval validation: unsigned underflow must never turn a bad interval
+// into a qualifying stall. Other profiles retain their existing coverage.
+constexpr bool profileEventAllowed(Profile profile,uint32_t type,uint64_t start,uint64_t end) {
+ if(!profileTypeAllowed(profile,type))return false;
+ return profile!=Profile::StallWaits ||
+   (end>=start && (stallContextType(type) || end-start>=StallWaitThresholdNs));
 }
 constexpr uint64_t Magic=0x4353325452414332ULL, Version=2, Capacity=131072;
 constexpr uint64_t WriterMask=(1ULL<<30)-1, StateMask=3ULL<<30;
