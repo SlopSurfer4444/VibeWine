@@ -38,6 +38,8 @@ def replace_once(text, old, new):
 variants = {'current': (body, (0, 1))}
 variants['removed-ring-scope'] = (replace_once(body,
     '      cs2trace::StallScope trace(109, traceSerial(), internal_seq, trace_frame);\n', ''), (0, 1))
+variants['missing-reftracker-cleanup'] = (replace_once(body,
+    '      reftracker_storage_allocator.free_blocks(internal_seq);\n', ''), (0, 1))
 variants['widened-idle-scope'] = (replace_once(body,
     '''    const auto idle_sample = [&] {
       cs2trace::StallScope retirement_trace(108, traceSerial(), internal_seq, trace_frame);

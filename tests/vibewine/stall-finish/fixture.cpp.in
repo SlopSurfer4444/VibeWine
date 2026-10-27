@@ -183,6 +183,7 @@ public:
   Idle *idle_retirement_ = &idle;
   Diagnostics idle_diagnostics_;
   Allocator staging_allocator{"staging-free"}, copy_temp_allocator{"copy-free"}, argbuf_allocator{"argbuf-free"};
+  Allocator reftracker_storage_allocator{"reftracker-free"};
   uint64_t traceSerial() const { return 42; }
   uint32_t WaitForFinishThread();
 };
@@ -290,7 +291,7 @@ static void run_case(unsigned status, bool matching_generation, bool details,
 #endif
   if (details && has_generation) expected.push_back("detail-92");
   expected.insert(expected.end(), {"counter-decrement", "counter-notify", "begin-109",
-                                  "staging-free", "copy-free", "argbuf-free", "end-109", "ready-2"});
+                                  "staging-free", "copy-free", "argbuf-free", "reftracker-free", "end-109", "ready-2"});
   if (events != expected) {
     std::cerr << "actual:"; for (const auto &item : events) std::cerr << " " << item;
     std::cerr << "\nexpected:"; for (const auto &item : expected) std::cerr << " " << item;

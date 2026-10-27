@@ -749,6 +749,10 @@ read_control_flow(
     call_targets = new_call_targets;
   }
 
+  // Cloning is complete. Instruction references used by visitors have expired;
+  // CFG edges reference BasicBlocks, whose addresses remain unchanged.
+  for (auto &bb : all_bb)
+    bb->instructions.compact();
   return all_bb;
 }
 

@@ -370,6 +370,9 @@ CommandQueue::WaitForFinishThread() {
       staging_allocator.free_blocks(internal_seq);
       copy_temp_allocator.free_blocks(internal_seq);
       argbuf_allocator.free_blocks(internal_seq);
+      // reset() detached this completed chunk's borrowed tracking storage
+      // before publishing coherence. Keep pending chunks, age completed bursts.
+      reftracker_storage_allocator.free_blocks(internal_seq);
     }
 
     internal_seq++;
