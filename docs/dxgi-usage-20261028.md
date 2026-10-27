@@ -50,7 +50,7 @@ before extending the CPU, shared, constant-buffer or swap-chain behavior.
 ## Focused verification
 
 Run `python3 tests/vibewine/dxgi-resource-usage/run.py --arch arm64` (or
-`--arch x86_64`). Add `--baseline-ref 40e7b88f7f10240d3fe00c4b69669816b1f3791a`
+`--arch x86_64`). Add `--baseline-ref a6637cfe2c5f6a2c13ec17290e359f86b163de6e`
 to require the old exact usage-bit failures and unchanged control passes.
 
 The runner extracts the actual production `GetDXGIUsage` and aggregated

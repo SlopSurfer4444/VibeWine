@@ -126,3 +126,11 @@ boundary; previously compiled output is never silently reused across it. No
 installed cache is deleted or migrated. There is no new title check, runtime
 flag, collector or background producer in these adaptations. CPU/IR verification
 and complete build checks do not establish GPU behavior, DS3 compatibility or FPS.
+
+## Public equivalents — 28 October 2026
+
+[The current publication map](PUBLICATION-20261028.json) preserves exact-tree
+component equivalents of the audited local commits. Runnable regression examples
+and the compaction baseline now use reachable public equivalents. Production
+source/headers, compiler epochs and licenses are unchanged by this follow-up;
+local build/source identities in historical evidence remain valid local names.

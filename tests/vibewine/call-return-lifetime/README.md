@@ -21,7 +21,7 @@ python3 tests/vibewine/call-return-lifetime/run.py \
   --llvm /absolute/llvm14-prefix --support-build /absolute/existing-support-build
 python3 tests/vibewine/call-return-lifetime/run.py \
   --llvm /absolute/llvm14-prefix --support-build /absolute/existing-support-build \
-  --baseline-ref bbf22e6a41b383fe67be9dbba80c9f682908c01a
+  --baseline-ref f871ff41c29c240eda3a6f962c9d48f9e6c2d1fd
 ```
 
 The baseline oracle requires an exact `bad_variant_access` rejection for all
