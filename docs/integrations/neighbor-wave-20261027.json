@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "date": "2026-10-27",
+  "components": {
+    "wine": "864a0f9f11f03871d67d27af2997802d555e0a2a",
+    "dxmt": "40e7b88f7f10240d3fe00c4b69669816b1f3791a"
+  },
+  "baseline": {
+    "wine": "5d4b43e48f48d83254468596a0df8592d62e3242",
+    "dxmt": "bbf22e6a41b383fe67be9dbba80c9f682908c01a"
+  },
+  "donors": [
+    {
+      "repo": "3Shain/dxmt",
+      "commit": "9839e55f98d4aca103957ee4132d6395a325a9ed",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
+      "repo": "3Shain/dxmt",
+      "commit": "d162ea44a31fbf9089ea09977337f0beb30bd082",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
+      "repo": "3Shain/dxmt",
+      "commit": "a741a3fad14a4bc5fc899f85bfa35de8f933e74b",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
+      "repo": "gzimbric/wine-arm64-macos",
+      "commit": "8df085af744d252b81be8a7d96cf1f01086c156b",
+      "license": "LGPL-2.1-or-later"
+    }
+  ],
+  "checks": {
+    "wineSourceFiles": 11182,
+    "workspaceTests": 13,
+    "cfgCasesPerVariant": 9,
+    "cfgCandidateVariants": 2,
+    "cfgBaselineOracles": "exact conditional wrong-variant and injected continuation failure; unaffected controls pass",
+    "GS": "actual TU;3point oracles,5scenarios each,16stripcontrols",
+    "CFData": "7cases x128;exact6baseline leaking paths;candidate0",
+    "lateIcon": "native+Rosetta36assertions each;exact5baseline failures;CFRunLoop transport substituted",
+    "WineCocoaSyntax": "exit0,retainedmatchedheaders,6SDKdeprecationwarnings",
+    "compilerCache": "epochs4/5 separate2/3;sharedtable/archivekey;API26",
+    "independentReview": "PASS after fixing CFG test ODR risk and Wine fixture coverage wording"
+  },
+  "builds": [
+    {
+      "mode": "false",
+      "exit": 0,
+      "elapsedSeconds": 1.190974583,
+      "optimizationBuildOptions": {
+        "vibewine_scene_submission": false,
+        "vibewine_precise_bindings": false,
+        "vibewine_dead_attachment_stores": false,
+        "vibewine_physical_residency_dedup": false,
+        "vibewine_residency_sets": false,
+        "vibewine_idle_retirement": false,
+        "vibewine_fixed_output_metalfx": false,
+        "vibewine_shader_cleanup": false,
+        "vibewine_demand_scheduler": false,
+        "vibewine_discard_hints": false,
+        "vibewine_bounded_encoder_optimizer": false,
+        "vibewine_packed_ir_growth": false,
+        "vibewine_render_pass_fusion": false,
+        "vibewine_compute_pass_fusion": false,
+        "vibewine_native_raster_shadow": false,
+        "vibewine_semantic_blend_hash": false,
+        "vibewine_marshal_packets": false,
+        "vibewine_empty_color_slots": false,
+        "vibewine_initializer_inclusive_reuse": false
+      },
+      "artifacts": {
+        "src/d3d11/d3d11.dll": "07817e6c799c06da0fffa041b5275c508e8b8b02a4b3302035e0fce4e2bb4b87",
+        "src/dxgi/dxgi.dll": "bde0dee82a10300fdbfdd5d11cc0ce25ce17aec351983fd2e107ff66fb234ac1",
+        "src/d3d10/d3d10core.dll": "418b6eea789382af684f333fb0c0654fe3d04484974246bba120861b63182bbf",
+        "src/winemetal/winemetal.dll": "b0ce65f9139d90f74903aacdc2ec962411201fbd416e5ae76eb186ce5b87dc53",
+        "src/winemetal/unix/winemetal.so": "93d84a5ad4a07a0adab734ded9982661c7006b598af05456efd22f121d2ece02",
+        "src/airconv/darwin/airconv": "dafc41dbb540e61ada7e0592386bde4fc97f13d4b9362910fcfee6d2ef0fcd20",
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010"
+      }
+    },
+    {
+      "mode": "true",
+      "exit": 0,
+      "elapsedSeconds": 0.89516525,
+      "optimizationBuildOptions": {
+        "vibewine_scene_submission": true,
+        "vibewine_precise_bindings": true,
+        "vibewine_dead_attachment_stores": true,
+        "vibewine_physical_residency_dedup": true,
+        "vibewine_residency_sets": true,
+        "vibewine_idle_retirement": true,
+        "vibewine_fixed_output_metalfx": true,
+        "vibewine_shader_cleanup": true,
+        "vibewine_demand_scheduler": true,
+        "vibewine_discard_hints": true,
+        "vibewine_bounded_encoder_optimizer": true,
+        "vibewine_packed_ir_growth": true,
+        "vibewine_render_pass_fusion": true,
+        "vibewine_compute_pass_fusion": true,
+        "vibewine_native_raster_shadow": true,
+        "vibewine_semantic_blend_hash": true,
+        "vibewine_marshal_packets": true,
+        "vibewine_empty_color_slots": true,
+        "vibewine_initializer_inclusive_reuse": true
+      },
+      "artifacts": {
+        "src/d3d11/d3d11.dll": "8e67c054b077f09702a80e8ccad8523b9e22d49889558b7b9a9d144b30dff248",
+        "src/dxgi/dxgi.dll": "bde0dee82a10300fdbfdd5d11cc0ce25ce17aec351983fd2e107ff66fb234ac1",
+        "src/d3d10/d3d10core.dll": "0d5db58335f314033038db3d2d71ccf501c18cbeb94504036b5af62fbdb08627",
+        "src/winemetal/winemetal.dll": "eeb30f4ae18cb63c049635a0b4c0112da567c4ad8627bfa216389117cfccfd74",
+        "src/winemetal/unix/winemetal.so": "cd5083622b7176a2d0050d09ea9edd5bb76456b005310414cedca8051691f508",
+        "src/airconv/darwin/airconv": "0f11f9c76a4aedd85a25fc308914b8b2f0969d1e140e6344d73e8f429b39f070",
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010"
+      }
+    }
+  ],
+  "retainedWineHeadersSource": "5d4b43e48f48d83254468596a0df8592d62e3242",
+  "installedChanged": false,
+  "gameLaunched": false,
+  "controlledFpsGainClaimed": false,
+  "pushPerformed": false,
+  "limits": [
+    "Existing external pinned SDK/toolchain and retained Wine headers reused",
+    "Wine cocoa_app syntax-only, not complete new Wine distribution",
+    "No installation/GPU/game/FPS acceptance"
+  ],
+  "attributionSearch": "No affirmative reuse evidence within bounded coverage; zero publicforks;negativecodeindex incomplete evenforourpubliccomponentbranch"
+}

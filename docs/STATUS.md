@@ -1,33 +1,25 @@
 # Current source, installation and checks
 
-Latest [late-stall diagnostic source](diagnostics/stall-waits-20261026.md) adds
-an explicit50ms CPU-wall profile and three finish-thread reclamation scopes.
-Both complete renderer configurations rebuild. This checkpoint is not installed;
-the playable runtime selection is preserved. It supplies no new game/FPS result.
+Reconciled **27 October2026**. This section supersedes older current-state claims
+in the dated historical notes below. Source, build, installed and game observations
+are separate.
 
-Latest [initializer repair](diagnostics/initializer-repair-20261026.md):
-transactional initialization, checked resource creation and failure ownership,
-with consumer queue preflight. Wine remains `5d4b43e4`; DXMT component
-`99e1a1c3` has production bytes equal to built `55150d0a`. The installed
-playable runtime and DS3 launch policy are preserved.
-
-The preceding deep-round hosted run 40246188105 passed. This repair adds new
-source gates; its hosted result is separate from local builds and GPU receipts.
-
-Reconciled **26 October 2026**. Source/build details for this wave are recorded
-in its report; dated documents retain their original historical claims.
-
-| Layer | Current state | What it does not establish |
+| Layer | Current state | Acceptance boundary |
 | --- | --- | --- |
-| Development source | Wine `5d4b43e4`; DXMT `99e1a1c3` initializer repair pinned by this hub | A component branch tip is not an installed runtime |
-| Latest source/build checks | Initializer repair: two fresh161-target builds and final one-unit incremental rebuilds; eighteen switches matched off/on; 24 covered GPU stages per variant and seven intended negative rejections; source/failure/sanitizer controls,221 telemetry and13 workspace tests | Installation, native GPU OOM/async device-error liveness, full shared KMT/bootstrap lifecycle, presentation or DS3 FPS |
-| Source prerelease | `v0.1.0-experimental.20261025`, frozen at hub `5be9c7d6`, Wine `85864be4` / DXMT `25eff5e1`; complete recursive source archive independently matched to Git and uploaded digests | Not an installable binary distribution or a release of the later neighbor source |
-| Matched build | Both fresh 161-target DXMT variants from local `036aaae9` (public tree-equivalent `e1772a42`) with ten experiment booleans off/on; matched PE/native/helper, retained Unix NTDLL/server and LLVM 15.0.7; compiler epoch 2 off / 3 cleanup on | Full reproducible Wine distribution or every optional feature |
-| Installation | Latest ten-switch experimental DXMT installed: five graphics artifacts updated, 17 Wine artifacts retained; exact readback and no-op passed. Separate helper delivery requests fixed-output MetalFX from the ordinary DS3 icon; prior recovery retained | Stable release promotion, actual game MetalFX activation, new exit/relaunch or FPS acceptance |
-| Preceding experiments | Seven default-off switches plus independent scene submission; focused CPU controls, five generic GPU stages and four dedicated pass cases per build, six native shader images per helper and connected pixel negatives pass | Dynamic DISCARD/residency admission, real MetalFX, production Present/capture, displayed FPS, latency or memory improvement |
-| Latest correctness checks | Terminal release old-fail/new-pass controls on arm64 and Rosetta, real NTDLL lifecycle controls, production MinGW-header compilation, five offscreen GPU stages and three rejected broken controls | A cure for every game hang |
-| Latest diagnostics | 221 offline telemetry checks; explicit presentation-waits and compiler/wait coverage, process-bound observed phase labels; collection adapter has automatic sampling off by default | Automatic scene detection, ten-minute detailed trace coverage or measured observer overhead |
-| Game observations | Earlier owner reports described usable play under background load; a previous unlabeled 1080p stream was retained | Controlled before/after FPS, clean gameplay-only timing or a causal network repair |
+| Development source | Wine `864a0f9f`; DXMT `40e7b88f` |Four narrow neighbor adaptations; not installed by this source wave |
+| Latest changes |[27October neighbor review](integrations/neighbor-wave-20261027.md): CALL/CALLC continuation, GS points, ColorSync tag ownership, late app icons |General mechanisms with no DS3 title check; attribution and remaining limits recorded |
+| Shader-output keys |Epoch4 ordinary /5 shader-cleanup; AIRCONV API26 unchanged |Separated from previous2/3; existing installed caches untouched |
+| Installed game |Prior DXMT `bbf22e6a`, schema12 installation `e7410fc`; all19 experiment flags incl initializer reuse enabled; native1440p retained |22runtime hashes and four prefix graphics pairs verified at installation; no new gameplay or FPS acceptance |
+| Latest validation |Actual-TU compiler/LLVM controls, real CFData/AppKit objects, exact failing baselines; Wine cocoa syntax with retained headers; complete matched renderer builds |No complete new Wine distribution, real Dock/window, GPU error-path or game validation |
+| Publication |This source wave is committed locally; no push performed |Public branch tips and hosted CI may lag local source |
+
+The source and release-build record for this wave is
+[integration notes](integrations/neighbor-wave-20261027.md). The last installation
+added bounded completion/reset attribution and reliable Wine-routed idle counters;
+its installed `bbf22e6a` is preserved during this review. No new collection, game
+launch, telemetry protocol, installed runtime selection or cache cleanup occurs.
+
+## Earlier dated checkpoints
 
 The [next performance source wave](diagnostics/performance-wave-next-20261025.md)
 adds two independent default-off switches to the preceding seven and scene

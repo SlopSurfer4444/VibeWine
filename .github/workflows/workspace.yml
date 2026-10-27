@@ -61,6 +61,10 @@ jobs:
       - run: python3 components/wine/vibewine/tests/vulkan-portability/run.py --revision d2237a9a82d9960360ce8400242ddeae6646c347 --expect-regression
       - run: python3 tests/vibewine/compile_regressions.py
         working-directory: components/dxmt
+      - run: python3 tests/vibewine/chromaticity-lifetime/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/chromaticity-lifetime/run.py --baseline-ref bbf22e6a41b383fe67be9dbba80c9f682908c01a
+        working-directory: components/dxmt
       - run: python3 tests/vibewine/context-locks/run.py --sanitize
         working-directory: components/dxmt
       - run: python3 tests/vibewine/context-locks/run.py --source-ref e7b02196a31dc633ac802c9c27b88dbdd8f40dca --expect-unlocked-baseline --sanitize
