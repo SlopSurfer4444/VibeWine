@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "date": "2026-10-28",
+  "componentPins": {
+    "dxmt": "8cf59a015b88361ed6f6320eb8a781c68b3b36c1",
+    "wine": "864a0f9f11f03871d67d27af2997802d555e0a2a"
+  },
+  "baselineDxmt": "40e7b88f7f10240d3fe00c4b69669816b1f3791a",
+  "mechanisms": [
+    "completed reftracker host-ring maintenance",
+    "best-effort unpublished packed instruction compaction",
+    "three generic DXGI bind usage bits"
+  ],
+  "all19ExperimentOptionsUnchanged": true,
+  "compilerApi": 26,
+  "compilerOutputEpochs": {
+    "ordinary": 4,
+    "cleanup": 5
+  },
+  "compilerCorpus": {
+    "corpus-off-final.json": {
+      "growth": 0,
+      "backingBefore": 138240,
+      "backingAfter": 120432,
+      "bytesSaved": 17808,
+      "outputArtifactsIdentical": 48,
+      "callCfgLlvmCases": 9,
+      "freshTranslationUnits": 21,
+      "receiptSha256": "12cf5590f8fadc27c0330bbc3f3d5ab0833ac01d22f25074517601b0dd6c2366"
+    },
+    "corpus-on-final.json": {
+      "growth": 1,
+      "backingBefore": 139264,
+      "backingAfter": 121456,
+      "bytesSaved": 17808,
+      "outputArtifactsIdentical": 48,
+      "callCfgLlvmCases": 9,
+      "freshTranslationUnits": 21,
+      "receiptSha256": "42fc46808ac9099945156c194fd9891b5be89e729e4fe38aa171eb2daf846ed8"
+    }
+  },
+  "checks": {
+    "telemetryTests": 254,
+    "workspaceTests": 13,
+    "reftracker": "native/Rosetta ASan+UBSan;exact3baseline failures and pending/ownership/frontier controls",
+    "packedTemplate": "native/Rosetta ASan+UBSan,bothgrowthmodes,failure/relocation/threshold/empty/append",
+    "dxgiUsage": "native/Rosetta UBSan;42cases/1792assertions,baseline36usagebitfailures+6controls",
+    "independentReview": "PASS;finalgrowthreceipts and finishintegration mutation admitted"
+  },
+  "installedRendererCommit": "e7410fcfbf781e007969761e3a6c3824e693e9da",
+  "installedRuntimeChanged": false,
+  "gameLaunched": false,
+  "gpuValidated": false,
+  "controlledFpsGainClaimed": false,
+  "pushPerformed": false,
+  "limitations": [
+    "Measured compiler backing is not gameRSS orFPS",
+    "ringcleanup remains linear and needs subsequent completions",
+    "DXGI CPU/shared/swapchain flags remain unimplemented",
+    "Existing pinned SDK/toolchain and retained Wine headers used;not reproducible wholeWine distribution"
+  ],
+  "matchedRendererBuilds": [
+    {
+      "mode": "false",
+      "configureExit": 0,
+      "compileExit": 0,
+      "optimizationBuildOptions": {
+        "vibewine_scene_submission": false,
+        "vibewine_precise_bindings": false,
+        "vibewine_dead_attachment_stores": false,
+        "vibewine_physical_residency_dedup": false,
+        "vibewine_residency_sets": false,
+        "vibewine_idle_retirement": false,
+        "vibewine_fixed_output_metalfx": false,
+        "vibewine_shader_cleanup": false,
+        "vibewine_demand_scheduler": false,
+        "vibewine_discard_hints": false,
+        "vibewine_bounded_encoder_optimizer": false,
+        "vibewine_packed_ir_growth": false,
+        "vibewine_render_pass_fusion": false,
+        "vibewine_compute_pass_fusion": false,
+        "vibewine_native_raster_shadow": false,
+        "vibewine_semantic_blend_hash": false,
+        "vibewine_marshal_packets": false,
+        "vibewine_empty_color_slots": false,
+        "vibewine_initializer_inclusive_reuse": false
+      },
+      "artifacts": {
+        "src/d3d11/d3d11.dll": "b598e68c22509fda2841c6b6667e55bfce8b918ddddd389c2c03331fd1a67535",
+        "src/dxgi/dxgi.dll": "18f0b2a9f02161625241e5b707eb5e195e1f116dde1e0844fa6cdb19caa88f4b",
+        "src/d3d10/d3d10core.dll": "537deebb8586f3101ca1c8c19701fced764a239d4ca2dbe195cf3ff3c9e6e8b3",
+        "src/winemetal/winemetal.dll": "49815d8e677efa11b74060f47ec93792f51bac550dbc6f9c66e4c9a84c3dbacc",
+        "src/winemetal/unix/winemetal.so": "f98d9b099060d29113f278060a41f5e4d074e57dc433fde254b5a7e122ca5329",
+        "src/airconv/darwin/airconv": "9816b5c49e5bbecc3d12102249eef03388e150cb8f07a0af4a430956103f8109",
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010"
+      }
+    },
+    {
+      "mode": "true",
+      "configureExit": 0,
+      "compileExit": 0,
+      "optimizationBuildOptions": {
+        "vibewine_scene_submission": true,
+        "vibewine_precise_bindings": true,
+        "vibewine_dead_attachment_stores": true,
+        "vibewine_physical_residency_dedup": true,
+        "vibewine_residency_sets": true,
+        "vibewine_idle_retirement": true,
+        "vibewine_fixed_output_metalfx": true,
+        "vibewine_shader_cleanup": true,
+        "vibewine_demand_scheduler": true,
+        "vibewine_discard_hints": true,
+        "vibewine_bounded_encoder_optimizer": true,
+        "vibewine_packed_ir_growth": true,
+        "vibewine_render_pass_fusion": true,
+        "vibewine_compute_pass_fusion": true,
+        "vibewine_native_raster_shadow": true,
+        "vibewine_semantic_blend_hash": true,
+        "vibewine_marshal_packets": true,
+        "vibewine_empty_color_slots": true,
+        "vibewine_initializer_inclusive_reuse": true
+      },
+      "artifacts": {
+        "src/d3d11/d3d11.dll": "9797452913460bd177fa8b15e88dd522e7e533916ccb6e06e8c4859ed20809c5",
+        "src/dxgi/dxgi.dll": "ea4fd5015810065390abb0232258df90c1140224a01d4549814663bfdd5b060a",
+        "src/d3d10/d3d10core.dll": "5fb0ecf020398fa630699d9d4a968b3e3f22e26ce7e6e99ea1d2c77645ee9c57",
+        "src/winemetal/winemetal.dll": "8c9acac6e8e6f43c6e75ff4245f2e64433da3ea73bc53b7c9be1e0d850c1f080",
+        "src/winemetal/unix/winemetal.so": "cd3187a1e1c776e3d4e0573967358da30da3028118b048567991aa66eee8660d",
+        "src/airconv/darwin/airconv": "cd44667dd4b0b5b9f7a77e0f75381ccc4be1ac4131325a9353d3b290f6009949",
+        "src/dxmt/libdxmt.a.p/dxmt_command.metallib": "f8c84d1ba0b9996df9b26d436157095d6d04bba615d5b0e3af315bb931b22010"
+      }
+    }
+  ],
+  "matchedBuildReceiptSha256": "fc4232d9b09631996f8286e2a111fb5cf1b10e588e7a46aeeb592f41130f97c5"
+}
