@@ -315,9 +315,9 @@ read_control_flow(
       auto if_true = fresh_bb("if_true");
       auto after_callc = fresh_bb("after_callc");
       bb_current->target = BasicBlockConditionalBranch{readCondition(Inst, 0, phase), if_true, after_callc};
-      call_targets.push_back({bb_current, &std::get<BasicBlockCall>(bb_current->target)});
       auto func_id = Inst.m_Operands[1].m_Index[0].m_RegIndex;
       if_true->target = BasicBlockCall{func_id, after_callc};
+      call_targets.push_back({if_true, &std::get<BasicBlockCall>(if_true->target)});
       bb_current = after_callc;
       break;
     }
@@ -690,6 +690,9 @@ read_control_flow(
         return cloned;
       };
 
+      // Replacing the variant ends the lifetime of the BasicBlockCall it owns.
+      // Keep its continuation before redirecting the call (upstream 9839e55f).
+      auto call_return_point = call->return_point;
       bb->target = BasicBlockUnconditionalBranch{clone(func_entries.at(call->func_id))};
 
       while (!block_to_redirect.empty()) {
@@ -699,8 +702,8 @@ read_control_flow(
         cloned->target = std::visit(
             patterns{
                 [](BasicBlockUndefined) -> BasicBlockTarget { return BasicBlockUndefined{}; },
-                [&](BasicBlockReturn ret) -> BasicBlockTarget {
-                  return BasicBlockUnconditionalBranch{call->return_point};
+                [=](BasicBlockReturn ret) -> BasicBlockTarget {
+                  return BasicBlockUnconditionalBranch{call_return_point};
                 },
                 [&](BasicBlockUnconditionalBranch uncond) -> BasicBlockTarget {
                   return BasicBlockUnconditionalBranch{clone(uncond.target)};

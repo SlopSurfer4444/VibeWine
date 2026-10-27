@@ -87,3 +87,42 @@ diagnostics and unaffected ownership controls; arbitrary crashes cannot pass.
 Retained LLVM14/static objects supply unchanged support code. Successful specialized
 tessellation/geometry pipelines, a new full renderer build, real GPU rendering,
 installed behavior and numerical FPS impact remain unverified.
+
+
+## Neighbor follow-up, 27 October 2026
+
+The donor scan moved from upstream `a148782d` to
+[`3b252590`](https://github.com/3Shain/dxmt/commit/3b252590cb0290e36fca6f088b5255b871d2d95a),
+26 commits ahead. The following are narrow adaptations, not a wholesale merge
+of upstream D3D12/IOHelper architecture. Feifan He / CodeWeavers' original
+LGPL-2.1-or-later notices are retained.
+
+- [`9839e55f`](https://github.com/3Shain/dxmt/commit/9839e55f98d4aca103957ee4132d6395a325a9ed):
+  snapshot a call continuation before replacing its owning variant. VibeWine
+  additionally fixes conditional-call bookkeeping: record the actual constructed
+  call in the true branch, preserving the condition and false continuation.
+  [Actual-TU tests](../tests/vibewine/call-return-lifetime/README.md) parse nine
+  DXBC programs, check owned CFG execution, and verify produced LLVM modules.
+  The second build injects an overwrite before replacement, with unchanged type
+  definitions; it is a fault-injection oracle, not a sanitizer diagnosis of
+  variant destruction. The ordinary baseline independently rejects CALLC.
+- [`d162ea44`](https://github.com/3Shain/dxmt/commit/d162ea44a31fbf9089ea09977337f0beb30bd082):
+  POINTLIST geometry emits point-size metadata and size1, and counts emitted
+  vertices as point primitives. [GS tests](../tests/vibewine/gs-point-output/README.md)
+  rebuild the actual converter TU and verify LLVM before/after optimization;
+  three baseline point oracles fail while line/triangle controls pass.
+- [`a741a3fa`](https://github.com/3Shain/dxmt/commit/a741a3fad14a4bc5fc899f85bfa35de8f933e74b):
+  release copied ColorSync tag data. VibeWine extends cleanup to the donor's
+  missed invalid-signature exit. Surrounding profile/fallback ownership is
+  already covered by our display snapshot and is not imported twice.
+  [CoreFoundation tests](../tests/vibewine/chromaticity-lifetime/README.md)
+  exercise real CFData ownership, malformed tags and unchanged outputs. They
+  extract the complete reader; full native-TU coverage belongs to the matched
+  release build, not to this fixture alone.
+
+Shader-output compatibility epochs advance from2/3 to4/5 (ordinary/cleanup),
+keeping AIRCONV API26 unchanged. The shader database and PSO archive share this
+boundary; previously compiled output is never silently reused across it. No
+installed cache is deleted or migrated. There is no new title check, runtime
+flag, collector or background producer in these adaptations. CPU/IR verification
+and complete build checks do not establish GPU behavior, DS3 compatibility or FPS.

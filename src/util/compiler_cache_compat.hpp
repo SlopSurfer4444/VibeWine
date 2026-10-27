@@ -8,9 +8,9 @@ namespace dxmt {
 // Bump when VibeWine compiler output changes without an AIRCONV API version
 // change. This namespaces persisted output; it does not change the compiler ABI.
 #if defined(DXMT_SHADER_CLEANUP) && DXMT_SHADER_CLEANUP
-constexpr uint32_t kVibeWineCompilerCacheEpoch = 3;
+constexpr uint32_t kVibeWineCompilerCacheEpoch = 5;
 #else
-constexpr uint32_t kVibeWineCompilerCacheEpoch = 2;
+constexpr uint32_t kVibeWineCompilerCacheEpoch = 4;
 #endif
 
 constexpr uint64_t
