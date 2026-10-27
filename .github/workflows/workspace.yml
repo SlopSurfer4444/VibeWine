@@ -63,7 +63,7 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/chromaticity-lifetime/run.py
         working-directory: components/dxmt
-      - run: python3 tests/vibewine/chromaticity-lifetime/run.py --baseline-ref bbf22e6a41b383fe67be9dbba80c9f682908c01a
+      - run: python3 tests/vibewine/chromaticity-lifetime/run.py --baseline-ref f871ff41c29c240eda3a6f962c9d48f9e6c2d1fd
         working-directory: components/dxmt
       - run: python3 tests/vibewine/context-locks/run.py --sanitize
         working-directory: components/dxmt
@@ -137,13 +137,13 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/reftracker-retirement/run.py --sanitize
         working-directory: components/dxmt
-      - run: python3 tests/vibewine/reftracker-retirement/run.py --sanitize --source-ref 40e7b88f7f10240d3fe00c4b69669816b1f3791a --expect-retained-baseline
+      - run: python3 tests/vibewine/reftracker-retirement/run.py --sanitize --source-ref a6637cfe2c5f6a2c13ec17290e359f86b163de6e --expect-retained-baseline
         working-directory: components/dxmt
       - run: python3 tests/vibewine/packed-ir-compaction/run.py
         working-directory: components/dxmt
       - run: python3 tests/vibewine/dxgi-resource-usage/run.py
         working-directory: components/dxmt
-      - run: python3 tests/vibewine/dxgi-resource-usage/run.py --baseline-ref 40e7b88f7f10240d3fe00c4b69669816b1f3791a
+      - run: python3 tests/vibewine/dxgi-resource-usage/run.py --baseline-ref a6637cfe2c5f6a2c13ec17290e359f86b163de6e
         working-directory: components/dxmt
       - run: python3 tests/vibewine/ring-checked/run.py --sanitize
         working-directory: components/dxmt

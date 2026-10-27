@@ -11,7 +11,7 @@ are separate.
 | Shader-output keys |Epoch4 ordinary /5 shader-cleanup; AIRCONV API26 unchanged |Separated from previous2/3; existing installed caches untouched |
 | Installed game |Prior DXMT `bbf22e6a`, schema12 installation `e7410fc`; all19 experiment flags incl initializer reuse enabled; native1440p retained |22runtime hashes and four prefix graphics pairs verified at installation; no new gameplay or FPS acceptance |
 | Latest validation |Actual-TU compiler/LLVM and ownership controls, exact failing baselines; 254 telemetry checks, 13 workspace tests, complete matched renderer builds |No complete new Wine distribution, real Dock/window, GPU error-path or game validation |
-| Publication |This source wave is committed locally; no push performed |Public branch tips and hosted CI may lag local source |
+| Publication |Public equivalents prepared; see [publication map](provenance/publication-20261028.json) |Public branch tips and hosted CI may lag local source |
 
 The source and release-build record for this wave is
 [integration notes](integrations/memory-queue-wave-20261028.md). The last installation
