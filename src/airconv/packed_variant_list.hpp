@@ -131,6 +131,27 @@ public:
     return *this;
   };
 
+  // Finalize unpublished IR without changing its packed representation. Skip
+  // small savings; failed best-effort shrinking leaves the original intact.
+  void compact() {
+    if (size == capacity)
+      return;
+    if (!size) {
+      std::free(data);
+      data = nullptr;
+      capacity = 0;
+      return;
+    }
+    const size_t slack = capacity - size;
+    if (slack < 256 || slack < capacity / 4)
+      return;
+    auto *compacted = static_cast<std::byte *>(std::realloc(data, size));
+    if (compacted) {
+      data = compacted;
+      capacity = size;
+    }
+  }
+
   template <typename T> void push_back(const T &value) {
     static_assert((std::is_same_v<T, Types> || ...), "invalid type");
     size_t offset = size;

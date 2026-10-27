@@ -1,0 +1,80 @@
+[
+  {
+    "name": "7208-simple_vs.dxbc",
+    "sha256": "6208896e0768beef4b9d0e0ce7cefd5360c35bc871c0fdaf6ff88f053c6f5a35",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 7208
+  },
+  {
+    "name": "7257-simple_hs.dxbc",
+    "sha256": "b5a091cc6068944147d3b88562dbc183ca8cad168b81e6be86f53716c1e3964d",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 7257
+  },
+  {
+    "name": "7277-simple_ds.dxbc",
+    "sha256": "f0c337dc57ad4ef9b791df27bcb932aaa4b3400160ac8704ddf847e730f5c40f",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 7277
+  },
+  {
+    "name": "7317-simple_gs.dxbc",
+    "sha256": "1582cb29cf2a82f73f6f6e509833f84e5f223f7302c476f1333147d6cb2e8dbf",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 7317
+  },
+  {
+    "name": "7344-simple_ps.dxbc",
+    "sha256": "0caa6510de24195ca7028d35e8eb194dfbed0d2aba51c0ac6c1cce8056f20f25",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 7344
+  },
+  {
+    "name": "7358-simple_cs.dxbc",
+    "sha256": "09bd311a60b7524abfe9e86cfb7c6d8922804f7335c5d13e9c10be8c9d42b56c",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 7358
+  },
+  {
+    "name": "10471-ps_cube_array_code.dxbc",
+    "sha256": "09325d93e706a6e61b1a1e2f0d25c3eb2c7f72865969563eb5c67ceb2429ab2a",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 10471
+  },
+  {
+    "name": "25849-structured_tgsm_code.dxbc",
+    "sha256": "52b4dee7210c7095b4c6bd8056e1c6296e9a8debc1737d2d9dff09fe748c8b31",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 25849
+  },
+  {
+    "name": "26185-gs_5_0_code.dxbc",
+    "sha256": "fa7b16fdba06b7f5dbcfd0c4903f6c24c07cbec49823917313aa601793b885a4",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 26185
+  },
+  {
+    "name": "30042-hs_code.dxbc",
+    "sha256": "ca449d0db17924c073817cbdb4204d75741784f359293d41b8175b1ad9d480df",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 30042
+  },
+  {
+    "name": "30078-ds_code.dxbc",
+    "sha256": "33e8f9d55f383f32a5b4fc2a56dc17433d70baeb1e6b358a1c46c59e2df11bff",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 30078
+  },
+  {
+    "name": "30360-vs_code.dxbc",
+    "sha256": "2515397196ce8d0dd3d39d0a6ad2cfb48f756a93648f1ef6e9226b569c4f1a14",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 30360
+  },
+  {
+    "name": "35839-ps_code.dxbc",
+    "sha256": "9bcc5f6f46cbaffde418d5783d702f895b5ec638b10a8316c6e45405b1ce6072",
+    "wine_source": "dlls/d3d11/tests/d3d11.c",
+    "line": 35839
+  }
+]

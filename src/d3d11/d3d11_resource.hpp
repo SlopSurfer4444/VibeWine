@@ -282,7 +282,16 @@ public:
     if (!pUsage) {
       return E_INVALIDARG;
     }
-    *pUsage = 0;
+    // Report the generic resource bindings. CPU access and swap-chain-owned
+    // usage flags require separate semantics; do not infer them from bindings.
+    DXGI_USAGE usage = 0;
+    if (desc.BindFlags & D3D11_BIND_SHADER_RESOURCE)
+      usage |= DXGI_USAGE_SHADER_INPUT;
+    if (desc.BindFlags & D3D11_BIND_RENDER_TARGET)
+      usage |= DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    if (desc.BindFlags & D3D11_BIND_UNORDERED_ACCESS)
+      usage |= DXGI_USAGE_UNORDERED_ACCESS;
+    *pUsage = usage;
     return S_OK;
   }
 
