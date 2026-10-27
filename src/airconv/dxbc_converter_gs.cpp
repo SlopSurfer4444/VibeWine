@@ -152,6 +152,7 @@ convert_dxbc_geometry_shader(
     topology = air::MeshOutputTopology::Line;
     break;
   case microsoft::D3D10_SB_PRIMITIVE_TOPOLOGY_POINTLIST:
+    func_signature.DefineMeshVertexOutput(air::OutputPointSize{});
     break;
   default:
     return llvm::make_error<UnsupportedFeature>("unsupported geometry shader output topology");
@@ -325,6 +326,7 @@ convert_dxbc_geometry_shader(
         co_yield h(gs_out_ctx);
       }
       emit_clip_distances(current_write_vertex);
+      air.CreateSetMeshPointSize(current_write_vertex, air.getFloat(1.0));
       air.CreateSetMeshIndex(current_write_vertex, current_write_vertex);
       co_return {};
     };
@@ -509,7 +511,10 @@ convert_dxbc_geometry_shader(
   if (auto err = resource_map.call_cut().build(ctx).takeError()) {
     return err;
   }
-  air.CreateSetMeshPrimitiveCount(builder.CreateLoad(types._int, primitive_count));
+  if (topology == air::MeshOutputTopology::Point)
+    air.CreateSetMeshPrimitiveCount(builder.CreateLoad(types._int, next_write_vertex));
+  else
+    air.CreateSetMeshPrimitiveCount(builder.CreateLoad(types._int, primitive_count));
 
   builder.CreateRetVoid();
   module.getOrInsertNamedMetadata("air.mesh")->addOperand(function_metadata);

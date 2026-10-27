@@ -134,7 +134,9 @@ uint64_t serialized_version(const std::vector<unsigned char> &bytes) {
 int main() {
   static_assert(std::is_same_v<decltype(current::kDXMTShaderCacheVersion), const uint64_t>);
   static_assert(sizeof(current::kDXMTShaderCacheVersion) == 8);
-  static_assert(kVibeWineCompilerCacheEpoch == 2);
+  static_assert(kVibeWineCompilerCacheEpoch == 4);
+  static_assert(current::kDXMTShaderCacheVersion != dxmt::makeCompilerCacheCompatibility(AIRCONV_VERSION, 2));
+  static_assert(current::kDXMTShaderCacheVersion != dxmt::makeCompilerCacheCompatibility(AIRCONV_VERSION, 3));
   static_assert(AIRCONV_VERSION == 26);
   static_assert(dxmt::kDXMTCompilerCacheCompatibility == current::kDXMTShaderCacheVersion);
   static_assert((current::kDXMTShaderCacheVersion >> 32) == AIRCONV_VERSION);
@@ -161,4 +163,15 @@ int main() {
   assert(current::archive() == current::archive());
   std::cout << "PASS shared shader-table/PSO 64-bit key; local/upstream revisions; legacy separation; no compiler ABI change\n";
 }
+''')
+
+compile_run('compiler_cache_cleanup_generation', r'''
+#define DXMT_SHADER_CLEANUP 1
+#include "''' + str(compat_header) + r'''"
+static_assert(AIRCONV_VERSION == 26);
+static_assert(dxmt::kVibeWineCompilerCacheEpoch == 5);
+static_assert(dxmt::kDXMTCompilerCacheCompatibility != dxmt::makeCompilerCacheCompatibility(AIRCONV_VERSION, 2));
+static_assert(dxmt::kDXMTCompilerCacheCompatibility != dxmt::makeCompilerCacheCompatibility(AIRCONV_VERSION, 3));
+static_assert(dxmt::kDXMTCompilerCacheCompatibility != dxmt::makeCompilerCacheCompatibility(AIRCONV_VERSION, 4));
+int main() {}
 ''')
