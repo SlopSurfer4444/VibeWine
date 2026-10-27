@@ -3154,6 +3154,11 @@ void macdrv_set_application_icon(CFArrayRef images, CFURLRef urlRef)
             [controller setApplicationIconFromCGImageArray:imageArray];
         else
             controller.applicationIcon = image;
+
+        /* The icon can arrive after foreground promotion, including through
+           the URL-backed path.  Update the Dock image without promoting an app. */
+        if ([NSApp activationPolicy] == NSApplicationActivationPolicyRegular)
+            [NSApp setApplicationIconImage:controller.applicationIcon];
     });
 }
 

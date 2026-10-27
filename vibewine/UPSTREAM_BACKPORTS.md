@@ -177,3 +177,22 @@ remain passing. See [the address-wait fixture notes](tests/address-wait/README.m
 for exact commands, ownership, source boundaries and limitations. No installed
 runtime, full Wine build, game acceptance or performance claim follows from
 these checks.
+
+## Late application icon follow-up (2026-10-27)
+
+Gabe Zimbric's [Wine `8df085af`](https://github.com/gzimbric/wine-arm64-macos/commit/8df085af744d252b81be8a7d96cf1f01086c156b)
+is adapted onto `5d4b43e48f48d83254468596a0df8592d62e3242` under the donor's
+retained LGPL-2.1-or-later notices. After an asynchronous icon arrives, the
+existing main-thread request callback updates the application icon if the application is
+already regular. This common boundary covers both CGImage-array and CrossOver
+URL-backed conversion; accessory/prohibited apps retain their policy and cache
+the icon for later promotion. The conversion and property ownership stay intact.
+No feature-bit or native/PE ABI changes are introduced.
+
+The [late-icon fixture](tests/late-app-icon/README.md) extracts both complete
+production bodies and exercises real native icon objects under ASan/UBSan.
+The fixture substitutes the CFRunLoop request dispatcher with main-queue GCD;
+it checks the icon callback, not the complete Wine request transport. Candidate: 36 assertions pass; original base: exactly
+five expected propagation failures. The observing application seam creates no
+NSApplication or Dock icon. This establishes source behavior and substituted-dispatch/thread
+controls, not a real Dock observation, linked build, installation or game result.

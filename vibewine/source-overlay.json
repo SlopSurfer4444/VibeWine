@@ -1544,6 +1544,31 @@
       "source": "neighbor-wave-20261025/wait-publication/vibewine/tests/address-wait/run_publication.py",
       "destination": "vibewine/tests/address-wait/run_publication.py",
       "sha256": "9b88195dc9087d966ff032ddda8bdf80da366a767571c6bb41c594cac7641a5d"
+    },
+    {
+      "source": "neighbor-refresh-20261027/late-app-icon/dlls/winemac.drv/cocoa_app.m",
+      "destination": "dlls/winemac.drv/cocoa_app.m",
+      "sha256": "f3ff26e3b7617a37569a0e4f6030c6eb639f096967acfd2db62a049a38c6b1cf"
+    },
+    {
+      "source": "neighbor-refresh-20261027/late-app-icon/vibewine/UPSTREAM_BACKPORTS.md",
+      "destination": "vibewine/UPSTREAM_BACKPORTS.md",
+      "sha256": "7140a019726c53f35891112b1b603441d4185ad444c189f8324fc2d19fc5d743"
+    },
+    {
+      "source": "neighbor-refresh-20261027/late-app-icon/vibewine/tests/late-app-icon/README.md",
+      "destination": "vibewine/tests/late-app-icon/README.md",
+      "sha256": "1a0bcb7620c5e9f7d5bb94d72dc76233b3dd19896e96cb1aacd94fb82b51d47c"
+    },
+    {
+      "source": "neighbor-refresh-20261027/late-app-icon/vibewine/tests/late-app-icon/fixture.m.in",
+      "destination": "vibewine/tests/late-app-icon/fixture.m.in",
+      "sha256": "8a7f99c3bd9d7a67ae51607de2a2e948722b1da04e9f1d4d5cf57245328b3e69"
+    },
+    {
+      "source": "neighbor-refresh-20261027/late-app-icon/vibewine/tests/late-app-icon/run.py",
+      "destination": "vibewine/tests/late-app-icon/run.py",
+      "sha256": "c83192fd9ed718ba948fab07987f279b308ef3115d8341e2efdacd2c57c55a44"
     }
   ]
 }

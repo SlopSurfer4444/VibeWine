@@ -1,0 +1,146 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+#import <AppKit/AppKit.h>
+#import <CoreGraphics/CoreGraphics.h>
+#import <dispatch/dispatch.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+/* Observe the application boundary without creating NSApplication or a Dock icon. */
+@interface IconApplication : NSObject
+@property(nonatomic) NSApplicationActivationPolicy activationPolicy;
+@property(nonatomic, retain) NSImage *image;
+@property(nonatomic) unsigned updates;
+- (void)setApplicationIconImage:(NSImage *)image;
+@end
+static unsigned failures, checks;
+static void check(BOOL condition, const char *name)
+{
+    checks++;
+    if (!condition) { printf("FAIL %s\n", name); failures++; }
+}
+@implementation IconApplication
+- (void)setApplicationIconImage:(NSImage *)image
+{
+    check([NSThread isMainThread], "application-update-on-main-thread");
+    self.image = image;
+    self.updates++;
+}
+- (void)dealloc { [_image release]; [super dealloc]; }
+@end
+static IconApplication *taskApp;
+#define NSApp taskApp
+#define OnMainThreadAsync(block) dispatch_async(dispatch_get_main_queue(), block)
+static NSImage *maskedImage;
+@interface WineIconUtils : NSObject
++ (NSImage *)maskedAppIconFromCGImages:(NSArray *)images;
+@end
+@implementation WineIconUtils
++ (NSImage *)maskedAppIconFromCGImages:(NSArray *)images { return maskedImage; }
+@end
+@interface WineApplicationController : NSObject
+@property(nonatomic, retain) NSImage *applicationIcon;
++ (WineApplicationController *)sharedController;
+- (void)setApplicationIconFromCGImageArray:(NSArray *)images;
+@end
+@implementation WineApplicationController
++ (WineApplicationController *)sharedController
+{
+    static WineApplicationController *controller;
+    if (!controller) controller = [self new];
+    return controller;
+}
+/* PRODUCTION_METHOD */
+@end
+/* PRODUCTION_ENTRY */
+
+static void apply(CFArrayRef images, CFURLRef url)
+{
+    __block BOOL done = NO;
+    /* Submit from a worker, then a FIFO sentinel observes completion on main. */
+    dispatch_sync(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        macdrv_set_application_icon(images, url);
+        dispatch_async(dispatch_get_main_queue(), ^{ done = YES; });
+    });
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5];
+    while (!done && [deadline timeIntervalSinceNow] > 0)
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.001]];
+    check(done, "async-main-completion");
+    check([NSApp activationPolicy] != NSApplicationActivationPolicyProhibited || NSApp.updates == 0,
+          "prohibited-not-promoted");
+}
+static void reset(NSApplicationActivationPolicy policy)
+{
+    NSApp.activationPolicy = policy;
+    NSApp.updates = 0;
+    NSApp.image = nil;
+}
+int main(int argc, char **argv)
+{
+    @autoreleasepool
+    {
+        taskApp = [IconApplication new];
+        WineApplicationController *controller = [WineApplicationController sharedController];
+        unsigned char pixels[16 * 16 * 4] = {0};
+        CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+        CGContextRef context = CGBitmapContextCreate(pixels, 16, 16, 8, 16 * 4, space,
+                                                     kCGImageAlphaPremultipliedLast);
+        CGImageRef cgimage = CGBitmapContextCreateImage(context);
+        check(cgimage != NULL, "real-cgimage-created");
+        NSArray *images = [NSArray arrayWithObject:(id)cgimage];
+        reset(NSApplicationActivationPolicyRegular);
+        apply((CFArrayRef)images, NULL);
+        check(NSApp.updates == 1 && NSApp.image == controller.applicationIcon && [NSApp.image isValid],
+              "late-cgimage-icon");
+        check(NSEqualSizes([controller.applicationIcon size], NSMakeSize(16,16)), "fallback-size-preserved");
+
+        reset(NSApplicationActivationPolicyAccessory);
+        apply((CFArrayRef)images, NULL);
+        check(NSApp.updates == 0 && [controller.applicationIcon isValid] &&
+              NSApp.activationPolicy == NSApplicationActivationPolicyAccessory, "accessory-caches-only");
+        reset(NSApplicationActivationPolicyProhibited);
+        apply((CFArrayRef)images, NULL);
+        check(NSApp.updates == 0 && NSApp.activationPolicy == NSApplicationActivationPolicyProhibited,
+              "prohibited-caches-only");
+
+        NSString *path = [NSString stringWithUTF8String:argv[1]];
+        check([[controller.applicationIcon TIFFRepresentation] writeToFile:path atomically:YES], "url-fixture-written");
+        NSURL *url = [NSURL fileURLWithPath:path];
+        reset(NSApplicationActivationPolicyRegular);
+        apply(NULL, (CFURLRef)url);
+        check(NSApp.updates == 1 && NSApp.image == controller.applicationIcon && [NSApp.image isValid],
+              "late-url-icon");
+        reset(NSApplicationActivationPolicyAccessory);
+        apply(NULL, (CFURLRef)url);
+        check(NSApp.updates == 0 && [controller.applicationIcon isValid], "url-accessory-caches-only");
+        reset(NSApplicationActivationPolicyRegular);
+        apply(NULL, NULL);
+        check(NSApp.updates == 1 && NSApp.image == nil && controller.applicationIcon == nil,
+              "empty-restores-default");
+        maskedImage = [[[NSImage alloc] initWithContentsOfURL:url] autorelease];
+        reset(NSApplicationActivationPolicyRegular);
+        apply((CFArrayRef)images, NULL);
+        check(NSApp.updates == 1 && NSApp.image == maskedImage && controller.applicationIcon == maskedImage,
+              "masked-icon-preserved");
+        maskedImage = nil;
+
+        /* Policy is inspected when the queued icon is applied, not on submission. */
+        reset(NSApplicationActivationPolicyAccessory);
+        macdrv_set_application_icon((CFArrayRef)images, NULL);
+        NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
+        apply((CFArrayRef)images, NULL);
+        check(NSApp.updates == 2, "policy-at-execution-promoted");
+        reset(NSApplicationActivationPolicyRegular);
+        macdrv_set_application_icon((CFArrayRef)images, NULL);
+        NSApp.activationPolicy = NSApplicationActivationPolicyAccessory;
+        apply((CFArrayRef)images, NULL);
+        check(NSApp.updates == 0, "policy-at-execution-accessory");
+        CGImageRelease(cgimage);
+        CGContextRelease(context);
+        CGColorSpaceRelease(space);
+        controller.applicationIcon = nil;
+        [taskApp release];
+        taskApp = nil;
+        printf("LATE_APP_ICON_CHECKS=%u FAILURES=%u\n", checks, failures);
+        return failures ? 42 : 0;
+    }
+}
