@@ -135,6 +135,16 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/empty-color-slots/run.py
         working-directory: components/dxmt
+      - run: python3 tests/vibewine/reftracker-retirement/run.py --sanitize
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/reftracker-retirement/run.py --sanitize --source-ref 40e7b88f7f10240d3fe00c4b69669816b1f3791a --expect-retained-baseline
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/packed-ir-compaction/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/dxgi-resource-usage/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/dxgi-resource-usage/run.py --baseline-ref 40e7b88f7f10240d3fe00c4b69669816b1f3791a
+        working-directory: components/dxmt
       - run: python3 tests/vibewine/ring-checked/run.py --sanitize
         working-directory: components/dxmt
       - run: python3 tests/vibewine/initializer-transaction/run.py

@@ -1,20 +1,20 @@
 # Current source, installation and checks
 
-Reconciled **27 October2026**. This section supersedes older current-state claims
+Reconciled **28 October 2026**. This section supersedes older current-state claims
 in the dated historical notes below. Source, build, installed and game observations
 are separate.
 
 | Layer | Current state | Acceptance boundary |
 | --- | --- | --- |
-| Development source | Wine `864a0f9f`; DXMT `40e7b88f` |Four narrow neighbor adaptations; not installed by this source wave |
-| Latest changes |[27October neighbor review](integrations/neighbor-wave-20261027.md): CALL/CALLC continuation, GS points, ColorSync tag ownership, late app icons |General mechanisms with no DS3 title check; attribution and remaining limits recorded |
+| Development source | Wine `864a0f9f`; DXMT `8cf59a01` |Neighbor adaptations plus memory/queue follow-up; not installed by this source wave |
+| Latest changes |[Memory/queue follow-up](integrations/memory-queue-wave-20261028.md): completed tracking storage, packed IR compaction, resource usage; preceding four neighbor repairs retained |General mechanisms, no DS3 title check; installed endpoint preserved |
 | Shader-output keys |Epoch4 ordinary /5 shader-cleanup; AIRCONV API26 unchanged |Separated from previous2/3; existing installed caches untouched |
 | Installed game |Prior DXMT `bbf22e6a`, schema12 installation `e7410fc`; all19 experiment flags incl initializer reuse enabled; native1440p retained |22runtime hashes and four prefix graphics pairs verified at installation; no new gameplay or FPS acceptance |
-| Latest validation |Actual-TU compiler/LLVM controls, real CFData/AppKit objects, exact failing baselines; Wine cocoa syntax with retained headers; complete matched renderer builds |No complete new Wine distribution, real Dock/window, GPU error-path or game validation |
+| Latest validation |Actual-TU compiler/LLVM and ownership controls, exact failing baselines; 254 telemetry checks, 13 workspace tests, complete matched renderer builds |No complete new Wine distribution, real Dock/window, GPU error-path or game validation |
 | Publication |This source wave is committed locally; no push performed |Public branch tips and hosted CI may lag local source |
 
 The source and release-build record for this wave is
-[integration notes](integrations/neighbor-wave-20261027.md). The last installation
+[integration notes](integrations/memory-queue-wave-20261028.md). The last installation
 added bounded completion/reset attribution and reliable Wine-routed idle counters;
 its installed `bbf22e6a` is preserved during this review. No new collection, game
 launch, telemetry protocol, installed runtime selection or cache cleanup occurs.
