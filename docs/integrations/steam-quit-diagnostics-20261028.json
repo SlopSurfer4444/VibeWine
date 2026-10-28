@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "date": "2026-10-28",
+  "wineCommit": "5ed4c56bafab70a772b5e9bf88eee272de9bdd3a",
+  "dxmtCommit": "8cf59a015b88361ed6f6320eb8a781c68b3b36c1",
+  "controlSourceCommit": "87be440133bb7fb664d22553279038b80a5f0c52",
+  "channel": "vw_lifecycle",
+  "changesShutdownBehavior": false,
+  "changesGraphics": false,
+  "sourceVerifiedFiles": 11187,
+  "fullWineBuildTargets": 7,
+  "sourcePrepared": true,
+  "installed": false,
+  "liveNewChannelVerified": false,
+  "hangRepaired": false,
+  "fpsImprovementVerified": false
+}
