@@ -1,5 +1,14 @@
 # DXMT patch provenance
 
+## Eight-direction continuation,28 October 2026
+
+Current component `61aca2a3621386f1c6777972327149e48675883e`. The [next-wave report](../diagnostics/next-wave-20261028.md)
+and [patch map](../PATCHES.md) separate general repairs, opt-in compilers,
+measurement tooling and held negative findings. Full builds and source controls
+pass; runtime adoption/activation remains independently observed. Older dated
+sections keep their original identities.
+
+
 ## Frontier checkpoint,28 October 2026
 
 Current component source: `8d0cef8dbcc8d1efbd0db97d4a0aee9e86d592d0`. The [frontier report](../diagnostics/frontier-wave-20261028.md)

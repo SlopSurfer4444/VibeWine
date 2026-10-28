@@ -1,5 +1,48 @@
 # VibeWine roadmap
 
+## Current eight-direction campaign — 28 October 2026
+
+User explicitly said “remember and go with all” eight next directions. This is
+now the single current campaign ledger; the completed frontier checkpoint below
+is history. Root owns canonical H/D/W Git indices, source integration, matched
+builds, runtime adoption and game/measurement coordination. Editors own isolated
+branches and return source patches/evidence, never install, push or launch games.
+Start: H d60c1adc, D8d0cef8d, Wbb2c8919; prior playable runtime/recovery retained.
+
+Terminal checkpoint: advance all eight directions through concrete bounded
+implementation or a discriminating source/runtime result; integrate admitted
+changes with regression/failure controls, matched builds and explicit feature
+activation. Measure a reproducible game scenario with collectors armed before
+launch when the existing authorized harness supports the complete closure. A
+negative experiment is retained as negative; no pilot is renamed full integration
+and no source/CPU reduction becomes an FPS claim. Whole-engine rewrites and an
+unbounded promise to implement every possible future optimization are not scope.
+
+| ID | Outcome / owner | Dependencies and acceptance | State |
+| --- | --- | --- | --- |
+| N1 | CPU view/setter/residency economy / CPU editor | Lazy requested buffer views, safe memo/prefix lifetime, exact state controls; measured operation reduction and unchanged payload | integrated source; focused/native controls and builds pass; game activation separate |
+| N2 | Shader demand/prewarm scheduling / shader editor | Real early compute urgency, actual demand promotion, bounded cache/priority ownership; no starvation or omitted work | integrated source; focused/native controls and builds pass; game activation separate |
+| N3 | Metal4 compiler integration / Metal editor | Reuse pilot and existing bridge; complete supported recipe/error/lifetime/capability, opt-in, native rendered parity before admission | integrated source; focused/native controls and builds pass; game activation separate |
+| N4 | Persistent native ARM converter / ARM editor | Reuse byte-identical pilot; release-owned inputs/full supported recipe, spawn/FD/task/cache identity/cancel/reap/fallback contracts; process costs included | integrated source; focused/native controls and builds pass; game activation separate |
+| N5 | GPU-bound cost/lowering / GPU editor | Actual profiling seams and representative shaders; exact semantic/image controls, no speculative blanket fast math | native semantic/cost discriminator accepted; proposed coarse lowering slower, no production patch |
+| N6 | Queue/upload/ring efficiency and failure / queue editor | Actual consumers, allocation/nil/native error injection; failed GPU work cannot publish success; preserve dependent lifetime/progress | ring economy accepted; CPU18 failure propagation reproduced and held, no partial repair |
+| N7 | Wine MSync/Mach/liveness / Wine editor | First classify held Rosetta observations; independent clock/death/ownership controls and explicit valid-API contracts | monotonic deadline/minimum free hint accepted; full Mach3FAIL unchanged(two unclassified), multi-client liveness held |
+| N8a | Native lifecycle/cursor/focus / native editor | Existing owners and public macOS APIs; no imaginary game AX tree; native/owned window tests coordinated by root | integrated source; focused/native controls and builds pass; game activation separate |
+| N8b | Autonomous bounded metrics/game repeatability / metrics editor and root | Existing collectors/harness; readiness before launch, exact build/session/phase binding, normal exit/relaunch, A/A then A/B; real collection overhead and gaps | successor/control helper and repeatability accepted; helper installed/readback/no-op; renderer/actual capture pending |
+| NI | Review/integrate/build/adopt/measure / root | Source and native/API controls admitted separately, preserve rollback/game saves/VPN, existing transactional operations only; stop task-owned capture after acceptance | integrated review +22 focused/65 prior DXMT/14Wine/279telemetry pass; both162-step builds and7Wine targets pass; components committed; helper readback/no-op accepted; matched renderer adoption/capture pending |
+
+Shared bridge/meson/trace/cache ABI decisions belong to root; independent editors
+must report overlap before editing outside assigned regions. Existing branch
+models do not grant authority. Private scope outputs/next-wave-20261028: logs7d/
+32MiB per branch, curated results30d/8MiB, builds40GiB aggregate with20GiB free
+reserve. Reuse prior LLVM/toolchains, max4 compiler processes aggregate unless
+root explicitly revises from evidence. Actual raw/decoded gameplay data retains
+existing telemetry7d/64MiB per experiment and result30d/4MiB contract. Active
+work/recovery/unresolved defects and holds exclude retirement. Manual exact-path
+ownership/reference/hold checks only; no cleaner, unrelated capture, host-service
+change, credential/network change or raw/public publication is introduced.
+
+
 ## Current frontier implementation campaign — 28 October 2026
 
 User authorized a large implementation wave after the independent124-card tree
