@@ -1,5 +1,25 @@
 # Current source, installation and checks
 
+Reconciled **28 October 2026**, frontier checkpoint. This section supersedes
+current-state claims in the dated historical notes below.
+
+| Layer | Current state | Acceptance boundary |
+| --- | --- | --- |
+| Development source | Wine `bb2c8919`; DXMT `8d0cef8d` | General repairs/reductions and opt-in diagnostics; no added DS3 gate |
+| Matched builds | Fresh release DXMT all 19 switches false/true, 161 targets each; compiler, PE/native bridge and Metal helper together; same freshly configured Wine | Both complete renderer graphs pass; seven affected Wine production targets pass, not a full new Wine distribution |
+| Validation |30 new DXMT commands, 51 prior DXMT workflow commands, 14 Wine commands, 272 telemetry tests, 48 Python and 52 Node gameplay tests, 13 workspace tests; independent source review | Node 24.19.0 local vs 22 in CI; narrow native offscreen Metal coverage, not full game/API/GPU failure-path acceptance |
+| Diagnostics |Explicit combined-bounded profile plus helper/TS scopes and conservative joins | Source tooling; no new installed/always-on collector or inferred scene/FPS |
+| Held work |Broader Mach RPC repair after unresolved Rosetta aggregate failures; ARM compiler and Metal4 prototypes remain separate | Table-only MSync repair accepted; prototypes are not runtime integrations or proven speedups |
+| Installed game |Unchanged by this source/build wave; prior playable selection and recovery retained | No game launch, installation, binary promotion or fresh runtime-hash/gameplay/FPS acceptance |
+| Publication |Coherent component and hub commits made locally; no push in this checkpoint | Hosted branches/CI may lag local source |
+
+Read the [frontier implementation and limits](diagnostics/frontier-wave-20261028.md)
+and [patch origins](PATCHES.md). Build success and CPU fixture work reduction
+are distinct from measured gameplay improvement. Future adoption needs the
+controlled scene/resolution/cache comparison and complete installed closure.
+
+## Earlier 28 October memory/queue checkpoint
+
 Reconciled **28 October 2026**. This section supersedes older current-state claims
 in the dated historical notes below. Source, build, installed and game observations
 are separate.
@@ -9,7 +29,7 @@ are separate.
 | Development source | Wine `864a0f9f`; DXMT `8cf59a01` |Neighbor adaptations plus memory/queue follow-up; not installed by this source wave |
 | Latest changes |[Memory/queue follow-up](integrations/memory-queue-wave-20261028.md): completed tracking storage, packed IR compaction, resource usage; preceding four neighbor repairs retained |General mechanisms, no DS3 title check; installed endpoint preserved |
 | Shader-output keys |Epoch4 ordinary /5 shader-cleanup; AIRCONV API26 unchanged |Separated from previous2/3; existing installed caches untouched |
-| Installed game |Prior DXMT `bbf22e6a`, schema12 installation `e7410fc`; all19 experiment flags incl initializer reuse enabled; native1440p retained |22runtime hashes and four prefix graphics pairs verified at installation; no new gameplay or FPS acceptance |
+| Installed game |Prior DXMT `bbf22e6a`, schema12 installation `e7410fc`; all 19 experiment flags incl initializer reuse enabled; native1440p retained |22runtime hashes and four prefix graphics pairs verified at installation; no new gameplay or FPS acceptance |
 | Latest validation |Actual-TU compiler/LLVM and ownership controls, exact failing baselines; 254 telemetry checks, 13 workspace tests, complete matched renderer builds |No complete new Wine distribution, real Dock/window, GPU error-path or game validation |
 | Publication |This source wave is committed locally; no push performed |Public branch tips and hosted CI may lag local source |
 

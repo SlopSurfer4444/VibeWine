@@ -15,7 +15,7 @@ def completion_analysis(events,summary,profile):
         if e['type'] in {108,109,110}|RESET_TYPES:retirements[(e['object'],e['padding0'])].append(e)
         if e['type'] not in CARD_TYPES:continue
         groups[(e['generation'],e['object'],e['thread'],e['start'],e['end'])][e['type']].append(e)
-        if profile['name']!='stall-waits':fail('completion_card_outside_stall_profile')
+        if profile['name'] not in ('stall-waits','combined-bounded'):fail('completion_card_outside_stall_profile')
         if not e['object'] or not e['thread'] or not e['start'] or e['end']<e['start'] or e['end']-e['start']<THRESHOLD:
             fail('invalid_completion_card_interval_or_identity')
     for key,g in sorted(groups.items()):

@@ -152,7 +152,7 @@ class StallAnalyzerTests(unittest.TestCase):
         self.assertTrue(analyze(data)['stall_capture']['capture_usable'])
 
     def test_metadata_bounds_and_duplicate_independently_checked(self):
-        for change in (dict(object=0),dict(flags=5),dict(end=101),dict(padding0=32769),dict(padding1=1),dict(thread=0),dict(start=0,end=0)):
+        for change in (dict(object=0),dict(flags=6),dict(end=101),dict(padding0=32769),dict(padding1=1),dict(thread=0),dict(start=0,end=0)):
             data=complete([dict(marker(),**change),slow()])
             with self.subTest(change=change):self.assertFalse(analyze(data)['producer_profile']['policy_valid'])
         self.assertFalse(analyze(complete([marker(),marker(),slow()]))['producer_profile']['policy_valid'])

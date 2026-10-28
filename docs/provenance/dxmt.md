@@ -1,5 +1,14 @@
 # DXMT patch provenance
 
+## Frontier checkpoint,28 October 2026
+
+Current component source: `8d0cef8dbcc8d1efbd0db97d4a0aee9e86d592d0`. The [frontier report](../diagnostics/frontier-wave-20261028.md)
+records local independently reproduced general repairs, opt-in diagnostics,
+matched builds and explicit held experiments. The [patch map](../PATCHES.md)
+separates origins and game profiles. This source checkpoint does not change the
+installed runtime; older dated sections retain their original identities.
+
+
 Latest general hot-path work and independently reproduced correctness repairs
 are recorded in [the 26 October report](../diagnostics/hotpaths-20261026.md).
 Those source changes follow `96940d73` and are separate from the installed

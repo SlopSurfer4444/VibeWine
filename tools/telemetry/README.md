@@ -203,6 +203,59 @@ is published. Do not reset/rearm to recycle slots or inflate either quota.
 python3 tools/telemetry/test_presentation_profile.py
 ```
 
+## Opt-in combined bounded observations
+
+`DXMT_CS2_TRACE_PROFILE=combined-bounded` selects profile95 flags=5 before
+startup. Existing profiles retain their exact coverage. This profile combines
+ordinary full coverage with presentation96–103, compiler80–94/104–107, and
+finish108–119 at the existing inclusive50 ms threshold. Compiler/helper spans
+are uncensored. All optional details80–94,104–107,111–120 share the existing
+opt-in `DXMT_CS2_TRACE_DETAIL_LIMIT`; metadata95 and ordinary/presentation streams
+remain bounded independently by the fixed append-only mapping. Event89 flags1
+is the single uncharged cap sentinel; cap exhaustion makes complete-detail
+acceptance unavailable. Missing families remain unknown and do not require
+fabricated zero-cost rows or presentation coverage for a helper-only capture.
+Observed contradictory identity joins still reject combined acceptance.
+
+Helper event120 is one CPU-steady wall interval. `object` is an immutable span
+serial, `padding0` is a numeric route, and `padding1` is an opaque immutable
+helper/pipeline owner birth serial (0 means unknown). Flags1/2/3 mean
+success/failure/unknown;3 is not a compiler exception. Routes are1 tessellation
+mutex acquisition,2 tessellation native PSO creation,3 eager ClearUAV compute
+pipeline request,4 tile helper PSO creation,5 RTV helper PSO creation.
+ClearUAV route3 includes cache lookup and possible native work. Owner identity
+never implies a compiler task80 or pointer identity. The consumer pairs routes1/2
+only for an exact nonzero owner, matching thread, and ordered nonoverlapping
+intervals; missing or ambiguous partners remain unknown. Wall intervals include
+preemption and blocking and can nest, so no summed CPU busy cost, backend queue
+time, critical path, GPU time, displayed latency or FPS follows from them.
+
+`helper_compile_scopes` reports observed spans and explicit loss/cap/boundary
+limits. `analyze.py INPUT --output OUTPUT --expected-profile combined-bounded`
+writes the report and exits3 when profile or capture integrity is invalid.
+Actual native presentation acceptance is separately reported by
+`presentation_capture`; absent presentation families remain unknown. These
+checks are offline synthetic evidence and do not prove installed or active
+producer binaries, gameplay, or any performance gain.
+
+The existing diagnostic/performance integrator owns this producer and the
+private `cs2trace` session data. The producer-lifetime mapping remains exactly
+8,392,704 bytes. Combined raw plus decoded derivatives have a **7-day TTL /
+64 MiB combined cap** per experiment; summaries and minimal failure evidence
+have a **30-day TTL /4 MiB cap**. Active mappings, active analysis, unresolved
+acceptance/recovery material and explicit holds are excluded from retirement
+and require reviewed expiry. Stop task-owned collection after acceptance and
+admit no bulk capture beyond these caps. Cleanup remains manual through the
+existing session lifecycle after a bounded exact-path inventory and preservation
+verification; no cleaner, counter reset, extra capture stream or public raw-data
+publication is introduced. Integration patches and test receipts for this wave
+have a **30-day TTL /8 MiB cap** under the root integration owner's active/hold
+exclusions and manual exact-path retirement.
+
+```sh
+python3 -m unittest discover -s tools/telemetry -p test_combined_profile.py -v
+```
+
 ## Opt-in slow CPU wall scopes
 
 `DXMT_CS2_TRACE_PROFILE=stall-waits` selects profile95 flags=4 before producer
