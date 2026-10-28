@@ -1,5 +1,14 @@
 # Wine patch origins and installed-source gap
 
+## Eight-direction continuation,28 October 2026
+
+Current component `271e5cdaa93c5a49c7cb219479cff36ead7cd8c8`. The [next-wave report](../diagnostics/next-wave-20261028.md)
+and [patch map](../PATCHES.md) separate general repairs, opt-in compilers,
+measurement tooling and held negative findings. Full builds and source controls
+pass; runtime adoption/activation remains independently observed. Older dated
+sections keep their original identities.
+
+
 ## Frontier checkpoint,28 October 2026
 
 Current component source: `bb2c891987c9551329fc7dfbb7c7f41abfceb582`. The [frontier report](../diagnostics/frontier-wave-20261028.md)

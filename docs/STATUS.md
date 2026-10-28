@@ -1,5 +1,25 @@
 # Current source, installation and checks
 
+Reconciled **28 October 2026**, eight-direction continuation. This section
+supersedes current-state claims in the dated sections below.
+
+| Layer | Current state | Acceptance boundary |
+| --- | --- | --- |
+| Component source | DXMT `61aca2a3`; Wine `271e5cda` | General CPU/view/scheduling/ring and synchronization/focus repairs; opt-in native compiler routes |
+| Build | Fresh 20-switch false/true 162-step renderer graphs and seven Wine targets pass; postcommit VCS refresh recorded | Compiler, PE/native bridge and helper matched; no new complete Wine distribution |
+| Validation |22 focused +65 prior DXMT +14 Wine commands;279 telemetry,52 Node/48 Python gameplay and13 workspace tests; independent source review | Native offscreen tests and fixture gains are distinct from installed/game/FPS acceptance; Node24 local vs22 CI |
+| Native compiler routes | Metal4 is build/process opt-in; persistent ARM has reproducible source builder and exact worker identity | Broad game coverage, actual task cancellation and ordinary runtime activation remain separate |
+| Measurement |Repeatability analyzer plus private collector successor; explicit bounded combined launch helper delivered with verified readback/no-op | Readiness must precede launch; actual profile/recording requires fresh decoded evidence; stdout-only attribution is absent on combined route |
+| Installed renderer |Prior playable matched renderer retained while the new sealed candidate is prepared | New source is not yet installed or measured in a game |
+| Held work |Coarse derivative candidate slower in native fixture; full Mach three Rosetta failures; device-error publication contract unresolved | No speculative production speedup or partial cancellation/fail-fast repair admitted |
+| Publication |Local coherent source commits; no push in this checkpoint | Hosted branches and CI may lag local source |
+
+[The implementation report](diagnostics/next-wave-20261028.md) records scope and
+limits. The current ROADMAP ledger owns runtime adoption and live acceptance;
+source, built, installed, activated and game-observed results stay separate.
+
+## Earlier 28 October frontier checkpoint
+
 Reconciled **28 October 2026**, frontier checkpoint. This section supersedes
 current-state claims in the dated historical notes below.
 
