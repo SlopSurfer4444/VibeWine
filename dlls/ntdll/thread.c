@@ -36,6 +36,34 @@ WINE_DECLARE_DEBUG_CHANNEL(relay);
 WINE_DECLARE_DEBUG_CHANNEL(pid);
 WINE_DECLARE_DEBUG_CHANNEL(timestamp);
 
+WINE_DECLARE_DEBUG_CHANNEL(vw_lifecycle);
+
+/* Opt-in diagnostic only. The last slot is a single saturation marker. */
+#define LIFECYCLE_EVENT_LIMIT 4096u
+static LONG lifecycle_event_count;
+
+static BOOL lifecycle_trace_admit(void)
+{
+    LONG count, observed;
+
+    if (!TRACE_ON(vw_lifecycle)) return FALSE;
+    count = InterlockedCompareExchange( &lifecycle_event_count, 0, 0 );
+    for (;;)
+    {
+        if (count >= (LONG)LIFECYCLE_EVENT_LIMIT) return FALSE;
+        observed = InterlockedCompareExchange( &lifecycle_event_count, count + 1, count );
+        if (observed == count) break;
+        count = observed;
+    }
+    if (count == (LONG)LIFECYCLE_EVENT_LIMIT - 1)
+    {
+        TRACE_(vw_lifecycle)( "event=quota source=ntdll_pe_thread limit=%u\n", LIFECYCLE_EVENT_LIMIT );
+        return FALSE;
+    }
+    return TRUE;
+}
+
+
 struct _KUSER_SHARED_DATA *user_shared_data = (void *)0x7ffe0000;
 
 struct debug_info
@@ -234,9 +262,19 @@ void set_native_thread_name( DWORD tid, const char *name )
 /***********************************************************************
  *           RtlExitUserThread  (NTDLL.@)
  */
+static void lifecycle_trace_exit_user( ULONG status )
+{
+    if (!lifecycle_trace_admit()) return;
+    TRACE_(vw_lifecycle)( "event=exit_user_begin pid=%08x tid=%08x status=%08x\n",
+                         (unsigned int)GetCurrentProcessId(), (unsigned int)GetCurrentThreadId(),
+                         (unsigned int)status );
+}
+
 void WINAPI RtlExitUserThread( ULONG status )
 {
     ULONG last;
+
+    lifecycle_trace_exit_user( status );
 
     NtQueryInformationThread( GetCurrentThread(), ThreadAmILastThread, &last, sizeof(last), NULL );
     if (last) RtlExitUserProcess( status );
