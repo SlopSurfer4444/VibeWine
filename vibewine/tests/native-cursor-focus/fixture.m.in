@@ -1,0 +1,249 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later
+ * Source-body callback fixture. No NSApplication or native window is created. */
+#import <Foundation/Foundation.h>
+#import <CoreGraphics/CoreGraphics.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+@class WineWindow;
+@class WineApplicationController;
+static int failures, assertions, starts, stops, positions, updates, lost, focused;
+static int stopCountWhenLost;
+static NSInteger ownerWhenStarted;
+static BOOL use_confinement_cursor_clipping = YES;
+static WineWindow* causing_becomeKeyWindow;
+static WineApplicationController* controller;
+#define CHECK(label, expr) do { assertions++; if (!(expr)) { printf("FAIL %s\n", label); failures++; } } while (0)
+enum { WINDOW_LOST_FOCUS = 1 };
+typedef struct { int type; } macdrv_event;
+static macdrv_event* macdrv_create_event(int type, id window) { macdrv_event* e = calloc(1, sizeof(*e)); e->type = type; return e; }
+static void macdrv_release_event(macdrv_event* event) { free(event); }
+
+@interface WineEventQueue : NSObject
+- (void) postEvent:(macdrv_event*)event;
+@end
+@implementation WineEventQueue
+- (void) postEvent:(macdrv_event*)event { if (event->type == WINDOW_LOST_FOCUS) { lost++; stopCountWhenLost = stops; } }
+@end
+
+@interface ObservedApplication : NSObject
+@property BOOL active;
+@property(retain) id keyWindow;
+@property(retain) NSArray* windows;
+- (BOOL) isActive;
+- (id) windowWithWindowNumber:(NSInteger)number;
+@end
+static ObservedApplication* NSApp;
+
+@interface NSEvent : NSObject
++ (NSPoint) mouseLocation;
+@end
+@implementation NSEvent
++ (NSPoint) mouseLocation { return NSMakePoint(20, 30); }
+@end
+
+@interface MockClipHandler : NSObject
+{
+    BOOL clippingCursor;
+    CGRect cursorClipRect;
+}
+@property BOOL clippingCursor;
+@property CGRect cursorClipRect;
++ (BOOL) isAvailable;
+- (BOOL) startClippingCursor:(CGRect)rect;
+- (BOOL) stopClippingCursor;
+- (BOOL) isClippingToCurrentWindow;
+@end
+@implementation MockClipHandler
+@synthesize clippingCursor, cursorClipRect;
++ (BOOL) isAvailable { return YES; }
+- (BOOL) startClippingCursor:(CGRect)rect { starts++; self.cursorClipRect = rect; self.clippingCursor = YES; return YES; }
+- (BOOL) stopClippingCursor { stops++; self.clippingCursor = NO; return YES; }
+@end
+@interface WineConfinementClipCursorHandler : MockClipHandler
+{
+    NSInteger clippingWindowNumber;
+}
++ (NSRect) rectForScreenRect:(CGRect)rect inWindow:(WineWindow*)window;
+@end
+@interface WineEventTapClipCursorHandler : MockClipHandler @end
+@implementation WineEventTapClipCursorHandler @end
+
+@interface WineWindow : NSObject
+{
+    WineEventQueue* queue;
+}
+@property BOOL closing;
+@property BOOL visible;
+@property BOOL miniaturized;
+@property BOOL onActiveSpace;
+@property(retain) WineEventQueue* queue;
+@property NSInteger windowNumber;
+- (void) setMouseConfinementRect:(NSRect)rect;
+- (BOOL) isVisible;
+- (BOOL) isMiniaturized;
+- (BOOL) isOnActiveSpace;
+- (void) updateForCursorClipping;
+- (void) flagsChanged:(NSEvent*)event;
+- (void) windowDidResignKey:(NSNotification*)notification;
+- (void) windowDidBecomeKey:(NSNotification*)notification;
+@end
+
+@compatibility_alias NSWindow WineWindow;
+@implementation ObservedApplication
+- (BOOL) isActive { return _active; }
+- (id) windowWithWindowNumber:(NSInteger)number { for (WineWindow* window in self.windows) if ([window windowNumber] == number) return window; return nil; }
+@end
+
+@interface WineApplicationController : NSObject
+{
+    BOOL temporarilyIgnoreResignEventsForDialog;
+    MockClipHandler* clipCursorHandler;
+    NSTimeInterval lastSetCursorPositionTime;
+}
+@property BOOL temporarilyIgnoreResignEventsForDialog;
+@property(readonly) BOOL clippingCursor;
++ (WineApplicationController*) sharedController;
+- (BOOL) canClipCursor;
+- (BOOL) startClippingCursor:(CGRect)rect;
+- (BOOL) stopClippingCursor;
+- (void) updateWindowsForCursorClipping;
+- (void) activeSpaceDidChange;
+- (void) updateFullscreenWindows;
+- (void) adjustWindowLevels;
+- (BOOL) setCursorPosition:(CGPoint)pos;
+- (NSPoint) flippedMouseLocation:(NSPoint)point;
+- (NSEvent*) lastFlagsChanged;
+- (void) windowGotFocus:(WineWindow*)window;
+- (WineWindow*) frontWineWindow;
+@end
+
+@implementation WineWindow
+@synthesize queue;
+- (BOOL) isVisible { return self.visible; }
+- (BOOL) isMiniaturized { return self.miniaturized; }
+- (BOOL) isOnActiveSpace { return self.onActiveSpace; }
+- (void) updateForCursorClipping { updates++; }
+- (void) flagsChanged:(NSEvent*)event { }
+- (void) setMouseConfinementRect:(NSRect)rect { if (NSIsEmptyRect(rect)) stops++; else { starts++; ownerWhenStarted = self.windowNumber; } }
+/* WINDOW_METHODS */
+@end
+
+@implementation WineConfinementClipCursorHandler
++ (NSRect) rectForScreenRect:(CGRect)rect inWindow:(WineWindow*)window { return NSMakeRect(rect.origin.x, rect.origin.y, rect.size.width, rect.size.height); }
+/* CONFINEMENT_METHODS */
+@end
+
+@implementation WineApplicationController
+@synthesize temporarilyIgnoreResignEventsForDialog;
++ (WineApplicationController*) sharedController { return controller; }
+- (void) updateFullscreenWindows { }
+- (void) adjustWindowLevels { }
+- (BOOL) setCursorPosition:(CGPoint)pos { positions++; return YES; }
+- (NSPoint) flippedMouseLocation:(NSPoint)point { return point; }
+- (NSEvent*) lastFlagsChanged { return nil; }
+- (void) windowGotFocus:(WineWindow*)window { focused++; }
+- (WineWindow*) frontWineWindow { return [NSApp.windows firstObject]; }
+/* APP_METHODS */
+@end
+
+static CGRect clipRect;
+static WineWindow* window;
+static void reset(void)
+{
+    controller = [WineApplicationController new];
+    NSApp = [ObservedApplication new];
+    window = [WineWindow new];
+    window.visible = YES; window.onActiveSpace = YES;
+    window.windowNumber = 1;
+    window.queue = [WineEventQueue new];
+    NSApp.active = YES; NSApp.keyWindow = window; NSApp.windows = @[window];
+    starts = stops = positions = updates = lost = focused = stopCountWhenLost = 0;
+    ownerWhenStarted = 0;
+    causing_becomeKeyWindow = nil;
+}
+static void reject(NSString* name)
+{
+    BOOL result = [controller startClippingCursor:clipRect];
+    CHECK([name UTF8String], !result && starts == 0 && positions == 0 && !controller.clippingCursor);
+}
+
+int main(void)
+{
+    @autoreleasepool {
+        clipRect = CGRectMake(10, 10, 80, 80);
+        reset();
+        CHECK("eligible-acquire", [controller startClippingCursor:clipRect] && controller.clippingCursor && starts == 1 && positions == 1);
+        CHECK("same-rect-no-extra-acquire", [controller startClippingCursor:clipRect] && starts == 1 && positions == 1);
+        [window windowDidResignKey:nil];
+        CHECK("key-loss-releases-before-event", !controller.clippingCursor && stops == 1 && lost == 1 && stopCountWhenLost == 1);
+        NSApp.keyWindow = nil;
+        CHECK("queued-request-after-key-loss", ![controller startClippingCursor:clipRect] && !controller.clippingCursor && starts == 1);
+        NSApp.keyWindow = window;
+        [window windowDidBecomeKey:nil];
+        CHECK("focus-callback-does-not-grab", focused == 1 && starts == 1 && !controller.clippingCursor);
+        CHECK("focus-return-reacquires", [controller startClippingCursor:clipRect] && controller.clippingCursor && starts == 2);
+
+        reset(); NSApp.active = NO; reject(@"inactive-request");
+        reset(); NSApp.keyWindow = nil; reject(@"keyless-request");
+        reset(); NSApp.keyWindow = [NSObject new]; reject(@"native-key-request");
+        reset(); window.visible = NO; reject(@"hidden-request");
+        reset(); window.miniaturized = YES; reject(@"minimized-request");
+        reset(); window.onActiveSpace = NO; reject(@"off-space-request");
+        reset(); window.closing = YES; reject(@"closing-request");
+
+        reset(); [controller startClippingCursor:clipRect];
+        window.onActiveSpace = NO; [controller activeSpaceDidChange];
+        CHECK("space-change-releases", !controller.clippingCursor && stops == 1);
+        CHECK("space-change-stale-request", ![controller startClippingCursor:clipRect] && starts == 1);
+        window.onActiveSpace = YES; [controller activeSpaceDidChange];
+        CHECK("space-return-does-not-grab", starts == 1 && !controller.clippingCursor);
+        CHECK("space-return-reacquires", [controller startClippingCursor:clipRect] && starts == 2);
+
+        reset(); [controller startClippingCursor:clipRect];
+        NSApp.active = NO;
+        CHECK("same-rect-inactive-releases", ![controller startClippingCursor:clipRect] && !controller.clippingCursor && stops == 1);
+        reset(); [controller startClippingCursor:clipRect];
+        [controller activeSpaceDidChange];
+        CHECK("eligible-space-notification-preserves", controller.clippingCursor && stops == 0);
+
+        reset(); [controller startClippingCursor:clipRect];
+        causing_becomeKeyWindow = window; [window windowDidResignKey:nil];
+        CHECK("intentional-key-switch-preserved", controller.clippingCursor && stops == 0 && lost == 0);
+        reset(); [controller startClippingCursor:clipRect];
+        controller.temporarilyIgnoreResignEventsForDialog = YES;
+        [window windowDidResignKey:nil];
+        window.onActiveSpace = NO; NSApp.active = NO; NSApp.keyWindow = nil;
+        [controller activeSpaceDidChange];
+        CHECK("permission-dialog-preserved", controller.clippingCursor && stops == 0 && lost == 0 && [controller startClippingCursor:clipRect]);
+        controller.temporarilyIgnoreResignEventsForDialog = NO;
+        [controller activeSpaceDidChange];
+        CHECK("permission-exception-ended-releases", !controller.clippingCursor && stops == 1);
+        CHECK("idempotent-stop", [controller stopClippingCursor] && stops == 1);
+
+        reset();
+        WineWindow* other = [WineWindow new]; other.windowNumber = 2;
+        other.visible = YES; other.onActiveSpace = NO;
+        NSApp.windows = @[other, window];
+        CHECK("confinement-key-owner", [controller startClippingCursor:clipRect] && ownerWhenStarted == 1);
+        [controller stopClippingCursor];
+        CHECK("confinement-release-key-owner", stops == 1);
+
+        reset(); [controller startClippingCursor:clipRect];
+        WineWindow* next = [WineWindow new]; next.windowNumber = 2;
+        next.visible = YES; next.onActiveSpace = YES; next.queue = [WineEventQueue new];
+        NSApp.windows = @[window, next];
+        causing_becomeKeyWindow = next; [window windowDidResignKey:nil];
+        NSApp.keyWindow = next; [next windowDidBecomeKey:nil];
+        CHECK("internal-switch-same-rect-rebind", [controller startClippingCursor:clipRect] && ownerWhenStarted == 2 && starts == 2 && stops == 1);
+
+        reset(); [controller startClippingCursor:clipRect];
+        controller.temporarilyIgnoreResignEventsForDialog = YES;
+        NSApp.keyWindow = nil; NSApp.active = NO;
+        CHECK("permission-changed-rect-nil-key", [controller startClippingCursor:CGRectMake(15, 15, 60, 60)] && controller.clippingCursor && ownerWhenStarted == 1);
+        NSApp.keyWindow = [NSObject new];
+        CHECK("permission-changed-rect-native-key", [controller startClippingCursor:clipRect] && controller.clippingCursor && ownerWhenStarted == 1);
+        printf("NATIVE_CURSOR_FOCUS_CHECKS=%d FAILURES=%d\n", assertions, failures);
+    }
+    return failures ? 42 : 0;
+}

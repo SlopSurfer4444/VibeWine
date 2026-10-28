@@ -426,6 +426,26 @@ static void scale_rect_for_retina_mode(BOOL mode, CGRect *cursorClipRect)
 
 @synthesize clippingCursor, cursorClipRect;
 
+    - (WineWindow*) currentClippingWindow
+    {
+        WineApplicationController* controller = [WineApplicationController sharedController];
+
+        /* Preserve the existing native permission-dialog exception, during
+         * which a system dialog may be key while Windows keeps its focus. */
+        if ([controller temporarilyIgnoreResignEventsForDialog])
+            return [controller frontWineWindow];
+
+        /* frontWineWindow scans all Spaces and can return a non-key panel. */
+        WineWindow* window = (WineWindow*)[NSApp keyWindow];
+        return [window isKindOfClass:[WineWindow class]] ? window : nil;
+    }
+
+    - (BOOL) isClippingToCurrentWindow
+    {
+        WineWindow* window = [self currentClippingWindow];
+        return window && window.windowNumber == clippingWindowNumber;
+    }
+
     + (BOOL) isAvailable
     {
         NSOperatingSystemVersion requiredVersion = { 10, 13, 0 };
@@ -457,7 +477,7 @@ static void scale_rect_for_retina_mode(BOOL mode, CGRect *cursorClipRect)
         if (clippingCursor && ![self stopClippingCursor])
             return FALSE;
 
-        WineWindow *ownerWindow = [[WineApplicationController sharedController] frontWineWindow];
+        WineWindow *ownerWindow = [self currentClippingWindow];
         if (!ownerWindow)
         {
             /* There's nothing we can do here in this case, since confinement

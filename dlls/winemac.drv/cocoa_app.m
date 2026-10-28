@@ -122,6 +122,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
 @property (retain, nonatomic) WineWindow* mouseCaptureWindow;
 
     - (void) setupObservations;
+    - (BOOL) canClipCursor;
     - (BOOL) releaseDisplayCaptureSavingModes:(BOOL)saveModes;
     - (BOOL) beginDisplayCaptureRelease;
     - (BOOL) retryDisplayCaptureRelease;
@@ -973,6 +974,12 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
     - (void) activeSpaceDidChange
     {
+        /* A Space transition need not deactivate the application.  Release
+           native confinement without waiting for the Windows message thread;
+           a later ClipCursor request can reacquire it on an eligible window. */
+        if (!temporarilyIgnoreResignEventsForDialog && ![self canClipCursor])
+            [self stopClippingCursor];
+
         [self updateFullscreenWindows];
         [self adjustWindowLevels];
     }
@@ -1477,8 +1484,27 @@ static NSString* WineLocalizedString(unsigned int stringID)
         }
     }
 
+    - (BOOL) canClipCursor
+    {
+        WineWindow* window = (WineWindow*)[NSApp keyWindow];
+
+        return [NSApp isActive] && [window isKindOfClass:[WineWindow class]] &&
+               !window.closing && [window isVisible] && ![window isMiniaturized] &&
+               [window isOnActiveSpace];
+    }
+
     - (BOOL) startClippingCursor:(CGRect)rect
     {
+        /* ClipCursor requests may already be queued when native focus is lost.
+           Do not let one re-confine the desktop after the native release.  The
+           existing permission-dialog exception intentionally preserves Windows
+           focus and clipping state until its dialog has completed. */
+        if (!temporarilyIgnoreResignEventsForDialog && ![self canClipCursor])
+        {
+            [self stopClippingCursor];
+            return FALSE;
+        }
+
         if (!clipCursorHandler) {
             if (use_confinement_cursor_clipping && [WineConfinementClipCursorHandler isAvailable])
                 clipCursorHandler = [[WineConfinementClipCursorHandler alloc] init];
@@ -1486,7 +1512,9 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 clipCursorHandler = [[WineEventTapClipCursorHandler alloc] init];
         }
 
-        if (self.clippingCursor && CGRectEqualToRect(rect, clipCursorHandler.cursorClipRect))
+        if (self.clippingCursor && CGRectEqualToRect(rect, clipCursorHandler.cursorClipRect) &&
+            (![clipCursorHandler respondsToSelector:@selector(isClippingToCurrentWindow)] ||
+             [clipCursorHandler isClippingToCurrentWindow]))
             return TRUE;
 
         if (![clipCursorHandler startClippingCursor:rect])

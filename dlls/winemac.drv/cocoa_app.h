@@ -122,6 +122,8 @@ enum {
 @property (readonly) BOOL clippingCursor;
 @property (nonatomic) NSTimeInterval lastSetCursorPositionTime;
 
+    - (BOOL) stopClippingCursor;
+
     + (WineApplicationController*) sharedController;
 
     - (void) transformProcessToForeground:(BOOL)activateIfTransformed;

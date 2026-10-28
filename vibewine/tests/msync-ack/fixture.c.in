@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <setjmp.h>
 #include <signal.h>
 #include <stdint.h>
@@ -54,7 +55,7 @@ static uint64_t normal_timeout;
 static mach_register_message_t queue[128];
 static jmp_buf drained, died;
 enum { EARLY_ACK, PARKED_ACK, CAS_RACE, DELAYED, DEADLINE, INTERRUPT, FAULT,
-       SPURIOUS, ALERT, BAD_WAIT, DEAD_BEFORE, DEAD_AFTER, OBJECT_READY, DEAD_SEND, MISMATCH, FINITE_ACK };
+       SPURIOUS, ALERT, BAD_WAIT, DEAD_BEFORE, DEAD_AFTER, OBJECT_READY, DEAD_SEND, MISMATCH, FINITE_ACK, FINITE_CHUNK };
 static void drain(void);
 static struct tid_node *pool_alloc(void) { ++nodes; return calloc(1,sizeof(struct tid_node)); }
 static void pool_free(struct tid_node *p) { --nodes; free(p); }
@@ -123,6 +124,7 @@ static int ulock_wait(uint32_t op,void *addr,uint64_t value,uint64_t timeout) {
     ++normal_parks;
     assert(value==1);
     normal_timeout=timeout;
+    if(scenario==FINITE_CHUNK && normal_parks==1) { now=25; return -ETIMEDOUT; }
     if(scenario==PARKED_ACK && timeout) return -ETIMEDOUT;
     /* Signal after registration, using the actual pump's normal wake path. */
     drain(); signal_all_internal(1);
@@ -152,6 +154,10 @@ int main(void) {
     CHECK(wake_attempts==wakes+1 && wakes>=1,"interrupted ack wake is retried");
     reset(FINITE_ACK); status=wait_case(&end); drain();
     CHECK(status==STATUS_SUCCESS && parks==1 && !capped && normal_timeout==5000 && balanced(),"finite deadline preserved after ack");
+    #if HAS_TIMEOUT_CHUNKS
+    reset(FINITE_CHUNK); status=wait_case(&end); drain();
+    CHECK(status==STATUS_SUCCESS && normal_parks==2 && normal_timeout==2500 && balanced(),"finite post-ACK chunk timeout rechecks deadline");
+    #endif
     reset(CAS_RACE); status=wait_case(NULL); drain();
     CHECK(status==STATUS_SUCCESS && parks==0 && !capped && balanced(),"ack between load and arm control");
     reset(DELAYED); status=wait_case(NULL); drain();

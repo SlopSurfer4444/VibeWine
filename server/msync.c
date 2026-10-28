@@ -421,7 +421,15 @@ static inline void destroy_all_internal( unsigned int shm_idx )
 
     refcount = __atomic_sub_fetch( &obj->refcount, 1, __ATOMIC_SEQ_CST );
 
-    if (!refcount) last_destroyed_idx = shm_idx;
+    if (!refcount)
+    {
+        unsigned int hint = __atomic_load_n( &last_destroyed_idx, __ATOMIC_ACQUIRE );
+
+        /* Retain the lowest freed index until the allocator consumes it. The
+         * pump and the server allocation thread must not race on this hint. */
+        while (shm_idx < hint && !__atomic_compare_exchange_n( &last_destroyed_idx,
+                &hint, shm_idx, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ));
+    }
 }
 
 /*
@@ -722,13 +730,23 @@ static void *get_shm( unsigned int idx )
 
 static unsigned int msync_alloc_shm( int low, int high, enum msync_type type )
 {
-    unsigned int shm_idx;
+    unsigned int shm_idx, hint;
     struct msync_shm *shm;
 
-    shm_idx = min( last_destroyed_idx, last_allocated_idx + 1 );
+    /* Consume one batch of free hints. A free published during this scan is
+     * retained for the next allocation, never overwritten by cursor advance. */
+    hint = __atomic_exchange_n( &last_destroyed_idx, UINT32_MAX, __ATOMIC_ACQ_REL );
+    shm_idx = min( hint, last_allocated_idx + 1 );
 
     for(;;)
     {
+        if (shm_idx > MSYNC_MAX_SHM_IDX)
+        {
+            /* The pump may have freed a lower slot after we scanned it. */
+            shm_idx = __atomic_exchange_n( &last_destroyed_idx, UINT32_MAX, __ATOMIC_ACQ_REL );
+            if (shm_idx > MSYNC_MAX_SHM_IDX)
+                fatal_error( "msync: shared object index exhausted\n" );
+        }
         shm = get_shm( shm_idx );
         if (!__atomic_load_n( &shm->refcount, __ATOMIC_SEQ_CST ))
             break;

@@ -982,6 +982,7 @@ SOURCES = \
 	wine/mmsystem16.h \
 	wine/mscvpdb.h \
 	wine/mssign.h \
+	wine/msync_table.h \
 	wine/netdiag.h \
 	wine/netdiag_unix.h \
 	wine/nsi.h \

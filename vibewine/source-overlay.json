@@ -1669,6 +1669,126 @@
       "source": "frontier-wave-20261028/wine-memory/table-only-source/vibewine/tests/msync-memory-ownership/TABLE_README.md",
       "destination": "vibewine/tests/msync-memory-ownership/TABLE_README.md",
       "sha256": "29908908b50532989e3b97f4c27539d6e187ab717f5eec626312e7f5ff1056f8"
+    },
+    {
+      "source": "next-wave-20261028/native/source/dlls/winemac.drv/cocoa_app.h",
+      "destination": "dlls/winemac.drv/cocoa_app.h",
+      "sha256": "1f4a1adf0733b612ce2d29db86d1e7d4e781b5c8d62582418a8771ee5c1fadb1"
+    },
+    {
+      "source": "next-wave-20261028/native/source/dlls/winemac.drv/cocoa_app.m",
+      "destination": "dlls/winemac.drv/cocoa_app.m",
+      "sha256": "43fc37b2d697658f766e2e86214b3874c480bdeafcda525e4ef009cf0da684c2"
+    },
+    {
+      "source": "next-wave-20261028/native/source/dlls/winemac.drv/cocoa_cursorclipping.h",
+      "destination": "dlls/winemac.drv/cocoa_cursorclipping.h",
+      "sha256": "a25ec32f6ef524bd0489f528f2d32a768c129a783f6c9d9907560557de26bb6c"
+    },
+    {
+      "source": "next-wave-20261028/native/source/dlls/winemac.drv/cocoa_cursorclipping.m",
+      "destination": "dlls/winemac.drv/cocoa_cursorclipping.m",
+      "sha256": "ed90be49169688e574e22c241f3dc61b9d0c3b615e6e9fa3d9f12fb05f401903"
+    },
+    {
+      "source": "next-wave-20261028/native/source/dlls/winemac.drv/cocoa_window.m",
+      "destination": "dlls/winemac.drv/cocoa_window.m",
+      "sha256": "f4eeaa89d7fb7594a84f685d24ddb6df2ee99edf3ec10e6640c82804f9bfcdc8"
+    },
+    {
+      "source": "next-wave-20261028/native/source/vibewine/tests/native-cursor-focus/fixture.m.in",
+      "destination": "vibewine/tests/native-cursor-focus/fixture.m.in",
+      "sha256": "7a24a20628d9b94cf7af611ee9adc3045d8d09472460f22b026aba8e481ccb69"
+    },
+    {
+      "source": "next-wave-20261028/native/source/vibewine/tests/native-cursor-focus/run.py",
+      "destination": "vibewine/tests/native-cursor-focus/run.py",
+      "sha256": "2362b542039684771bc199b806e6ca2454a0d8e5181cb03d414cdc3093b38f44"
+    },
+    {
+      "source": "next-wave-20261028/native/source/vibewine/tests/native-cursor-focus/README.md",
+      "destination": "vibewine/tests/native-cursor-focus/README.md",
+      "sha256": "be2e825fcbdc52e838c9948de0454790b9eb9d67d975c2bd50b6a474821ef573"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/dlls/ntdll/unix/msync.c",
+      "destination": "dlls/ntdll/unix/msync.c",
+      "sha256": "89f1ef6df847a6540a7da0cdefaa254f184ebad17dfa19bfdf9433c770b05b94"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/server/msync.c",
+      "destination": "server/msync.c",
+      "sha256": "2ed4625105ef662ab9ac5a7ceedd49a8fafc43e7b94bcbc7d8d6932386699387"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-ack/README.md",
+      "destination": "vibewine/tests/msync-ack/README.md",
+      "sha256": "1fc94f9db66d6f8606b8a3be70beec7eb802bea10a408052efb4b2509a6b0e10"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-ack/fixture.c.in",
+      "destination": "vibewine/tests/msync-ack/fixture.c.in",
+      "sha256": "a3005a8e8cc425d6ef583f0bec95c684f2ff52bfaa4fde14b86d5a75413ab27d"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-ack/run.py",
+      "destination": "vibewine/tests/msync-ack/run.py",
+      "sha256": "dc206ba647941630a02803539aff3b9842b182ac3018863a52ebf36687bc8151"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-deadline/README.md",
+      "destination": "vibewine/tests/msync-deadline/README.md",
+      "sha256": "7788585fcdbd867357c2ee2afdb39eb8337789812a427b9b64cf21154d031ffe"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-deadline/fixture.c.in",
+      "destination": "vibewine/tests/msync-deadline/fixture.c.in",
+      "sha256": "b2069fde73010a965035e076e332251f66fcd4d8d3be65e0ae12438c874e0c10"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-deadline/run.py",
+      "destination": "vibewine/tests/msync-deadline/run.py",
+      "sha256": "88e3154ab3e9795983520cebdbdaab8aa334cfd092c304578bed495a01a32469"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-freehint/README.md",
+      "destination": "vibewine/tests/msync-freehint/README.md",
+      "sha256": "c301fe0e4ba12e0ef2310a8c06c42b8318a88cbb0da6a6175e858d9bf8b36640"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-freehint/fixture.c.in",
+      "destination": "vibewine/tests/msync-freehint/fixture.c.in",
+      "sha256": "0e418f9acf028dae8ab62c6865ce4a02261a1b7cd4088a51584efca65b0d38fa"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-freehint/run.py",
+      "destination": "vibewine/tests/msync-freehint/run.py",
+      "sha256": "8a303c377f6e31d04b345197134bb55ed3696a905f3ff4bbca7c141a144f1874"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-waitall/README.md",
+      "destination": "vibewine/tests/msync-waitall/README.md",
+      "sha256": "7a1187b2fe92a808b2e58333ea5b0af4a6a951ef6132d38f4876865d86ebb43d"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-waitall/fixture.c.in",
+      "destination": "vibewine/tests/msync-waitall/fixture.c.in",
+      "sha256": "9aef06fa21a4e3d6f1ad7719ae72245d33dcbecf49d261401a71aff49ab7de81"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync-waitall/run.py",
+      "destination": "vibewine/tests/msync-waitall/run.py",
+      "sha256": "f432e92e5ad57b0287cd41cfa4870225d0f2dd19f0cffd1f38202b3d6c9aa53f"
+    },
+    {
+      "source": "next-wave-20261028/msync/source/vibewine/tests/msync_registration.py",
+      "destination": "vibewine/tests/msync_registration.py",
+      "sha256": "ec378b889c528a1febd642c9b7309c39fbc77e0fd4f1854583cf688289cc5cfa"
+    },
+    {
+      "source": "next-wave-20261028/integration-source/include/Makefile.in",
+      "destination": "include/Makefile.in",
+      "sha256": "0dee874ba3be40e7b9bed3e88c54d55b424d3cadf8f7ac1084afd14c861a35b1"
     }
   ]
 }

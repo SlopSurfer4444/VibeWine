@@ -31,7 +31,9 @@ failures and unrelated crashes do not count as detected regressions.
 
 Atomic-call boundary seams force another actor's consumption/reset/release at
 the exact readiness/acquisition race. The production algorithm, actual caller
-arguments, timeout construction and return paths are compiled unchanged. Lower
+arguments, timeout construction and return paths are compiled unchanged. Current source also extracts the
+production clock-domain deadline initializer/updater; its QPC seam uses separate
+100 ns monotonic ticks, so parameter checks admit the negative relative encoding. Lower
 single/multiple wait transports and `signal_all` are observation seams here;
 they check object/address/TID/deadline/APC parameters and count requested wakes.
 The separate [native pressure fixture](../msync-pressure/README.md) checks actual
