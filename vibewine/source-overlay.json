@@ -1614,6 +1614,61 @@
       "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/vibewine/tests/lifecycle-diagnostics/REVIEW.md",
       "destination": "vibewine/tests/lifecycle-diagnostics/REVIEW.md",
       "sha256": "8f6713add92dce256fa3664aa042d1256d8f2b72a4fcd1d71ebfa11c663f8319"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-alert/dlls/ntdll/unix/thread.c",
+      "destination": "dlls/ntdll/unix/thread.c",
+      "sha256": "bfd5d691c662162c05bbba3985ef1aa7690e79301f3a927d9f8423d65075ab76"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-alert/vibewine/tests/thread-exit/fixture.c.in",
+      "destination": "vibewine/tests/thread-exit/fixture.c.in",
+      "sha256": "fee3be3acd1684ea76a9803e7739831b32e8ad0417544d82eadcde4eab8eb3aa"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-alert/vibewine/tests/msync-alert-ownership/README.md",
+      "destination": "vibewine/tests/msync-alert-ownership/README.md",
+      "sha256": "fd2288df88321e56c28d587f316e476359de226cb79f270a3028f37238591395"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-alert/vibewine/tests/msync-alert-ownership/fixture.c.in",
+      "destination": "vibewine/tests/msync-alert-ownership/fixture.c.in",
+      "sha256": "3742ed4f59d4ad9700e11e1c054e50aa7fefe233723150a43e06ed2122a3e8ff"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-alert/vibewine/tests/msync-alert-ownership/run.py",
+      "destination": "vibewine/tests/msync-alert-ownership/run.py",
+      "sha256": "c1888be7afe4133f56a5406032975b1ca241576bf9a5db5df65abf0f430e3f6e"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-memory/table-only-source/dlls/ntdll/unix/msync.c",
+      "destination": "dlls/ntdll/unix/msync.c",
+      "sha256": "d30a46735632c1f7635b40f736e9e63ee5db10be41438f110bad96052b8e6838"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-memory/table-only-source/server/msync.c",
+      "destination": "server/msync.c",
+      "sha256": "01f6ba77783f12639084be2e1eb5a6e57a30da7386ce05803d7bfd08c64cf507"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-memory/table-only-source/include/wine/msync_table.h",
+      "destination": "include/wine/msync_table.h",
+      "sha256": "fc03d0df1017c14807fdae2e043e0e44e179232207977eeb7eff06979638a173"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-memory/table-only-source/vibewine/tests/msync-memory-ownership/table.c.in",
+      "destination": "vibewine/tests/msync-memory-ownership/table.c.in",
+      "sha256": "969b41f331874e44ad4382203fa03b30afffb4c276165f75394684b900f80b45"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-memory/table-only-source/vibewine/tests/msync-memory-ownership/run_table.py",
+      "destination": "vibewine/tests/msync-memory-ownership/run_table.py",
+      "sha256": "aa9c5d01a5e37cd9c45e4b8e2de34f080d11462641cbe9d96a9fc97e7cd64111"
+    },
+    {
+      "source": "frontier-wave-20261028/wine-memory/table-only-source/vibewine/tests/msync-memory-ownership/TABLE_README.md",
+      "destination": "vibewine/tests/msync-memory-ownership/TABLE_README.md",
+      "sha256": "29908908b50532989e3b97f4c27539d6e187ab717f5eec626312e7f5ff1056f8"
     }
   ]
 }

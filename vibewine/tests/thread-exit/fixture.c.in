@@ -38,6 +38,8 @@ static LONG InterlockedDecrement(LONG *value)
     return result;
 }
 static struct ntdll_thread_data *ntdll_get_thread_data(void) { return &thread_data; }
+/* This fixture owns five real Unix fds; MSync indices have a separate fixture. */
+static int do_msync(void) { return 0; }
 static TEB *NtCurrentTeb(void) { return &teb; }
 static void *InterlockedExchangePointer(void **target, void *value)
 {
