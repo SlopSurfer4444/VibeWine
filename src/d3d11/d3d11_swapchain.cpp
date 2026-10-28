@@ -1054,10 +1054,11 @@ public:
     auto &cmd_queue = device_->GetDXMTDevice().queue();
     if (auto gen = cs2trace::generation()) {
       auto t = cs2trace::now();
-      cs2trace::record(gen,25,t,t,trace_serial_,0,cmd_queue.traceSerial(),cmd_queue.CurrentFrameSeq()-1);
+      const auto queue_frame = cmd_queue.CurrentFrameSeq()-1;
+      cs2trace::record(gen,25,t,t,trace_serial_,0,cmd_queue.traceSerial(),queue_frame);
       // Native presenter and queue frame counters have different origins.
-      if (cs2trace::profile()==cs2trace::Profile::PresentationWaits)
-        cs2trace::record(gen,99,t,t,trace_serial_,0,state.frame_id,cmd_queue.CurrentFrameSeq()-1);
+      if (cs2trace::presentationScopesAllowed(cs2trace::profile()))
+        cs2trace::record(gen,99,t,t,trace_serial_,0,state.frame_id,queue_frame);
     }
     auto chunk = cmd_queue.CurrentChunk();
     chunk->signal_frame_latency_fence_ = cmd_queue.CurrentFrameSeq();

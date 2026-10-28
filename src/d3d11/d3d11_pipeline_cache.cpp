@@ -3,6 +3,8 @@
 #include "d3d11_device.hpp"
 #include "d3d11_shader.hpp"
 #include "d3d11_pipeline.hpp"
+#include "d3d11_pso_normalization.hpp"
+#include "d3d11_shader_singleflight.hpp"
 #include "dxmt_shader_cache.hpp"
 #include "dxmt_tasks.hpp"
 #include "dxmt_compiler_options.hpp"
@@ -13,7 +15,7 @@
 #include "../d3d10/d3d10_input_layout.hpp"
 #include <cstring>
 #include "cs2_compile_lab.hpp"
-#include <shared_mutex>
+#include <limits>
 
 #ifndef DXMT_DEMAND_SCHEDULER
 #define DXMT_DEMAND_SCHEDULER 0
@@ -92,7 +94,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
     sm50_shader_t shader = nullptr;
     Sha1Digest sha1_;
     MTL_SHADER_REFLECTION reflection_;
-    MTL_SM50_SHADER_ARGUMENT *arguments_info_buffer;
+    MTL_SM50_SHADER_ARGUMENT *arguments_info_buffer = nullptr;
     std::unordered_map<ShaderVariant, std::unique_ptr<CompiledShader>> variants;
     dxmt::mutex variants_mutex;
 
@@ -101,19 +103,20 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
                      const Sha1Digest &hash, MTL_SHADER_REFLECTION &reflection)
         : cache(cache), shader(shader_transferred), sha1_(hash),
           reflection_(reflection) {
-      if (reflection_.NumConstantBuffers + reflection_.NumArguments) {
+      const size_t count = size_t(reflection_.NumConstantBuffers) + reflection_.NumArguments;
+      if (count && count <= std::numeric_limits<size_t>::max() / sizeof(MTL_SM50_SHADER_ARGUMENT)) {
         arguments_info_buffer = (MTL_SM50_SHADER_ARGUMENT *)malloc(
-            sizeof(MTL_SM50_SHADER_ARGUMENT) *
-            (reflection_.NumConstantBuffers + reflection_.NumArguments));
-        SM50GetArgumentsInfo(shader, arguments_info_buffer,
-                             arguments_info_buffer +
-                                 reflection_.NumConstantBuffers);
-      } else {
-        arguments_info_buffer = nullptr;
+            sizeof(MTL_SM50_SHADER_ARGUMENT) * count);
+        if (arguments_info_buffer)
+          SM50GetArgumentsInfo(shader, arguments_info_buffer,
+                               arguments_info_buffer + reflection_.NumConstantBuffers);
       }
     }
 
     ~CachedSM50Shader() {
+#ifdef DXMT_DEBUG
+      free(bytecode);
+#endif
       if (shader) {
         SM50Destroy(shader);
         if (arguments_info_buffer)
@@ -124,6 +127,10 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
 
     CachedSM50Shader(CachedSM50Shader &&moved) = delete;
     CachedSM50Shader(const CachedSM50Shader &copy) = delete;
+
+    bool initialized() const {
+      return arguments_info_buffer || (!reflection_.NumConstantBuffers && !reflection_.NumArguments);
+    }
 
     virtual sm50_shader_t handle() { return shader; };
     virtual MTL_SHADER_REFLECTION &reflection() { return reflection_; }
@@ -138,6 +145,8 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
       return get_shader(variant, task_urgency::demand);
     }
     CompiledShader *get_shader(ShaderVariant variant, task_urgency urgency) {
+      if (auto pixel = std::get_if<ShaderVariantPixel>(&variant))
+        *pixel = canonicalize_pixel_variant(*pixel, reflection_.PixelShader.ValidRenderTargets);
       std::lock_guard<dxmt::mutex> lock(variants_mutex);
       auto c = variants.insert({variant, nullptr});
       if (c.second) {
@@ -157,7 +166,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
     virtual const Sha1Digest &sha1() { return sha1_; };
 
 #ifdef DXMT_DEBUG
-    void *bytecode;
+    void *bytecode = nullptr;
     size_t bytecode_length;
 
     virtual void dump() {
@@ -227,8 +236,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
       so_layouts;
   dxmt::mutex mutex_so_;
 
-  std::unordered_map<Sha1Digest, std::unique_ptr<CachedSM50Shader>> shaders_;
-  std::shared_mutex mutex_shares;
+  ShaderSingleflightCache<Sha1Digest, CachedSM50Shader> shaders_;
 
   std::unordered_map<MTL_GRAPHICS_PIPELINE_DESC, std::unique_ptr<MTLCompiledGraphicsPipeline>> pipelines_;
   dxmt::mutex mutex_;
@@ -248,39 +256,58 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
   CachedSM50Shader *CreateShader(const void *pBytecode,
                                  uint32_t BytecodeLength) {
     auto sha1 = Sha1HashState::compute(pBytecode, BytecodeLength);
-    {
-      std::shared_lock<std::shared_mutex> lock(mutex_shares);
-      auto result = shaders_.find(sha1);
-      if (result != shaders_.end()) {
-        return result->second.get();
-      }
-    }
-    sm50_error_t err = nullptr;
-    sm50_shader_t sm50;
-    MTL_SHADER_REFLECTION reflection;
-    if (SM50Initialize(pBytecode, BytecodeLength, &sm50, &reflection, &err)) {
-      if (err) {
-        ERR("Failed to initialize shader: ", SM50GetErrorMessageString(err));
-        SM50FreeError(err);
-      } else {
-        ERR("Failed to initialize shader without an error object");
-      }
+#if defined(__cpp_exceptions)
+    try {
+#endif
+      return shaders_.GetOrCreate(sha1, [&]() -> std::unique_ptr<CachedSM50Shader> {
+        // The winning call consumes its own borrowed bytecode synchronously.
+        // Waiters retain no bytecode pointers, and parsing holds no map lock.
+        sm50_error_t err = nullptr;
+        struct ErrorOwner {
+          sm50_error_t &value;
+          ~ErrorOwner() { if (value) SM50FreeError(value); }
+        } error_owner{err};
+        sm50_shader_t sm50 = nullptr;
+        MTL_SHADER_REFLECTION reflection{};
+        if (SM50Initialize(pBytecode, BytecodeLength, &sm50, &reflection, &err)) {
+          if (err) {
+            ERR("Failed to initialize shader: ", SM50GetErrorMessageString(err));
+          } else {
+            ERR("Failed to initialize shader without an error object");
+          }
+          return nullptr;
+        }
+        // Keep the native handle owned even if wrapper allocation throws.
+        struct ShaderOwner {
+          sm50_shader_t value;
+          ~ShaderOwner() { if (value) SM50Destroy(value); }
+        } owner{sm50};
+        auto shader = std::make_unique<CachedSM50Shader>(this, sm50, sha1, reflection);
+        owner.value = nullptr;
+        if (!shader->initialized()) {
+          ERR("Failed to allocate shader argument information");
+          return nullptr;
+        }
+#ifdef DXMT_DEBUG
+        shader->bytecode = malloc(BytecodeLength);
+        shader->bytecode_length = BytecodeLength;
+        if (BytecodeLength && !shader->bytecode)
+          return nullptr;
+        if (BytecodeLength)
+          memcpy(shader->bytecode, pBytecode, BytecodeLength);
+#endif
+        return shader;
+      });
+#if defined(__cpp_exceptions)
+    } catch (...) {
+      // All joined callers observe the failed flight; a later call may retry.
+      // Logging may itself allocate; keep that failure inside the COM boundary.
+      try {
+        ERR("Failed to initialize shader: allocation or initialization exception");
+      } catch (...) {}
       return nullptr;
     }
-    auto shader = std::make_unique<CachedSM50Shader>(this, sm50, sha1, reflection);
-    {
-      std::unique_lock<std::shared_mutex> lock(mutex_shares);
-      auto result = shaders_.find(sha1);
-      if (result != shaders_.end()) {
-        return result->second.get();
-      }
-#ifdef DXMT_DEBUG
-      shader->bytecode = malloc(BytecodeLength);
-      shader->bytecode_length = BytecodeLength;
-      memcpy(shader->bytecode, pBytecode, BytecodeLength);
 #endif
-      return shaders_.emplace(sha1, std::move(shader)).first->second.get();
-    }
   }
 
   virtual HRESULT AddVertexShader(const void *pBytecode,
@@ -425,6 +452,10 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
 
   void GetGraphicsPipeline(MTL_GRAPHICS_PIPELINE_DESC *pDesc,
                            MTLCompiledGraphicsPipeline **ppPipeline) override {
+    // Never rewrite the live draw descriptor: encoded draws still use its
+    // original index type. Hash/equality stay unchanged for GS/TS/SO maps.
+    auto canonical_desc = canonicalize_ordinary_pipeline_desc(*pDesc);
+    pDesc = &canonical_desc;
     std::lock_guard<dxmt::mutex> lock(mutex_);
 
     if (auto iter = pipelines_.find(*pDesc); iter != pipelines_.end()) {

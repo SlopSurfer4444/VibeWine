@@ -4,6 +4,7 @@
 #include "dxmt_format.hpp"
 
 #include "dxmt_command.h"
+#include "../d3d11/cs2_compile_trace.hpp"
 
 #define CREATE_PIPELINE(name)                                                                                          \
   auto name##_function = library.newFunction(#name);           \
@@ -394,7 +395,7 @@ TileBarrierContext::TileBarrierContext(WMT::Device device, InternalCommandLibrar
   tile_function_ = lib.getLibrary().newFunction("tile_barrier");
 }
 
-void
+bool
 TileBarrierContext::dispatch() {
   if (auto tile_pso = getPSO(ctx_.currentRenderEncoder()->tile_barrier_pso_key)) {
     auto &cmd_pso = ctx_.encodeRenderCommand<wmtcmd_render_setpso>();
@@ -411,7 +412,9 @@ TileBarrierContext::dispatch() {
       cmd_recover.type = WMTRenderCommandSetPSO;
       cmd_recover.pso = pso_recover;
     }
+    return true;
   }
+  return false;
 }
 
 WMT::RenderPipelineState
@@ -427,7 +430,9 @@ TileBarrierContext::getPSO(TileBarrierPSOKey &key) {
   info.tile_function = tile_function_;
 
   WMT::Reference<WMT::Error> err;
-  auto pso = device_.newRenderPipelineState(info, err);
+  auto pso = cs2trace::helperCompile(cs2trace::HelperRoute::TileNativePSO, 0,
+      [&] { return device_.newRenderPipelineState(info, err); },
+      [](const auto &value) { return bool(value); });
 
   if (!pso) {
     ERR("Failed to create tile PSO: ", err.description().getUTF8String());

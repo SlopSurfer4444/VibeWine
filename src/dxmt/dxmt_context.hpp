@@ -831,7 +831,8 @@ public:
 
   void resolveComputePassBarrier();
 
-  void resolveRenderPassBarrier();
+  // False leaves the dependency pending; the caller must omit dependent work.
+  [[nodiscard]] bool resolveRenderPassBarrier();
 
   FrameStatisticsContainer &
   frameStatistics();

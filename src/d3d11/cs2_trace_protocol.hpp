@@ -5,7 +5,7 @@
 namespace dxmt::cs2trace {
 // Changed magic prevents version-1 controllers mutating this control word.
 // Additive coverage metadata (event 95). Invalid=2 remains reserved forever.
-enum class Profile : uint32_t { Full=0, CompileWaits=1, Invalid=2, PresentationWaits=3, StallWaits=4 };
+enum class Profile : uint32_t { Full=0, CompileWaits=1, Invalid=2, PresentationWaits=3, StallWaits=4, CombinedBounded=5 };
 constexpr uint64_t StallWaitThresholdNs=50000000;
 constexpr bool stallContextType(uint32_t type) {
  return (type>=80 && type<=89) || type==93 || type==94;
@@ -13,6 +13,7 @@ constexpr bool stallContextType(uint32_t type) {
 constexpr bool profileTypeAllowed(Profile profile,uint32_t type) {
  switch(profile) {
   case Profile::Full:return true;
+  case Profile::CombinedBounded:return type>=1 && type<=120;
   case Profile::CompileWaits:return type==3 || type==4 || type==5 || type==17 || type==19 ||
     (type>=80 && type<=89) || type==93 || type==94 || (type>=104 && type<=107);
   case Profile::PresentationWaits:return type==1 || type==2 || (type>=6 && type<=16) ||
@@ -31,8 +32,21 @@ constexpr bool profileTypeAllowed(Profile profile,uint32_t type) {
 // into a qualifying stall. Other profiles retain their existing coverage.
 constexpr bool profileEventAllowed(Profile profile,uint32_t type,uint64_t start,uint64_t end) {
  if(!profileTypeAllowed(profile,type))return false;
+ if(profile==Profile::CombinedBounded)
+   return end>=start && (!(type>=108 && type<=119) || end-start>=StallWaitThresholdNs);
  return profile!=Profile::StallWaits ||
    (end>=start && (stallContextType(type) || end-start>=StallWaitThresholdNs));
+}
+// New profile only: all optional detail paths share the existing quota. The
+// fixed lifetime mapping independently bounds ordinary/presentation streams.
+constexpr bool combinedDetailType(uint32_t type) {
+ return (type>=80 && type<=94) || (type>=104 && type<=107) || (type>=111 && type<=120);
+}
+constexpr bool presentationScopesAllowed(Profile p) {
+ return p==Profile::PresentationWaits || p==Profile::CombinedBounded;
+}
+constexpr bool stallScopesAllowed(Profile p) {
+ return p==Profile::StallWaits || p==Profile::CombinedBounded;
 }
 constexpr uint64_t Magic=0x4353325452414332ULL, Version=2, Capacity=131072;
 constexpr uint64_t WriterMask=(1ULL<<30)-1, StateMask=3ULL<<30;

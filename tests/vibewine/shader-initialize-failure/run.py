@@ -13,7 +13,7 @@ HERE=Path(__file__).resolve().parent
 REPO=HERE.parents[2]
 BASELINE='a21579fb2a03aef5fbe93d7bcba1ea882e63a192'
 CALLER='src/d3d11/d3d11_pipeline_cache.cpp'
-PATHS=[CALLER,'src/winemetal/airconv_thunks.c','src/winemetal/airconv_thunks.h',
+PATHS=[CALLER,'src/d3d11/d3d11_shader_singleflight.hpp','src/winemetal/airconv_thunks.c','src/winemetal/airconv_thunks.h',
        'src/airconv/airconv_public.h','src/util/sha1/sha1.c','src/util/sha1/sha1_util.cpp','src/util/sha1/sha1_util.hpp']
 
 
@@ -29,6 +29,9 @@ def generated(caller):
   'CREATE_SHADER':block(caller,'  CachedSM50Shader *CreateShader('),
   'CONSTRUCTOR':block(caller,'    CachedSM50Shader(PipelineCache *cache,'),
   'DESTRUCTOR':block(caller,'    ~CachedSM50Shader()'),
+  'INITIALIZED':block(caller,'    bool initialized() const') if 'bool initialized() const' in caller else '',
+  'STORAGE':('  FixtureShaderStorage<Sha1Digest, CachedSM50Shader> shaders_;' if '.GetOrCreate(sha1' in caller else
+             '  std::unordered_map<Sha1Digest,std::unique_ptr<CachedSM50Shader>> shaders_;\n  std::shared_mutex mutex_shares;'),
  }
  fixture=(HERE/'fixture.cpp.in').read_text()
  for marker,code in replacements.items():
@@ -42,10 +45,17 @@ def main():
  parser.add_argument('--source-dir',type=Path,default=REPO)
  parser.add_argument('--arch',choices=['arm64','x86_64'])
  args=parser.parse_args();source=args.source_dir.resolve()
- current=(source/CALLER).read_text()
+ snapshots={p:(source/p).read_bytes() for p in PATHS}
+ fixture_snapshot=(HERE/'fixture.cpp.in').read_bytes()
+ runner_snapshot=Path(__file__).read_bytes()
+ current=snapshots[CALLER].decode()
  old=subprocess.check_output(['git','-C',str(source),'show',f'{BASELINE}:{CALLER}'],text=True)
  init_only=old.replace('    sm50_error_t err;','    sm50_error_t err = nullptr;')
- missing_free=current.replace('        SM50FreeError(err);','        (void)err;')
+ if '~ErrorOwner() { if (value) SM50FreeError(value); }' in current:
+  missing_free=current.replace('~ErrorOwner() { if (value) SM50FreeError(value); }','~ErrorOwner() { (void)value; }')
+ else:
+  missing_free=current.replace('        SM50FreeError(err);','        (void)err;')
+ assert missing_free != current, 'missing-free control must mutate the actual owned-error release'
  variants=[('current',current,None),('historical',old,'message access requires a live owned error object'),
            ('initialize-only-control',init_only,'message access requires a live owned error object'),
            ('missing-free-control',missing_free,'owned error is released exactly once')]
@@ -58,7 +68,8 @@ def main():
   (scratch/'wineunixlib.h').write_text('#include <stdint.h>\ntypedef int32_t NTSTATUS;\nextern int32_t mock_unix(unsigned int, void *);\n#define WINE_UNIX_CALL(code,args) mock_unix(code,args)\n')
   common=['-O1','-gline-tables-only','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-unused-private-field',
           '-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer','-ftrivial-auto-var-init=pattern',
-          '-I',str(scratch),'-I',str(source/'src/winemetal'),'-I',str(source/'src/airconv'),'-I',str(source/'src/util')]
+          '-I',str(scratch),'-I',str(source/'src/winemetal'),'-I',str(source/'src/airconv'),'-I',str(source/'src/util'),
+          '-I',str(source/'src/d3d11')]
   if args.arch:common+=['-arch',args.arch]
   objects=[]
   for name,cfile in [('thunks',scratch/'airconv_thunks.c'),('sha1',source/'src/util/sha1/sha1.c')]:
@@ -78,11 +89,13 @@ def main():
    record={'variant':name,'exit':run.returncode,'expected_rejection':rejection,'output':output.strip()};results.append(record)
    print(json.dumps(record),flush=True)
   assert sum(p.stat().st_size for p in scratch.iterdir() if p.is_file())<64*1024*1024,'64 MiB scratch cap'
+ assert all((source/p).read_bytes()==data for p,data in snapshots.items()),'production sources changed during verification'
+ assert (HERE/'fixture.cpp.in').read_bytes()==fixture_snapshot and Path(__file__).read_bytes()==runner_snapshot,'test sources changed during verification'
  print(json.dumps({'arch':args.arch or platform.machine(),'baseline_ref':BASELINE,
                    'scope':'production CreateShader, wrapper constructor/destructor, SHA1 and complete C thunk TU; mock UNIX_CALL; no Wine/native parser/GPU/game',
-                   'sources_sha256':{p:hashlib.sha256((source/p).read_bytes()).hexdigest() for p in PATHS},
-                   'fixture_sha256':hashlib.sha256((HERE/'fixture.cpp.in').read_bytes()).hexdigest(),
-                   'runner_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'results':results},indent=2))
+                   'sources_sha256':{p:hashlib.sha256(data).hexdigest() for p,data in snapshots.items()},
+                   'fixture_sha256':hashlib.sha256(fixture_snapshot).hexdigest(),
+                   'runner_sha256':hashlib.sha256(runner_snapshot).hexdigest(),'results':results},indent=2))
 
 
 if __name__=='__main__':main()

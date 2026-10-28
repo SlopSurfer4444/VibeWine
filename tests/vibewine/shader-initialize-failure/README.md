@@ -9,11 +9,13 @@ only when that native function executes. `SM50GetErrorMessageString` does not
 accept a null error either, so initializing the pointer alone is insufficient.
 This is a source-permitted failure path; no occurrence in a real runtime is claimed.
 
-The small general correctness fix initializes only `err` and retrieves/frees an
-error only when present, otherwise emitting one fallback through the existing
-error logger. It leaves successful initialization, SHA1 lookup/publication,
-wrapper ownership and failure retry policy intact. It does not zero reflection,
-change thunk outputs, introduce synchronization or cache failures.
+The original correctness fix initialized `err` and guarded its use. The current
+F4 implementation retains that boundary and owns error cleanup with a local
+RAII guard, so a logging/allocation exception cannot strand an owned error.
+It also uses per-SHA singleflight initialization and allocation-checked wrapper
+ownership, covered by `pso-normalization` integration tests. Failure retry policy
+and the untouched-output transport fallback remain intact. Thunk outputs are
+unchanged.
 
 Run the focused CPU check:
 
@@ -32,7 +34,9 @@ with an owned error/message/free exactly once; native failure with explicit null
 error; nonzero transport status after an owned output; success with nonempty and
 empty argument arrays; distinct SHA1 keys; warm-hit pointer identity/bypassed
 initializer; failure followed by successful retry; and handle/argument cleanup
-through the actual wrapper destructor. The final fixture observes nine
+through the actual wrapper destructor. The storage adapter uses the actual
+production singleflight helper and exposes a success count for the historical
+assertions; concurrent map behavior has separate F4 checks. The final fixture observes nine
 initializations, two message calls, two error frees, three argument-info calls,
 and four successful handles released once each.
 

@@ -120,6 +120,11 @@ HRESULT CreateStagingTextureInternal(MTLD3D11Device *pDevice,
     if (FAILED(GetLinearTextureLayout(pDevice, finalDesc, sub.MipLevel, bpr, bpi, buf_len))) {
       return E_FAIL;
     }
+    uint32_t copy_bpr = 0, copy_bpi, copy_len;
+    if (pInitialData && FAILED(GetLinearTextureLayout(
+          pDevice, finalDesc, sub.MipLevel, copy_bpr, copy_bpi, copy_len, false))) {
+      return E_FAIL;
+    }
     D3D11_ASSERT(subresources.size() == sub.SubresourceId);
     auto buffer = new StagingResource(metal, buf_len, bpr, bpi
 #if DXMT_IDLE_RETIREMENT
@@ -129,12 +134,14 @@ HRESULT CreateStagingTextureInternal(MTLD3D11Device *pDevice,
     if (pInitialData) {
       auto mapped = buffer->mappedImmediateMemory();
       auto bpi_read = is_3d_tex ? pInitialData[sub.SubresourceId].SysMemSlicePitch : 0;
-      auto bpr_read = is_1d_tex ? 0 : pInitialData[sub.SubresourceId].SysMemPitch;
+      // 1D initial data ignores SysMemPitch. Do not read destination alignment
+      // padding from the caller's logical row (including for other dimensions).
+      auto bpr_read = is_1d_tex ? copy_bpr : pInitialData[sub.SubresourceId].SysMemPitch;
       for (auto image = 0u; image < d; image++) {
-        for (auto row = 0u; row < (bpi / bpr); row++) {
+        for (auto row = 0u; row < (copy_bpi / copy_bpr); row++) {
           auto dst_data = ptr_add(mapped, image * bpi + row * bpr);
           auto src_data = ptr_add(pInitialData[sub.SubresourceId].pSysMem, image * bpi_read + row * bpr_read);
-          memcpy(dst_data, src_data, std::min(bpr, bpr_read));
+          memcpy(dst_data, src_data, std::min(copy_bpr, bpr_read));
         }
       }
     }

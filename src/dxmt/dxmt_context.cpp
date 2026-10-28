@@ -825,7 +825,7 @@ ArgumentEncodingContext::resolveComputePassBarrier() {
   }
 }
 
-void
+bool
 ArgumentEncodingContext::resolveRenderPassBarrier() {
   assert(encoder_current);
   assert(encoder_current->type == EncoderType::Render);
@@ -837,11 +837,14 @@ ArgumentEncodingContext::resolveRenderPassBarrier() {
     barrier_state.barrierPreRasterSet = 0;
     barrier_state.barrierFragmentAfterPreRasterSet = 0;
     barrier_state.barrierPreRasterAfterFragmentSet = 0;
-    return;
+    return true;
   }
   // Individual barriers
   if (barrier_state.barrierSet & ~intrapass_barrier_control_bits_) {
-    tile_barrier_cmd.dispatch();
+    // A missing helper PSO is not a barrier. Preserve every pending bit and
+    // let the draw caller omit work; a later draw may retry PSO creation.
+    if (!tile_barrier_cmd.dispatch())
+      return false;
     barrier_state.barrierSet = 0;
   }
   if (barrier_state.barrierPreRasterSet & ~intrapass_barrier_control_bits_) {
@@ -860,6 +863,7 @@ ArgumentEncodingContext::resolveRenderPassBarrier() {
     cmd.stages_after = WMTRenderStagePreRaster;
     barrier_state.barrierFragmentAfterPreRasterSet = 0;
   }
+  return true;
 }
 
 void

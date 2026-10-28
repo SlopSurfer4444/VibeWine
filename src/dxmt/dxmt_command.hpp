@@ -306,7 +306,7 @@ class TileBarrierContext {
 public:
   TileBarrierContext(WMT::Device device, InternalCommandLibrary &lib, ArgumentEncodingContext &ctx);
 
-  void dispatch();
+  [[nodiscard]] bool dispatch();
 
 private:
   WMT::RenderPipelineState getPSO(TileBarrierPSOKey &format);

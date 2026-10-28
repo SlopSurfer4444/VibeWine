@@ -162,7 +162,11 @@ public:
         return E_INVALIDARG;
       case D3D11_MAP_WRITE_DISCARD: {
         if (bind_flag & D3D11_BIND_VERTEX_BUFFER) {
+#if defined(DXMT_PRECISE_BINDINGS) && DXMT_PRECISE_BINDINGS
+          InvalidateDiscardedVertexBuffers(state_.InputAssembler.VertexBuffers, dynamic->buffer);
+#else
           state_.InputAssembler.VertexBuffers.set_dirty();
+#endif
         }
         if (bind_flag & D3D11_BIND_CONSTANT_BUFFER) {
 #if defined(DXMT_PRECISE_BINDINGS) && DXMT_PRECISE_BINDINGS
@@ -174,9 +178,13 @@ public:
 #endif
         }
         if (bind_flag & D3D11_BIND_SHADER_RESOURCE) {
+#if defined(DXMT_PRECISE_BINDINGS) && DXMT_PRECISE_BINDINGS
+          InvalidateDiscardedShaderResources(state_.ShaderStages, dynamic->buffer);
+#else
           for (auto &stage : state_.ShaderStages) {
             stage.SRVs.set_dirty();
           }
+#endif
         }
 
         pMappedResource->pData = MapDynamicBuffer(dynamic);

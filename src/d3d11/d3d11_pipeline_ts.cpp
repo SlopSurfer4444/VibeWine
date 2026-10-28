@@ -17,6 +17,7 @@
  */
 
 #include "cs2_compile_lab.hpp"
+#include "cs2_compile_trace.hpp"
 #include "Metal.hpp"
 #include "airconv_public.h"
 #include "config/config.hpp"
@@ -173,9 +174,15 @@ public:
     info.object_tgsize_is_multiple_of_sgwidth = true;
 
     {
-      std::lock_guard<dxmt::mutex> lock(ts_global_mutex);
-      state_rasterization_ =
-          device_->GetMTLDevice().newRenderPipelineState(info, err);
+      // Keep the existing serialization; distinguish its CPU wait from native
+      // creation. Both scopes bind the same immutable pipeline birth identity.
+      std::unique_lock<dxmt::mutex> lock(ts_global_mutex, std::defer_lock);
+      { cs2trace::HelperCompileScope span(cs2trace::HelperRoute::TessellationLock, trace_serial_);
+        lock.lock(); span.result(true); }
+      state_rasterization_ = cs2trace::helperCompile(
+          cs2trace::HelperRoute::TessellationNativePSO, trace_serial_,
+          [&] { return device_->GetMTLDevice().newRenderPipelineState(info, err); },
+          [](const auto &value) { return value != nullptr; });
     }
     if (state_rasterization_ == nullptr) {
       ERR("Failed to create tessellation raster PSO: ",
@@ -193,6 +200,7 @@ public:
   }
 
 private:
+  const uint64_t trace_serial_ = cs2trace::helperTraceEnabled() ? cs2trace::newSerial() : 0;
   UINT num_rtvs;
   UINT ps_valid_render_targets;
   WMTPixelFormat rtv_formats[8];

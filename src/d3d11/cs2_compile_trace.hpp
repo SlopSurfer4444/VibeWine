@@ -38,6 +38,35 @@ template<class F,class Check> auto compilerStage(uint32_t type,uint64_t route,F 
   if(scope.gen)scope.flags=std::forward<Check>(success)(value)?1u:2u;
   return value;
 }
+// Combined-only CPU steady elapsed scopes, including eager helper requests.
+// No clock, identity allocation, mapping or generation lookup in old profiles or
+// with detail disabled. Owner is an immutable birth serial, never an address.
+// Route is schema-defined, not a native object or a cross-clock calibration.
+enum class HelperRoute : uint64_t {
+  TessellationLock=1, TessellationNativePSO=2, ClearUAVRequest=3,
+  TileNativePSO=4, RTVNativePSO=5
+};
+inline bool helperTraceEnabled() {
+  return profile()==Profile::CombinedBounded && detailLimit() && configured();
+}
+struct HelperCompileScope {
+  DetailToken token; uint64_t route,start=0; uint32_t flags=3;
+  HelperCompileScope(HelperRoute path,uint64_t owner=0):route(uint64_t(path)) {
+    if(!helperTraceEnabled())return;
+    token=beginDetail(owner);if(token.gen)start=now();
+  }
+  void result(bool success) {flags=success?1u:2u;}
+  ~HelperCompileScope(){
+    if(token.gen)detailRecord(token.gen,120,start,now(),token.serial,flags,route,token.owner);
+  }
+  HelperCompileScope(const HelperCompileScope&)=delete;
+};
+template<class F,class Check> auto helperCompile(HelperRoute route,uint64_t owner,F &&fn,Check &&success) {
+  HelperCompileScope scope(route,owner);
+  auto value=std::forward<F>(fn)();
+  if(scope.token.gen)scope.result(std::forward<Check>(success)(value));
+  return value;
+}
 // Construct before locking, stop immediately after acquisition, publish only
 // after the caller's lock guard is destroyed (including exception unwinding).
 struct CacheReaderLockScope {

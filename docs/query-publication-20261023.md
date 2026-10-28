@@ -91,3 +91,39 @@ safe drain. Include completed and blocked compilation, pending query readback
 and actual AppKit/main-thread dependencies. Keep every gate
 bounded and release it on failure; a test that merely reconstructs member order
 would be source evidence, not a reproduced native failure.
+
+
+## Status-only reads and bounded cached-read allocation (2026-10-28)
+
+The immediate context now routes `DataSize=0` through scratch result storage
+regardless of a nonnull caller pointer. All six implemented query kinds preserve
+the destination while retaining their previous status and flush behavior.
+Occlusion/predicate and timestamp only replace their backend wrapper on the
+first successful `Issued` to `Signaled` transition. Further cached reads retain
+the fresh wrapper reserved for the next generation. The first replacement is
+still necessary: even an immediately-ready empty query can have an outstanding
+readback reference. No backend object is reset or reused across live generations;
+publication locks, acquire/release ordering and DONOTFLUSH policy are unchanged.
+
+The extended [query fixture](../tests/vibewine/query-publication/README.md) extracts
+the complete immediate `GetData` body alongside actual event/API/backend classes.
+On base `8cf59a01`, 100 cached reads per query measured 100 new visibility wrappers
+and 100 timestamp wrappers; the candidate measured zero of each. First completion
+measured two visibility replacements (occlusion plus predicate) and one timestamp
+replacement. Counts are CPU wrapper allocations under class-local counting
+hooks, not native Metal allocations or game measurements. Native arm64 TSAN,
+arm64 ASan/UBSan and x86_64/Rosetta ASan/UBSan pass. The baseline fails the exact
+status-only canary and allocation assertions. Removing first-success rotation
+fails lifetime/generation checks; dropping pending-empty readback selection
+fails progress checks. No full build, guest API/GPU run, runtime installation or
+FPS measurement was performed for this change.
+
+Optional retained evidence belongs to the frontier integration owner. The exact
+2026-10-28 scope is `Q/outputs/frontier-wave-20261028/queries`: generated source,
+stdout/stderr and receipts are diagnostic data (logs expire after 7 days, cap
+32 MiB); patch and concise acceptance result expire after 30 days, with an
+8 MiB overall result cap. Active integration and explicit holds exclude deletion.
+The runner removes task-private scratch binaries at exit. Retained evidence has
+no automatic cleaner: the integration owner manually reviews exact owned paths,
+active references/holds and byte totals before removing expired files; unknown
+or shared files remain. No live producer remains after the fixture exits.

@@ -19,6 +19,7 @@
 #pragma once
 
 #include <chrono>
+#include "../d3d11/cs2_compile_trace.hpp"
 #include "log/log.hpp"
 
 #include "dxmt_command_constants.hpp"
@@ -30,7 +31,10 @@ namespace dxmt {
 template <typename Context> class ClearUAV {
 public:
   ClearUAV(WMT::Device device, Context &ctx) : device_(device), ctx_(ctx) {
-#define CREATE_COMPUTE_PIPELINE(name) name##_ = ctx_.getComputePipeline(#name);
+    const uint64_t trace_owner = cs2trace::helperTraceEnabled() ? cs2trace::newSerial() : 0;
+#define CREATE_COMPUTE_PIPELINE(name) \
+    name##_ = cs2trace::helperCompile(cs2trace::HelperRoute::ClearUAVRequest, trace_owner, \
+      [&] { return ctx_.getComputePipeline(#name); }, [](const auto &value) { return value != nullptr; });
     CREATE_COMPUTE_PIPELINE(cs_clear_buffer_uint);
     CREATE_COMPUTE_PIPELINE(cs_clear_buffer_float);
     CREATE_COMPUTE_PIPELINE(cs_clear_tbuffer_uint);
@@ -439,7 +443,9 @@ public:
       }
       pipeline_info.rasterization_enabled = true;
       pipeline_info.input_primitive_topology = WMTPrimitiveTopologyClassTriangle;
-      auto pso = device_.newRenderPipelineState(pipeline_info, err);
+      auto pso = cs2trace::helperCompile(cs2trace::HelperRoute::RTVNativePSO, 0,
+          [&] { return device_.newRenderPipelineState(pipeline_info, err); },
+          [](const auto &value) { return value != nullptr; });
       if (!pso) {
         if (failure == pso_retry_after_.end())
           ERR("Failed to create clear PSO: format=", format, ", samples=", texture->sampleCount(),

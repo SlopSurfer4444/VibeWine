@@ -13,7 +13,8 @@ prefix=r"""
 #include "wave7_visibility.h"
 using obj_handle_t=uint64_t;enum WMTCommandBufferProperty:unsigned{};
 namespace cs2trace {
-enum class Profile {Full,CompileWaits,PresentationWaits};
+enum class Profile {Full,CompileWaits,PresentationWaits,CombinedBounded};
+static bool presentationScopesAllowed(Profile p){return p==Profile::PresentationWaits || p==Profile::CombinedBounded;}
 static Profile selected=Profile::Full;static uint32_t gen=7;static uint64_t clock_ns=1;
 struct Event {uint32_t type,flags;uint64_t p0,p1;};static std::vector<Event> events;
 static Profile profile(){return selected;}static uint32_t generation(){return gen;}static uint64_t now(){return clock_ns;}
@@ -53,6 +54,11 @@ int main() {
  auto count=cs2trace::events.size();close_during_call=true;cs2trace::clock_ns+=W7VS_REFRESH_NS;
  p.observeVisibility(8,5);assert(calls==5 && cs2trace::events.size()==count);
  p.observeVisibility(0,5);assert(calls==5);
+ // Combined profile admits the same bounded visibility sampler.
+ close_during_call=false;supported=true;cs2trace::gen=9;
+ cs2trace::selected=cs2trace::Profile::CombinedBounded;
+ p.observeVisibility(9,6);assert(calls==6 && cs2trace::events.size()==count+4);
+ for(unsigned i=0;i<100;i++)p.observeVisibility(9,6);assert(calls==6);
 }
 """
 with tempfile.TemporaryDirectory(prefix='visibility-producer-') as temp:
@@ -60,4 +66,4 @@ with tempfile.TemporaryDirectory(prefix='visibility-producer-') as temp:
  binary=p/'fixture'
  subprocess.run(['xcrun','clang++','-std=c++20','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(ROOT/'src/winemetal'),str(src),'-o',str(binary)],check=True,timeout=60)
  subprocess.run([str(binary)],check=True,timeout=15)
-print('PASS: verbatim producer sampling method default-off, closed/stale generations, exact cadence, rearm, unsupported and stop-during-transport')
+print('PASS: verbatim producer sampling method default-off, closed/stale generations, exact cadence, rearm, unsupported, stop-during-transport and combined admission')

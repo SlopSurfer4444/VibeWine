@@ -28,7 +28,7 @@ struct StallCompletionWait {
  StallCompletionWait(uint32_t capturedGeneration,uint64_t queueSerial,uint64_t sequence,uint64_t queueFrame,
                      uint64_t finalFrameTarget,uint64_t initializerTarget)
    :queue(queueSerial),chunk(sequence),frame(queueFrame),final_target(finalFrameTarget),initializer_target(initializerTarget) {
-  if(profile()==Profile::StallWaits && detailLimit() && capturedGeneration && generation()==capturedGeneration)
+  if(stallScopesAllowed(profile()) && detailLimit() && capturedGeneration && generation()==capturedGeneration)
    gen=capturedGeneration;
  }
  bool active() const {return gen!=0;}

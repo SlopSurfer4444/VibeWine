@@ -27,7 +27,10 @@ class OcclusionQuery : public MTLD3DQueryBase<MTLD3D11OcclusionQuery> {
       } else {
         *((uint64_t *)data) = accumulated_value_;
       }
-      query_ = new VisibilityResultQuery();
+      // Retire the completed generation once. Cached reads must not replace
+      // the fresh wrapper reserved for the next Begin().
+      if (state_ != QueryState::Signaled)
+        query_ = new VisibilityResultQuery();
       state_ = QueryState::Signaled;
       return S_OK;
     }
@@ -98,7 +101,9 @@ class MTLD3D11TimestampQueryImpl : public MTLD3DQueryBase<MTLD3D11TimestampQuery
   GetData(void *data) override {
     if (state_ == QueryState::Signaled || query_->getValue(&latest_value_)) {
       *((uint64_t *)data) = latest_value_;
-      query_ = new TimestampQuery();
+      // Keep the next generation intact across repeated cached reads.
+      if (state_ != QueryState::Signaled)
+        query_ = new TimestampQuery();
       state_ = QueryState::Signaled;
       return S_OK;
     }

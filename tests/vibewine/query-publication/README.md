@@ -12,9 +12,12 @@ python3 tests/vibewine/query-publication/run.py --source-ref fab325e0adcd639d822
 The runner extracts the complete production visibility/timestamp classes,
 visibility readback, offset-bump state, D3D11 query API classes, and the actual
 visibility flush-selection/removal statements. It uses the real `Rc` header.
-Only platform mutex, Metal buffer allocation and COM/base type scaffolding are
-substituted; no production algorithms are rewritten. Class extraction is exact
-and receipt hashes bind all three source files. Metal memory is an owned CPU
+The complete immediate `GetData` method and production event/disjoint class are
+also extracted. Platform mutex, Metal buffer allocation, trace/queue and COM/base
+type scaffolding use CPU seams. The production algorithms remain intact; two
+class-local `operator new/delete` hooks count actual backend wrapper allocations
+and final deletes. Receipt hashes bind all five source files, extracted headers,
+fixture and runner, with the compile command and executable architecture. Metal memory is an owned CPU
 array, so these checks do not establish native Metal/GPU behavior.
 
 Candidate scenarios cover timestamp canaries and full-width values, pending and
@@ -46,3 +49,34 @@ modified.
 The device/cache teardown concern is separate. These tests do not exercise final
 device release while a raw-pipeline encode callback is queued. See
 `docs/query-publication-20261023.md` for the discriminating follow-up seam.
+
+## Status-only and cached-generation regressions (2026-10-28)
+
+```sh
+python3 tests/vibewine/query-publication/run.py --source-ref 8cf59a01 --expect-frontier-baseline --sanitize address
+python3 tests/vibewine/query-publication/run.py --arch x86_64 --sanitize address
+python3 tests/vibewine/query-publication/run.py --negative reuse-generation --sanitize address
+python3 tests/vibewine/query-publication/run.py --negative drop-empty-completion --sanitize address
+```
+
+All six implemented query kinds pass nonnull canary storage with `DataSize=0`
+through the actual immediate method. Tests cover ready/pending status, null/zero,
+nonzero/null, wrong nonzero size, normal result size/value/guard bytes, building
+and undefined-event errors, unchanged DONOTFLUSH behavior, ordinary flush and
+event-stall progress. Statistics always return ready under the existing stub.
+Wrapper counters distinguish initial cached reads, first completion and 100
+subsequent cached reads. The baseline requires the exact named write/allocation
+failures. Candidate checks retain completed wrappers through reissue and API
+release, direct `DoDeferredQuery` publication replacement, timestamp reissue and an empty same-chunk readback
+retired after a fresh generation begins. Existing concurrent-publication and
+empty-multichunk coverage also runs in the aggregate candidate mode.
+
+The generation negative removes only first-success wrapper rotation, preserving
+initial creation and already-issued reissue allocation. It must fail the exact
+five lifetime/cached-generation assertions. The progress negative removes only
+the actual flush selection for pending empty readbacks and must fail exactly
+four empty-chunk completion assertions. These are controlled source mutations
+in generated scratch, never production file edits. Native arm64 TSAN and
+ASan/UBSan plus x86_64 execution on an arm64 host (Rosetta) were observed; this
+is CPU fixture evidence, with no native Metal/GPU or installed-runtime claim.
+Deferred command-list execution is not exercised; Flush uses a counted queue seam.

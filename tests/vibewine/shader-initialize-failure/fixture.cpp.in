@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -13,6 +14,7 @@
 #include <vector>
 #include "airconv_thunks.h"
 #include "sha1/sha1_util.hpp"
+#include "d3d11_shader_singleflight.hpp"
 static void require(bool value,const char *why) {
   if(!value){std::cerr<<"CONTRACT: "<<why<<'\n';std::exit(1);}
 }
@@ -75,6 +77,22 @@ extern "C" int32_t mock_unix(unsigned int code,void *raw) {
   }
 }
 namespace dxmt {
+// Public storage adapter supplies the old fixture's success-count observations;
+// CreateShader and the new production singleflight remain unchanged.
+template <typename K, typename V> class FixtureShaderStorage {
+  ShaderSingleflightCache<K, V> cache;
+  size_t successful = 0;
+public:
+  template <typename Factory> V *GetOrCreate(const K &key, Factory &&factory) {
+    return cache.GetOrCreate(key, [&] {
+      auto value = std::forward<Factory>(factory)();
+      if (value) ++successful;
+      return value;
+    });
+  }
+  bool empty() const { return !successful; }
+  size_t size() const { return successful; }
+};
 class PipelineCache {
 public:
   class CachedSM50Shader {
@@ -82,10 +100,11 @@ public:
     sm50_shader_t shader=nullptr;
     Sha1Digest sha1_;
     MTL_SHADER_REFLECTION reflection_;
-    MTL_SM50_SHADER_ARGUMENT *arguments_info_buffer;
+    MTL_SM50_SHADER_ARGUMENT *arguments_info_buffer = nullptr;
   public:
 // CONSTRUCTOR
 // DESTRUCTOR
+// INITIALIZED
     sm50_shader_t fixture_handle() const{return shader;}
     bool fixture_arguments() const {
       return reflection_.NumConstantBuffers==1 && reflection_.NumArguments==2 && arguments_info_buffer &&
@@ -94,8 +113,7 @@ public:
     }
     bool fixture_no_arguments() const{return !arguments_info_buffer && !reflection_.NumConstantBuffers && !reflection_.NumArguments;}
   };
-  std::unordered_map<Sha1Digest,std::unique_ptr<CachedSM50Shader>> shaders_;
-  std::shared_mutex mutex_shares;
+// STORAGE
 // CREATE_SHADER
 };
 }

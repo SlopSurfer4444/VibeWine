@@ -6,6 +6,9 @@
 #include <concepts>
 #include <cstdint>
 #include <iostream>
+#include <cstring>
+#include <array>
+#include <string>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -38,6 +41,9 @@ struct Device {
 };
 }
 namespace dxmt {
+template <typename T> struct WrapperCounts {
+  static inline std::atomic<unsigned> allocations = 0, deletions = 0;
+};
 #include "query-under-test.hpp"
 }
 
@@ -45,26 +51,60 @@ using BOOL = int;
 using UINT = unsigned;
 using UINT64 = uint64_t;
 using HRESULT = int;
-constexpr HRESULT S_OK = 0, S_FALSE = 1, DXGI_ERROR_INVALID_CALL = -1;
-constexpr UINT D3D11_QUERY_OCCLUSION_PREDICATE = 1;
+constexpr HRESULT S_OK = 0, S_FALSE = 1, DXGI_ERROR_INVALID_CALL = -1, E_INVALIDARG = -2, E_FAIL = -3;
+constexpr UINT D3D11_QUERY_EVENT = 0, D3D11_QUERY_OCCLUSION = 1,
+  D3D11_QUERY_OCCLUSION_PREDICATE = 2, D3D11_QUERY_TIMESTAMP = 3,
+  D3D11_QUERY_TIMESTAMP_DISJOINT = 4, D3D11_QUERY_PIPELINE_STATISTICS = 5;
+constexpr UINT D3D11_ASYNC_GETDATA_DONOTFLUSH = 1;
+constexpr BOOL FALSE = 0;
+struct D3D11_QUERY_DESC { UINT Query = 0, MiscFlags = 0; };
+using D3D11_QUERY_DESC1 = D3D11_QUERY_DESC;
+struct D3D11_QUERY_DATA_TIMESTAMP_DISJOINT { uint64_t Frequency; BOOL Disjoint; };
+struct D3D11_QUERY_DATA_PIPELINE_STATISTICS { uint64_t counters[11]; };
 #define STDMETHODCALLTYPE
+#define ERR(...) ((void)0)
+namespace cs2trace {
+struct ApiScope {
+  template <typename... T> ApiScope(T...) {}
+  template <typename F> HRESULT invoke(F f) { return f(); }
+};
+enum class CommitReason { GetDataNotReady };
+struct ReasonScope { template <typename... T> ReasonScope(T...) {} };
+struct SyncScope { uint64_t gen; int type; uint64_t object; uint32_t flags; uint64_t queue, frame; ~SyncScope() {} };
+uint64_t operationGeneration(uint64_t n) { return n; }
+}
 namespace dxmt {
-enum class QueryState { Signaled, Building, Issued };
-struct MTLD3D11OcclusionQuery {
-  virtual ~MTLD3D11OcclusionQuery() = default;
+using d3d11_device_mutex = std::recursive_mutex;
+enum class QueryState { Signaled, Building, Issued, Undefined };
+enum class EventState { Pending, Signaled, Stall, Invalid };
+constexpr size_t kEventStallThreshold = 64;
+struct MTLD3D11Device {};
+struct ID3D11Asynchronous {
+  virtual ~ID3D11Asynchronous() = default;
   virtual UINT GetDataSize() = 0;
+};
+struct ID3D11Query : ID3D11Asynchronous { virtual void GetDesc(D3D11_QUERY_DESC *) = 0; };
+struct MTLD3D11EventQuery : ID3D11Query {
+  virtual void Issue(uint64_t) = 0;
+  virtual EventState CheckEventState(uint64_t) = 0;
+};
+struct MTLD3D11OcclusionQuery : ID3D11Query {
   virtual HRESULT GetData(void *) = 0;
   virtual VisibilityResultQuery *Begin() = 0;
   virtual VisibilityResultQuery *End() = 0;
   virtual void DoDeferredQuery(VisibilityResultQuery *) = 0;
 };
-struct MTLD3D11TimestampQuery {
-  virtual ~MTLD3D11TimestampQuery() = default;
-  virtual UINT GetDataSize() = 0;
+struct MTLD3D11TimestampQuery : ID3D11Query {
   virtual HRESULT GetData(void *) = 0;
   virtual TimestampQuery *End() = 0;
 };
-template <typename T> struct MTLD3DQueryBase : T { struct { UINT Query = 0; } desc_; };
+template <typename T> struct MTLD3DQueryBase : T {
+  D3D11_QUERY_DESC desc_;
+  MTLD3DQueryBase() = default;
+  MTLD3DQueryBase(MTLD3D11Device *, const D3D11_QUERY_DESC1 *desc) : desc_(*desc) {}
+  void GetDesc(D3D11_QUERY_DESC *desc) override { *desc = desc_; }
+};
+#include "event-under-test.hpp"
 #include "query-api-under-test.hpp"
 
 struct QueryReadbacks { std::unique_ptr<VisibilityResultReadback> visibility; };
@@ -79,6 +119,25 @@ struct FlushSeam {
 };
 }
 using namespace dxmt;
+struct ImmediateInterface { virtual HRESULT GetData(ID3D11Asynchronous *, void *, UINT, UINT) = 0; };
+struct ImmediateSeam : ImmediateInterface {
+  struct Queue {
+    uint64_t signaled = 0;
+    struct { unsigned event_stall = 0; } stats;
+    uint64_t traceSerial() { return 1; }
+    uint64_t SignaledEventSeqId() { return signaled; }
+    uint64_t CurrentFrameSeq() { return 1; }
+    template <typename F> void UpdateCurrentFrameStatistics(F f) { f(stats); }
+  } cmd_queue;
+  d3d11_device_mutex mutex;
+  unsigned flushes = 0;
+  void Flush() { std::lock_guard lock(mutex); flushes++; }
+#include "immediate-under-test.hpp"
+};
+struct StatisticsQuery : ID3D11Query {
+  UINT GetDataSize() override { return sizeof(D3D11_QUERY_DATA_PIPELINE_STATISTICS); }
+  void GetDesc(D3D11_QUERY_DESC *d) override { d->Query = D3D11_QUERY_PIPELINE_STATISTICS; }
+};
 static std::atomic<unsigned> failures = 0;
 void check(bool condition, const char *name) {
   if (!condition) { std::cerr << "FAIL " << name << '\n'; failures++; }
@@ -258,12 +317,166 @@ void concurrent_encoder_finish_poll() {
   check(query.getValue(&value) && value == 22, "encoder finish poll completed");
 }
 
+void frontier() {
+  ImmediateSeam imm;
+  D3D11_QUERY_DESC1 event_desc{D3D11_QUERY_EVENT}, disjoint_desc{D3D11_QUERY_TIMESTAMP_DISJOINT};
+  MTLD3D11EventQueryImpl<BOOL> event(nullptr, &event_desc);
+  MTLD3D11EventQueryImpl<D3D11_QUERY_DATA_TIMESTAMP_DISJOINT> disjoint(nullptr, &disjoint_desc);
+  OcclusionQuery occlusion, predicate;
+  occlusion.desc_.Query = D3D11_QUERY_OCCLUSION;
+  predicate.desc_.Query = D3D11_QUERY_OCCLUSION_PREDICATE;
+  MTLD3D11TimestampQueryImpl timestamp;
+  timestamp.desc_.Query = D3D11_QUERY_TIMESTAMP;
+  StatisticsQuery statistics;
+  std::array<ID3D11Asynchronous *, 6> queries{&event, &occlusion, &predicate, &timestamp, &disjoint, &statistics};
+  alignas(uint64_t) std::array<unsigned char, 128> destination, original;
+  destination.fill(0xa5); original = destination;
+  event.Issue(1); disjoint.Issue(1);
+  Rc<VisibilityResultQuery> oq = static_cast<MTLD3D11OcclusionQuery &>(occlusion).Begin();
+  oq->begin(1, 0);
+  check(imm.GetData(&occlusion, destination.data() + 8, 0, 0) == DXGI_ERROR_INVALID_CALL && destination == original,
+        "building status-only no write");
+  static_cast<MTLD3D11OcclusionQuery &>(occlusion).End(); oq->end(1, 1);
+  Rc<VisibilityResultQuery> pq = static_cast<MTLD3D11OcclusionQuery &>(predicate).Begin();
+  pq->begin(1, 0); static_cast<MTLD3D11OcclusionQuery &>(predicate).End(); pq->end(1, 1);
+  Rc<TimestampQuery> tq = static_cast<MTLD3D11TimestampQuery &>(timestamp).End();
+  for (unsigned i = 0; i < queries.size(); ++i) {
+    auto q = queries[i];
+    auto label = std::to_string(i);
+    auto verify = [&](bool c, std::string n) { check(c, (n + " " + label).c_str()); };
+    unsigned before = imm.flushes;
+    verify(imm.GetData(q, destination.data() + 8, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == (i == 5 ? S_OK : S_FALSE), "pending status");
+    verify(destination == original, "zero-size pending destination unchanged");
+    destination = original;
+    verify(imm.flushes == before, "DONOTFLUSH preserved");
+    verify(imm.GetData(q, nullptr, q->GetDataSize(), 0) == E_INVALIDARG, "nonzero null invalid");
+    verify(imm.GetData(q, destination.data() + 8, q->GetDataSize() + 1, 0) == E_INVALIDARG, "wrong size invalid");
+    verify(destination == original, "invalid destination unchanged");
+  }
+  check(imm.GetData(nullptr, nullptr, 0, 0) == E_INVALIDARG, "null async invalid");
+  // Ordinary pending polls flush; event/disjoint stalls still override DONOTFLUSH.
+  unsigned before = imm.flushes;
+  check(imm.GetData(&timestamp, nullptr, 0, 0) == S_FALSE && imm.flushes == before + 1, "pending flush progress");
+  for (unsigned i = 0; i < kEventStallThreshold + 2; ++i)
+    imm.GetData(&event, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH);
+  check(imm.flushes > before + 1, "event stall progress overrides DONOTFLUSH");
+  {
+    MTLD3D11EventQueryImpl<BOOL> invalid(nullptr, &event_desc);
+    check(imm.GetData(&invalid, destination.data() + 8, 0, 0) == DXGI_ERROR_INVALID_CALL && destination == original,
+          "undefined event status-only no write");
+  }
+  unsigned transition_va = WrapperCounts<VisibilityResultQuery>::allocations;
+  unsigned transition_ta = WrapperCounts<TimestampQuery>::allocations;
+  imm.cmd_queue.signaled = 1;
+  uint64_t sample = 37; oq->issue(1, &sample, 1); pq->issue(1, &sample, 1); tq->issue(83);
+  for (unsigned i = 0; i < queries.size(); ++i) {
+    auto q = queries[i];
+    auto label = std::to_string(i);
+    auto verify = [&](bool c, std::string n) { check(c, (n + " " + label).c_str()); };
+    destination = original;
+    verify(imm.GetData(q, destination.data() + 8, 0, 0) == S_OK, "ready status");
+    verify(destination == original, "zero-size destination unchanged");
+    verify(imm.GetData(q, nullptr, 0, 0) == S_OK, "ready null status");
+    destination = original;
+    verify(imm.GetData(q, destination.data() + 8, q->GetDataSize(), 0) == S_OK, "exact size ready");
+    verify(std::equal(destination.begin(), destination.begin() + 8, original.begin()) &&
+           std::equal(destination.begin() + 8 + q->GetDataSize(), destination.end(), original.begin() + 8 + q->GetDataSize()), "exact size guards");
+    uint64_t actual = 0; std::memcpy(&actual, destination.data() + 8, q->GetDataSize() < 8 ? q->GetDataSize() : 8);
+    verify(actual == (i == 0 || i == 2 ? 1u : i == 1 ? 37u : i == 3 ? 83u : i == 4 ? 1000000000u : 0u), "exact size value");
+  }
+  unsigned transition_vd = WrapperCounts<VisibilityResultQuery>::allocations - transition_va;
+  unsigned transition_td = WrapperCounts<TimestampQuery>::allocations - transition_ta;
+  std::cout << "first_ready_allocations visibility=" << transition_vd << " timestamp=" << transition_td << '\n';
+  check(transition_vd == 2 && transition_td == 1, "first completion rotates once per generation");
+  unsigned va = WrapperCounts<VisibilityResultQuery>::allocations, ta = WrapperCounts<TimestampQuery>::allocations;
+  for (unsigned i = 0; i < 100; ++i) {
+    check(imm.GetData(&occlusion, nullptr, 0, 0) == S_OK, "cached visibility status");
+    check(imm.GetData(&timestamp, nullptr, 0, 0) == S_OK, "cached timestamp status");
+  }
+  unsigned vd = WrapperCounts<VisibilityResultQuery>::allocations - va, td = WrapperCounts<TimestampQuery>::allocations - ta;
+  std::cout << "cached_read_allocations visibility=" << vd << " timestamp=" << td << " reads_each=100\n";
+  check(vd == 0, "cached visibility allocation bounded");
+  check(td == 0, "cached timestamp allocation bounded");
+  {
+    OcclusionQuery fresh; fresh.desc_.Query = D3D11_QUERY_OCCLUSION;
+    MTLD3D11TimestampQueryImpl fresh_ts; fresh_ts.desc_.Query = D3D11_QUERY_TIMESTAMP;
+    va = WrapperCounts<VisibilityResultQuery>::allocations; ta = WrapperCounts<TimestampQuery>::allocations;
+    imm.GetData(&fresh, nullptr, 0, 0); imm.GetData(&fresh_ts, nullptr, 0, 0);
+    check(va == WrapperCounts<VisibilityResultQuery>::allocations && ta == WrapperCounts<TimestampQuery>::allocations,
+          "initial cached reads allocate no wrappers");
+  }
+  // The ready backend can still be retained by readbacks. Reissue must never reset it.
+  uint64_t old_value = 0;
+  Rc<VisibilityResultQuery> next = static_cast<MTLD3D11OcclusionQuery &>(occlusion).Begin();
+  check(next != oq && oq->getValue(&old_value) && old_value == 37, "completed backend generation preserved");
+  next->begin(2, 0); static_cast<MTLD3D11OcclusionQuery &>(occlusion).End(); next->end(2, 1);
+  check(imm.GetData(&occlusion, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE, "reissue pending does not reuse ready value");
+  next->issue(2, &sample, 1);
+  check(imm.GetData(&occlusion, nullptr, 0, 0) == S_OK, "reissue progress");
+  Rc<VisibilityResultQuery> deferred = new VisibilityResultQuery;
+  deferred->begin(3, 0); deferred->end(3, 1);
+  static_cast<MTLD3D11OcclusionQuery &>(occlusion).DoDeferredQuery(deferred.ptr());
+  check(imm.GetData(&occlusion, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE, "deferred replay pending");
+  deferred->issue(3, &sample, 1);
+  check(imm.GetData(&occlusion, nullptr, 0, 0) == S_OK, "deferred replay progress");
+  Rc<VisibilityResultQuery> replay = new VisibilityResultQuery;
+  replay->begin(5, 0); replay->end(5, 1);
+  static_cast<MTLD3D11OcclusionQuery &>(occlusion).DoDeferredQuery(replay.ptr());
+  deferred->issue(3, &sample, 1);
+  check(imm.GetData(&occlusion, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE,
+        "old deferred completion cannot publish replay");
+  replay->issue(5, &sample, 1);
+  check(imm.GetData(&occlusion, nullptr, 0, 0) == S_OK, "second deferred replay progress");
+  Rc<TimestampQuery> next_ts = static_cast<MTLD3D11TimestampQuery &>(timestamp).End();
+  check(next_ts != tq, "completed timestamp generation preserved");
+  tq->issue(99);
+  check(imm.GetData(&timestamp, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE,
+        "old timestamp completion cannot publish reissue");
+  next_ts->issue(103);
+  check(imm.GetData(&timestamp, nullptr, 0, 0) == S_OK, "timestamp reissue progress");
+  // An immediately-ready empty query can still have a retained old readback.
+  {
+    OcclusionQuery empty; empty.desc_.Query = D3D11_QUERY_OCCLUSION;
+    auto &api = static_cast<MTLD3D11OcclusionQuery &>(empty);
+    Rc<VisibilityResultQuery> old = api.Begin();
+    old->begin(6, 0); api.End(); old->end(6, 0);
+    std::vector<Rc<VisibilityResultQuery>> list{old};
+    auto readback = std::make_unique<VisibilityResultReadback>(WMT::Device{}, 6, 0, list);
+    check(imm.GetData(&empty, nullptr, 0, 0) == S_OK, "empty status-only ready");
+    Rc<VisibilityResultQuery> fresh = api.Begin();
+    check(fresh != old, "empty retained readback generation preserved");
+    fresh->begin(7, 0); api.End(); fresh->end(7, 1);
+    // A bad rotation would make late readback issue seq 6 into generation 7.
+    if (fresh != old) readback.reset();
+    check(imm.GetData(&empty, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE,
+          "late empty readback cannot publish new generation");
+    fresh->issue(7, &sample, 1);
+    check(imm.GetData(&empty, nullptr, 0, 0) == S_OK, "empty reissue progress");
+    // Keep a failed mutation's cleanup from issuing into its deliberately wrong generation.
+    if (readback) readback->queries.clear();
+  }
+  // API destruction must leave in-flight completion ownership usable.
+  unsigned deleted = WrapperCounts<VisibilityResultQuery>::deletions;
+  Rc<VisibilityResultQuery> retained;
+  {
+    OcclusionQuery dying;
+    retained = static_cast<MTLD3D11OcclusionQuery &>(dying).Begin();
+    retained->begin(4, 0); static_cast<MTLD3D11OcclusionQuery &>(dying).End(); retained->end(4, 1);
+  }
+  check(WrapperCounts<VisibilityResultQuery>::deletions == deleted, "backend retained beyond API lifetime");
+  retained->issue(4, &sample, 1);
+  check(retained->getValue(&old_value) && old_value == sample, "retained completion progress");
+  retained = nullptr;
+  check(WrapperCounts<VisibilityResultQuery>::deletions == deleted + 1, "retained backend final release");
+}
+
 int main(int argc, char **argv) {
   bool race_only = argc == 2 && std::string(argv[1]) == "race";
+  bool frontier_only = argc == 2 && std::string(argv[1]) == "frontier";
   bool empty_only = argc == 2 && std::string(argv[1]) == "empty";
-  if (!empty_only) publication_race();
-  if (!race_only) functional();
-  if (!race_only && !empty_only) { generations(); concurrent_encoder_finish_poll(); }
+  if (!empty_only && !frontier_only) publication_race();
+  if (!race_only && !frontier_only) functional();
+  if (!race_only && !empty_only) { generations(); concurrent_encoder_finish_poll(); frontier(); }
   if (failures) return 1;
   std::cout << "PASS query publication" << (race_only ? " race" : " scenarios") << '\n';
 }
