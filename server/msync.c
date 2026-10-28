@@ -48,6 +48,7 @@
 #include <dlfcn.h>
 #include <signal.h>
 #include <pthread.h>
+#include <os/lock.h>
 #include <unistd.h>
 
 #include "ntstatus.h"
@@ -58,6 +59,7 @@
 #include "handle.h"
 #include "request.h"
 #include "msync.h"
+#include "wine/msync_table.h"
 
 #define UL_COMPARE_AND_WAIT_SHARED  0x3
 #define ULF_WAKE_ALL                0x00000100
@@ -287,8 +289,8 @@ typedef struct
     mach_msg_port_descriptor_t descriptor;
 } mach_map_message_reply_t;
 
-static void **shm_addrs;
-static int shm_addrs_size;  /* length of the allocated shm_addrs array */
+static struct msync_table shm_addrs;
+static os_unfair_lock shm_addrs_lock = OS_UNFAIR_LOCK_INIT;
 
 static void send_shm_to_client( mach_map_message_t *message )
 {
@@ -304,9 +306,10 @@ static void send_shm_to_client( mach_map_message_t *message )
         offset = (memory_object_offset_t)shm_tid_map;
         entry_size = shm_tid_size;
     }
-    else if (message->entry < shm_addrs_size)
+    else if (message->entry >= 0 &&
+             (unsigned int)message->entry <= (MSYNC_MAX_SHM_IDX >> (vm_kernel_page_shift - 4)))
     {
-        offset = (memory_object_offset_t)shm_addrs[message->entry];
+        offset = (memory_object_offset_t)msync_table_get( &shm_addrs, message->entry );
         entry_size = pagesize;
     }
     else
@@ -607,9 +610,6 @@ void msync_init_shm(void)
 
     pagesize = (long)vm_kernel_page_size;
 
-    shm_addrs = calloc( 128, sizeof(shm_addrs[0]) );
-    shm_addrs_size = 128;
-
     kr = mach_vm_map( mach_task_self(), (mach_vm_address_t *)&shm_tid_map, shm_tid_size, 0, VM_FLAGS_ANYWHERE,
                       MACH_PORT_NULL, 0, FALSE, VM_PROT_DEFAULT, VM_PROT_DEFAULT, VM_INHERIT_SHARE );
 
@@ -693,39 +693,31 @@ void msync_destroy( struct msync *msync )
 
 static void *get_shm( unsigned int idx )
 {
-    int entry  = (idx * 16) / pagesize;
-    int offset = (idx * 16) % pagesize;
+    unsigned int entry = idx >> (vm_kernel_page_shift - 4);
+    unsigned int offset = (idx << 4) & vm_kernel_page_mask;
+    void **slot, *addr;
 
-    if (entry >= shm_addrs_size)
-    {
-        int new_size = max(shm_addrs_size * 2, entry + 1);
+    if (idx > MSYNC_MAX_SHM_IDX) fatal_error( "msync: shared object index exhausted\n" );
+    if ((addr = msync_table_get( &shm_addrs, entry ))) return (char *)addr + offset;
 
-        if (!(shm_addrs = realloc( shm_addrs, new_size * sizeof(shm_addrs[0]) )))
-            fprintf( stderr, "msync: couldn't expand shm_addrs array to size %d\n", entry + 1 );
-
-        memset( shm_addrs + shm_addrs_size, 0, (new_size - shm_addrs_size) * sizeof(shm_addrs[0]) );
-
-        shm_addrs_size = new_size;
-    }
-
-    if (!shm_addrs[entry])
+    os_unfair_lock_lock( &shm_addrs_lock );
+    if (!(slot = msync_table_slot( &shm_addrs, entry )))
+        fatal_error( "msync: could not allocate shm page directory\n" );
+    if (!(addr = __atomic_load_n( slot, __ATOMIC_ACQUIRE )))
     {
         kern_return_t kr;
-        mach_vm_address_t address;
+        mach_vm_address_t address = 0;
 
-        kr = mach_vm_map( mach_task_self(), (mach_vm_address_t *)&address, (mach_vm_size_t)pagesize, 0, VM_FLAGS_ANYWHERE,
+        kr = mach_vm_map( mach_task_self(), &address, pagesize, 0, VM_FLAGS_ANYWHERE,
                           MACH_PORT_NULL, 0, FALSE, VM_PROT_DEFAULT, VM_PROT_DEFAULT, VM_INHERIT_SHARE );
-        MACH_CHECK_ERROR( kr, "mach_vm_map" );
-        memset( (void *)address, 0, pagesize );
-
-        if (debug_level)
-            fprintf( stderr, "msync: Mapping page %d at %llu.\n", entry, address );
-
-        if (__sync_val_compare_and_swap( &shm_addrs[entry], 0, (void *)address ))
-            mach_vm_deallocate( mach_task_self(), address, pagesize ); /* someone beat us to it */
+        if (kr != KERN_SUCCESS)
+            fatal_error( "msync: could not map shm page %u: %s\n", entry, mach_error_string( kr ) );
+        addr = (void *)address;
+        memset( addr, 0, pagesize );
+        __atomic_store_n( slot, addr, __ATOMIC_RELEASE );
     }
-
-    return (void *)((unsigned long)shm_addrs[entry] + offset);
+    os_unfair_lock_unlock( &shm_addrs_lock );
+    return (char *)addr + offset;
 }
 
 static unsigned int msync_alloc_shm( int low, int high, enum msync_type type )

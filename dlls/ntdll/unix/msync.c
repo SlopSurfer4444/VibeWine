@@ -61,6 +61,7 @@
 #include "winternl.h"
 #include "wine/debug.h"
 #include "wine/server.h"
+#include "wine/msync_table.h"
 
 #include "unix_private.h"
 #include "msync.h"
@@ -590,8 +591,7 @@ int do_msync(void)
 }
 
 static const mach_vm_size_t shm_tid_size = 64 * 1024 * 1024; /* 64 MB to index 24 bit tids */
-static void **shm_addrs;
-static int shm_addrs_size;  /* length of the allocated shm_addrs array */
+static struct msync_table shm_addrs;
 static long pagesize;
 
 typedef struct
@@ -677,50 +677,42 @@ static os_unfair_lock shm_addrs_lock = OS_UNFAIR_LOCK_INIT;
 
 static void *get_shm_slow( unsigned int idx )
 {
-    int entry  = (idx * 16) / pagesize;
-    int offset = (idx * 16) % pagesize;
-    void *ret;
+    unsigned int entry = idx >> (vm_kernel_page_shift - 4);
+    unsigned int offset = (idx << 4) & vm_kernel_page_mask;
+    void **slot, *addr;
 
     os_unfair_lock_lock( &shm_addrs_lock );
-
-    if (entry >= shm_addrs_size)
+    if (!(slot = msync_table_slot( &shm_addrs, entry )))
     {
-        int new_size = max(shm_addrs_size * 2, entry + 1);
-
-        if (!(shm_addrs = realloc( shm_addrs, new_size * sizeof(shm_addrs[0]) )))
-            ERR("Failed to grow shm_addrs array to size %d.\n", shm_addrs_size);
-        memset( shm_addrs + shm_addrs_size, 0, (new_size - shm_addrs_size) * sizeof(shm_addrs[0]) );
-        shm_addrs_size = new_size;
+        ERR( "Failed to allocate shm page directory for entry %u\n", entry );
+        _exit(1);
     }
-
-    if (!shm_addrs[entry])
+    if (!(addr = __atomic_load_n( slot, __ATOMIC_ACQUIRE )))
     {
-        void *addr = request_shm_from_server( entry, 0 );
-        if (!addr)
-            ERR("Failed to map page %d (offset %#lx).\n", entry, entry * pagesize);
-
-        TRACE("Mapping page %d at %p.\n", entry, addr);
-
-        if (__sync_val_compare_and_swap( &shm_addrs[entry], 0, addr ))
-            mach_vm_deallocate( mach_task_self(), (mach_vm_address_t)addr, pagesize ); /* someone beat us to it */
+        if (!(addr = request_shm_from_server( entry, 0 )))
+        {
+            ERR( "Failed to map shm page %u; terminating process\n", entry );
+            _exit(1);
+        }
+        __atomic_store_n( slot, addr, __ATOMIC_RELEASE );
     }
-
-    ret = (void *)((unsigned long)shm_addrs[entry] + offset);
-
     os_unfair_lock_unlock( &shm_addrs_lock );
-
-    return ret;
+    return (char *)addr + offset;
 }
 
 static inline void *get_shm( const unsigned int idx )
 {
-    int entry = idx >> (vm_kernel_page_shift - 4);
-    int offset = (idx << 4) & vm_kernel_page_mask;
+    unsigned int entry = idx >> (vm_kernel_page_shift - 4);
+    unsigned int offset = (idx << 4) & vm_kernel_page_mask;
+    void *addr;
 
-    if (entry >= shm_addrs_size || !shm_addrs[entry])
-        return get_shm_slow( idx );
-
-    return (void *)((unsigned long)shm_addrs[entry] + offset);
+    if (idx > MSYNC_MAX_SHM_IDX)
+    {
+        ERR( "Invalid shm object index %u\n", idx );
+        _exit(1);
+    }
+    if (!(addr = msync_table_get( &shm_addrs, entry ))) return get_shm_slow( idx );
+    return (char *)addr + offset;
 }
 
 void msync_close( int obj )
@@ -780,9 +772,6 @@ void msync_init(void)
         snprintf( message_port_name, 28, "wine-%lx-msync", (unsigned long)st.st_ino );
 
     pagesize = (long)vm_kernel_page_size;
-
-    shm_addrs = calloc( 128, sizeof(shm_addrs[0]) );
-    shm_addrs_size = 128;
 
     /* Bootstrap mach wineserver communication */
 

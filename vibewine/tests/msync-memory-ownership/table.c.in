@@ -1,0 +1,176 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <os/lock.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sched.h>
+#include <stdarg.h>
+#include <sys/wait.h>
+
+#define FIXED_TABLE @FIXED@
+#define CLIENT_TABLE @CLIENT@
+#define max(a,b) ((a) > (b) ? (a) : (b))
+#define ERR(...) fprintf(stderr, __VA_ARGS__)
+#define TRACE(...) do {} while (0)
+#define MACH_CHECK_ERROR(kr, text) do { if ((kr) != KERN_SUCCESS) fprintf(stderr, "%s: %d\n", text, kr); } while (0)
+static void fatal_error(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format); vfprintf(stderr, format, args); va_end(args);
+    exit(1);
+}
+static void fail(const char *reason) { fprintf(stderr, "FAIL %s\n", reason); exit(2); }
+#define REQUIRE(test, reason) do { if (!(test)) fail(reason); } while (0)
+static long pagesize = 4096;
+#define vm_kernel_page_shift 12
+#define vm_kernel_page_mask 4095
+static int debug_level;
+static int allocation_failure, mapping_failure;
+static unsigned int allocations, mappings, moving_reallocs;
+static size_t table_bytes;
+static void *watched_slot;
+static atomic_int pinned, release_reader;
+static _Thread_local int reader_thread;
+
+/* The seam pauses after a production slot address has been evaluated and before
+ * its load. The writer can then grow the real table. No timing sleeps or race
+ * lottery are needed. The old array is deliberately moved on every realloc. */
+static void *pin_slot(void *slot)
+{
+    if (reader_thread && slot == watched_slot && !atomic_exchange(&pinned, 1))
+        while (!atomic_load_explicit(&release_reader, memory_order_acquire)) sched_yield();
+    return slot;
+}
+static void *table_calloc(size_t count, size_t size)
+{
+    ++allocations;
+    if (allocation_failure) { fprintf(stderr, "INJECT allocation failure\n"); return NULL; }
+    return calloc(count, size);
+}
+static void *moving_realloc(void *old, size_t size)
+{
+    void *fresh;
+    ++allocations;
+    if (allocation_failure) { fprintf(stderr, "INJECT allocation failure\n"); return NULL; }
+    fresh = malloc(size);
+    REQUIRE(fresh != NULL, "fixture moving allocation");
+    memcpy(fresh, old, table_bytes < size ? table_bytes : size);
+    free(old);
+    table_bytes = size;
+    ++moving_reallocs;
+    return fresh;
+}
+static kern_return_t fixture_mach_vm_map(vm_map_t task, mach_vm_address_t *address,
+    mach_vm_size_t size, mach_vm_offset_t mask, int flags, mem_entry_name_port_t object,
+    memory_object_offset_t offset, boolean_t copy, vm_prot_t current, vm_prot_t maximum,
+    vm_inherit_t inherit)
+{
+    ++mappings;
+    if (mapping_failure) { fprintf(stderr, "INJECT mapping failure\n"); return KERN_FAILURE; }
+    return mach_vm_map(task, address, size, mask, flags, object, offset, copy, current, maximum, inherit);
+}
+static void *request_shm_from_server(int entry, int tid)
+{
+    mach_vm_address_t address = 0;
+    kern_return_t kr = fixture_mach_vm_map(mach_task_self(), &address, pagesize, 0,
+        VM_FLAGS_ANYWHERE, MACH_PORT_NULL, 0, FALSE, VM_PROT_DEFAULT, VM_PROT_DEFAULT, VM_INHERIT_SHARE);
+    return kr == KERN_SUCCESS ? (void *)address : NULL;
+}
+
+#define calloc table_calloc
+#define realloc moving_realloc
+#define mach_vm_map fixture_mach_vm_map
+#define __atomic_load_n(ptr, order) \
+    ({ __typeof__(ptr) fixture_slot_ = (ptr); pin_slot((void *)fixture_slot_); __atomic_load_n(fixture_slot_, order); })
+@HEADER@
+@GLOBALS@
+@FUNCTIONS@
+#undef __atomic_load_n
+#undef mach_vm_map
+#undef realloc
+#undef calloc
+
+static void *reader_result;
+static void *reader(void *unused)
+{
+    reader_thread = 1;
+    reader_result = get_shm(0);
+    return NULL;
+}
+static void initialize_table(void)
+{
+#if !FIXED_TABLE
+    shm_addrs = calloc(128, sizeof(*shm_addrs));
+    shm_addrs_size = 128;
+    table_bytes = 128 * sizeof(*shm_addrs);
+#endif
+}
+static void growth_case(void)
+{
+    pthread_t thread;
+    void *initial, *other;
+    unsigned int entries[] = {127, 128, 255, 256, 511, 512, 1023, 1024, 65535};
+    unsigned int count = sizeof(entries) / sizeof(entries[0]);
+    initialize_table();
+    initial = get_shm(0);
+    REQUIRE(initial != NULL, "initial mapping");
+#if FIXED_TABLE
+    watched_slot = msync_table_slot(&shm_addrs, 0);
+#else
+    watched_slot = &shm_addrs[0];
+#endif
+    REQUIRE(pthread_create(&thread, NULL, reader, NULL) == 0, "reader creation");
+    while (!atomic_load_explicit(&pinned, memory_order_acquire)) sched_yield();
+    other = get_shm(128u * 256u);
+    REQUIRE(other != NULL && other != initial, "growth maps distinct page");
+    atomic_store_explicit(&release_reader, 1, memory_order_release);
+    REQUIRE(pthread_join(thread, NULL) == 0, "reader join");
+    REQUIRE(reader_result == initial, "pinned reader mapping changed across growth");
+    for (unsigned int i = 0; i < count; ++i)
+    {
+        void *page = get_shm(entries[i] * 256u);
+        REQUIRE(page != NULL && get_shm(entries[i] * 256u + 7u) == (char *)page + 112,
+                "segment boundary or page offset");
+    }
+    REQUIRE(get_shm(0) == initial, "first entry changed after later growth");
+#if FIXED_TABLE
+    other = get_shm(MSYNC_MAX_SHM_IDX & ~255u);
+    REQUIRE(other != NULL && get_shm(MSYNC_MAX_SHM_IDX) == (char *)other + 4080,
+            "last valid protocol index or offset");
+    REQUIRE(sizeof(shm_addrs) <= 256, "directory exceeds 256 bytes");
+    REQUIRE(watched_slot == msync_table_slot(&shm_addrs, 0), "leaf slot address moved");
+    REQUIRE(!moving_reallocs, "fixed production still reallocates table");
+#endif
+    printf("TABLE_GROWTH_PASS side=%s pinned_reader=1 boundary_entries=%u maps=%u allocations=%u moving_reallocs=%u\n",
+           CLIENT_TABLE ? "client" : "server", count, mappings, allocations, moving_reallocs);
+}
+int main(int argc, char **argv)
+{
+    REQUIRE(argc == 2, "one mode required");
+    alarm(15);
+    if (!strcmp(argv[1], "grow")) growth_case();
+    else
+    {
+        initialize_table();
+        REQUIRE(get_shm(0) != NULL, "failure-case initial mapping");
+        if (!strcmp(argv[1], "invalid-index"))
+        {
+            fprintf(stderr, "INJECT invalid object index\n");
+            (void)get_shm(UINT32_MAX);
+            fail("production returned after invalid object index");
+        }
+        else if (!strcmp(argv[1], "alloc-fail")) allocation_failure = 1;
+        else if (!strcmp(argv[1], "map-fail")) mapping_failure = 1;
+        else fail("unknown mode");
+        (void)get_shm(128u * 256u);
+        fail("production returned after injected fatal failure");
+    }
+    alarm(0);
+    return 0;
+}

@@ -1,0 +1,148 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* Production bodies are inserted verbatim, except the native GS/TEB branch. */
+#define _DARWIN_C_SOURCE
+#define _GNU_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#define DECLSPEC_NORETURN __attribute__((noreturn))
+#define UIntToPtr(value) ((void *)(uintptr_t)(unsigned int)(value))
+typedef int32_t LONG;
+typedef uint32_t NTSTATUS;
+typedef unsigned int obj_handle_t;
+struct ntdll_thread_data { int alert_fd, wait_fd[2], reply_fd, request_fd; pthread_t pthread_id; };
+typedef struct { struct ntdll_thread_data GdiTebBatch; } TEB;
+static _Thread_local struct ntdll_thread_data thread_data;
+static _Thread_local TEB teb;
+static LONG nb_threads = 2;
+static sigset_t server_block_set;
+static pthread_mutex_t fd_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int reply_handle, received_fd, request_failure, normal_exit, populate;
+static unsigned int requests, receives;
+static int worker_alert;
+
+static struct ntdll_thread_data *ntdll_get_thread_data(void) { return &thread_data; }
+static TEB *NtCurrentTeb(void) { return &teb; }
+static LONG InterlockedDecrement(LONG *value) { return __atomic_sub_fetch(value, 1, __ATOMIC_SEQ_CST); }
+static void *InterlockedExchangePointer(void **target, void *value)
+{
+    return __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+}
+static void virtual_free_teb(TEB *old_teb) { (void)old_teb; _exit(90); }
+static DECLSPEC_NORETURN void process_exit_wrapper(int status) { _exit(status); }
+void abort_thread(int status) DECLSPEC_NORETURN;
+void abort_process(int status) DECLSPEC_NORETURN;
+void exit_process(int status) DECLSPEC_NORETURN;
+
+/* Real descriptor syscalls remain unintercepted. Only the server transport is a seam. */
+static void server_enter_uninterrupted_section(pthread_mutex_t *mutex, sigset_t *old)
+{
+    assert(!pthread_sigmask(SIG_BLOCK, &server_block_set, old));
+    assert(!pthread_mutex_lock(mutex));
+}
+static void server_leave_uninterrupted_section(pthread_mutex_t *mutex, sigset_t *old)
+{
+    assert(!pthread_mutex_unlock(mutex));
+    assert(!pthread_sigmask(SIG_SETMASK, old, NULL));
+}
+static int server_call_unlocked(void *req) { (void)req; ++requests; return request_failure; }
+static int wine_server_receive_fd(obj_handle_t *token)
+{
+    ++receives;
+    *token = (obj_handle_t)reply_handle;
+    return received_fd;
+}
+#define SERVER_START_REQ(name) { struct { unsigned int handle; } reply_value = { (unsigned int)reply_handle }; \
+    __typeof__(reply_value) *reply = &reply_value; void *req = NULL;
+#define SERVER_END_REQ }
+
+@DO_MSYNC@
+@GET_INPROC_ALERT_FD@
+@GET_UNIX_EXIT_CODE@
+@BLOCK_EXIT_SIGNALS@
+@PTHREAD_EXIT_WRAPPER@
+@ABORT_THREAD@
+@ABORT_PROCESS@
+@EXIT_PROCESS@
+@EXIT_THREAD@
+
+static void *worker(void *arg)
+{
+    thread_data = *(struct ntdll_thread_data *)arg;
+    thread_data.pthread_id = pthread_self();
+    teb.GdiTebBatch = thread_data;
+    if (populate)
+    {
+        worker_alert = get_inproc_alert_fd();
+        /* Cached reads must return the same borrowed index or owned fd. */
+        if (!request_failure) assert(get_inproc_alert_fd() == worker_alert);
+    }
+    else worker_alert = thread_data.alert_fd;
+    if (normal_exit) exit_thread(7);
+    abort_thread(9);
+}
+
+static int valid_fd(int fd) { return fcntl(fd, F_GETFD) >= 0; }
+static int closed_fd(int fd)
+{
+    errno = 0;
+    return fcntl(fd, F_GETFD) == -1 && errno == EBADF;
+}
+
+int main(int argc, char **argv)
+{
+    pthread_t thread;
+    void *status;
+    int sentinel, owned[5], i, msync, expected_alert, sentinel_valid;
+    if (argc != 3) return 95;
+    normal_exit = !strcmp(argv[1], "normal");
+    if (!normal_exit && strcmp(argv[1], "abort")) return 95;
+    populate = strcmp(argv[2], "unused") != 0;
+    request_failure = !strcmp(argv[2], "failed-request");
+    if (!request_failure && strcmp(argv[2], "matching") && strcmp(argv[2], "nonmatching")
+        && strcmp(argv[2], "unused")) return 95;
+    sigemptyset(&server_block_set);
+    msync = !!do_msync();
+    sentinel = open("/dev/null", O_RDONLY);
+    if (sentinel < 0) return 96;
+    for (i = 0; i < 5; ++i)
+        if ((owned[i] = open("/dev/null", O_RDONLY)) < 0) return 96;
+    /* No dup2 or guessed descriptor may overwrite runtime/stdio descriptors. */
+    received_fd = owned[0];
+    reply_handle = msync ? (!strcmp(argv[2], "nonmatching") ? INT_MAX - 17 : sentinel) : 0x12345;
+    if (msync && !strcmp(argv[2], "nonmatching") && !closed_fd(reply_handle)) return 96;
+    thread_data.alert_fd = -1;
+    thread_data.wait_fd[0] = owned[1];
+    thread_data.wait_fd[1] = owned[2];
+    thread_data.reply_fd = owned[3];
+    thread_data.request_fd = owned[4];
+    if (pthread_create(&thread, NULL, worker, &thread_data)) return 96;
+    if (pthread_join(thread, &status)) return 97;
+    expected_alert = !populate || request_failure ? -1 : msync ? reply_handle : received_fd;
+    sentinel_valid = valid_fd(sentinel);
+    printf("backend=%s kind=%s case=%s alert=%d sentinel_valid=%d\n",
+           msync ? "msync" : "fd", argv[1], argv[2], worker_alert, sentinel_valid);
+    if (status != UIntToPtr(normal_exit ? 7 : 9) || nb_threads != 1) return 98;
+    if (worker_alert != expected_alert || requests != (unsigned int)populate
+        || receives != (unsigned int)(populate && !request_failure && !msync)) return 98;
+    for (i = 1; i < 5; ++i) if (!closed_fd(owned[i])) return 98;
+    if (populate && !request_failure && !msync)
+    {
+        if (!closed_fd(owned[0])) return 98;
+    }
+    else if (!valid_fd(owned[0])) return 98;
+    if (!sentinel_valid) return 1; /* Exact baseline collateral-close failure. */
+    close(sentinel);
+    if (valid_fd(owned[0])) close(owned[0]);
+    return 0;
+}
