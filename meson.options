@@ -49,3 +49,9 @@ option('vibewine_empty_color_slots', type : 'boolean', value : false,
 
 option('vibewine_initializer_inclusive_reuse', type : 'boolean', value : false,
   description : 'Experimental initializer-only upload reuse at inclusive completion equality')
+
+option('vibewine_metal4_compiler', type : 'boolean', value : false,
+  description : 'Build opt-in Metal4 PSO compiler; requires DXMT_METAL4_COMPILER=1 at process startup')
+
+option('vibewine_arm_worker_build_id', type : 'string', value : '',
+  description : 'Exact native ARM converter identity; empty keeps the worker transport disabled')

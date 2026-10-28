@@ -105,8 +105,10 @@ struct FixtureVariantHash {
   }
 };
 inline std::function<Task *(Task *)> lookup_run;
+inline bool lookup_factory_fail_once = false;
 template <typename Owner, typename Variant>
 std::unique_ptr<CompiledShader> CreateVariantShader(void *, Owner *, Variant variant) {
+  if (std::exchange(lookup_factory_fail_once, false)) throw std::bad_alloc();
   auto result = std::make_unique<Task>();
   if constexpr (std::is_same_v<Variant, unsigned>)
     result->serial = 500 + variant;
@@ -428,4 +430,5 @@ int main() {
   std::cout << "PASS exact scheduler header: equal-capacity saturation discriminator, queued/running/blocked promotion, "
                "exact cached lookup routing including canonical pixel promotion, late dependency inheritance, bounded fairness, completion race, retired pointer, trace identity, "
                "compile failure readiness, optional I/O failure, shutdown cancellation/join\n";
+  return 0;
 }

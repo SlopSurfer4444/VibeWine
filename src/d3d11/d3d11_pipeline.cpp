@@ -165,9 +165,8 @@ CreateGraphicsPipeline(MTLD3D11Device *pDevice,
 class MTLCompiledComputePipelineImpl
     : public MTLCompiledComputePipeline {
 public:
-  MTLCompiledComputePipelineImpl(MTLD3D11Device *pDevice, ManagedShader shader)
-      : device_(pDevice) {
-    ComputeShader = shader->get_shader(ShaderVariantDefault{});
+  MTLCompiledComputePipelineImpl(MTLD3D11Device *pDevice, ManagedShader shader, CompiledShader *compiled_shader)
+      : device_(pDevice), ComputeShader(compiled_shader) {
     uint32_t total_tgsize = shader->reflection().ThreadgroupSize[0] *
                             shader->reflection().ThreadgroupSize[1] *
                             shader->reflection().ThreadgroupSize[2];
@@ -227,8 +226,8 @@ private:
 };
 
 std::unique_ptr<MTLCompiledComputePipeline>
-CreateComputePipeline(MTLD3D11Device *pDevice, ManagedShader ComputeShader) {
-  return std::make_unique<MTLCompiledComputePipelineImpl>(pDevice, ComputeShader);
+CreateComputePipeline(MTLD3D11Device *pDevice, ManagedShader ComputeShader, CompiledShader *compiled_shader) {
+  return std::make_unique<MTLCompiledComputePipelineImpl>(pDevice, ComputeShader, compiled_shader);
 }
 
 } // namespace dxmt

@@ -162,7 +162,7 @@ CreateVariantShader(MTLD3D11Device *pDevice, ManagedShader shader,
   std::string func_name = "vs_" + shader->sha1().string().substr(0, 8) + "_" + variant_digest.string();
 
   auto proc = [=](const char *func_name, SM50_SHADER_COMMON_DATA *common) -> sm50_bitcode_t  {
-    SM50_SHADER_IA_INPUT_LAYOUT_DATA data_ia_layout;
+    SM50_SHADER_IA_INPUT_LAYOUT_DATA data_ia_layout{};
     SM50_SHADER_GS_PASS_THROUGH_DATA data_gs_passthrough;
     data_gs_passthrough.type = SM50_SHADER_GS_PASS_THROUGH;
     data_gs_passthrough.DataEncoded = variant.gs_passthrough;

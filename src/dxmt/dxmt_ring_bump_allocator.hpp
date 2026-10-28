@@ -372,8 +372,9 @@ RingBumpState<Allocator, BlockSize, mutex>::allocate_or_reuse_block(
         front.last_used_seq_id = seq_id;
         front.allocated_size = 0;
         front.inc_time_to_live = 0;
-        fifo.push_back(std::move(front));
-        fifo.pop_front();
+        // Recycling a completed block needs no new list node. Keep the Block
+        // identity stable and avoid an allocator failure after metadata changed.
+        fifo.splice(fifo.end(), fifo, fifo.begin());
         return fifo.back();
       }
       WARN("forced to allocate new block of size ", block_size);

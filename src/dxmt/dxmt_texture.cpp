@@ -132,6 +132,9 @@ Texture::createView(TextureViewDescriptor const &descriptor) {
     return TextureViewKey(descriptor, i, info_.mipmap_level_count);
   }
   viewDescriptors_.push_back(descriptor);
+  // A copied descriptor (e.g. a format alias) must not inherit another
+  // descriptor's alternate key. Normalized array sizes are not reversible.
+  viewDescriptors_.back().alternateArrayIndex = ~0u;
   version_ = version_ + 1;
   return TextureViewKey(descriptor, i, info_.mipmap_level_count);
 }
@@ -274,10 +277,12 @@ Texture::view(TextureViewKey key, TextureAllocation* allocation) {
 TextureViewKey Texture::checkViewUseArray(TextureViewKey key, bool isArray) {
   std::shared_lock<dxmt::shared_mutex> shared_lock(mutex_);
   auto view = viewDescriptors_[key.index];
-  shared_lock = {};
   static constexpr uint32_t ARRAY_TYPE_MASK = 0b0101001010;
   if (unlikely(bool((1 << uint32_t(view.type)) & ARRAY_TYPE_MASK) != isArray)) {
-    // TODO: this process can be cached
+    if (view.alternateArrayIndex != ~0u) {
+      return TextureViewKey(viewDescriptors_[view.alternateArrayIndex], view.alternateArrayIndex, info_.mipmap_level_count);
+    }
+    shared_lock = {};
     auto new_view_desc = view;
     switch (view.type) {
     case WMTTextureType1D:
@@ -315,7 +320,10 @@ TextureViewKey Texture::checkViewUseArray(TextureViewKey key, bool isArray) {
     default:
       return key; // should be unreachable
     }
-    return createView(new_view_desc);
+    auto alternate = createView(new_view_desc);
+    std::unique_lock<dxmt::shared_mutex> lock(mutex_);
+    viewDescriptors_[key.index].alternateArrayIndex = alternate.index;
+    return alternate;
   }
   return key;
 }

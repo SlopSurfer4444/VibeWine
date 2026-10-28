@@ -169,7 +169,7 @@ public:
 std::unique_ptr<MTLCompiledGraphicsPipeline>
 CreateGraphicsPipeline(MTLD3D11Device *pDevice, MTL_GRAPHICS_PIPELINE_DESC *pDesc);
 
-std::unique_ptr<MTLCompiledComputePipeline> CreateComputePipeline(MTLD3D11Device *pDevice, ManagedShader ComputeShader);
+std::unique_ptr<MTLCompiledComputePipeline> CreateComputePipeline(MTLD3D11Device *pDevice, ManagedShader ComputeShader, CompiledShader *compiled_shader);
 
 std::unique_ptr<MTLCompiledGeometryPipeline>
 CreateGeometryPipeline(MTLD3D11Device *pDevice, MTL_GRAPHICS_PIPELINE_DESC *pDesc);

@@ -13,6 +13,7 @@
 #define WINEMETAL_API
 #include "../winemetal_thunks.h"
 #include "../airconv_thunks.h"
+#include "airconv_worker_bridge.h"
 
 typedef int NTSTATUS;
 #define STATUS_SUCCESS 0
@@ -22,6 +23,7 @@ typedef int NTSTATUS;
 #include "wave7_visibility.inc"
 #include "wave7_acquire_diag.inc"
 #include "wave7_ds3_profile.inc"
+#include "next_metal4_compiler.inc"
 
 /* The native Wine request source is serviced in its nested query-wait mode.
  * Raw main GCD dispatch is retained only for older native compatibility. */
@@ -371,6 +373,7 @@ _MTLLibrary_newFunction(void *obj) {
   id<MTLLibrary> library = (id<MTLLibrary>)params->handle;
   NSString *name = [[NSString alloc] initWithCString:(char *)params->arg encoding:NSUTF8StringEncoding];
   params->ret = (obj_handle_t)[library newFunctionWithName:name];
+  wmt_metal4_remember((id<MTLFunction>)params->ret, library, name, nil);
   [name release];
   return STATUS_SUCCESS;
 }
@@ -408,8 +411,10 @@ _MTLDevice_newComputePipelineState(void *obj) {
                                                     count:info->num_binary_archives_for_lookup];
   MTLPipelineOption options =
       info->fail_on_binary_archive_miss ? MTLPipelineOptionFailOnBinaryArchiveMiss : MTLPipelineOptionNone;
-  params->ret_pso =
-      (obj_handle_t)[device newComputePipelineStateWithDescriptor:descriptor options:options reflection:nil error:&err];
+  id<MTLComputePipelineState> pso = nil;
+  if (!wmt_metal4_compute(device, descriptor, info, &pso, &err))
+    pso = [device newComputePipelineStateWithDescriptor:descriptor options:options reflection:nil error:&err];
+  params->ret_pso = (obj_handle_t)pso;
   params->ret_error = (obj_handle_t)err;
   if (!err && info->binary_archive_for_serialization) {
     [(id<MTLBinaryArchive>)info->binary_archive_for_serialization addComputePipelineFunctionsWithDescriptor:descriptor
@@ -633,10 +638,13 @@ _MTLDevice_newRenderPipelineState(void *obj) {
   NSError *err = NULL;
   MTLPipelineOption options =
       info->fail_on_binary_archive_miss ? MTLPipelineOptionFailOnBinaryArchiveMiss : MTLPipelineOptionNone;
-  params->ret_pso = (obj_handle_t)[(id<MTLDevice>)params->device newRenderPipelineStateWithDescriptor:descriptor
+  id<MTLRenderPipelineState> pso = nil;
+  if (!wmt_metal4_render((id<MTLDevice>)params->device, descriptor, info, &pso, &err))
+    pso = [(id<MTLDevice>)params->device newRenderPipelineStateWithDescriptor:descriptor
                                                                                               options:options
                                                                                            reflection:nil
                                                                                                 error:&err];
+  params->ret_pso = (obj_handle_t)pso;
   params->ret_error = (obj_handle_t)err;
   if (!err && info->binary_archive_for_serialization) {
     [(id<MTLBinaryArchive>)info->binary_archive_for_serialization addRenderPipelineFunctionsWithDescriptor:descriptor
@@ -1868,7 +1876,7 @@ thunk_SM50Initialize(void *args) {
   struct sm50_initialize_params *params = args;
 
   params->ret =
-      SM50Initialize(params->bytecode, params->bytecode_size, params->shader, params->reflection, params->error);
+      WMTWorkerInitialize(params->bytecode, params->bytecode_size, params->shader, params->reflection, params->error);
 
   return STATUS_SUCCESS;
 }
@@ -1877,7 +1885,7 @@ static NTSTATUS
 thunk_SM50Destroy(void *args) {
   struct sm50_destroy_params *params = args;
 
-  SM50Destroy(params->shader);
+  WMTWorkerDestroy(params->shader);
 
   return STATUS_SUCCESS;
 }
@@ -1886,7 +1894,7 @@ static NTSTATUS
 thunk_SM50Compile(void *args) {
   struct sm50_compile_params *params = args;
 
-  params->ret = SM50Compile(params->shader, params->args, params->func_name, params->bitcode, params->error);
+  params->ret = WMTWorkerCompile(params->shader, params->args, params->func_name, params->bitcode, params->error);
 
   return STATUS_SUCCESS;
 }
@@ -1895,7 +1903,7 @@ static NTSTATUS
 thunk_SM50GetCompiledBitcode(void *args) {
   struct sm50_get_compiled_bitcode_params *params = args;
 
-  SM50GetCompiledBitcode(params->bitcode, params->data_out);
+  WMTWorkerGetBitcode(params->bitcode, params->data_out);
 
   return STATUS_SUCCESS;
 }
@@ -1904,7 +1912,7 @@ static NTSTATUS
 thunk_SM50DestroyBitcode(void *args) {
   struct sm50_destroy_bitcode_params *params = args;
 
-  SM50DestroyBitcode(params->bitcode);
+  WMTWorkerDestroyBitcode(params->bitcode);
 
   return STATUS_SUCCESS;
 }
@@ -1913,7 +1921,7 @@ static NTSTATUS
 thunk_SM50GetErrorMessage(void *args) {
   struct sm50_get_error_message_params *params = args;
 
-  params->ret_size = SM50GetErrorMessage(params->error, params->buffer, params->buffer_size);
+  params->ret_size = WMTWorkerGetError(params->error, params->buffer, params->buffer_size);
 
   return STATUS_SUCCESS;
 }
@@ -1922,7 +1930,7 @@ static NTSTATUS
 thunk_SM50FreeError(void *args) {
   struct sm50_free_error_params *params = args;
 
-  SM50FreeError(params->error);
+  WMTWorkerFreeError(params->error);
 
   return STATUS_SUCCESS;
 }
@@ -2524,6 +2532,7 @@ _MTLLibrary_newFunctionWithConstants(void *obj) {
     [values setConstantValue:constants[i].data.ptr type:(MTLDataType)constants[i].type atIndex:constants[i].index];
 
   params->ret = (obj_handle_t)[library newFunctionWithName:name constantValues:values error:&err];
+  if (!err) wmt_metal4_remember((id<MTLFunction>)params->ret, library, name, values);
   params->ret_error = (obj_handle_t)err;
   [name release];
   [values release];

@@ -43,3 +43,6 @@ checks optional-writer exception recovery, readiness while optional I/O blocks,
 worker joining, blocked-continuation cancellation, no growth after close and
 release of cancelled optional-write payloads. It does not test C++ exceptions
 escaping Run, native platform integration, compiler output or game performance.
+
+The compute-prewarm aggregate reuses this fixture and adds exact compute cache/
+constructor routing plus a fail-once variant-factory retry control.

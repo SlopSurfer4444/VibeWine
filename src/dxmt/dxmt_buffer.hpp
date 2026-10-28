@@ -228,7 +228,7 @@ public:
   }
 
 private:
-  void prepareAllocationViews(BufferAllocation *allocation);
+  void prepareAllocationViews(BufferAllocation *allocation, unsigned index);
 
   uint64_t length_;
 

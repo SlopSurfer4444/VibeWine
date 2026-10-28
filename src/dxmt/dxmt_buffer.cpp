@@ -96,8 +96,8 @@ Buffer::view_(BufferViewKey key) {
 
 BufferView const &
 Buffer::view_(BufferViewKey key, BufferAllocation *allocation) {
-  if (unlikely(allocation->version_ != version_)) {
-    prepareAllocationViews(allocation);
+  if (unlikely(allocation->version_ <= key.index)) {
+    prepareAllocationViews(allocation, key.index);
   }
   return *allocation->cached_view_[key.index];
 };
@@ -109,16 +109,20 @@ Buffer::residency(BufferViewKey key) {
 
 DXMT_RESOURCE_RESIDENCY_STATE &
 Buffer::residency(BufferViewKey key, BufferAllocation *allocation) {
-  if (unlikely(allocation->version_ != version_)) {
-    prepareAllocationViews(allocation);
+  if (unlikely(allocation->version_ <= key.index)) {
+    prepareAllocationViews(allocation, key.index);
   }
   return allocation->cached_view_[key.index]->residency;
 }
 
 void
-Buffer::prepareAllocationViews(BufferAllocation *allocation) {
+Buffer::prepareAllocationViews(BufferAllocation *allocation, unsigned index) {
   std::unique_lock<dxmt::mutex> lock(mutex_);
-  for (unsigned version = allocation->version_; version < version_; version++) {
+  assert(index < version_);
+  // Materialize only the requested prefix. Advance after each successful append
+  // so a wrapper/vector allocation failure resumes without duplicating views.
+  for (; allocation->version_ <= index; allocation->version_++) {
+    auto version = allocation->version_;
     auto format = viewDescriptors_[version].format;
     auto texel_size = MTLGetTexelSize(format);
     assert(texel_size);
@@ -151,7 +155,6 @@ Buffer::prepareAllocationViews(BufferAllocation *allocation) {
         std::move(view), info.gpu_resource_id, allocation->suballocation_size_ / texel_size
     ));
   }
-  allocation->version_ = version_;
 };
 
 BufferViewKey
