@@ -1,0 +1,84 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+#include <assert.h>
+#include <limits.h>
+#include <pthread.h>
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/sysctl.h>
+#include <string.h>
+#define MSYNC_MAX_SHM_IDX 15
+#define min(a,b) ((a)<(b)?(a):(b))
+enum msync_type { MSYNC_EVENT=1 };
+@DECLARATIONS@
+static struct msync_shm objects[MSYNC_MAX_SHM_IDX+1];
+static jmp_buf escaped;
+static int failures, checks, mode, injected, visits;
+static void fatal_error(const char *format,...) { (void)format; longjmp(escaped,1); }
+static inline void destroy_all_internal(unsigned int idx);
+static void *get_shm(unsigned int idx) {
+    if(idx>MSYNC_MAX_SHM_IDX) fatal_error("exhaustion");
+    ++visits;
+    /* These seams place an actual production destruction after the allocator
+     * has selected its initial hint and before it observes a later slot. */
+    if(!injected && ((mode==1 && idx==4) || (mode==2 && idx==MSYNC_MAX_SHM_IDX))) {
+        injected=1; destroy_all_internal(2);
+    }
+    return objects+idx;
+}
+@FUNCTIONS@
+#define CHECK(x,label) do { ++checks; if(!(x)) { ++failures; fprintf(stderr,"FAIL %s\n",label); } } while(0)
+static void reset(void) {
+    memset(objects,0,sizeof(objects)); last_allocated_idx=1; last_destroyed_idx=UINT32_MAX;
+    mode=injected=visits=0;
+}
+static unsigned int allocate(int tag) { return msync_alloc_shm(tag,tag+1,MSYNC_EVENT); }
+static int legal_churn(void) {
+    unsigned int live[4], maximum=0;
+    for(int i=0;i<4;i++) live[i]=allocate(100+i);
+    for(int step=0;step<2000;step++) {
+        unsigned int first=step%4, second=(step+2)%4;
+        unsigned int low=min(live[first],live[second]), high=live[first]+live[second]-low;
+        destroy_all_internal(low); destroy_all_internal(high);
+        live[first]=allocate(200+step*2); live[second]=allocate(201+step*2);
+        for(int i=0;i<4;i++) {
+            if(live[i]>maximum) maximum=live[i];
+            if(!objects[live[i]].refcount) return 0;
+            for(int j=0;j<i;j++) if(live[i]==live[j]) return 0;
+        }
+    }
+    return maximum<=5;
+}
+int main(void) {
+    int translated=0; size_t size=sizeof(translated);
+    sysctlbyname("sysctl.proc_translated",&translated,&size,NULL,0);
+    printf("runtime translated=%d pointer_bits=%zu\n",translated,8*sizeof(void *));
+    unsigned int a=0,b=0;
+    reset(); for(int i=0;i<4;i++) allocate(100+i);
+    destroy_all_internal(2); destroy_all_internal(4);
+    if(!setjmp(escaped)) { a=allocate(7); b=allocate(8); }
+    CHECK(a==2 && b==4,"multiple frees preserve lowest hole");
+    CHECK(objects[3].low==101 && objects[5].low==103 && objects[3].refcount==1 && objects[5].refcount==1,"live identities survive hole reuse");
+    reset(); if(!setjmp(escaped)) a=legal_churn(); else a=0;
+    CHECK(a,"four-live-object churn stays bounded");
+    reset(); for(int i=0;i<5;i++) allocate(100+i);
+    destroy_all_internal(4); mode=1;
+    if(!setjmp(escaped)) { a=allocate(7); mode=0; b=allocate(8); } else a=b=0;
+    CHECK(a==4 && b==2,"free published during scan survives next allocation");
+    reset(); for(int i=0;i<MSYNC_MAX_SHM_IDX-1;i++) allocate(100+i);
+    last_allocated_idx=MSYNC_MAX_SHM_IDX-1; mode=2; a=0;
+    if(!setjmp(escaped)) a=allocate(7);
+    CHECK(a==2 && injected,"boundary consumes lower concurrent free before exhaustion");
+    reset(); a=allocate(7); destroy_all_internal(a); a=allocate(8);
+    /* A delayed producer may publish the index after it was already reused.
+     * This stale hint must only cause an occupied-slot scan, never live reuse. */
+    __atomic_store_n(&last_destroyed_idx,a,__ATOMIC_RELEASE);
+    b=allocate(9);
+    CHECK(a==2 && b==3 && objects[a].low==8 && objects[a].refcount==1,"stale published hint preserves live object");
+    reset(); for(int i=0;i<MSYNC_MAX_SHM_IDX-1;i++) allocate(100+i);
+    a=0; if(setjmp(escaped)) a=1; else allocate(7);
+    CHECK(a,"genuinely full domain still fails closed");
+    printf("checks=%d failed=%d churn_iterations=2000 bound=%d\n",checks,failures,MSYNC_MAX_SHM_IDX);
+    return !!failures;
+}

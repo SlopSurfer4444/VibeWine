@@ -3242,6 +3242,11 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         if (causing_becomeKeyWindow) return;
         if ([[WineApplicationController sharedController] temporarilyIgnoreResignEventsForDialog]) return;
 
+        /* Key focus can move to a native window while Wine remains active.
+           Release native confinement before posting to a possibly blocked
+           Windows message thread, as for application deactivation. */
+        [[WineApplicationController sharedController] stopClippingCursor];
+
         event = macdrv_create_event(WINDOW_LOST_FOCUS, self);
         [queue postEvent:event];
         macdrv_release_event(event);

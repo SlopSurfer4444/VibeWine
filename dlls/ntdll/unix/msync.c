@@ -68,15 +68,40 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(sync);
 
+/* Match Wine's timer convention: positive deadlines use system time, negative
+ * deadlines encode monotonic 100 ns ticks. Relative waits must not follow wall
+ * clock adjustments between ACK, interrupted waits or WaitAll retries. */
+static ULONGLONG msync_get_deadline( const LARGE_INTEGER *timeout )
+{
+    LARGE_INTEGER now;
+    ULONGLONG duration, end;
+
+    if (timeout->QuadPart > 0) return timeout->QuadPart;
+    NtQueryPerformanceCounter( &now, NULL );
+    duration = 0 - (ULONGLONG)timeout->QuadPart;
+    end = (ULONGLONG)now.QuadPart;
+    if (duration > LLONG_MAX - end) end = LLONG_MAX;
+    else end += duration;
+    return 0 - end;
+}
+
 static LONGLONG update_timeout( ULONGLONG end )
 {
     LARGE_INTEGER now;
-    LONGLONG timeleft;
 
-    NtQuerySystemTime( &now );
-    timeleft = end - now.QuadPart;
-    if (timeleft < 0) timeleft = 0;
-    return timeleft;
+    if ((LONGLONG)end < 0)
+    {
+        NtQueryPerformanceCounter( &now, NULL );
+        end = 0 - end;
+    }
+    else NtQuerySystemTime( &now );
+    return end > (ULONGLONG)now.QuadPart ? end - now.QuadPart : 0;
+}
+
+static ULONGLONG msync_timeout_ns( ULONGLONG end )
+{
+    ULONGLONG ticks = update_timeout( end );
+    return ticks > ULLONG_MAX / 100 ? ULLONG_MAX : ticks * 100;
 }
 
 #define UL_COMPARE_AND_WAIT_SHARED  0x3
@@ -98,7 +123,9 @@ static inline int ulock_wait( uint32_t operation, void *addr, uint64_t value, ui
     else
 #endif
     {
-        uint32_t timeout_us = timeout_ns / 1000;
+        /* The legacy syscall accepts only 32-bit microseconds. A long finite
+         * deadline is served in chunks; never narrow it to zero (infinite). */
+        uint32_t timeout_us = min( timeout_ns / 1000, UINT_MAX );
         /* Avoid a 0 timeout for small timeout_ns values */
         uint32_t adjust = (timeout_us == 0) & (timeout_ns != 0);
         return __ulock_wait( operation, addr, value, timeout_us + adjust );
@@ -410,11 +437,12 @@ static inline NTSTATUS msync_wait_single( int obj, void *obj_shm,
 
         if (end)
         {
-            ns_timeleft = update_timeout( *end ) * 100;
+            ns_timeleft = msync_timeout_ns( *end );
             if (!ns_timeleft) return STATUS_TIMEOUT;
         }
         ret = ulock_wait( UL_COMPARE_AND_WAIT_SHARED | ULF_NO_ERRNO, obj_shm, val, ns_timeleft );
-    } while (ret == -EINTR || ret == -EFAULT);
+    } while (ret == -EINTR || ret == -EFAULT ||
+             (ret == -ETIMEDOUT && end && update_timeout( *end )));
 
     if (ret == -ETIMEDOUT)
         return STATUS_TIMEOUT;
@@ -516,7 +544,7 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
         }
 
         if (end && (!(spins & 63) || spins >= MSYNC_ACK_SPINS)
-                && !(ns_timeleft = update_timeout( *end ) * 100))
+                && !(ns_timeleft = msync_timeout_ns( *end )))
         {
             msync_attribution_end( MSYNC_ATTR_ACK, ack_started, STATUS_TIMEOUT );
             server_remove_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
@@ -560,7 +588,7 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
     {
         if (end)
         {
-            ns_timeleft = update_timeout( *end ) * 100;
+            ns_timeleft = msync_timeout_ns( *end );
             if (!ns_timeleft)
             {
                 server_remove_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
@@ -571,7 +599,8 @@ static NTSTATUS msync_wait_multiple( const int *objs, void **objs_shm, int alert
         val = __atomic_load_n( addr, __ATOMIC_ACQUIRE );
         if (!val)
             break;
-    } while (ret == -EINTR || ret == -EFAULT);
+    } while (ret == -EINTR || ret == -EFAULT ||
+             (ret == -ETIMEDOUT && end && update_timeout( *end )));
 
     server_remove_wait( msgh_id, objs, objs_shm, alert_obj, alert_obj_shm, count );
 
@@ -1015,7 +1044,6 @@ NTSTATUS msync_wait_objs( const DWORD count, const int *objs, BOOLEAN wait_any,
     int current_tid = 0;
     static __thread void *objs_shm[MAXIMUM_WAIT_OBJECTS];
     int *alert_obj_shm = NULL;
-    LARGE_INTEGER now;
     int single_wait = 0;
     ULONGLONG end;
     int i, ret;
@@ -1032,15 +1060,12 @@ NTSTATUS msync_wait_objs( const DWORD count, const int *objs, BOOLEAN wait_any,
         if (count == 1) single_wait = 1;
     }
 
-    NtQuerySystemTime( &now );
     if (timeout)
     {
         if (timeout->QuadPart == TIMEOUT_INFINITE)
             timeout = NULL;
-        else if (timeout->QuadPart > 0)
-            end = timeout->QuadPart;
         else
-            end = now.QuadPart - timeout->QuadPart;
+            end = msync_get_deadline( timeout );
     }
 
     for (i = 0; i < count; i++)

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #include <assert.h>
+#include <limits.h>
 #include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -24,6 +25,7 @@ typedef unsigned char BOOLEAN;
 typedef int BOOL;
 typedef int32_t LONG;
 typedef uint64_t ULONGLONG;
+typedef int64_t LONGLONG;
 typedef struct { int64_t QuadPart; } LARGE_INTEGER;
 enum { FALSE, TRUE };
 enum { MSYNC_SEMAPHORE=1, MSYNC_AUTO_EVENT, MSYNC_MANUAL_EVENT, MSYNC_MUTEX,
@@ -37,10 +39,16 @@ static jmp_buf escape;
 static int GetCurrentThreadId(void) { return 7; }
 static void *get_shm(unsigned int id) { assert(id && id<5); return &objects[id]; }
 static void NtQuerySystemTime(LARGE_INTEGER *v) { v->QuadPart=now; }
+#if HAS_DEADLINE_DOMAIN
+static void NtQueryPerformanceCounter(LARGE_INTEGER *v, LARGE_INTEGER *frequency) { (void)frequency; v->QuadPart=now+100; }
+@DEADLINES@
+#else
+@DEADLINES@
 static long long update_timeout(ULONGLONG end) { return end>now ? end-now : 0; }
+#endif
 static NTSTATUS msync_wait_single(int id,void *shm,ULONGLONG *end,int tid) {
     assert(id>0 && id<5 && shm==&objects[id] && tid==7);
-    if(end) assert(*end==1);
+    if(end) assert(update_timeout(*end)==1);
     ++checked_params; ++waits; return STATUS_TIMEOUT;
 }
 static NTSTATUS msync_wait_multiple(const int *ids,void **shm,int alert,void *alert_shm,int count,ULONGLONG *end,int tid) {

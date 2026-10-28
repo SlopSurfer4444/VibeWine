@@ -63,8 +63,9 @@ def main():
         old = '                if (timeout && !update_timeout( end )) return STATUS_TIMEOUT;'
         assert bodies.count(old) == 1
         bodies = bodies.replace(old, '')
-    generated = ('#define HAS_GENERATION ' + str(int(bool(helpers))) + '\n' + (here / 'fixture.c.in').read_text().replace('@STRUCTS@', structs)
-                 .replace('@HELPERS@', helpers).replace('@PRODUCTION@', bodies)
+    deadlines = '\n\n'.join(function(client, name) for name in ('msync_get_deadline', 'update_timeout')) if 'static ULONGLONG msync_get_deadline' in client else ''
+    generated = ('#define HAS_DEADLINE_DOMAIN ' + str(bool(deadlines)*1) + '\n#define HAS_GENERATION ' + str(int(bool(helpers))) + '\n' + (here / 'fixture.c.in').read_text().replace('@STRUCTS@', structs)
+                 .replace('@HELPERS@', helpers).replace('@DEADLINES@', deadlines).replace('@PRODUCTION@', bodies)
                  .replace('@SERVER@', server_struct + '\n' + server_body))
     with tempfile.TemporaryDirectory(prefix='vibewine-msync-waitall-') as tmp:
         source, binary = Path(tmp) / 'fixture.c', Path(tmp) / 'fixture'

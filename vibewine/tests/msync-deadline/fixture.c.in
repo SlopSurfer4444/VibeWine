@@ -1,0 +1,121 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+#include <assert.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <mach/mach_time.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/sysctl.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <time.h>
+#include <unistd.h>
+#define min(a,b) ((a)<(b)?(a):(b))
+#define UL_COMPARE_AND_WAIT_SHARED 3
+#define ULF_NO_ERRNO 0x01000000
+#define MSYNC_MUTEX 4
+#define STATUS_PENDING 0x103
+#define STATUS_TIMEOUT 0x102
+#define STATUS_SUCCESS 0
+#define TIMEOUT_INFINITE INT64_MAX
+#define BASELINE @BASELINE@
+typedef int64_t LONGLONG;
+typedef uint64_t ULONGLONG;
+typedef int NTSTATUS;
+typedef struct { int64_t QuadPart; } LARGE_INTEGER;
+struct mutex { int tid, count; unsigned short msync_type, refcount; int multiple_waiters; };
+static ULONGLONG wall=1000, mono=100;
+static int native_mode, failures, checks, calls, force_legacy, clock_jump;
+static uint64_t last_ns;
+static uint32_t last_us;
+extern int __ulock_wait(uint32_t,void *,uint64_t,uint32_t);
+extern int __ulock_wait2(uint32_t,void *,uint64_t,uint64_t,uint64_t);
+extern int __ulock_wake(uint32_t,void *,uint64_t);
+static ULONGLONG ticks(void) {
+    mach_timebase_info_data_t t; mach_timebase_info(&t);
+    return (unsigned __int128)mach_continuous_time()*t.numer/t.denom/100;
+}
+static void NtQueryPerformanceCounter(LARGE_INTEGER *v,LARGE_INTEGER *frequency) {
+    v->QuadPart=native_mode?ticks():mono; if(frequency) frequency->QuadPart=10000000;
+}
+static void NtQuerySystemTime(LARGE_INTEGER *v) { v->QuadPart=wall; }
+static int fixture_wait2(uint32_t op,void *addr,uint64_t value,uint64_t ns,uint64_t value2) {
+    ++calls; last_ns=ns;
+    if(native_mode) return __ulock_wait2(op,addr,value,ns,value2);
+    if(clock_jump) { wall=clock_jump==1?500:2000; mono+=5; return calls==1 && clock_jump!=3?-EINTR:-ETIMEDOUT; }
+    return -ETIMEDOUT;
+}
+static int fixture_wait(uint32_t op,void *addr,uint64_t value,uint32_t us) {
+    last_us=us; return fixture_wait2(op,addr,value,(uint64_t)us*1000,0);
+}
+/* Extracted production wrapper. Only OS availability is forced for the legacy
+ * conversion check; syscall seams observe arguments or call real owned ulocks. */
+#define __ulock_wait fixture_wait
+#define __ulock_wait2 fixture_wait2
+#define __builtin_available(...) (!force_legacy)
+@PRODUCTION@
+#undef __builtin_available
+#undef __ulock_wait2
+#undef __ulock_wait
+#define CHECK(x,label) do { ++checks; if(!(x)) { ++failures; fprintf(stderr,"FAIL %s\n",label); } } while(0)
+static void reset(void) { wall=1000; mono=100; calls=clock_jump=force_legacy=native_mode=0; }
+static void *waker(void *object) {
+    usleep(10000); __atomic_store_n((int *)object,1,__ATOMIC_RELEASE);
+    while(__ulock_wake(UL_COMPARE_AND_WAIT_SHARED|ULF_NO_ERRNO,object,0)==-EINTR) {}
+    return NULL;
+}
+int main(void) {
+    int translated=0; size_t size=sizeof(translated);
+    sysctlbyname("sysctl.proc_translated",&translated,&size,NULL,0);
+    printf("runtime translated=%d pointer_bits=%zu\n",translated,8*sizeof(void *));
+    LARGE_INTEGER relative={-10}, absolute={1010}, zero={0}, huge={INT64_MIN};
+    ULONGLONG end; struct mutex event={0}; NTSTATUS status; pthread_t thread;
+    reset(); end=msync_get_deadline(&relative); wall=500;
+    CHECK(update_timeout(end)==10,"relative ignores backward wall jump");
+    wall=2000; CHECK(update_timeout(end)==10,"relative ignores forward wall jump");
+    mono=105; CHECK(update_timeout(end)==5,"relative uses monotonic elapsed ticks");
+    wall=1000; mono=110; CHECK(!update_timeout(end),"relative expires at its monotonic deadline");
+    reset(); end=msync_get_deadline(&absolute); wall=1005;
+    CHECK(update_timeout(end)==5,"absolute follows forward wall clock");
+    wall=995; CHECK(update_timeout(end)==15,"absolute follows backward wall clock");
+    wall=1011; CHECK(!update_timeout(end),"absolute expires");
+    reset(); CHECK(!update_timeout(msync_get_deadline(&zero)),"zero remains poll");
+    if(!BASELINE) {
+        reset(); end=msync_get_deadline(&huge);
+        CHECK((LONGLONG)end<0 && update_timeout(end)>0,"extreme relative remains finite monotonic");
+        CHECK(msync_timeout_ns(end)==ULLONG_MAX,"nanoseconds saturate without overflow");
+    }
+    reset(); force_legacy=1;
+    ulock_wait(3,NULL,0,((uint64_t)UINT_MAX+1)*1000);
+    CHECK(last_us==UINT_MAX,"legacy microseconds never wrap to infinite");
+    ulock_wait(3,NULL,0,1); CHECK(last_us==1,"legacy rounds tiny finite timeout up");
+    ulock_wait(3,NULL,0,0); CHECK(last_us==0,"legacy preserves infinite wait");
+    reset(); end=msync_get_deadline(&relative); clock_jump=1;
+    status=msync_wait_single(1,&event,&end,7);
+    CHECK(status==STATUS_TIMEOUT && calls==2 && last_ns==500,"interrupted relative wait ignores backward wall jump");
+    reset(); end=msync_get_deadline(&relative); clock_jump=2;
+    status=msync_wait_single(1,&event,&end,7);
+    CHECK(status==STATUS_TIMEOUT && calls==2 && last_ns==500,"interrupted relative wait ignores forward wall jump");
+    reset(); end=msync_get_deadline(&relative); clock_jump=3;
+    status=msync_wait_single(1,&event,&end,7);
+    CHECK(status==STATUS_TIMEOUT && calls==2 && last_ns==500,"finite kernel chunk timeout rechecks deadline");
+    if(!BASELINE) {
+        struct mutex *shared=mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANON,-1,0);
+        assert(shared!=MAP_FAILED); reset(); native_mode=1;
+        relative.QuadPart=-200000; end=msync_get_deadline(&relative);
+        ULONGLONG start=ticks(); status=msync_wait_single(1,shared,&end,7);
+        ULONGLONG elapsed=ticks()-start;
+        CHECK(status==STATUS_TIMEOUT && elapsed>=150000 && elapsed<20000000,"real Darwin finite wait expires");
+        relative.QuadPart=-10000000; end=msync_get_deadline(&relative);
+        assert(!pthread_create(&thread,NULL,waker,shared));
+        start=ticks(); status=msync_wait_single(1,shared,&end,7); elapsed=ticks()-start;
+        assert(!pthread_join(thread,NULL));
+        CHECK((status==STATUS_SUCCESS || status==STATUS_PENDING) && elapsed>=50000 && elapsed<10000000,
+              "real Darwin wake makes progress before deadline");
+        assert(!munmap(shared,4096));
+    }
+    printf("checks=%d failed=%d native_owned_ulocks=%d\n",checks,failures,!BASELINE);
+    return !!failures;
+}

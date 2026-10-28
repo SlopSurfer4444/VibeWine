@@ -42,7 +42,7 @@ python3 vibewine/tests/msync_registration.py --source-dir .
 ```
 
 The first fixture compiles the actual client registration/removal/contention/
-multiple-wait bodies and server list/pump/wake/ACK bodies. It requires 19 current
+multiple-wait bodies and server list/pump/wake/ACK bodies. It requires 20 current
 assertions to pass; the named baseline must fail exactly 15 assertions, with
 four unchanged-path controls passing. Deterministic transport, time, load and
 ulock seams place ACK before arming and after parking, delay the pump, inject
@@ -54,7 +54,8 @@ loops; every affected assertion requires that cap untouched. It is not an
 expected-timeout or expected-crash test. The pre-existing registration fixture
 still requires all 16 assertions and its six exact older-baseline failures.
 Infinite object waits must receive a zero timeout after ACK; finite waits must
-receive their remaining deadline. The `missing-ack-reset` mutation requires two
+receive their remaining deadline. A finite post-ACK kernel chunk expiry with
+time remaining must retry with the shorter finite remainder before unregistering. The `missing-ack-reset` mutation requires two
 specific failures when the ACK slice leaks into the ordinary infinite wait.
 
 On Darwin `--native` additionally compiles the actual server ACK/wake helpers

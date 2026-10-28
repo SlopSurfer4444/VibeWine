@@ -35,6 +35,9 @@
     - (void) setRetinaMode:(BOOL)mode;
 
     @optional
+    /* Whether a same-rectangle request can retain this handler's native owner. */
+    - (BOOL) isClippingToCurrentWindow;
+
     /* If provided, should reposition the cursor as needed given the current
      * clipping rect. If not provided, the location will be clipped by
      * -clipCursorLocation, and the cursor will be warped normally.

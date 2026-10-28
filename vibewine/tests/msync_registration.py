@@ -41,6 +41,7 @@ def extract(text, name):
 PRELUDE = r'''
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <setjmp.h>
 #include <signal.h>
 #include <stdint.h>
@@ -187,6 +188,8 @@ int main(void) {
 def build_and_run(label, sources, workdir, compiler):
     client, server = sources
     parts = [client[:client.index('*/') + 2], PRELUDE]
+    if 'static ULONGLONG msync_timeout_ns' in client:
+        parts.append(extract(client, 'msync_timeout_ns'))
     if 'MSYNC_ACK_PENDING' in client:
         parts.append(client[client.index('#define MSYNC_ACK_PENDING'):client.index('static NTSTATUS msync_wait_multiple')])
     for name in ('server_register_wait', 'server_remove_wait', 'check_shm_contention', 'msync_wait_multiple'):

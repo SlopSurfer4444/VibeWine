@@ -54,14 +54,16 @@ def main():
     constants = ''
     if '#define MSYNC_ACK_PENDING' in client:
         constants = client[client.index('#define MSYNC_ACK_PENDING'):client.index('static NTSTATUS msync_wait_multiple')]
-    clients = '\n\n'.join(function(client, name) for name in (
+    timeout_helper = function(client, 'msync_timeout_ns') + '\n' if 'static ULONGLONG msync_timeout_ns' in client else ''
+    clients = timeout_helper + '\n\n'.join(function(client, name) for name in (
         'server_register_wait', 'server_remove_wait', 'check_shm_contention', 'msync_wait_multiple'))
     names = ['grow_tid_map', 'get_tid_list', 'add_tid', 'remove_tid', 'unregister_wait']
     if 'static inline void acknowledge_wait' in server:
         names += ['wake_tid_word', 'acknowledge_wait']
     names += ['wake_tid', 'signal_all_internal', 'decode_msgh_id', 'check_bit', 'mach_message_pump']
     servers = '\n\n'.join(function(server, name) for name in names)
-    generated = ((here / 'fixture.c.in').read_text()
+    checks = 20 if 'ret == -ETIMEDOUT && end && update_timeout' in client else 19
+    generated = ('#define HAS_TIMEOUT_CHUNKS ' + str(int(checks == 20)) + '\n' + (here / 'fixture.c.in').read_text()
                  .replace('/* PRODUCTION_ACK_CONSTANTS */', constants)
                  .replace('/* PRODUCTION_CLIENT */', clients)
                  .replace('/* PRODUCTION_SERVER */', servers))
@@ -94,17 +96,17 @@ def main():
         scratch = Path(tmp)
         result = compile_run(generated, 'deterministic', scratch)
         if args.mutation:
-            if (result.returncode != 1 or result.stdout != 'checks=19 failed=2\n'
+            if (result.returncode != 1 or result.stdout != f'checks={checks} failed=2\n'
                     or result.stderr != 'FAIL park before ack\nFAIL ACK slice never limits infinite object wait\n'):
                 raise RuntimeError('unexpected ACK reset mutation result: ' + repr(result))
             print('EXPECTED_MISSING_ACK_RESET_CONFIRMED')
         elif args.expect_regression:
             failures = result.stderr.splitlines()
-            if (result.returncode != 1 or result.stdout != 'checks=19 failed=15\n'
+            if (result.returncode != 1 or result.stdout != f'checks={checks} failed=15\n'
                     or len(failures) != len(expected_failures)
                     or set(failures) != {'FAIL '+name for name in expected_failures}):
                 raise RuntimeError('unexpected baseline result: ' + repr(result))
-        elif result.returncode or result.stderr or result.stdout != 'checks=19 failed=0\n':
+        elif result.returncode or result.stderr or result.stdout != f'checks={checks} failed=0\n':
             raise RuntimeError('candidate deterministic check failed: ' + repr(result))
         print('production SHA256=' + hashlib.sha256((constants+clients+servers).encode()).hexdigest())
         if args.native:
