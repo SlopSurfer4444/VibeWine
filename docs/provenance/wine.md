@@ -1,5 +1,14 @@
 # Wine patch origins and installed-source gap
 
+## Frontier checkpoint,28 October 2026
+
+Current component source: `bb2c891987c9551329fc7dfbb7c7f41abfceb582`. The [frontier report](../diagnostics/frontier-wave-20261028.md)
+records local independently reproduced general repairs, opt-in diagnostics,
+matched builds and explicit held experiments. The [patch map](../PATCHES.md)
+separates origins and game profiles. This source checkpoint does not change the
+installed runtime; older dated sections retain their original identities.
+
+
 ## FPS source wave, 25 October 2026
 
 Current development pin: Wine `5d4b43e4`, adding Paul Gofman's attributed

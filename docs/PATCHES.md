@@ -1,10 +1,14 @@
 # Patch origins and scope
 
-Audited checkpoint: **2026-10-26**. This is a source map, not an FPS leaderboard
+Audited checkpoint: **2026-10-28**. This is a source map, not an FPS leaderboard
 or a claim that every feature is enabled in the installed test runtime.
 
 | Area | Origin | Scope / default | Source and evidence |
 | --- | --- | --- | --- |
+| Staging payloads, whole-CB reset, query polling, shader-key normalization and per-key parse ownership | Local fixes and refinements after independent Pro-audit reproduction; existing DXMT owners reused | General D3D11, no DS3 detection; VB/SRV dependency refinement retains existing default-off precise-bindings switch | [Frontier checkpoint](diagnostics/frontier-wave-20261028.md), [component source contract](../components/dxmt/docs/frontier-wave-20261028.md) |
+| Bulk depth/stencil row writes and tile-helper failure handling | Local DXMT implementation on existing initializer/ring/barrier owners | General; row payload/readback controls, no unsynchronized dependent draw on helper creation failure | [Frontier checkpoint](diagnostics/frontier-wave-20261028.md) |
+| MSync alert descriptor ownership and stable shared-page directory | Local Wine repair of reproduced fd-close and moving-table reader defects | General Apple MSync; real-fd cleanup retained; broader Mach RPC repair held | [Frontier checkpoint](diagnostics/frontier-wave-20261028.md), [table tests](../components/wine/vibewine/tests/msync-memory-ownership/TABLE_README.md) |
+| Combined bounded compiler/presentation/helper trace | Local instrumentation and conservative consumer joins | Explicit new profile; old coverage/report shapes preserved; no automatic scene or causal inference | [Telemetry contract](../tools/telemetry/README.md) |
 | Late-stall duration filtering and finish-thread memory scopes | Local extension of existing diagnostic producer/decoder | Explicit stall-waits opt-in; no game gate, retention-policy change or FPS claim | [Capture repair and memory hypotheses](diagnostics/stall-waits-20261026.md) |
 | Exact setters, staging-row copies, requested view prefix, optional clocks and shader-null error ownership | Local general source refinements; independently checked Pro audit leads | General default behavior, no DS3 gate | [Deep round](diagnostics/deep-hotpaths-20261026.md) |
 | Native empty color slots/raster shadow, semantic blend PSO hash and GS/TS packets | Local matched renderer/native experiments; Apple descriptor defaults and existing DXMT owners reused | Four default-off options, operation-count/proxy evidence and explicit regression/gap accounting | [Deep round](diagnostics/deep-hotpaths-20261026.md), [component contract](../components/dxmt/docs/deep-hotpaths-20261026.md) |

@@ -52,6 +52,10 @@ jobs:
       - run: python3 components/wine/vibewine/verify_source.py
       - run: python3 components/wine/vibewine/tests/thread-exit/run.py --sanitize --repetitions 2
       - run: python3 components/wine/vibewine/tests/backports.py
+      - run: python3 components/wine/vibewine/tests/msync-alert-ownership/run.py --sanitize
+      - run: python3 components/wine/vibewine/tests/msync-alert-ownership/run.py --revision 5ed4c56bafab70a772b5e9bf88eee272de9bdd3a --expect-regression --sanitize
+      - run: python3 components/wine/vibewine/tests/msync-memory-ownership/run_table.py --sanitize
+      - run: python3 components/wine/vibewine/tests/msync-memory-ownership/run_table.py --revision 5ed4c56bafab70a772b5e9bf88eee272de9bdd3a --expect-regression --sanitize
       - run: python3 components/wine/vibewine/tests/msync_registration.py --source-dir components/wine
       - run: python3 components/wine/vibewine/tests/address-wait/run.py --sanitize
       - run: python3 components/wine/vibewine/tests/address-wait/run.py --revision d2237a9a82d9960360ce8400242ddeae6646c347 --expect-regression --sanitize
@@ -162,4 +166,32 @@ jobs:
       - run: python3 tests/vibewine/stall-finish/run.py
         working-directory: components/dxmt
       - run: python3 tests/vibewine/initializer-transaction/gpu/test_analyze.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/staging-initial-data/run.py --arch arm64
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/cb-range-reset/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/precise-bindings/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/query-publication/run.py --sanitize address
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/query-publication/run.py --sanitize thread
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/query-publication/run.py --source-ref 8cf59a015b88361ed6f6320eb8a781c68b3b36c1 --expect-frontier-baseline --sanitize address
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/pso-normalization/run.py --arch arm64
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/pso-normalization/run-singleflight.py --arch arm64 --sanitize thread
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/pso-normalization/run-createshader.py --arch arm64 --sanitize address
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/bulk-depth-stencil/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/tile-barrier/run.py --arch arm64
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/tile-barrier/run.py --mutation ignore-failure
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/tile-barrier/run.py --mutation early-marshal
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/combined_trace_test.py
         working-directory: components/dxmt

@@ -61,14 +61,14 @@ static uint64_t recordBudget(const char *arg) {
 }
 static const char *clockDomain(uint32_t type) {
   if(type==24)return "native_gpu_ns";
-  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=119))return "cpu_steady_ns";
+  if((type>=1 && type<=17)||type==19||(type>=20 && type<=23)||type==25||(type>=30 && type<=49)||type==61||type==62||(type>=70 && type<=78)||(type>=80 && type<=120))return "cpu_steady_ns";
   return "unknown";
 }
 static const char *profileName(uint32_t flags) {
-  return flags==1?"compile-waits":flags==2?"invalid-fail-closed":flags==3?"presentation-waits":flags==4?"stall-waits":"unknown";
+  return flags==1?"compile-waits":flags==2?"invalid-fail-closed":flags==3?"presentation-waits":flags==4?"stall-waits":flags==5?"combined-bounded":"unknown";
 }
 static bool profileMarkerValid(const trace::Decoded &e) {
-  return e.object==1 && ((e.flags!=3 && e.flags!=4) || e.thread) && (e.flags!=4 || e.start) && (e.flags>=1 && e.flags<=4) && e.start==e.end &&
+  return e.object==1 && ((e.flags!=3 && e.flags!=4 && e.flags!=5) || e.thread) && ((e.flags!=4 && e.flags!=5) || e.start) && (e.flags>=1 && e.flags<=5) && e.start==e.end &&
     e.padding0<=dxmt::cs2trace::DetailBudget::MaxRecords && e.padding1==trace::Capacity;
 }
 static bool presentationProbeValid(const trace::Decoded &e) {
@@ -84,6 +84,10 @@ static bool compilerProbeValid(const trace::Decoded &e) {
  if(!e.object || !e.thread || !e.start || e.end<e.start)return false;
  if(e.type==104)return e.padding1 && (e.flags==1 || e.flags==3);
  return e.padding0 && e.padding1<=1 && (e.type!=105 || !e.padding1) && e.flags>=1 && e.flags<=3;
+}
+static bool helperProbeValid(const trace::Decoded &e) {
+ if(e.type!=120)return true;
+ return e.object && e.thread && e.start && e.end>=e.start && e.flags>=1 && e.flags<=3 && e.padding0>=1 && e.padding0<=5;
 }
 static bool retirementProbeValid(const trace::Decoded &e) {
  if(!((e.type>=108 && e.type<=110) || (e.type>=117 && e.type<=119)))return true;
@@ -144,12 +148,12 @@ int main(int argc,char **argv) {
       uint32_t gen=generation(argv[3]);trace::Mapping m(argv[2],false,argv[4]);auto s=trace::decode(m,gen);
       const trace::Decoded *profile=nullptr;unsigned profileMarkers=0;
       for(const auto &e:s.events)if(e.type==95){profile=&e;profileMarkers++;}
-      bool profileValid=!profileMarkers || (profileMarkers==1 && profileMarkerValid(*profile) && (profile->flags==1 || profile->flags==3 || profile->flags==4));
-      if(profile && (profile->flags==1 || profile->flags==3 || profile->flags==4))for(const auto &e:s.events)
+      bool profileValid=!profileMarkers || (profileMarkers==1 && profileMarkerValid(*profile) && (profile->flags==1 || profile->flags==3 || profile->flags==4 || profile->flags==5));
+      if(profile && (profile->flags==1 || profile->flags==3 || profile->flags==4 || profile->flags==5))for(const auto &e:s.events)
         if(e.type!=95 && !dxmt::cs2trace::profileEventAllowed(dxmt::cs2trace::Profile(profile->flags),e.type,e.start,e.end))profileValid=false;
-      if(profile && profile->flags==4) {
+      if(profile && (profile->flags==4 || profile->flags==5)) {
         uint64_t context=0,capMarkers=0;
-        for(const auto &e:s.events)if((e.type>=80 && e.type<=89) || e.type==93 || e.type==94 || (e.type>=104 && e.type<=107) || (e.type>=111 && e.type<=119)) {
+        for(const auto &e:s.events)if(profile->flags==5?dxmt::cs2trace::combinedDetailType(e.type):((e.type>=80 && e.type<=89) || e.type==93 || e.type==94 || (e.type>=104 && e.type<=107) || (e.type>=111 && e.type<=119))) {
           if(e.type==89 && e.flags==1) {
             capMarkers++;
             if(e.object || !e.thread || !e.start || e.start!=e.end || e.padding0!=profile->padding0 || e.padding1)profileValid=false;
@@ -157,19 +161,23 @@ int main(int argc,char **argv) {
         }
         if(context>profile->padding0 || capMarkers>1 || (capMarkers && (!profile->padding0 || context!=profile->padding0)))profileValid=false;
       }
-      if(profile && profile->flags==3) {
+      if(profile && (profile->flags==3 || profile->flags==5)) {
         std::set<std::tuple<uint32_t,uint64_t,uint64_t>> identities;
         for(const auto &e:s.events)if(e.type>=96 && e.type<=99) {
           if(!presentationProbeValid(e) || !identities.emplace(e.type,e.object,e.padding0).second)profileValid=false;
         }
       }
       for(const auto &e:s.events)if(!compilerProbeValid(e))profileValid=false;
-      if(!completionCardsValid(s.events,profile && profile->flags==4))profileValid=false;
+      if(!completionCardsValid(s.events,profile && (profile->flags==4 || profile->flags==5)))profileValid=false;
+      std::set<uint64_t> helperSerials;
+      for(const auto &e:s.events)if(e.type==120) {
+        if(!profile || profile->flags!=5 || !helperProbeValid(e) || !helperSerials.emplace(e.object).second)profileValid=false;
+      }
       std::set<std::tuple<uint64_t,uint64_t,uint32_t>> retirementTypes;
       std::map<std::pair<uint64_t,uint64_t>,std::pair<uint64_t,uint32_t>> retirementBindings;
       std::map<std::pair<uint64_t,uint64_t>,std::map<uint32_t,const trace::Decoded*>> retirementPhases;
       for(const auto &e:s.events)if((e.type>=108 && e.type<=110) || (e.type>=117 && e.type<=119)) {
-        if(e.type>=117 && (!profile || profile->flags!=4))profileValid=false;
+        if(e.type>=117 && (!profile || (profile->flags!=4 && profile->flags!=5)))profileValid=false;
         if(!retirementProbeValid(e) || !retirementTypes.emplace(e.object,e.padding0,e.type).second)profileValid=false;
         auto [binding,inserted]=retirementBindings.emplace(std::make_pair(e.object,e.padding0),std::make_pair(e.padding1,e.thread));
         if(!inserted && binding->second!=std::make_pair(e.padding1,e.thread))profileValid=false;
@@ -223,8 +231,9 @@ int main(int argc,char **argv) {
       const auto profileLabel=!profileMarkers?"unspecified-full-or-legacy":profileMarkers==1 && profileMarkerValid(*profile)?profileName(profile->flags):"malformed-profile-metadata";
       for(const auto &e:s.events) {
         std::cout<<"{\"kind\":\"event\",\"index\":"<<e.index<<",\"generation\":"<<e.generation<<",\"type\":"<<e.type<<",\"thread\":"<<e.thread<<",\"flags\":"<<e.flags<<",\"object\":"<<e.object<<",\"start\":"<<e.start<<",\"end\":"<<e.end<<",\"padding0\":"<<e.padding0<<",\"padding1\":"<<e.padding1<<",\"clock_domain\":"<<json(clockDomain(e.type))<<",\"duration_ns\":";
-        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && e.type!=99 && !(e.type>=100 && e.type<=103) && probe::valid(e) && compilerProbeValid(e) && retirementProbeValid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
+        if(e.type!=33 && e.type!=61 && e.type!=62 && !(e.type>=70 && e.type<=78) && !(e.type>=80 && e.type<=85) && e.type!=89 && e.type!=91 && e.type!=92 && e.type!=95 && e.type!=99 && !(e.type>=100 && e.type<=103) && probe::valid(e) && compilerProbeValid(e) && retirementProbeValid(e) && helperProbeValid(e) && e.end>=e.start && std::string(clockDomain(e.type))!="unknown" && (e.type!=24 || (e.flags==4 && e.start && e.end)))std::cout<<(e.end-e.start);else std::cout<<"null";
         if((e.type>=108 && e.type<=110) || (e.type>=117 && e.type<=119))std::cout<<",\"event_name\":"<<json(e.type==108?"Idle retirement sweep":e.type==109?"Ring allocator reclamation aggregate":e.type==110?"Command chunk reset":e.type==117?"Command list destruction":e.type==118?"Reference tracker clear":"Native command buffer release")<<",\"retirement_identity_valid\":"<<(retirementProbeValid(e)?"true":"false")<<",\"queue\":"<<e.object<<",\"chunk_sequence\":"<<e.padding0<<",\"queue_frame\":"<<e.padding1;
+        if(e.type==120)std::cout<<",\"event_name\":\"Helper compilation CPU wall scope\",\"helper_identity_valid\":"<<(helperProbeValid(e)?"true":"false")<<",\"span_serial\":"<<e.object<<",\"helper_route_code\":"<<e.padding0<<",\"owner_birth_serial\":"<<e.padding1<<",\"helper_result\":"<<json(e.flags==1?"success":e.flags==2?"failure":"unknown");
         if(e.type>=111 && e.type<=116)std::cout<<",\"event_name\":\"Slow completion card part\",\"completion_card_part\":"<<(e.type-110);
         if(e.type>=104 && e.type<=107)std::cout<<",\"event_name\":"<<json(e.type==104?"Cache reader mutex acquisition wait":e.type==105?"AIR conversion":e.type==106?"Metal newLibrary":"Metal newFunction")<<",\"compiler_identity_valid\":"<<(compilerProbeValid(e)?"true":"false");
         if(e.type>=96 && e.type<=99)std::cout<<",\"event_name\":"<<json(e.type==96?"Queue frame-latency wait":e.type==97?"Swapchain admission wait":e.type==98?"Drawable acquire":"Queue/native frame binding")<<",\"presentation_identity_valid\":"<<(presentationProbeValid(e)?"true":"false");

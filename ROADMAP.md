@@ -1,5 +1,51 @@
 # VibeWine roadmap
 
+## Current frontier implementation campaign — 28 October 2026
+
+User authorized a large implementation wave after the independent124-card tree
+and Pro audit admission. Root owns the Git indices, integration, final builds
+and review; isolated editors return patches/evidence and do not install or push.
+Frozen start: hub `f8f79ad1`, DXMT `8cf59a01`, Wine `5ed4c56b`. Detailed admitted
+research is retained privately under `outputs/fps-frontier-20261028`, including
+the Pro-summary admission and exact source/prototype limits. This section is
+the single current campaign ledger; earlier dated sections remain history.
+
+Terminal checkpoint: a coherent committed source wave, meaningful old-fail/new-pass
+checks, complete matched renderer build, affected Wine production targets built,
+bounded and readable metric profiles, independent review and explicit remaining
+GPU/game/pilot limits. Preserve the installed playable runtime/native1080,
+saves, network and prior evidence. No DS3 launch or install belongs to this
+source checkpoint. Do not promise FPS from source/fixture checks. Push remains
+separate from local verified commits.
+
+| ID | Deliverable / owner | Dependencies and acceptance | Current state |
+|---|---|---|---|
+| F0 | Full Pro materials / root | Retrieve if browser available; inspect unknown probe code in quarantine before any execution; pasted-source findings already independently admitted | accepted; full60-card HTML and20-member CPU ZIP read as inert data; stronger local fixtures cover probe scope |
+| F1 | DXMT staging initial data / isolated editor | Actual production creation/copy body; 1D logical payload, guarded mips/slices and unchanged2D/3D controls | accepted; integrated fixtures and both matched renderer builds pass |
+| F2 | CB range reset and exact binding continuation / isolated editor | Valid range→same buffer whole view, offset+dirty+all stage/replay semantics; then scoped exact VB/SRV invalidation if supported | accepted; integrated fixtures and both matched renderer builds pass |
+| F3 | Query status-only and ready-wrapper lifecycle / isolated editor | Immediate GetData no-write across kinds; generation reuse only without pending completion mutation; query publication regressions | accepted; integrated fixtures and both matched renderer builds pass |
+| F4 | PSO key/output normalization and single-flight parse / isolated editor | Ordinary-only key; coverage/GS/TS/SO controls; concurrent success/failure/shutdown without global parse serialization | accepted; integrated fixtures and both matched renderer builds pass |
+| F5 | Wine alert descriptor ownership / isolated editor | MSync index not closed as fd; real-fd backends retain cleanup; normal/terminal thread cleanup | accepted; integrated fixtures and both matched renderer builds pass |
+| F6 | MSync page table, Mach rights and failures / isolated editor | Stable reader lifetime/publication; invocation-owned rights; deterministic growth/failure/progress tests; existing wait semantics preserved | table-only accepted and built; broader RPC rights/failure candidate held after3 Rosetta aggregate failures (two unclassified), not integrated |
+| F7 | Bulk depth/stencil data path / isolated editor | Identical bits/conversion/strides/bounds; transactional reserve/fill/publish and OOM; bridge-call reduction separate from SIMD/storage changes | accepted; integrated fixtures and both matched renderer builds pass |
+| F8 | Combined bounded metrics / isolated editor | New explicit combined coverage, old profiles unchanged; frame joins plus helper/TS spans; known clock/loss/cap semantics and disabled overhead | accepted; integrated fixtures and both matched renderer builds pass |
+| F9 | Tile helper failure correctness / isolated editor | Real dispatch/getPSO/resolve path; never execute dependent work unsynchronized; valid fallback/error and retry/lifetime | accepted; integrated fixtures and both matched renderer builds pass |
+| F10 | Metal4 compiler-only and ARM compiler pilot / bounded pilot owner | Reuse existing seams and external architecture read-only; local compile/capability and narrow prototype where supported, no fake integration or full engine migration | accepted independent pilots; Metal4 GPU image parity and ARM AIR/reflection parity; no runtime integration/FPS claim |
+| F11 | Integrate/review/build / root | Admit each owned patch and exact checks, meaningful cross-boundary regressions; matched compiler/PE/native/helper; affected Wine targets; no weakening checks | accepted source checkpoint; independent review,30new/51existing DXMT +14Wine commands, both161-target renderer builds and7Wine targets pass; coherent local commits, installed runtime unchanged |
+
+General fixes are separate from experiments and application policy. Radical
+graph/ICB/ARM64EC/fullMetal4 migrations remain follow-on design/pilot branches;
+this campaign must not claim them implemented through a stub. If a proposed
+algorithm cannot safely pass its acceptance, record the exact failed premise and
+repair or retain its existing fallback rather than silently changing the API.
+
+Private campaign owner: root frontier implementation20261028. Scope is exact
+`outputs/frontier-wave-20261028` and attached isolated checkouts. Raw check logs
+seven days/32MiB per branch, summaries30days/8MiB, build logs16MiB and fresh build
+products within40GiB total with20GiB free reserve. Active integration, unresolved
+bugs, selected candidates/recovery and explicit holds exclude cleanup. Manual
+exact-owner/reference/hold cleanup only; no cleaner/service or user-data capture.
+
 The [26 October initializer repair](docs/diagnostics/initializer-repair-20261026.md)
 closes the reproduced reserve/fill/publish transaction and checked creation
 callers, including consumer preflight and fresh failure-path native ownership.
