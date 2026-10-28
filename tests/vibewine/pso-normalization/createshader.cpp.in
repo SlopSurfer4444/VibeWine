@@ -1,0 +1,355 @@
+// SPDX-License-Identifier: MIT
+// Actual production methods are inserted below unchanged; only their enclosing
+// dependencies and the SM50 API boundary are adapted for this CPU fixture.
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstdlib>
+#include <cstring>
+#include <future>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <new>
+#include <shared_mutex>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include "airconv_public.h"
+#include "sha1/sha1_util.hpp"
+#include "d3d11_shader_singleflight.hpp"
+
+using namespace std::chrono_literals;
+static void require(bool ok, const char *why) {
+  if (!ok) {
+    std::cerr << "CONTRACT: " << why << '\n';
+    std::exit(1);
+  }
+}
+template <typename Predicate> static void await(Predicate &&predicate, const char *why) {
+  const auto deadline = std::chrono::steady_clock::now() + 5s;
+  while (!predicate()) {
+    require(std::chrono::steady_clock::now() < deadline, why);
+    std::this_thread::yield();
+  }
+}
+
+enum class Mode { success, no_args, no_error, owned_error, argument_allocfail,
+                  initialize_throw, wrapper_allocfail, error_log_throw,
+                  error_message_throw, debug_allocfail, persistent_log_throw };
+struct Counts {
+  int initialize = 0, primary_initialize = 0, arguments = 0, success = 0;
+  int destroy = 0, errors = 0, message = 0, free_error = 0, logs = 0;
+  int allocated = 0, freed = 0;
+};
+struct Mock {
+  std::mutex mutex;
+  std::condition_variable ready;
+  Mode mode;
+  bool released = false;
+  Counts counts;
+  std::unordered_set<void *> shaders, errors, allocations;
+  std::atomic<bool> persistent_log_failure = false;
+  explicit Mock(Mode mode) : mode(mode) {}
+  Counts snapshot() { std::lock_guard lock(mutex); return counts; }
+  void release() {
+    std::lock_guard lock(mutex);
+    released = true;
+    ready.notify_all();
+  }
+  void retry() { std::lock_guard lock(mutex); mode = Mode::success; }
+};
+static Mock *active = nullptr;
+static thread_local int fail_malloc_after = -1;
+static thread_local bool fail_wrapper = false, fail_log = false, fail_message = false;
+static thread_local std::atomic<int> *admitted = nullptr;
+
+// Delegate real full SHA1 equality and observe only waiter admission. This
+// seam changes neither the extracted CreateShader method nor key semantics.
+struct ObservedDigestEqual {
+  bool operator()(const dxmt::Sha1Digest &a, const dxmt::Sha1Digest &b) const noexcept {
+    bool same = std::equal_to<dxmt::Sha1Digest>{}(a, b);
+    if (same && admitted) {
+      ++*admitted;
+      admitted = nullptr;
+    }
+    return same;
+  }
+};
+static void *fixture_malloc(size_t size) {
+  if (fail_malloc_after == 0) {
+    fail_malloc_after = -1;
+    return nullptr;
+  }
+  if (fail_malloc_after > 0)
+    --fail_malloc_after;
+  auto *pointer = std::malloc(size);
+  if (pointer) {
+    std::lock_guard lock(active->mutex);
+    require(active->allocations.insert(pointer).second, "new reflection/debug allocation ownership");
+    ++active->counts.allocated;
+  }
+  return pointer;
+}
+static void fixture_free(void *pointer) {
+  if (pointer) {
+    std::lock_guard lock(active->mutex);
+    require(active->allocations.erase(pointer) == 1, "reflection/debug storage freed exactly once");
+    ++active->counts.freed;
+  }
+  std::free(pointer);
+}
+template <typename... Values> static void error_log(const Values &...values) {
+#if defined(__cpp_exceptions)
+  if (fail_log || active->persistent_log_failure) {
+    fail_log = false;
+    throw std::bad_alloc();
+  }
+#endif
+  std::ostringstream text;
+  (text << ... << values);
+  require(!text.str().empty(), "production error message is present");
+  std::lock_guard lock(active->mutex);
+  ++active->counts.logs;
+}
+#define ERR(...) error_log(__VA_ARGS__)
+
+struct NativeShader { int serial; };
+struct NativeError {};
+extern "C" int SM50Initialize(const void *bytes, size_t size, sm50_shader_t *shader,
+                              MTL_SHADER_REFLECTION *reflection, sm50_error_t *error) {
+  require(size == 4 && bytes && shader && reflection && error, "actual initializer receives borrowed bytecode and output addresses");
+  const auto first = static_cast<const uint8_t *>(bytes)[0];
+  Mode mode;
+  {
+    std::unique_lock lock(active->mutex);
+    ++active->counts.initialize;
+    if (first == 1)
+      ++active->counts.primary_initialize;
+    mode = active->mode;
+    active->ready.notify_all();
+    if (first == 1)
+      active->ready.wait(lock, [] { return active->released; });
+  }
+  *error = nullptr;
+#if defined(__cpp_exceptions)
+  if (mode == Mode::initialize_throw)
+    throw std::runtime_error("mock initialization exception");
+#endif
+  if (mode == Mode::no_error)
+    return 1;
+  if (mode == Mode::owned_error || mode == Mode::error_log_throw || mode == Mode::error_message_throw ||
+      mode == Mode::persistent_log_throw) {
+    auto *owned = new NativeError;
+    {
+      std::lock_guard lock(active->mutex);
+      require(active->errors.insert(owned).second, "new error ownership");
+      ++active->counts.errors;
+    }
+    *error = owned;
+    fail_log = mode == Mode::error_log_throw;
+    fail_message = mode == Mode::error_message_throw;
+    active->persistent_log_failure = mode == Mode::persistent_log_throw;
+    return 1;
+  }
+  auto *native = new NativeShader;
+  {
+    std::lock_guard lock(active->mutex);
+    native->serial = ++active->counts.success;
+    require(active->shaders.insert(native).second, "new native shader ownership");
+  }
+  *shader = native;
+  *reflection = {};
+  if (mode != Mode::no_args) {
+    reflection->NumConstantBuffers = 1;
+    reflection->NumArguments = 2;
+  }
+  fail_malloc_after = mode == Mode::argument_allocfail ? 0 : mode == Mode::debug_allocfail ? 1 : -1;
+  fail_wrapper = mode == Mode::wrapper_allocfail;
+  return 0;
+}
+extern "C" void SM50Destroy(sm50_shader_t shader) {
+  {
+    std::lock_guard lock(active->mutex);
+    require(active->shaders.erase(shader) == 1, "native shader destroyed exactly once");
+    ++active->counts.destroy;
+  }
+  delete static_cast<NativeShader *>(shader);
+}
+extern "C" void SM50GetArgumentsInfo(sm50_shader_t shader, MTL_SM50_SHADER_ARGUMENT *buffers,
+                                     MTL_SM50_SHADER_ARGUMENT *arguments) {
+  std::lock_guard lock(active->mutex);
+  require(active->shaders.count(shader) == 1 && buffers && arguments, "argument reflection receives live shader and allocated storage");
+  ++active->counts.arguments;
+  buffers[0] = {};
+  buffers[0].SM50BindingSlot = 11;
+  arguments[0] = {};
+  arguments[0].SM50BindingSlot = 21;
+  arguments[1] = {};
+  arguments[1].SM50BindingSlot = 22;
+}
+extern "C" size_t SM50GetErrorMessage(sm50_error_t error, char *buffer, size_t size) {
+  {
+    std::lock_guard lock(active->mutex);
+    require(active->errors.count(error) == 1 && buffer && size >= 5, "error message uses live owned object");
+    ++active->counts.message;
+  }
+#if defined(__cpp_exceptions)
+  if (fail_message) {
+    fail_message = false;
+    throw std::bad_alloc();
+  }
+#endif
+  std::memcpy(buffer, "error", 5);
+  return 5;
+}
+extern "C" void SM50FreeError(sm50_error_t error) {
+  {
+    std::lock_guard lock(active->mutex);
+    require(active->errors.erase(error) == 1, "native error freed exactly once");
+    ++active->counts.free_error;
+  }
+  delete static_cast<NativeError *>(error);
+}
+
+#define malloc fixture_malloc
+#define free fixture_free
+namespace dxmt {
+class PipelineCache {
+public:
+  class CachedSM50Shader {
+    PipelineCache *cache;
+    sm50_shader_t shader = nullptr;
+    Sha1Digest sha1_;
+    MTL_SHADER_REFLECTION reflection_;
+// ARGUMENT_FIELD
+  public:
+    static void *operator new(size_t size) {
+#if defined(__cpp_exceptions)
+      if (fail_wrapper) {
+        fail_wrapper = false;
+        throw std::bad_alloc();
+      }
+#endif
+      return ::operator new(size);
+    }
+    static void operator delete(void *pointer) noexcept { ::operator delete(pointer); }
+// CONSTRUCTOR
+// DESTRUCTOR
+// INITIALIZED
+// DEBUG_FIELDS
+    bool fixture_arguments() const {
+      return reflection_.NumConstantBuffers == 1 && reflection_.NumArguments == 2 && arguments_info_buffer &&
+             arguments_info_buffer[0].SM50BindingSlot == 11 && arguments_info_buffer[1].SM50BindingSlot == 21 &&
+             arguments_info_buffer[2].SM50BindingSlot == 22;
+    }
+    bool fixture_no_arguments() const {
+      return !arguments_info_buffer && !reflection_.NumConstantBuffers && !reflection_.NumArguments;
+    }
+    sm50_shader_t fixture_handle() const { return shader; }
+  };
+// STORAGE
+// CREATE_SHADER
+};
+} // namespace dxmt
+#undef malloc
+#undef free
+
+static void run(Mode mode) {
+  Mock mock(mode);
+  active = &mock;
+  const std::array<uint8_t, 4> a{1, 2, 3, 4}, b{5, 6, 7, 8};
+  constexpr int waiter_count = 12;
+  {
+    dxmt::PipelineCache cache;
+    auto owner = std::async(std::launch::async, [&] { return cache.CreateShader(a.data(), a.size()); });
+    await([&] { return mock.snapshot().primary_initialize == 1; }, "primary factory enters SM50");
+    std::atomic<int> count = 0;
+    std::vector<std::future<dxmt::PipelineCache::CachedSM50Shader *>> waiters;
+    for (int i = 0; i < waiter_count; ++i)
+      waiters.push_back(std::async(std::launch::async, [&] {
+        admitted = &count;
+        return cache.CreateShader(a.data(), a.size());
+      }));
+#ifdef HISTORICAL_STORAGE
+    await([&] { return mock.snapshot().primary_initialize == waiter_count + 1; }, "historical duplicate initializers enter SM50");
+#else
+    await([&] { return count == waiter_count; }, "production waiters join the pending SHA1 generation");
+#endif
+    for (auto &waiter : waiters)
+      require(waiter.wait_for(0s) != std::future_status::ready, "actual CreateShader cannot publish before parser completion");
+    dxmt::PipelineCache::CachedSM50Shader *distinct = nullptr;
+    if (mode == Mode::success) {
+      auto other = std::async(std::launch::async, [&] { return cache.CreateShader(b.data(), b.size()); });
+      require(other.wait_for(5s) == std::future_status::ready, "actual CreateShader distinct SHA1 progresses while first parser blocks");
+      distinct = other.get();
+      require(distinct && distinct->fixture_arguments(), "distinct actual SHA1 initializes its own native shader");
+    }
+    mock.release();
+    auto *first = owner.get();
+    const bool success = mode == Mode::success || mode == Mode::no_args;
+    for (auto &waiter : waiters)
+      require(waiter.get() == first, "actual CreateShader joined callers share one outcome");
+    auto counts = mock.snapshot();
+    require(counts.primary_initialize == 1, "same-key concurrent CreateShader initializes once");
+    if (success) {
+      require(first && (mode == Mode::no_args ? first->fixture_no_arguments() : first->fixture_arguments()),
+              "actual wrapper has initialized reflection storage");
+      if (distinct)
+        require(first != distinct && first->fixture_handle() != distinct->fixture_handle(), "distinct SHA1 owns distinct wrapper and native handle");
+      require(cache.CreateShader(a.data(), a.size()) == first && mock.snapshot().initialize == counts.initialize,
+              "actual warm SHA1 hit bypasses native initializer");
+    } else {
+      require(!first, "failed native initialization or allocation is not published");
+      require(counts.destroy == counts.success, "failed wrapper allocation releases every acquired native handle");
+      if (mode == Mode::argument_allocfail)
+        require(counts.arguments == 0, "argument malloc failure prevents reflection write through null");
+      if (mode == Mode::owned_error || mode == Mode::error_log_throw || mode == Mode::error_message_throw ||
+          mode == Mode::persistent_log_throw)
+        require(counts.errors == 1 && counts.message == 1 && counts.free_error == 1,
+                "owned error freed once including message or logger exception");
+      else
+        require(counts.errors == 0 && counts.message == 0 && counts.free_error == 0, "null error never read or freed");
+      mock.persistent_log_failure = false;
+      mock.retry();
+      auto *retried = cache.CreateShader(a.data(), a.size());
+      require(retried && retried->fixture_arguments() && mock.snapshot().primary_initialize == 2,
+              "actual failed flight permits later successful retry");
+    }
+  }
+  const auto counts = mock.snapshot();
+  require(counts.destroy == counts.success && mock.shaders.empty() && mock.errors.empty(),
+          "actual wrapper destructor releases native shaders and error ownership");
+  require(counts.allocated == counts.freed && mock.allocations.empty(),
+          "actual wrapper releases all reflection and debug allocations");
+  std::cout << "PASS actual CreateShader: concurrent same-key result, retry, distinct SHA1, wrapper and error ownership; mode="
+            << static_cast<int>(mode) << " init=" << counts.initialize << " destroy=" << counts.destroy << '\n';
+  active = nullptr;
+}
+
+int main(int argc, char **argv) {
+  require(argc == 2, "select one fixture case");
+  const std::string name = argv[1];
+  if (name == "success") run(Mode::success);
+  else if (name == "no-args") run(Mode::no_args);
+  else if (name == "no-error") run(Mode::no_error);
+  else if (name == "owned-error") run(Mode::owned_error);
+  else if (name == "argument-allocation") run(Mode::argument_allocfail);
+#if defined(__cpp_exceptions)
+  else if (name == "initialize-throw") run(Mode::initialize_throw);
+  else if (name == "wrapper-allocation") run(Mode::wrapper_allocfail);
+  else if (name == "error-log-throw") run(Mode::error_log_throw);
+  else if (name == "error-message-throw") run(Mode::error_message_throw);
+  else if (name == "persistent-log-throw") run(Mode::persistent_log_throw);
+#endif
+#ifdef DXMT_DEBUG
+  else if (name == "debug-allocation") run(Mode::debug_allocfail);
+#endif
+  else require(false, "known fixture case");
+}

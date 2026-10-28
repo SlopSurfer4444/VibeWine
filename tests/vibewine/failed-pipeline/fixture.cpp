@@ -127,7 +127,7 @@ struct ArgumentEncodingContext {
     return compute_commands.back();
   }
   void bumpVisibilityResultOffset() { ++visibility; }
-  void resolveRenderPassBarrier() { ++render_barriers; }
+  bool resolveRenderPassBarrier() { ++render_barriers; return true; }
   void resolveComputePassBarrier() { ++compute_barriers; }
   std::pair<uintptr_t, uint64_t> currentIndexBuffer() { ++accesses; return {90, 0}; }
   template <PipelineStage stage = PipelineStage::Compute, typename... Args>

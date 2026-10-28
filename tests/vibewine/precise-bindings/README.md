@@ -1,13 +1,14 @@
-# Precise constant-buffer invalidation after DISCARD
+# Precise buffer-binding invalidation after DISCARD
 
 `DXMT_PRECISE_BINDINGS=1` makes immediate/deferred dynamic-buffer
-`WRITE_DISCARD` invalidate only currently bound constant-buffer slots referring
-to that buffer's canonical `Buffer` identity. The helper scans existing bound
+`WRITE_DISCARD` invalidate only currently bound constant-buffer, vertex-buffer
+and buffer-SRV slots referring to that buffer's canonical `Buffer` identity. The helper scans existing bound
 entries. It has no dependency registry, persistent state, allocations or retained
 references. Undefined/zero selection retains the historical broad invalidation.
 The enclosing Meson option is `vibewine_precise_bindings`, default `false`.
-SRV/VB invalidation, renaming, suballocation, shader/encoder invalidation and
-resource-table encoding are unchanged. There is no application-name check.
+Texture SRVs do not match a buffer DISCARD. Dynamic texture invalidation,
+renaming, suballocation, shader/encoder invalidation and resource-table encoding
+are unchanged. There is no application-name check.
 
 This only avoids rebuilding unrelated stage tables. A referenced changed CB
 still rebuilds its complete stage table. The dependency scan itself has a cost;
@@ -24,7 +25,11 @@ The runner copies these production bodies verbatim into a temporary fixture:
 
 - Both complete dynamic-buffer `Map` branches, including DISCARD error handling
   and `NO_OVERWRITE`; both complete `MapDynamicBuffer` methods.
-- The precise helper, `CONSTANT_BUFFER_B` representation and redundancy trait.
+- All three precise helpers, actual CB/VB/SRV representations and redundancy traits.
+- Full `encodeVertexBuffers`, `bindVertexBuffer`, buffer-SRV `bindBuffer`, the
+  complete production SRV serializer switch case and its command-emission tail.
+  Sampler/UAV cases are outside this extraction; texture access endpoints are
+  rejection adapters because these scenarios use raw and typed buffer SRVs.
 - `DynamicBuffer` class and constructor/destructor, allocation, rename and
   suballocation methods, including its completed-allocation trimming helper.
 - `SetConstantBuffer`, argument preallocation, shader-stage upload, CB binding,
@@ -37,13 +42,19 @@ list container and Metal command/access/residency boundary are CPU adapters.
 The immediate adapter consumes captures once; the deferred adapter keeps them
 for replay, matching the two production `forward_rc` contracts.
 
-Twenty-seven scenarios cover every shader stage on immediate/deferred paths;
+Fifty-one scenarios cover every shader stage on immediate/deferred paths;
 bound A, unrelated B and unbound C; distinct resource wrappers sharing one
 canonical buffer; same-stage and cross-stage aliases; changing constant offsets;
 six successive DISCARDs across suballocations and allocation renames; repeated
 deferred replay; interleaved immediate/deferred use of the same resource; null
 unbind/dummy/rebind; bound but unreflected slot 13; preservation of existing
-unrelated dirty bits; failed Maps; and unchanged SRV/VB invalidation. Observations
+unrelated dirty bits; failed Maps; and exact buffer SRV/VB invalidation.
+Twenty-four added scenarios use raw and typed buffer SRVs at slots 0/1/64/127,
+distinct views/wrappers of one Buffer,
+unrelated resources, a texture-view placeholder, unused and unbound aliases,
+both context paths and all stages. They exercise actual SRV upload selection,
+raw addresses, typed allocation IDs/suballocation metadata and full production
+VB serialization through successive DISCARDs. Observations
 include exact dirty bits, stage-table counts, retained data read through encoded
 addresses, and access/residency call counts for every materialized table.
 
@@ -53,7 +64,12 @@ source `e11476e33117b454bac60b997532f9823e34855b`, compiled with the enabled def
 must fail the precise contract. Connected mutations must also fail naturally:
 missing/wrong dependencies, first-alias-only invalidation, dirtying a complete
 slot set, missing immediate/deferred calls, omitted rename/suballocation
-operations, and omitted residency. A sanitizer error or compilation failure
+operations, and omitted residency. The 28 October source `8cf59a01` separately
+must fail
+the new exact SRV/VB contract. Connected new negatives remove VB/SRV dependence,
+broaden their dirty sets, stop after the first SRV alias, drop upper-qword SRVs,
+remove either immediate/deferred resource call site, or remove raw SRV residency.
+A sanitizer error or compilation failure
 cannot count as an accepted negative control.
 
 The runner prints source, fixture and runner hashes with every outcome. One
@@ -70,7 +86,15 @@ hazard optimizer, real residency and actual GPU execution are outside this CPU
 fixture. The unrelated idle-retirement experiment is disabled in this fixture;
 its integration with this option requires the matched combined build/tests.
 CPU data-address checks establish the covered ordering, not displayed frames or
-full D3D11 behavior. Real PE compilation with production headers and both gate
+full D3D11 behavior. VB upload selection in the added scenarios is a CPU adapter;
+actual `UpdateVertexBuffer` and command-list lifecycle continue to be checked by
+`../exact-setters/run.py`. The added SRV path uses actual shader upload selection,
+SRV-case serialization and emission; sampler/UAV cases, real native typed-view
+creation, texture serialization, hazard validation and GPU execution are excluded.
+The same-buffer whole-range reset has its own `../cb-range-reset/run.py` regression;
+none of these CPU fixtures proves shader NumConstants/OOB-zero enforcement.
+Simultaneous multi-stage SRV aliases and unrelated resource B data readback are
+not exercised by the added SRV scenarios; their per-stage dirty masks are checked. Real PE compilation with production headers and both gate
 values is a separate check; the integration owner owns matched builds and GPU
 regressions. Installation and game performance acceptance remain separate.
 

@@ -1,0 +1,225 @@
+#include <array>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <variant>
+#include <vector>
+#include "airconv_public.h"
+#include "util_hash.hpp"
+#include "sha1/sha1_util.hpp"
+#include "d3d11_pso_normalization.hpp"
+static void require(bool ok, const char *why) {
+  if (!ok) { std::cerr << "CONTRACT: " << why << '\n'; std::exit(1); }
+}
+using UINT = unsigned;
+// ENUMS
+namespace dxmt { class Shader; struct InputLayout {}; using mutex = std::mutex; }
+using ManagedShader = dxmt::Shader *;
+using ManagedInputLayout = dxmt::InputLayout *;
+namespace dxmt {
+// VARIANTS
+}
+namespace std {
+// VARIANT_HASH
+}
+struct BlendTarget {
+  uint32_t RenderTargetWriteMask, BlendEnable, LogicOpEnable, BlendOp,
+      BlendOpAlpha, SrcBlend, SrcBlendAlpha, DestBlend, DestBlendAlpha, LogicOp;
+};
+struct D3D11_BLEND_DESC1 {
+  uint32_t IndependentBlendEnable, AlphaToCoverageEnable;
+  BlendTarget RenderTarget[8];
+};
+struct IMTLD3D11BlendState {
+  void GetDesc1(D3D11_BLEND_DESC1 *) const { require(false, "unexpected blend adapter call"); }
+};
+struct IMTLD3D11StreamOutputLayout {};
+// PSO_KEY
+namespace std {
+// PSO_HASH_EQUAL
+}
+struct CollisionHash {
+  template <typename Key> size_t operator()(const Key &) const { return 0; }
+};
+#ifdef FORCE_COLLISIONS
+template <typename Key> using FixtureHash = CollisionHash;
+#else
+template <typename Key> using FixtureHash = std::hash<Key>;
+#endif
+#define D3D11_ASSERT(x) require(x, "production PSO insertion assertion")
+#define ERR(...) require(false, "unexpected compile failure")
+namespace dxmt {
+enum class task_urgency { speculative, demand };
+struct Scheduler {
+  size_t submissions = 0, promotions = 0;
+  template <typename T> void submit(T *, task_urgency) { ++submissions; }
+  template <typename T> void promote(T *) { ++promotions; }
+};
+struct MTLD3D11Device {};
+struct MTLCompiledGraphicsPipeline { MTL_GRAPHICS_PIPELINE_DESC native_desc; };
+static size_t native_creations = 0;
+static std::unique_ptr<MTLCompiledGraphicsPipeline>
+CreateGraphicsPipeline(MTLD3D11Device *, MTL_GRAPHICS_PIPELINE_DESC *desc) {
+  ++native_creations;
+  return std::make_unique<MTLCompiledGraphicsPipeline>(MTLCompiledGraphicsPipeline{*desc});
+}
+struct CompiledShader {
+  Sha1Digest digest{};
+  virtual ~CompiledShader() = default;
+  virtual void run() {}
+};
+class Shader {
+public:
+  MTL_SHADER_REFLECTION reflection_{};
+  Sha1Digest source_sha{};
+  MTL_SHADER_REFLECTION &reflection() { return reflection_; }
+  const Sha1Digest &sha1() { return source_sha; }
+  sm50_shader_t handle() { return this; }
+};
+static SM50_SHADER_PSO_PIXEL_SHADER_DATA observed{};
+extern "C" int SM50Compile(sm50_shader_t, SM50_SHADER_COMPILATION_ARGUMENT_DATA *raw,
+                          const char *, sm50_bitcode_t *result, sm50_error_t *) {
+  observed = *reinterpret_cast<SM50_SHADER_PSO_PIXEL_SHADER_DATA *>(raw);
+  *result = &observed; return 0;
+}
+extern "C" size_t SM50GetErrorMessage(sm50_error_t, char *, size_t) { return 0; }
+extern "C" void SM50FreeError(sm50_error_t) {}
+static SM50_SHADER_FLAG getGlobalShaderFlag() { return {}; }
+template <typename Proc> class GeneralShaderCompileTask final : public CompiledShader {
+  Proc proc;
+public:
+  GeneralShaderCompileTask(MTLD3D11Device *, ManagedShader, Proc &&p, std::string, const Sha1Digest &d)
+      : proc(std::forward<Proc>(p)) { digest = d; }
+  void run() override { SM50_SHADER_COMMON_DATA common{}; require(bool(proc("fixture", &common)), "actual pixel compile proc"); }
+};
+template <typename Variant> std::unique_ptr<CompiledShader>
+CreateVariantShader(MTLD3D11Device *, ManagedShader, Variant) { return std::make_unique<CompiledShader>(); }
+// PIXEL_FACTORY
+class PipelineCache {
+public:
+  MTLD3D11Device *device = nullptr;
+  std::unordered_map<MTL_GRAPHICS_PIPELINE_DESC, std::unique_ptr<MTLCompiledGraphicsPipeline>, FixtureHash<MTL_GRAPHICS_PIPELINE_DESC>> pipelines_;
+  mutex mutex_;
+  Scheduler scheduler_;
+// GRAPHICS_LOOKUP
+  class CachedSM50Shader : public Shader {
+  public:
+    PipelineCache *cache;
+    std::unordered_map<ShaderVariant, std::unique_ptr<CompiledShader>, FixtureHash<ShaderVariant>> variants;
+    mutex variants_mutex;
+    explicit CachedSM50Shader(PipelineCache *c, uint32_t outputs) : cache(c) { reflection_.PixelShader.ValidRenderTargets = outputs; }
+// VARIANT_LOOKUP
+  };
+};
+}
+using namespace dxmt;
+static MTL_GRAPHICS_PIPELINE_DESC base_key() {
+  MTL_GRAPHICS_PIPELINE_DESC d{};
+  d.NumColorAttachments = 2;
+  d.ColorAttachmentFormats[0] = WMTPixelFormatRGBA8Unorm;
+  d.ColorAttachmentFormats[1] = WMTPixelFormatRGBA16Float;
+  d.SampleCount = 1; d.SampleMask = ~0u; d.RasterizationEnabled = true;
+  return d;
+}
+static MTLCompiledGraphicsPipeline *lookup(PipelineCache &cache, MTL_GRAPHICS_PIPELINE_DESC &d) {
+  MTLCompiledGraphicsPipeline *result = nullptr; cache.GetGraphicsPipeline(&d, &result); return result;
+}
+static void ordinary() {
+  PipelineCache cache;
+  auto d = base_key();
+  auto *first = lookup(cache, d);
+  for (auto format : {SM50_INDEX_BUFFER_FORMAT_NONE, SM50_INDEX_BUFFER_FORMAT_UINT16, SM50_INDEX_BUFFER_FORMAT_UINT32}) {
+    d.IndexBufferFormat = format;
+    require(lookup(cache, d) == first, "ordinary index formats share one production PSO");
+    require(d.IndexBufferFormat == format, "draw descriptor keeps original index type");
+  }
+  require(native_creations == 1 && cache.scheduler_.submissions == 1, "one ordinary factory invocation and task");
+  Shader stage; IMTLD3D11StreamOutputLayout so;
+  for (unsigned exclusion = 0; exclusion < 4; ++exclusion) {
+    PipelineCache excluded;
+    auto a = base_key();
+    if (exclusion == 0) a.GeometryShader = &stage;
+    if (exclusion == 1) a.HullShader = &stage;
+    if (exclusion == 2) a.DomainShader = &stage;
+    if (exclusion == 3) a.SOLayout = &so;
+    auto b = a; a.IndexBufferFormat = SM50_INDEX_BUFFER_FORMAT_UINT16; b.IndexBufferFormat = SM50_INDEX_BUFFER_FORMAT_UINT32;
+    require(lookup(excluded, a) != lookup(excluded, b), "GS HS DS SO exclusions retain index identity");
+    require(!std::equal_to<MTL_GRAPHICS_PIPELINE_DESC>{}(a, b), "shared production equality retains index semantics");
+  }
+  auto other = base_key(); other.ColorAttachmentFormats[1] = WMTPixelFormatRGBA8Unorm;
+  require(lookup(cache, other) != first, "native attachment formats still separate PSOs");
+  other = base_key(); other.SampleMask = 7;
+  require(lookup(cache, other) != first, "sample mask still separates PSOs");
+  InputLayout layout;
+  for (unsigned field = 0; field < 10; ++field) {
+    auto changed = base_key();
+    switch (field) {
+    case 0: changed.VertexShader = &stage; break;
+    case 1: changed.PixelShader = &stage; break;
+    case 2: changed.InputLayout = &layout; break;
+    case 3: changed.NumColorAttachments = 1; break;
+    case 4: changed.DepthStencilFormat = WMTPixelFormatDepth32Float; break;
+    case 5: changed.TopologyClass = WMTPrimitiveTopologyClassTriangle; break;
+    case 6: changed.RasterizationEnabled = false; break;
+    case 7: changed.SampleCount = 4; break;
+    case 8: changed.GSStripTopology = true; break;
+    case 9: changed.GSPassthrough = 1; break;
+    }
+    require(lookup(cache, changed) != first, "other ordinary PSO semantic fields retain identity");
+  }
+}
+static void pixel() {
+  PipelineCache owner;
+  for (bool coverage : {false, true}) for (uint32_t outputs : {0u, 1u, 5u, 0x80u}) {
+    PipelineCache::CachedSM50Shader shader(&owner, outputs);
+    shader.reflection_.PixelShader.HasCoverageOutput = coverage;
+    ShaderVariantPixel base{~0u, false, false, outputs};
+    auto *first = shader.get_shader(base, task_urgency::demand);
+    for (uint32_t irrelevant : {0u, 2u, 0x55u, 0xffffff00u, ~0u}) {
+      auto v = base; v.unorm_output_reg_mask |= irrelevant & ~outputs;
+      require(shader.get_shader(v, task_urgency::demand) == first, "unused UNORM bits share production variant identity");
+      auto direct = CreateVariantShader(owner.device, &shader, v);
+      require(direct->digest == first->digest, "direct pixel factory uses canonical AIR digest");
+      direct->run();
+      require(observed.unorm_output_reg_mask == outputs, "actual compile arguments canonicalize only unused output bits");
+      require(observed.sample_mask == ~0u && !observed.dual_source_blending && !observed.disable_depth_output,
+              "actual compile keeps coverage dual-source and depth controls");
+    }
+    require(shader.variants.size() == 1, "one map entry for equivalent output variants");
+    if (outputs) {
+      auto changed = base; changed.unorm_output_reg_mask = 0;
+      require(shader.get_shader(changed, task_urgency::demand) != first, "declared output UNORM bit keeps specialization");
+    }
+    for (unsigned field = 0; field < 3; ++field) {
+      auto changed = base;
+      if (field == 0) changed.sample_mask = 0x12345678;
+      if (field == 1) changed.dual_source_blending = true;
+      if (field == 2) changed.disable_depth_output = true;
+      auto *compiled = shader.get_shader(changed, task_urgency::demand);
+      require(compiled != first && compiled->digest != first->digest, "coverage dual-source and depth remain independent");
+      compiled->run();
+      require(observed.sample_mask == changed.sample_mask && observed.dual_source_blending == changed.dual_source_blending &&
+              observed.disable_depth_output == changed.disable_depth_output, "compile controls survive map lookup");
+    }
+    auto dual = base; dual.dual_source_blending = true;
+    auto dual_other = dual; dual_other.unorm_output_reg_mask ^= ~outputs;
+    require(shader.get_shader(dual, task_urgency::demand) != shader.get_shader(dual_other, task_urgency::demand),
+            "dual-source keeps original mask identity");
+    ShaderVariantVertex vertex{nullptr, 0, false};
+    auto *vs = shader.get_shader(vertex, task_urgency::demand);
+    vertex.gs_passthrough = 4;
+    require(shader.get_shader(vertex, task_urgency::demand) != vs, "nonpixel variants preserve identity");
+  }
+}
+int main(int argc, char **argv) {
+  require(argc == 2, "choose ordinary or pixel");
+  if (std::string(argv[1]) == "ordinary") ordinary(); else pixel();
+  std::cout << "PASS production " << argv[1] << " lookups, full key/equality, actual pixel digest/compile args\n";
+}

@@ -68,7 +68,7 @@ int main(){
   assert(r.gpu_command_heap_allocator.allocateChecked(1,0,sizes,kResourceInitializerGpuUploadHeapAlignment,spans));assert(obs.new_buffers==2&&spans[0].block!=spans[1].block);
   r.cached_coherent_seq_id=2;r.current_seq_id_=3;obs.signal=2;obs.fail_all=true;t.w=4096;t.h=2048;t.format=WMTPixelFormatDepth32Float_Stencil8;
   std::vector<unsigned char> source(size_t(t.w)*t.h*8);success(r.initWithData(&t,&ta,0,0,source.data(),size_t(t.w)*8,0,0));
-  assert(obs.new_buffers==2&&obs.updates==2*t.w*t.h);assert(r.flushToWait()==3&&obs.copies==2&&obs.fills==0&&obs.commits==1);
+  assert(obs.new_buffers==2&&obs.updates==2*t.h);assert(r.flushToWait()==3&&obs.copies==2&&obs.fills==0&&obs.commits==1);
   assert(obs.encoded[0].src!=obs.encoded[1].src&&obs.encoded[0].offset==0&&obs.encoded[1].offset==0&&obs.encoded[0].length==32*1024*1024&&obs.encoded[1].length==8*1024*1024);checked("depth_stencil_reuses_two_completed_standard_blocks_without_native_allocate");}
  {obs={};Texture t;TextureAllocation ta;ResourceInitializer r(dev());poison(r);t.h=3;
   failure(r.initWithData(&t,&ta,0,0,data.data(),std::numeric_limits<size_t>::max(),0,0));t.format=WMTPixelFormatDepth32Float_Stencil8;
@@ -76,8 +76,8 @@ int main(){
  {obs={};Texture t;TextureAllocation ta;BufferAllocation ba;ResourceInitializer r(dev());poison(r);r.current_seq_id_=std::numeric_limits<uint64_t>::max();
   for(int kind=0;kind<6;++kind){t={};failure(operation(r,kind,t,ta,ba,data.data()),InitStatus::SubmissionFailed);}assert(r.idle()&&obs.commits==0&&obs.updates==0&&r.current_seq_id_==std::numeric_limits<uint64_t>::max());checked("sequence_exhaustion_no_success_or_wait_sentinel");}
  {obs={};Texture t;TextureAllocation ta;ResourceInitializer r(dev());poison(r);t.w=2;t.h=1;t.format=WMTPixelFormatDepth32Float_Stencil8;obs.capture_updates=true;
-  std::array<uint32_t,2> packed{0xABFFFFFFu,0xCD000000u};success(r.initWithData(&t,&ta,0,0,packed.data(),8,0,MTL_DXGI_FORMAT_EMULATED_D24));r.flushToWait();assert(obs.copies==2&&obs.update_samples.size()==4);
-  float first_depth=-1,last_depth=-1;std::memcpy(&first_depth,obs.update_samples[0].bytes.data(),4);std::memcpy(&last_depth,obs.update_samples[2].bytes.data(),4);
-  assert(first_depth==1.0f&&last_depth==0.0f&&obs.update_samples[1].bytes[0]==0xAB&&obs.update_samples[3].bytes[0]==0xCD);checked("d24_planar_payload_bytes");}
+  std::array<uint32_t,2> packed{0xABFFFFFFu,0xCD000000u};success(r.initWithData(&t,&ta,0,0,packed.data(),8,0,MTL_DXGI_FORMAT_EMULATED_D24));r.flushToWait();assert(obs.copies==2&&obs.update_samples.size()==2);
+  float first_depth=-1,last_depth=-1;std::memcpy(&first_depth,obs.update_samples[0].bytes.data(),4);std::memcpy(&last_depth,obs.update_samples[0].bytes.data()+4,4);
+  assert(first_depth==1.0f&&last_depth==0.0f&&obs.update_samples[1].bytes[0]==0xAB&&obs.update_samples[1].bytes[1]==0xCD);checked("d24_planar_payload_bytes");}
  std::cout<<"TRANSACTION REGRESSION PASSED: "<<cases<<" cases; ASan+UBSan; actual production initializer/ring/tracker and Metal.hpp; mocked native C API, no GPU acceptance\n";
 }

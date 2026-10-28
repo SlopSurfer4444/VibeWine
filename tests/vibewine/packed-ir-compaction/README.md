@@ -35,7 +35,7 @@ pins all 13 input byte hashes and source lines. All 21 parser/converter translat
 units are freshly compiled from this checkout with one consistent current packed
 list definition; generated AIR headers and toolchain flags come from the support
 build. No retained converter objects are linked. The baseline substitutes the
-actual pre-change production CFG body at `a6637cfe`; both candidates use the same
+actual pre-change production CFG body at `40e7b88f`; both candidates use the same
 class definition, avoiding mixed-definition ODR risk.
 
 The runner compares actual allocator usable bytes via `malloc_size`, requested

@@ -7,7 +7,7 @@ Seven cases exercise absent/empty/short/long/wrong-signature/valid/zero-sum inpu
 128 times each. Failure leaves output untouched; valid and zero-sum behavior is
 unchanged. No display, ColorSync profile acquisition, renderer or game is launched.
 
-`--baseline-ref f871ff41c29c240eda3a6f962c9d48f9e6c2d1fd` requires exactly six
+`--baseline-ref bbf22e6a41b383fe67be9dbba80c9f682908c01a` requires exactly six
 leaking paths with 128 extra references each, with all semantic checks passing.
 An arbitrary crash or sanitizer failure cannot count as that expected failure.
 Temporary executables are bounded by timeouts and removed by the test owner.

@@ -17,7 +17,7 @@ Independent/deferred resource references remain separately owned.
 python3 tests/vibewine/reftracker-retirement/run.py --sanitize
 python3 tests/vibewine/reftracker-retirement/run.py --arch x86_64 --sanitize
 python3 tests/vibewine/reftracker-retirement/run.py --sanitize \
-  --source-ref a6637cfe2c5f6a2c13ec17290e359f86b163de6e --expect-retained-baseline
+  --source-ref 40e7b88f7f10240d3fe00c4b69669816b1f3791a --expect-retained-baseline
 ```
 
 The runner snapshots and hashes its inputs, then compiles the complete production

@@ -84,7 +84,7 @@ struct D3D11ResourceCommon : RefCounted {
   const Rc<Buffer> &buffer() const { return gpu; }
   void GetDesc(D3D11_BUFFER_DESC *desc) { *desc = {}; }
 };
-using IUnknown = D3D11ResourceCommon;
+using IUnknown = RefCounted;
 using ID3D11Buffer = D3D11ResourceCommon;
 using ID3D11Resource = D3D11ResourceCommon;
 template <class T, bool = true> using Com = Rc<T>;
@@ -92,6 +92,13 @@ inline D3D11ResourceCommon *GetResourceCommon(ID3D11Resource *resource) { return
 inline Rc<DynamicBuffer> GetDynamicBuffer(ID3D11Resource *resource, UINT *length, UINT *flags) {
   *length = 256; *flags = resource->flags; return resource->dynamic;
 }
+struct D3D11ShaderResourceView : RefCounted {
+  Rc<Buffer> gpu;
+  explicit D3D11ShaderResourceView(Rc<Buffer> buffer = {}) : gpu(std::move(buffer)) {}
+  Rc<Buffer> buffer() const { return gpu; }
+};
+// OTHER_BINDINGS
+// BUFFER_SLICE
 // CB_BINDING
 struct OtherBinding { unsigned identity = 0; };
 template <> struct redundant_binding_trait<OtherBinding> {
@@ -101,7 +108,7 @@ enum class PipelineStage { Vertex, Pixel, Hull, Domain, Geometry, Compute };
 enum class PipelineKind { Ordinary, Tessellation, Geometry };
 struct ManagedShader {
   MTL_SHADER_REFLECTION ref{};
-  std::vector<MTL_SM50_SHADER_ARGUMENT> cb;
+  std::vector<MTL_SM50_SHADER_ARGUMENT> cb, resources;
   explicit ManagedShader(std::initializer_list<unsigned> slots) {
     for (unsigned slot : slots) {
       cb.push_back({SM50BindingType::ConstantBuffer, slot, {}, unsigned(cb.size())});
@@ -111,7 +118,19 @@ struct ManagedShader {
   }
   const MTL_SHADER_REFLECTION &reflection() { return ref; }
   const MTL_SM50_SHADER_ARGUMENT *constant_buffers_info() { return cb.data(); }
-  const MTL_SM50_SHADER_ARGUMENT *arguments_info() { return nullptr; }
+  const MTL_SM50_SHADER_ARGUMENT *arguments_info() { return resources.data(); }
+  void srv(std::initializer_list<unsigned> slots, bool typed) {
+    for (unsigned slot : slots) {
+      MTL_SM50_SHADER_ARGUMENT arg{};
+      arg.Type = SM50BindingType::SRV; arg.SM50BindingSlot = slot;
+      arg.Flags = MTL_SM50_SHADER_ARGUMENT_FLAG(typed ? MTL_SM50_SHADER_ARGUMENT_TEXTURE | MTL_SM50_SHADER_ARGUMENT_TBUFFER_OFFSET : MTL_SM50_SHADER_ARGUMENT_BUFFER);
+      arg.StructurePtrOffset = resources.size() * 2;
+      resources.push_back(arg);
+      if (slot < 64) ref.SRVSlotMaskLo |= 1ull << slot;
+      else ref.SRVSlotMaskHi |= 1ull << (slot - 64);
+    }
+    ref.NumArguments = resources.size(); ref.ArgumentTableQwords = resources.size() * 2;
+  }
 };
 struct Shader : RefCounted {
   ManagedShader managed;
@@ -120,7 +139,7 @@ struct Shader : RefCounted {
 };
 struct StageState {
   BindingSet<CONSTANT_BUFFER_B, 14> ConstantBuffers;
-  BindingSet<OtherBinding, 128> SRVs;
+  BindingSet<SRV_B, 128> SRVs;
   BindingSet<OtherBinding, 16> Samplers;
   Rc<Shader> Shader;
 };
@@ -129,7 +148,7 @@ template <typename T> struct Stages : std::array<T, 6> {
 };
 struct ContextState {
   Stages<StageState> ShaderStages;
-  struct { BindingSet<OtherBinding, 32> VertexBuffers; } InputAssembler;
+  struct { BindingSet<VERTEX_BUFFER_B, 32> VertexBuffers; } InputAssembler;
   struct { BindingSet<OtherBinding, 64> UAVs; } ComputeStageUAV, OutputMerger;
 };
 // ALIGN
@@ -141,7 +160,19 @@ enum { WMTComputeCommandSetBufferOffset, WMTRenderCommandSetObjectBufferOffset,
        WMTRenderCommandSetFragmentBufferOffset };
 namespace ResourceAccess { constexpr int Read = 1; }
 template <PipelineKind> unsigned GetResidencyMask(PipelineStage, bool, bool) { return 1; }
+struct Texture : RefCounted {
+  unsigned checkViewUseArray(uint64_t view, bool) { return view; }
+  unsigned arrayLength(uint64_t) { return 1; }
+};
+inline uint64_t TextureMetadata(uint32_t length, float) { return uint64_t(length) << 32; }
 struct ArgumentEncodingContext {
+  static constexpr unsigned kSRVBindings = 128;
+  struct Resource { Rc<Buffer> buffer; Rc<Texture> texture; uint64_t viewId = 0; BufferSlice slice; };
+  struct Vertex { Rc<Buffer> buffer; unsigned offset = 0, stride = 0; };
+  std::array<Resource, 768> resview_{};
+  std::array<Vertex, 32> vbuf_{};
+  // BIND_SRV
+  // BIND_VB
   struct CBuffer { Rc<Buffer> buffer; unsigned offset = 0; };
   std::array<CBuffer, 84> cbuf_{};
   std::array<uint64_t, 32768> arguments{};
@@ -175,10 +206,28 @@ struct ArgumentEncodingContext {
   template <class T> T &encodeComputeCommand() { return encodeRenderCommand<T>(); }
   template <PipelineStage stage, PipelineKind kind>
   void encodeConstantBuffers(const MTL_SHADER_REFLECTION *, const MTL_SM50_SHADER_ARGUMENT *, uint64_t);
-  template <PipelineStage, PipelineKind> void encodeShaderResources(const MTL_SHADER_REFLECTION *,
-                                                                  const MTL_SM50_SHADER_ARGUMENT *, uint64_t) {
-    throw std::runtime_error("unexpected resource-table materialization");
+  struct View { uint64_t gpu_resource_id; };
+  template <PipelineStage stage> std::pair<View, unsigned> access(const Rc<Buffer> &buffer, uint64_t, int flags) {
+    auto [allocation, sub] = access<stage>(buffer, 0, 0, flags);
+    return {{allocation->gpuAddress()}, unsigned(sub / 4)};
   }
+  struct TextureView { uint64_t gpuResourceID; };
+  template <PipelineStage> TextureView access(const Rc<Texture> &, uint64_t, int) { throw std::runtime_error("unexpected texture access"); }
+  template <PipelineStage, PipelineKind> void makeResident(Texture *, unsigned) { throw std::runtime_error("unexpected texture residency"); }
+  template <PipelineStage stage, PipelineKind kind> void encodeShaderResources(const MTL_SHADER_REFLECTION *reflection,
+                                                                            const MTL_SM50_SHADER_ARGUMENT *arguments, uint64_t offset) {
+    auto *encoded_buffer = getMappedArgumentBuffer<uint64_t, stage == PipelineStage::Compute>(offset);
+    for (unsigned i = 0; i < reflection->NumArguments; ++i) {
+      auto &arg = arguments[i];
+      switch (arg.Type) {
+        // SRV_CASE
+        default: throw std::runtime_error("unexpected argument kind");
+      }
+    }
+    if constexpr (stage == PipelineStage::Compute)
+    // SRV_TAIL
+  }
+  template <PipelineKind kind> void encodeVertexBuffers(uint32_t, uint64_t);
   uint64_t read(uint64_t address) {
     if (!address) return 0; // Observed dummy-CB address in this CPU adapter.
     for (const auto &allocation : retained) {
@@ -192,6 +241,7 @@ struct ArgumentEncodingContext {
   }
 };
 // ENCODE_CB
+// ENCODE_VB
 struct Queue {
   uint64_t CurrentSeqId() { return 9; }
   uint64_t CoherentSeqId() { return 7; }
@@ -379,12 +429,12 @@ template <PipelineStage stage, class Context> void scenario(bool cross_stage_ali
   Rc<D3D11ResourceCommon> srv = new D3D11ResourceCommon(D3D11_BIND_SHADER_RESOURCE);
   fill(context, srv, 900);
   for (auto &s : context.state_.ShaderStages) {
-    require(s.SRVs.any_dirty(), "SRV invalidation changed");
+    require(s.SRVs.any_dirty() == !EXPECT_PRECISE, "unbound SRV invalidation");
     require(!s.ConstantBuffers.any_dirty(), "SRV map dirtied constant buffers");
   }
   Rc<D3D11ResourceCommon> vb = new D3D11ResourceCommon(D3D11_BIND_VERTEX_BUFFER);
   fill(context, vb, 1000);
-  require(context.state_.InputAssembler.VertexBuffers.any_dirty(), "VB invalidation changed");
+  require(context.state_.InputAssembler.VertexBuffers.any_dirty() == !EXPECT_PRECISE, "unbound VB invalidation");
 }
 template <class Context> void all_stages() {
   for (bool cross_stage_alias : {false, true}) {
@@ -444,6 +494,115 @@ void interleaved_contexts() {
   // Deferred captures must still name their original data, after immediate use.
   deferred.replay();
 }
+template <PipelineStage Stage, class Context> void resource_discard(bool typed) {
+  ++scenarios;
+  Context ctx;
+  Rc<D3D11ResourceCommon> a = new D3D11ResourceCommon(D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_SHADER_RESOURCE);
+  Rc<D3D11ResourceCommon> alias = new D3D11ResourceCommon(a->gpu, a->dynamic);
+  Rc<D3D11ResourceCommon> b = new D3D11ResourceCommon(D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_SHADER_RESOURCE);
+  Rc<D3D11ResourceCommon> c = new D3D11ResourceCommon(D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_SHADER_RESOURCE);
+  fill(ctx, a, 10); fill(ctx, b, 100);
+  for (auto &stage : ctx.state_.ShaderStages) { stage.ConstantBuffers.clear_dirty(); stage.SRVs.clear_dirty(); }
+  ctx.state_.InputAssembler.VertexBuffers.clear_dirty();
+  auto &srvs = ctx.state_.ShaderStages[Stage].SRVs;
+  auto &vbs = ctx.state_.InputAssembler.VertexBuffers;
+  auto bind_srv = [&](unsigned slot, Rc<Buffer> buffer) {
+    Rc<D3D11ShaderResourceView> view = new D3D11ShaderResourceView(buffer);
+    bool replaced = false;
+    auto &entry = srvs.bind(slot, {view.ptr()}, replaced); entry.SRV = view;
+    ctx.EmitST([slot, buffer, typed](ArgumentEncodingContext &enc) mutable {
+      enc.bindBuffer<Stage>(slot, Context::forward_rc(buffer), typed ? 1 : 0, {16, 32, 4, 8});
+    });
+  };
+  bind_srv(0, a->gpu); bind_srv(64, alias->gpu); bind_srv(1, b->gpu);
+  bind_srv(127, a->gpu); // Bound but not reflected must still be invalidated.
+  bind_srv(126, {}); // Texture-view identity must never match a buffer DISCARD.
+  for (unsigned slot : {0u, 1u, 3u}) {
+    auto resource = slot == 1 ? b : (slot == 3 ? alias : a);
+    bool replaced = false;
+    auto &entry = vbs.bind(slot, {resource.ptr()}, replaced); entry.Buffer = resource;
+    entry.Offset = slot == 3 ? 16 : 0; entry.Stride = 16;
+    ctx.EmitST([slot, buffer = resource->gpu, offset = entry.Offset](ArgumentEncodingContext &enc) mutable {
+      enc.bindVertexBuffer(slot, offset, 16, Context::forward_rc(buffer));
+    });
+  }
+  ctx.state_.ShaderStages[Stage].Shader = new Shader({});
+  ctx.state_.ShaderStages[Stage].Shader->managed.srv({0, 1, 64}, typed);
+  unsigned table_count = 0, vb_count = 0;
+  auto draw = [&](uint64_t token, bool changed) {
+    const auto old_size = ctx.recorded.size();
+    ctx.template UploadShaderStageResourceBinding<Stage, PipelineKind::Ordinary>();
+    require((ctx.recorded.size() != old_size) == changed, "SRV table rebuild precision");
+    if (changed) ++table_count;
+    bool vb_dirty = vbs.any_dirty_masked(uint64_t(0xb));
+    require(vb_dirty == changed, "VB table rebuild precision");
+    if (vb_dirty) {
+      ++vb_count;
+      auto offset = ctx.PreAllocateArgumentBuffer(48, 32);
+      ctx.EmitST([offset](ArgumentEncodingContext &enc) { enc.encodeVertexBuffers<PipelineKind::Ordinary>(0xb, offset); });
+      vbs.clear_dirty();
+    }
+    ctx.EmitST([=](ArgumentEncodingContext &enc) {
+      unsigned tables = 0, vertices = 0; uint64_t table_offset = 0, vertex_offset = 0;
+      for (const auto &command : enc.commands) {
+        if (command.index == SM50_BINDING_INDEX_ARGUMENT_TABLE && command.stage == Stage) { ++tables; table_offset = command.offset; }
+        if (command.index == SM50_BINDING_INDEX_VERTEX_BUFFER) { ++vertices; vertex_offset = command.offset; }
+      }
+      require(tables == table_count && vertices == vb_count, "unrelated SRV/VB native table emissions");
+      auto *words = enc.arguments.data() + table_offset / 8;
+      if (typed) {
+        require(words[0] == a->gpu->current()->gpuAddress() && words[4] == words[0], "typed SRV allocation refresh");
+        require(words[1] == (uint64_t(8) << 32 | (4 + a->gpu->current()->currentSuballocationOffset() / 4)), "typed SRV suballocation metadata");
+      } else {
+        require(enc.read(words[0]) == token + 1 && enc.read(words[4]) == token + 1, "raw SRV rename/suballocation data");
+      }
+      auto *vertex = enc.arguments.data() + vertex_offset / 8;
+      require(enc.read(vertex[0]) == token && enc.read(vertex[4]) == token + 1, "VB rename/suballocation data");
+      require(enc.access_by_stage[unsigned(Stage)] >= table_count * 3, "SRV access tracking removed");
+      require(enc.residency_by_stage[unsigned(Stage)] >= table_count * 3, "SRV residency removed");
+    });
+    ctx.replay();
+  };
+  draw(10, true);
+  auto check_dirty = [&](Buffer *discarded) {
+    for (auto &stage : ctx.state_.ShaderStages) for (unsigned slot = 0; slot < 128; ++slot) {
+      bool dependent = stage.SRVs.test_bound(slot) && stage.SRVs.at(slot).SRV->buffer().ptr() == discarded;
+      require(stage.SRVs.test_dirty(slot) == (!EXPECT_PRECISE || dependent), "resource-exact SRV dirty slots");
+    }
+    for (unsigned slot = 0; slot < 32; ++slot) {
+      bool dependent = vbs.test_bound(slot) && vbs.at(slot).Buffer->buffer().ptr() == discarded;
+      require(vbs.test_dirty(slot) == (!EXPECT_PRECISE || dependent), "resource-exact VB dirty slots");
+    }
+  };
+  for (unsigned rename = 0; rename < 6; ++rename) {
+    uint64_t token = 20 + rename * 10;
+    fill(ctx, a, token); check_dirty(a->gpu.ptr()); draw(token, true);
+  }
+  fill(ctx, c, 1000); check_dirty(c->gpu.ptr()); draw(70, !EXPECT_PRECISE);
+  srvs.set_dirty(120); vbs.set_dirty(20);
+  fill(ctx, a, 80);
+  require(srvs.test_dirty(120) && vbs.test_dirty(20), "preexisting resource dirty bits lost");
+  draw(80, true);
+  // Unbind aliases using the actual owner: later DISCARD must not dirty them.
+  srvs.unbind(64); srvs.unbind(127); vbs.unbind(3);
+  srvs.clear_dirty(); vbs.clear_dirty();
+  fill(ctx, a, 90);
+  require(srvs.test_dirty(0) && vbs.test_dirty(0), "remaining alias invalidation lost");
+  require(srvs.test_dirty(64) == !EXPECT_PRECISE && vbs.test_dirty(3) == !EXPECT_PRECISE, "unbound alias invalidation");
+  // Preserve and replay the last observation before retiring the shader owner.
+  ctx.replay();
+}
+template <class Context> void resource_all_stages() {
+  for (bool typed : {false, true}) {
+    resource_discard<PipelineStage::Vertex, Context>(typed);
+    resource_discard<PipelineStage::Pixel, Context>(typed);
+    resource_discard<PipelineStage::Hull, Context>(typed);
+    resource_discard<PipelineStage::Domain, Context>(typed);
+    resource_discard<PipelineStage::Geometry, Context>(typed);
+    resource_discard<PipelineStage::Compute, Context>(typed);
+  }
+}
+
 } // namespace dxmt
 int main() {
   try {
@@ -452,6 +611,8 @@ int main() {
     dxmt::unused_slot_and_existing_dirty<dxmt::Immediate>();
     dxmt::unused_slot_and_existing_dirty<dxmt::Deferred>();
     dxmt::interleaved_contexts();
+    dxmt::resource_all_stages<dxmt::Immediate>();
+    dxmt::resource_all_stages<dxmt::Deferred>();
     std::cout << "PASS scenarios=" << scenarios << " checks=" << checks
               << " precise=" << EXPECT_PRECISE << '\n';
     return 0;

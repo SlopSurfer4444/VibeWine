@@ -14,7 +14,7 @@ inline uint64_t now() {return std::chrono::duration_cast<std::chrono::nanosecond
 inline Profile profile() {
  static const auto value=[] {
   auto text=env::getEnvVar("DXMT_CS2_TRACE_PROFILE");
-  return text.empty()?Profile::Full:text=="compile-waits"?Profile::CompileWaits:text=="presentation-waits"?Profile::PresentationWaits:text=="stall-waits"?Profile::StallWaits:Profile::Invalid;
+  return text.empty()?Profile::Full:text=="compile-waits"?Profile::CompileWaits:text=="presentation-waits"?Profile::PresentationWaits:text=="stall-waits"?Profile::StallWaits:text=="combined-bounded"?Profile::CombinedBounded:Profile::Invalid;
  }();return value;
 }
 inline bool profileAllows(uint32_t type) {
@@ -44,7 +44,7 @@ inline void profileMetadataAdmitted(Header *h,uint32_t gen) {
  if(prior==gen || !last.compare_exchange_strong(prior,gen,std::memory_order_relaxed))return;
  // Type 95 is v2 additive metadata, not a timing scope. Schema/object=1,
  // flags=1 compile-waits, 2 invalid/fail-closed, 3 presentation-waits,
- // 4 stall-waits; detail0=detail budget,
+ // 4 stall-waits, 5 combined-bounded; detail0=detail budget,
  // detail1=lifetime capacity. One marker per admitted generation, outside the
  // detailed-probe budget. Even invalid profiles remain explicitly observable.
  auto t=now();writeAdmittedEvent(h,gen,95,t,t,1,uint32_t(profile()),detailLimit(),Capacity,GetCurrentThreadId());
@@ -70,7 +70,8 @@ inline void record(uint32_t gen,uint32_t type,uint64_t start,uint64_t end,uint64
   if(!profileEventAllowed(profile(),type,start,end))return;
   // Context/compiler detail must stay opt-in and capped via the general
   // entry point. Metadata/cap markers publish directly under writer admission.
-  if(profile()==Profile::StallWaits && (stallContextType(type) || (type>=104 && type<=107) || (type>=111 && type<=119))) {
+  if((profile()==Profile::StallWaits && (stallContextType(type) || (type>=104 && type<=107) || (type>=111 && type<=119))) ||
+     (profile()==Profile::CombinedBounded && combinedDetailType(type))) {
    detailRecord(gen,type,start,end,object,flags,detail0,detail1);return;
   }
  }
@@ -139,10 +140,10 @@ struct PresentationScope {
    :type(event),object(identity),detail0(p0),detail1(p1),flags(result) {
   // An explicitly captured zero generation stays unarmed even if encoding runs
   // after a later arm. Never upgrade an asynchronous token to a new capture.
-  if(profile()==Profile::PresentationWaits) {gen=generation;if(gen)start=now();}
+  if(presentationScopesAllowed(profile())) {gen=generation;if(gen)start=now();}
  }
  PresentationScope(uint32_t event,uint64_t identity,uint64_t p0,uint64_t p1,uint32_t result=0)
-   :PresentationScope(event,identity,p0,p1,result,profile()==Profile::PresentationWaits?cs2trace::generation():0) {}
+   :PresentationScope(event,identity,p0,p1,result,presentationScopesAllowed(profile())?cs2trace::generation():0) {}
  ~PresentationScope(){
   if(!gen)return;
   auto active=cs2trace::generation();
@@ -207,10 +208,10 @@ struct StallScope {
  uint32_t gen=0,type;uint64_t object,sequence,frame,start=0;
  StallScope(uint32_t event,uint64_t queue,uint64_t chunk,uint64_t queueFrame,uint32_t capturedGeneration)
    :type(event),object(queue),sequence(chunk),frame(queueFrame) {
-  if(profile()==Profile::StallWaits) {gen=capturedGeneration;if(gen)start=now();}
+  if(stallScopesAllowed(profile())) {gen=capturedGeneration;if(gen)start=now();}
  }
  StallScope(uint32_t event,uint64_t queue,uint64_t chunk,uint64_t queueFrame)
-   :StallScope(event,queue,chunk,queueFrame,profile()==Profile::StallWaits?generation():0) {}
+   :StallScope(event,queue,chunk,queueFrame,stallScopesAllowed(profile())?generation():0) {}
  ~StallScope(){if(gen)record(gen,type,start,now(),object,0,sequence,frame);}
  StallScope(const StallScope&)=delete;
 };

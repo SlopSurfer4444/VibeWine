@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix='dxmt-ir-corpus-') as td:
  cfg=air/'dxbc_converter_cfg.cpp';candidate=cfg.read_text();assert candidate.count(loop)==1
  # Baseline is the actual pre-change production CFG body with the same class
  # definition as every fresh object, avoiding mixed header definitions/ODR.
- baseline=subprocess.check_output(['git','-C',str(source),'show','a6637cfe:src/airconv/dxbc_converter_cfg.cpp'],text=True)
+ baseline=subprocess.check_output(['git','-C',str(source),'show','40e7b88f:src/airconv/dxbc_converter_cfg.cpp'],text=True)
  def compile_entry(item):
   i,e=item;old=shlex.split(e['command']);cmd=[];j=0
   while j<len(old):
@@ -97,4 +97,4 @@ with tempfile.TemporaryDirectory(prefix='dxmt-ir-corpus-') as td:
   if c['file'] in ['7208-simple_vs.dxbc','7344-simple_ps.dxbc']:
    assert c['backing']<=512 and b['backing']>512,'candidate must pass and old production fail the same fixed retained-backing oracle'
  bounded()
- print(json.dumps({'growth':int(a.growth),'baseline':'a6637cfe','llvm':str(llvm),'fresh_translation_units':len(entries),'backing_before':before,'backing_after':after,'saved':before-after,'call_cfg_llvm_cases':len(call_modes),'outputs_identical':len(digests['baseline']),'results':results,'output_sha256':digests['candidate'],'source_sha256':{p:hashlib.sha256((source/p).read_bytes()).hexdigest() for p in ['src/airconv/packed_variant_list.hpp','src/airconv/dxbc_converter_cfg.cpp']}},indent=2))
+ print(json.dumps({'growth':int(a.growth),'baseline':'40e7b88f','llvm':str(llvm),'fresh_translation_units':len(entries),'backing_before':before,'backing_after':after,'saved':before-after,'call_cfg_llvm_cases':len(call_modes),'outputs_identical':len(digests['baseline']),'results':results,'output_sha256':digests['candidate'],'source_sha256':{p:hashlib.sha256((source/p).read_bytes()).hexdigest() for p in ['src/airconv/packed_variant_list.hpp','src/airconv/dxbc_converter_cfg.cpp']}},indent=2))

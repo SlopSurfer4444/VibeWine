@@ -5,6 +5,8 @@
 #include <array>
 #include <iostream>
 #include <variant>
+#include <type_traits>
+#include "d3d11_pso_normalization.hpp"
 
 // Preserve the shared four-second bound, adding the caller for diagnostics.
 void until(std::function<bool()> predicate, const char *file = __builtin_FILE(),
@@ -86,28 +88,53 @@ struct Saturated {
 
 namespace dxmt {
 using CompiledShader = ::Task;
-using ShaderVariant = std::variant<unsigned>;
+#include "pixel_variant.inc"
+using ShaderVariant = std::variant<unsigned, ShaderVariantPixel>;
+// The scheduler fixture hashes only its two alternatives; production hash
+// semantics are exercised separately by pso-normalization. Equality comes from
+// the actual extracted pixel key, including its meaningful specialization bits.
+struct FixtureVariantHash {
+  size_t operator()(const ShaderVariant &variant) const {
+    return std::visit([](const auto &key) -> size_t {
+      if constexpr (std::is_same_v<std::decay_t<decltype(key)>, unsigned>)
+        return key;
+      else
+        return size_t(key.sample_mask) ^ (size_t(key.unorm_output_reg_mask) << 1) ^
+               (size_t(key.dual_source_blending) << 2) ^ (size_t(key.disable_depth_output) << 3);
+    }, variant);
+  }
+};
 inline std::function<Task *(Task *)> lookup_run;
-template <typename Owner>
-std::unique_ptr<CompiledShader> CreateVariantShader(void *, Owner *, unsigned variant) {
+template <typename Owner, typename Variant>
+std::unique_ptr<CompiledShader> CreateVariantShader(void *, Owner *, Variant variant) {
   auto result = std::make_unique<Task>();
-  result->serial = 500 + variant;
+  if constexpr (std::is_same_v<Variant, unsigned>)
+    result->serial = 500 + variant;
+  else
+    result->serial = 500 + variant.sample_mask;
   result->run = [task = result.get()] { return lookup_run(task); };
   return result;
 }
 struct LookupCache { Scheduler &scheduler_; void *device = nullptr; };
 class CachedLookupFixture {
   LookupCache *cache;
-  std::unordered_map<ShaderVariant, std::unique_ptr<CompiledShader>> variants;
+  std::unordered_map<ShaderVariant, std::unique_ptr<CompiledShader>, FixtureVariantHash> variants;
+  MTL_SHADER_REFLECTION reflection_{};
   dxmt::mutex variants_mutex;
 public:
-  explicit CachedLookupFixture(LookupCache *owner) : cache(owner) {}
+  explicit CachedLookupFixture(LookupCache *owner) : cache(owner) { reflection_.PixelShader.ValidRenderTargets = 1; }
   // Extracted verbatim from current d3d11_pipeline_cache.cpp by the runner.
 #include "cached_lookup.inc"
 };
 }
 
-void cached_lookup_routing(bool backlog) {
+void cached_lookup_routing(bool backlog, bool pixel = false) {
+  // Bits outside reflected outputs normalize to one identity. The same public
+  // demand lookup must promote the queued speculative task, not create another.
+  auto variant = [pixel](unsigned id, bool unused_output = false) -> dxmt::ShaderVariant {
+    if (pixel) return dxmt::ShaderVariantPixel{id, false, false, unused_output ? 0x81u : 1u};
+    return id;
+  };
   std::array<unsigned, 3> order{};
   std::atomic<unsigned> admitted{0}, released{0};
   Saturated pool(backlog, true);
@@ -120,12 +147,12 @@ void cached_lookup_routing(bool backlog) {
     until([&] { return released > position; });
     return task;
   };
-  auto *speculative = shader.get_shader(dxmt::ShaderVariant{0u}, Urgency::speculative);
-  auto *promoted = shader.get_shader(dxmt::ShaderVariant{1u}, Urgency::speculative);
-  assert(promoted == shader.get_shader(dxmt::ShaderVariant{1u}));
-  auto *created_demand = shader.get_shader(dxmt::ShaderVariant{2u});
+  auto *speculative = shader.get_shader(variant(0, true), Urgency::speculative);
+  auto *promoted = shader.get_shader(variant(1, true), Urgency::speculative);
+  assert(promoted == shader.get_shader(variant(1)));
+  auto *created_demand = shader.get_shader(variant(2));
   for (unsigned n = 0; n != 64; ++n)
-    assert(promoted == shader.get_shader(dxmt::ShaderVariant{1u}));
+    assert(promoted == shader.get_shader(variant(1, n % 2 != 0)));
   pool.release[0] = true;
   for (unsigned n = 1; n <= 3; ++n) {
     until([&] { return admitted == n; });
@@ -135,7 +162,7 @@ void cached_lookup_routing(bool backlog) {
   until([&] { return speculative->done && promoted->done && created_demand->done; });
   for (auto *task : {speculative, promoted, created_demand})
     assert(task->runs == 1 && task->trace_initializations == 1);
-  assert(promoted == shader.get_shader(dxmt::ShaderVariant{1u}));
+  assert(promoted == shader.get_shader(variant(1)));
   pool.finish();
   dxmt::lookup_run = {};
 }
@@ -384,6 +411,7 @@ void queued_shutdown(bool backlog, bool demand) {
 int main() {
   for (bool backlog : {false, true}) {
     cached_lookup_routing(backlog);
+    cached_lookup_routing(backlog, true);
     saturation_queue_bypass(backlog, false, false);
     saturation_queue_bypass(backlog, true, false);
     saturation_queue_bypass(backlog, false, true);
@@ -398,6 +426,6 @@ int main() {
     queued_shutdown(backlog, true);
   }
   std::cout << "PASS exact scheduler header: equal-capacity saturation discriminator, queued/running/blocked promotion, "
-               "exact cached lookup routing, late dependency inheritance, bounded fairness, completion race, retired pointer, trace identity, "
+               "exact cached lookup routing including canonical pixel promotion, late dependency inheritance, bounded fairness, completion race, retired pointer, trace identity, "
                "compile failure readiness, optional I/O failure, shutdown cancellation/join\n";
 }

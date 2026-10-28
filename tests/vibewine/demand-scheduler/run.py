@@ -24,11 +24,18 @@ with tempfile.TemporaryDirectory(prefix='dxmt-demand-scheduler-') as directory:
     begin = cache_source.index('    virtual CompiledShader *get_shader(ShaderVariant variant) {')
     end = cache_source.index('    virtual const Sha1Digest &sha1()', begin)
     (work / 'cached_lookup.inc').write_text(cache_source[begin:end])
+    # Keep the pixel alternative's fields/equality bound to the production type;
+    # the fixture supplies only platform-free hashing and compiler task mocks.
+    shader_source = (source / 'src/d3d11/d3d11_shader.hpp').read_text()
+    pixel_begin = shader_source.index('struct ShaderVariantPixel {')
+    pixel_end = shader_source.index('\n};', pixel_begin) + len('\n};')
+    (work / 'pixel_variant.inc').write_text(shader_source[pixel_begin:pixel_end])
     sanitizer = 'thread' if args.tsan else 'address,undefined'
     binary = work / 'fixture'
     command = [os.environ.get('CXX', 'clang++'), '-std=c++20', '-O1', '-g',
                '-pthread', '-fsanitize=' + sanitizer,
                '-I', str(work), '-I', str(shared), '-I', str(source / 'src/dxmt'),
+               '-I', str(source / 'src/d3d11'), '-I', str(source / 'src/airconv'),
                str(here / 'fixture.cpp'), '-o', str(binary)]
     if args.arch:
         command += ['-arch', args.arch]

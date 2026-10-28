@@ -30,7 +30,7 @@ python3 tests/vibewine/gs-point-output/run.py \
 python3 tests/vibewine/gs-point-output/run.py \
   --llvm /absolute/path/to/llvm14 \
   --support-build /absolute/path/to/existing/dxmt-build \
-  --baseline-ref f871ff41
+  --baseline-ref bbf22e6a
 ```
 
 This is compiler-output regression evidence. It does not execute Metal, test a

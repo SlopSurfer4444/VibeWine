@@ -22,7 +22,7 @@ PATHS = ['src/d3d11/d3d11_context_imm.cpp', 'src/d3d11/d3d11_context_def.cpp',
          'src/dxmt/dxmt_context.hpp', 'src/dxmt/dxmt_dynamic.hpp',
          'src/dxmt/dxmt_dynamic.cpp', 'src/dxmt/dxmt_binding_set.hpp',
          'src/util/util_bit.hpp', 'src/util/rc/util_rc_ptr.hpp',
-         'src/airconv/airconv_public.h']
+         'src/airconv/airconv_public.h', 'src/dxmt/dxmt_buffer.hpp']
 
 
 def block(text, marker):
@@ -72,6 +72,15 @@ def generate(contents):
         'CB_BINDING': block(get('d3d11_context_state.hpp'), 'struct CONSTANT_BUFFER_B {') + ';\n' +
                       block(get('d3d11_context_state.hpp'),
                             'template <> struct redundant_binding_trait<CONSTANT_BUFFER_B> {') + ';',
+        'OTHER_BINDINGS': '\n'.join(block(get('d3d11_context_state.hpp'), marker) + ';' for marker in [
+            'struct SRV_B {', 'template <> struct redundant_binding_trait<SRV_B> {',
+            'struct VERTEX_BUFFER_B {', 'template <> struct redundant_binding_trait<VERTEX_BUFFER_B> {']),
+        'BUFFER_SLICE': block(get('dxmt_buffer.hpp'), 'struct BufferSlice {') + ';',
+        'BIND_SRV': block(get('dxmt_context.hpp'), '  template <PipelineStage stage>\n  void\n  bindBuffer('),
+        'BIND_VB': block(get('dxmt_context.hpp'), '  void\n  bindVertexBuffer('),
+        'ENCODE_VB': block(get('dxmt_context.cpp'), 'template <PipelineKind kind>\nvoid\nArgumentEncodingContext::encodeVertexBuffers('),
+        'SRV_CASE': block(block(get('dxmt_context.cpp'), 'template <PipelineStage stage, PipelineKind kind>\nvoid\nArgumentEncodingContext::encodeShaderResources('), '    case SM50BindingType::SRV:'),
+        'SRV_TAIL': block(get('dxmt_context.cpp'), 'template <PipelineStage stage, PipelineKind kind>\nvoid\nArgumentEncodingContext::encodeShaderResources(').split('  if constexpr (stage == PipelineStage::Compute)', 1)[1].rsplit('}', 1)[0],
         'ALIGN': block(get('dxmt_context.hpp'), 'inline std::size_t\nalign_forward_adjustment('),
         'BIND_CB': block(get('dxmt_context.hpp'),
                          '  template <PipelineStage stage>\n  void\n  bindConstantBuffer('),
@@ -133,6 +142,34 @@ def mutate(contents, kind):
         before = 'allocation->useSuballocation(next_sub);'
         assert contents[key].count(before) == 1
         contents[key] = contents[key].replace(before, '(void)allocation; (void)next_sub;')
+    elif kind.startswith(('vb-', 'srv-')) and kind != 'srv-residency-drop':
+        token = 'VertexBuffers' if kind.startswith('vb-') else 'ShaderResources'
+        text = contents[helper]
+        marker = 'InvalidateDiscarded' + token + '('
+        function = block(text, marker)
+        if kind.endswith('missing'):
+            changed = function.replace('== discarded)', '== nullptr)')
+        elif kind.endswith('broad'):
+            changed = function.replace('set_dirty(slot)', 'set_dirty()')
+        elif kind.endswith('first-alias'):
+            changed = function.replace('stage.SRVs.set_dirty(slot);', '{ stage.SRVs.set_dirty(slot); return; }')
+        elif kind.endswith('upper-qword'):
+            changed = function.replace('== discarded)', '== discarded && slot < 64)')
+        else:
+            raise ValueError(kind)
+        assert function != changed
+        contents[helper] = text.replace(function, changed)
+    elif kind == 'srv-residency-drop':
+        key = 'src/dxmt/dxmt_context.cpp'
+        before = 'makeResident<stage, kind>(srv.buffer.ptr());'
+        assert contents[key].count(before) == 1
+        contents[key] = contents[key].replace(before, '(void)srv;')
+    elif kind in ('immediate-resource-callsite', 'deferred-resource-callsite'):
+        key = 'src/d3d11/d3d11_context_' + ('imm.cpp' if kind.startswith('immediate') else 'def.cpp')
+        for before in ('InvalidateDiscardedVertexBuffers(state_.InputAssembler.VertexBuffers, dynamic->buffer);',
+                       'InvalidateDiscardedShaderResources(state_.ShaderStages, dynamic->buffer);'):
+            assert contents[key].count(before) == 1
+            contents[key] = contents[key].replace(before, '(void)dynamic;')
     else:
         raise ValueError(kind)
     return contents
@@ -152,10 +189,15 @@ def main():
                 ('explicit-off', current, ['-DDXMT_PRECISE_BINDINGS=0'], False, True),
                 ('enabled', current, ['-DDXMT_PRECISE_BINDINGS=1'], True, True),
                 ('baseline', sources(args.source_dir, args.baseline_ref),
+                 ['-DDXMT_PRECISE_BINDINGS=1'], True, False),
+                ('resource-baseline', sources(args.source_dir, '8cf59a015b88361ed6f6320eb8a781c68b3b36c1'),
                  ['-DDXMT_PRECISE_BINDINGS=1'], True, False)]
     variants += [(kind, mutate(current, kind), ['-DDXMT_PRECISE_BINDINGS=1'], True, False)
                  for kind in ('missing-dependent', 'unrelated', 'first-alias', 'broad-slot',
-                              'immediate-callsite', 'deferred-callsite', 'rename-order', 'suballocation-order')]
+                              'immediate-callsite', 'deferred-callsite', 'rename-order', 'suballocation-order',
+                              'vb-missing', 'vb-broad', 'srv-missing', 'srv-broad', 'srv-first-alias',
+                              'srv-upper-qword', 'srv-residency-drop',
+                              'immediate-resource-callsite', 'deferred-resource-callsite')]
     variants += [('residency-drop', mutate(current, 'residency-drop'), ['-DDXMT_PRECISE_BINDINGS=1'], True, False)]
     results = []
     with tempfile.TemporaryDirectory(prefix='dxmt-precise-bindings-') as directory:
@@ -184,7 +226,7 @@ def main():
                 assert 'ERROR: AddressSanitizer' not in output and 'runtime error:' not in output
             results.append({'variant': name, 'accepted': accept, 'exit': result.returncode, 'output': output.strip()})
             print(json.dumps(results[-1]), flush=True)
-    print(json.dumps({'scope': 'Production dynamic-buffer Map branches, rename methods, CB binding/upload/encoding with CPU adapters',
+    print(json.dumps({'scope': 'Production dynamic-buffer Map, exact CB/VB/SRV invalidation, rename, CB/SRV upload and buffer encoding with CPU adapters',
                       'arch': args.arch, 'sanitizers': ['address', 'undefined'], 'baseline_ref': args.baseline_ref,
                       'sources_sha256': {path: hashlib.sha256(text.encode()).hexdigest()
                                          for path, text in current.items()},

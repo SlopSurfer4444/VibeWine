@@ -277,7 +277,7 @@ void Presenter::closePresentationFeedback() {
 }
 
 void Presenter::observeVisibility(uint32_t generation, uint64_t revision) {
-  if (!generation || !swapchain_serial_ || cs2trace::profile()!=cs2trace::Profile::PresentationWaits ||
+  if (!generation || !swapchain_serial_ || !cs2trace::presentationScopesAllowed(cs2trace::profile()) ||
       generation!=cs2trace::generation()) return;
   const auto received=cs2trace::now();
   if (visibility_generation_==generation && received>=visibility_last_poll_ns_ &&

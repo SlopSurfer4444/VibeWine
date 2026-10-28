@@ -158,7 +158,11 @@ public:
         return E_INVALIDARG;
       case D3D11_MAP_WRITE_DISCARD: {
         if (bind_flag & D3D11_BIND_VERTEX_BUFFER) {
+#if defined(DXMT_PRECISE_BINDINGS) && DXMT_PRECISE_BINDINGS
+          InvalidateDiscardedVertexBuffers(state_.InputAssembler.VertexBuffers, dynamic->buffer);
+#else
           state_.InputAssembler.VertexBuffers.set_dirty();
+#endif
         }
         if (bind_flag & D3D11_BIND_CONSTANT_BUFFER) {
 #if defined(DXMT_PRECISE_BINDINGS) && DXMT_PRECISE_BINDINGS
@@ -170,9 +174,13 @@ public:
 #endif
         }
         if (bind_flag & D3D11_BIND_SHADER_RESOURCE) {
+#if defined(DXMT_PRECISE_BINDINGS) && DXMT_PRECISE_BINDINGS
+          InvalidateDiscardedShaderResources(state_.ShaderStages, dynamic->buffer);
+#else
           for (auto &stage : state_.ShaderStages) {
             stage.SRVs.set_dirty();
           }
+#endif
         }
 
         pMappedResource->pData = MapDynamicBuffer(dynamic, current_seq_id, coherent_seq_id);
@@ -432,6 +440,11 @@ public:
     if (DataSize && DataSize != pAsync->GetDataSize())
       return E_INVALIDARG;
 
+    // DataSize == 0 checks status even when the caller supplies a pointer.
+    // Concrete queries still receive scratch storage so polling/publication
+    // follows the same path as a value read.
+    void *result_data = DataSize ? pData : nullptr;
+
     // Query state is shared with Begin/End. The device mutex is recursive,
     // so the existing not-ready Flush below remains safe under protection.
     std::lock_guard<d3d11_device_mutex> lock(mutex);
@@ -461,37 +474,37 @@ public:
     }
     switch (desc.Query) {
     case D3D11_QUERY_EVENT: {
-      if (pData)
-        *static_cast<BOOL *>(pData) = (hr == S_OK);
+      if (result_data)
+        *static_cast<BOOL *>(result_data) = (hr == S_OK);
       break;
     }
     case D3D11_QUERY_OCCLUSION: {
       uint64_t null_data;
-      uint64_t *data_ptr = pData ? (uint64_t *)pData : &null_data;
+      uint64_t *data_ptr = result_data ? (uint64_t *)result_data : &null_data;
       hr = static_cast<MTLD3D11OcclusionQuery *>(pAsync)->GetData(data_ptr);
       break;
     }
     case D3D11_QUERY_OCCLUSION_PREDICATE: {
       BOOL null_data;
-      BOOL *data_ptr = pData ? (BOOL *)pData : &null_data;
+      BOOL *data_ptr = result_data ? (BOOL *)result_data : &null_data;
       hr = static_cast<MTLD3D11OcclusionQuery *>(pAsync)->GetData(data_ptr);
       break;
     }
     case D3D11_QUERY_TIMESTAMP: {
       uint64_t null_data;
-      uint64_t *data_ptr = pData ? (uint64_t *)pData : &null_data;
+      uint64_t *data_ptr = result_data ? (uint64_t *)result_data : &null_data;
       hr = static_cast<MTLD3D11TimestampQuery *>(pAsync)->GetData(data_ptr);
       break;
     }
     case D3D11_QUERY_TIMESTAMP_DISJOINT: {
-      if (pData) {
-        (*static_cast<D3D11_QUERY_DATA_TIMESTAMP_DISJOINT *>(pData)) = {1'000'000'000, FALSE};
+      if (result_data) {
+        (*static_cast<D3D11_QUERY_DATA_TIMESTAMP_DISJOINT *>(result_data)) = {1'000'000'000, FALSE};
       }
       break;
     }
     case D3D11_QUERY_PIPELINE_STATISTICS: {
-      if (pData) {
-        (*static_cast<D3D11_QUERY_DATA_PIPELINE_STATISTICS *>(pData)) = {};
+      if (result_data) {
+        (*static_cast<D3D11_QUERY_DATA_PIPELINE_STATISTICS *>(result_data)) = {};
       }
       return S_OK;
     }

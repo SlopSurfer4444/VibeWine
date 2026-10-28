@@ -24,6 +24,8 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
+#include <memory>
+#include <cstdlib>
 
 namespace dxmt {
 
@@ -397,15 +399,29 @@ ResourceInitializer::initDepthStencilWithData(
   auto width_sub = mipExtent(texture->width(), level);
   auto height_sub = mipExtent(texture->height(), level);
 
-  size_t depth_bytes_per_row = size_t(4) * width_sub;
+  size_t depth_bytes_per_row, source_bytes_per_row;
+  if (!checkedMultiply(size_t(4), width_sub, depth_bytes_per_row) ||
+      !checkedMultiply(size_t(is_d24s8 ? 4 : 8), width_sub, source_bytes_per_row))
+    return {InitStatus::OutOfMemory, 0};
   size_t stencil_bytes_per_row = (size_t(width_sub) + 3) & ~size_t(3);
   size_t depth_bytes_per_image, stencil_bytes_per_image;
   if (!checkedMultiply(depth_bytes_per_row, height_sub, depth_bytes_per_image) ||
       !checkedMultiply(stencil_bytes_per_row, height_sub, stencil_bytes_per_image))
     return {InitStatus::OutOfMemory, 0};
 
-  if (!checkedSourceRange(1, 0, height_sub, row_pitch, size_t(width_sub) * (is_d24s8 ? 4 : 8)))
+  if (!checkedSourceRange(1, 0, height_sub, row_pitch, source_bytes_per_row) ||
+      width_sub > std::numeric_limits<size_t>::max() - depth_bytes_per_row)
     return {InitStatus::OutOfMemory, 0};
+
+  // Own both packed rows before reserving or publishing any work. Only logical
+  // stencil bytes are copied below: upload-row padding belongs to the allocator.
+  std::unique_ptr<unsigned char, decltype(&free)> rows(
+      static_cast<unsigned char *>(calloc(1, depth_bytes_per_row + width_sub)), &free
+  );
+  if (!rows)
+    return {InitStatus::OutOfMemory, 0};
+  auto depth_row = rows.get();
+  auto stencil_row = depth_row + depth_bytes_per_row;
 
   std::lock_guard<dxmt::mutex> lock(mutex_);
   auto status = prepareCpu<wmtcmd_blit_copy_from_buffer_to_texture_withblitoption,
@@ -435,15 +451,17 @@ ResourceInitializer::initDepthStencilWithData(
           memcpy(&packed, (const char *)src_data + size_t(x) * 4, sizeof(packed));
           float depth_val = (float)(packed & 0xFFFFFF) / (float)(0xFFFFFF);
           uint8_t stencil_val = (uint8_t)(packed >> 24);
-          depth_buf.updateContents(depth_buf_offset + row * depth_bytes_per_row + size_t(x) * 4, &depth_val, 4);
-          stencil_buf.updateContents(stencil_buf_offset + row * stencil_bytes_per_row + x, &stencil_val, 1);
+          memcpy(depth_row + size_t(x) * 4, &depth_val, 4);
+          stencil_row[x] = stencil_val;
         }
       } else {
         for (auto x = 0u; x < width_sub; x++) {
-          depth_buf.updateContents(depth_buf_offset + row * depth_bytes_per_row + size_t(x) * 4, (const char *)src_data + size_t(x) * 8, 4);
-          stencil_buf.updateContents(stencil_buf_offset + row * stencil_bytes_per_row + x, (const uint8_t *)src_data + size_t(x) * 8 + 4, 1);
+          memcpy(depth_row + size_t(x) * 4, (const char *)src_data + size_t(x) * 8, 4);
+          stencil_row[x] = *((const uint8_t *)src_data + size_t(x) * 8 + 4);
         }
       }
+      depth_buf.updateContents(depth_buf_offset + row * depth_bytes_per_row, depth_row, depth_bytes_per_row);
+      stencil_buf.updateContents(stencil_buf_offset + row * stencil_bytes_per_row, stencil_row, width_sub);
     }
 
     depth_copy->type = WMTBlitCommandCopyFromBufferToTextureWithBlitOption;

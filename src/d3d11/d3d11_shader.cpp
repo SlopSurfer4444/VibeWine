@@ -3,6 +3,7 @@
 #include "airconv_public.h"
 #include "config/config.hpp"
 #include "d3d11_input_layout.hpp"
+#include "d3d11_pso_normalization.hpp"
 #include "sha1/sha1_util.hpp"
 #include <mutex>
 #include "cs2_compile_lab.hpp"
@@ -197,6 +198,9 @@ template <>
 std::unique_ptr<CompiledShader>
 CreateVariantShader(MTLD3D11Device *pDevice, ManagedShader shader,
                     ShaderVariantPixel variant) {
+  // Also cover direct factory callers: the AIR digest and compile arguments
+  // must describe the same canonical variant as the in-memory variant map.
+  variant = canonicalize_pixel_variant(variant, shader->reflection().PixelShader.ValidRenderTargets);
   Sha1HashState h;
   h.update(getGlobalShaderFlag());
   h.update(variant.sample_mask);
