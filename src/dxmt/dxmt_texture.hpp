@@ -48,6 +48,10 @@ struct TextureViewDescriptor {
   uint32_t miplevelCount   : 4 = 1;
   uint32_t firstArraySlice : 12 = 0;
   uint32_t arraySize       : 12 = 1;
+
+  // Owner-only memo, ignored by descriptor equality/native view creation.
+  // At most one alternate array/nonarray descriptor per registered view.
+  uint32_t alternateArrayIndex = ~0u;
 };
 
 struct TextureViewKey {

@@ -1,6 +1,14 @@
+worker_build_id = get_option('vibewine_arm_worker_build_id')
+if worker_build_id != ''
+  if worker_build_id.substring(63, 64) == '' or worker_build_id.substring(64) != '' or worker_build_id.strip('0123456789abcdef') != ''
+    error('vibewine_arm_worker_build_id must be empty or exactly64 lowercase hex characters')
+  endif
+endif
+
 winemetal_unix_src = [
   'winemetal_unix.c',
   'cache.c',
+  'airconv_worker_bridge.cpp',
 ]
 
 if wine_build_path != ''
@@ -29,6 +37,7 @@ shared_library('winemetal', winemetal_unix_src,
   dependencies        : [ airconv_dep_darwin ],
   include_directories : dxmt_include_path,
   c_args              : ['-ObjC'],
+  cpp_args            : ['-DDXMT_WORKER_BUILD_ID="' + worker_build_id + '"'],
   link_args           : winemetal_unix_ld_args,
   native              : true,
   name_suffix         : 'so',

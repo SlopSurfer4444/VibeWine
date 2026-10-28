@@ -148,20 +148,23 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
       if (auto pixel = std::get_if<ShaderVariantPixel>(&variant))
         *pixel = canonicalize_pixel_variant(*pixel, reflection_.PixelShader.ValidRenderTargets);
       std::lock_guard<dxmt::mutex> lock(variants_mutex);
-      auto c = variants.insert({variant, nullptr});
-      if (c.second) {
-        c.first->second = std::visit(
+      auto c = variants.find(variant);
+      if (c == variants.end()) {
+        // Publish only a constructed variant: a factory exception must not
+        // poison this key with a null entry and prevent a later retry.
+        auto compiled_shader = std::visit(
             [=, this](auto var) {
               return CreateVariantShader(cache->device, this, var);
             },
             variant);
-        cache->scheduler_.submit(c.first->second.get(), urgency);
+        c = variants.emplace(variant, std::move(compiled_shader)).first;
+        cache->scheduler_.submit(c->second.get(), urgency);
       } else if (urgency == task_urgency::demand) {
         // Promotion never submits a second queue node or touches an already
         // completed task. The cache mutex still owns the variant identity.
-        cache->scheduler_.promote(c.first->second.get());
+        cache->scheduler_.promote(c->second.get());
       }
-      return c.first->second.get();
+      return c->second.get();
     }
     virtual const Sha1Digest &sha1() { return sha1_; };
 
@@ -385,7 +388,7 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
       MTL_COMPUTE_PIPELINE_DESC desc{};
       desc.ComputeShader = managed_shader;
       MTLCompiledComputePipeline *pipeline;
-      GetComputePipeline(&desc, &pipeline);
+      GetComputePipeline(&desc, &pipeline, task_urgency::speculative);
     }
     *ppShader =
         ref(new TShaderBase<ID3D11ComputeShader>(device, managed_shader));
@@ -508,18 +511,31 @@ class PipelineCache : public MTLD3D11PipelineCacheBase {
   }
 
   void GetComputePipeline(MTL_COMPUTE_PIPELINE_DESC *pDesc,
-                                  MTLCompiledComputePipeline **ppPipeline) override {
-   std::lock_guard<dxmt::mutex> lock(mutex_cs_);
+                          MTLCompiledComputePipeline **ppPipeline) override {
+    GetComputePipeline(pDesc, ppPipeline, task_urgency::demand);
+  }
+
+  void GetComputePipeline(MTL_COMPUTE_PIPELINE_DESC *pDesc,
+                          MTLCompiledComputePipeline **ppPipeline,
+                          task_urgency urgency) {
+    std::lock_guard<dxmt::mutex> lock(mutex_cs_);
 
     if (auto iter = pipelines_cs_.find(pDesc->ComputeShader); iter != pipelines_cs_.end()) {
+      if (urgency == task_urgency::demand)
+        scheduler_.promote(iter->second.get());
       *ppPipeline = iter->second.get();
       return;
     }
-    auto [iter, inserted] = pipelines_cs_.insert({pDesc->ComputeShader, CreateComputePipeline(device, pDesc->ComputeShader)});
+    // Resolve the shader with the same intent as its PSO. The constructor must
+    // not turn an early compile into demand through the public shader lookup.
+    auto shader = static_cast<CachedSM50Shader *>(pDesc->ComputeShader);
+    auto compiled_shader = shader->get_shader(ShaderVariantDefault{}, urgency);
+    auto [iter, inserted] = pipelines_cs_.insert(
+        {pDesc->ComputeShader, CreateComputePipeline(device, shader, compiled_shader)});
     if (!inserted) {
       D3D11_ASSERT(0 && "duplicated compute pipeline");
     } else {
-      scheduler_.submit(iter->second.get(), task_urgency::demand);
+      scheduler_.submit(iter->second.get(), urgency);
     }
     *ppPipeline = iter->second.get();
   }

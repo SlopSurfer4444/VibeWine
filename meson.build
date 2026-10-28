@@ -164,6 +164,7 @@ foreach option_name, define_name : {
   'vibewine_native_raster_shadow' : 'DXMT_NATIVE_RASTER_SHADOW',
   'vibewine_marshal_packets' : 'DXMT_MARSHAL_PACKETS',
   'vibewine_semantic_blend_hash' : 'DXMT_SEMANTIC_BLEND_HASH',
+  'vibewine_metal4_compiler' : 'DXMT_METAL4_COMPILER',
 }
   experiment_define = '-D' + define_name + '=' + get_option(option_name).to_int().to_string()
   add_project_arguments(experiment_define, language: ['c', 'cpp'])
