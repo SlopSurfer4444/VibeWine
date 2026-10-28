@@ -33,6 +33,34 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(macdrv);
 
+WINE_DECLARE_DEBUG_CHANNEL(vw_lifecycle);
+
+/* Opt-in diagnostic only. The last slot is a single saturation marker. */
+#define LIFECYCLE_EVENT_LIMIT 512u
+static LONG lifecycle_event_count;
+
+static BOOL lifecycle_trace_admit(void)
+{
+    LONG count, observed;
+
+    if (!TRACE_ON(vw_lifecycle)) return FALSE;
+    count = InterlockedCompareExchange( &lifecycle_event_count, 0, 0 );
+    for (;;)
+    {
+        if (count >= (LONG)LIFECYCLE_EVENT_LIMIT) return FALSE;
+        observed = InterlockedCompareExchange( &lifecycle_event_count, count + 1, count );
+        if (observed == count) break;
+        count = observed;
+    }
+    if (count == (LONG)LIFECYCLE_EVENT_LIMIT - 1)
+    {
+        TRACE_(vw_lifecycle)( "event=quota source=macdrv_pe_quit limit=%u\n", LIFECYCLE_EVENT_LIMIT );
+        return FALSE;
+    }
+    return TRUE;
+}
+
+
 #include "ax_provider.inc"
 
 static HMODULE macdrv_module = 0;
@@ -48,6 +76,15 @@ struct quit_info {
     UINT                refs;
 };
 
+
+static void lifecycle_trace_quit( const char *phase, HWND hwnd, UINT msg, UINT count, UINT done,
+                                  DWORD flags, LRESULT result )
+{
+    if (!lifecycle_trace_admit()) return;
+    TRACE_(vw_lifecycle)( "event=app_quit phase=%s pid=%08x tid=%08x hwnd=%p msg=%04x count=%u done=%u flags=%08x result=%lld\n",
+                         phase, (unsigned int)GetCurrentProcessId(), (unsigned int)GetCurrentThreadId(),
+                         hwnd, msg, count, done, (unsigned int)flags, (long long)result );
+}
 
 static BOOL CALLBACK get_process_windows(HWND hwnd, LPARAM lp)
 {
@@ -113,6 +150,7 @@ typedef struct
 static void quit_reply(int reply)
 {
     struct quit_result_params params = { .result = reply };
+    lifecycle_trace_quit( "reply", NULL, 0, 0, 0, 0, reply );
     MACDRV_CALL(quit_result, &params);
 }
 
@@ -132,6 +170,8 @@ static void CALLBACK quit_callback(HWND hwnd, UINT msg, ULONG_PTR data, LRESULT 
     struct quit_info *qi = (struct quit_info*)data;
 
     qi->done++;
+    lifecycle_trace_quit( msg == WM_QUERYENDSESSION ? "query_callback" : "end_callback",
+                          hwnd, msg, qi->count, qi->done, qi->flags, result );
 
     if (msg == WM_QUERYENDSESSION)
     {
@@ -165,6 +205,8 @@ static void CALLBACK quit_callback(HWND hwnd, UINT msg, ULONG_PTR data, LRESULT 
             qi->done = 0;
             for (i = 0; i < qi->count; i++)
             {
+                lifecycle_trace_quit( "end_send", qi->wins[i], WM_ENDSESSION, qi->count, qi->done,
+                                      qi->flags, qi->result );
                 TRACE("sending WM_ENDSESSION to win %p result %d flags 0x%08lx\n", qi->wins[i],
                       qi->result, qi->flags);
                 qi->refs++;
@@ -209,6 +251,7 @@ NTSTATUS WINAPI macdrv_app_quit_request(void *arg, ULONG size)
     struct quit_info *qi;
     UINT i;
 
+    lifecycle_trace_quit( "begin", NULL, 0, 0, 0, params->flags, 0 );
     qi = HeapAlloc(GetProcessHeap(), 0, sizeof(*qi));
     if (!qi)
         goto fail;
@@ -220,6 +263,7 @@ NTSTATUS WINAPI macdrv_app_quit_request(void *arg, ULONG size)
     if (!qi->wins || !EnumWindows(get_process_windows, (LPARAM)qi))
         goto fail;
 
+    lifecycle_trace_quit( "windows", NULL, 0, qi->count, 0, params->flags, 0 );
     if (!qi->count)
     {
         HeapFree(GetProcessHeap(), 0, qi->wins);
@@ -239,6 +283,8 @@ NTSTATUS WINAPI macdrv_app_quit_request(void *arg, ULONG size)
 
     for (i = 0; i < qi->count; i++)
     {
+        lifecycle_trace_quit( "query_send", qi->wins[i], WM_QUERYENDSESSION, qi->count, qi->done,
+                              qi->flags, 0 );
         TRACE("sending WM_QUERYENDSESSION to win %p\n", qi->wins[i]);
         qi->refs++;
         if (!SendMessageCallbackW(qi->wins[i], WM_QUERYENDSESSION, 0, qi->flags,

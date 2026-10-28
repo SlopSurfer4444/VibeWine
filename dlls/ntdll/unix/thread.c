@@ -83,6 +83,82 @@ WINE_DECLARE_DEBUG_CHANNEL(seh);
 WINE_DECLARE_DEBUG_CHANNEL(syscall);
 WINE_DECLARE_DEBUG_CHANNEL(threadname);
 
+WINE_DECLARE_DEBUG_CHANNEL(vw_lifecycle);
+
+/* Opt-in diagnostic only. The last slot is a single saturation marker. */
+#define LIFECYCLE_EVENT_LIMIT 4096u
+static LONG lifecycle_event_count;
+
+static BOOL lifecycle_trace_admit(void)
+{
+    LONG count, observed;
+
+    if (!TRACE_ON(vw_lifecycle)) return FALSE;
+    count = InterlockedCompareExchange( &lifecycle_event_count, 0, 0 );
+    for (;;)
+    {
+        if (count >= (LONG)LIFECYCLE_EVENT_LIMIT) return FALSE;
+        observed = InterlockedCompareExchange( &lifecycle_event_count, count + 1, count );
+        if (observed == count) break;
+        count = observed;
+    }
+    if (count == (LONG)LIFECYCLE_EVENT_LIMIT - 1)
+    {
+        TRACE_(vw_lifecycle)( "event=quota source=ntdll_unix_thread limit=%u\n", LIFECYCLE_EVENT_LIMIT );
+        return FALSE;
+    }
+    return TRUE;
+}
+
+
+static void lifecycle_trace_created( DWORD pid, DWORD tid, PRTL_THREAD_START_ROUTINE start,
+                                     HANDLE handle, ULONG flags, BOOL remote )
+{
+    if (!lifecycle_trace_admit()) return;
+    TRACE_(vw_lifecycle)( "event=thread_created caller_pid=%08x caller_tid=%08x target_pid=%08x target_tid=%08x start=%p handle=%p flags=%08x remote=%u\n",
+                         (unsigned int)GetCurrentProcessId(), (unsigned int)GetCurrentThreadId(),
+                         (unsigned int)pid, (unsigned int)tid, (void *)start, handle,
+                         (unsigned int)flags, (unsigned int)remote );
+}
+
+static void lifecycle_trace_terminate_begin( HANDLE handle, LONG exit_code )
+{
+    THREAD_BASIC_INFORMATION basic = {0};
+    NTSTATUS query_status = STATUS_SUCCESS;
+    BOOL query_attempted = FALSE, target_known = TRUE;
+
+    if (!lifecycle_trace_admit()) return;
+    if (handle == NtCurrentThread())
+    {
+        basic.ClientId.UniqueProcess = ULongToHandle(GetCurrentProcessId());
+        basic.ClientId.UniqueThread = ULongToHandle(GetCurrentThreadId());
+        basic.ExitStatus = STATUS_PENDING;
+    }
+    else
+    {
+        query_attempted = TRUE;
+        query_status = NtQueryInformationThread( handle, ThreadBasicInformation, &basic, sizeof(basic), NULL );
+        if (query_status)
+        {
+            target_known = FALSE;
+            memset( &basic, 0, sizeof(basic) );
+        }
+    }
+    TRACE_(vw_lifecycle)( "event=terminate_thread_begin caller_pid=%08x caller_tid=%08x handle=%p exit_status=%08x target_query_attempted=%u target_query_status=%08x target_known=%u target_pid=%p target_tid=%p target_exit_status=%08x\n",
+                         (unsigned int)GetCurrentProcessId(), (unsigned int)GetCurrentThreadId(),
+                         handle, (unsigned int)exit_code, (unsigned int)query_attempted,
+                         (unsigned int)query_status, (unsigned int)target_known,
+                         basic.ClientId.UniqueProcess, basic.ClientId.UniqueThread, (unsigned int)basic.ExitStatus );
+}
+
+static void lifecycle_trace_terminate_result( HANDLE handle, LONG exit_code, NTSTATUS status, BOOL self )
+{
+    if (!lifecycle_trace_admit()) return;
+    TRACE_(vw_lifecycle)( "event=terminate_thread_result caller_pid=%08x caller_tid=%08x handle=%p exit_status=%08x result=%08x self=%u\n",
+                         (unsigned int)GetCurrentProcessId(), (unsigned int)GetCurrentThreadId(),
+                         handle, (unsigned int)exit_code, (unsigned int)status, (unsigned int)self );
+}
+
 pthread_key_t teb_key = 0;
 
 static LONG nb_threads = 1;
@@ -1389,6 +1465,8 @@ NTSTATUS WINAPI GPT_IMPORT(NtCreateThreadEx)( HANDLE *handle, ACCESS_MASK access
             client_id.UniqueProcess = ULongToHandle( result.create_thread.pid );
             client_id.UniqueThread  = ULongToHandle( result.create_thread.tid );
             if (attr_list) status = update_attr_list( attr_list, *handle, &client_id, teb );
+            if (!status) lifecycle_trace_created( HandleToULong(client_id.UniqueProcess),
+                                                 HandleToULong(client_id.UniqueThread), start, *handle, flags, TRUE );
         }
         return status;
     }
@@ -1475,6 +1553,7 @@ done:
         return status;
     }
     if (attr_list) status = update_attr_list( attr_list, *handle, &teb->ClientId, teb );
+    if (!status) lifecycle_trace_created( GetCurrentProcessId(), tid, start, *handle, flags, FALSE );
     return status;
 }
 
@@ -1766,6 +1845,8 @@ NTSTATUS WINAPI NtTerminateThread( HANDLE handle, LONG exit_code )
     unsigned int ret;
     BOOL self;
 
+    lifecycle_trace_terminate_begin( handle, exit_code );
+
     SERVER_START_REQ( terminate_thread )
     {
         req->handle    = wine_server_obj_handle( handle );
@@ -1775,6 +1856,7 @@ NTSTATUS WINAPI NtTerminateThread( HANDLE handle, LONG exit_code )
     }
     SERVER_END_REQ;
 
+    lifecycle_trace_terminate_result( handle, exit_code, ret, self );
     if (self)
     {
         server_select( NULL, 0, SELECT_INTERRUPTIBLE, 0, NULL, NULL );

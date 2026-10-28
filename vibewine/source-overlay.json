@@ -1569,6 +1569,51 @@
       "source": "neighbor-refresh-20261027/late-app-icon/vibewine/tests/late-app-icon/run.py",
       "destination": "vibewine/tests/late-app-icon/run.py",
       "sha256": "c83192fd9ed718ba948fab07987f279b308ef3115d8341e2efdacd2c57c55a44"
+    },
+    {
+      "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/dlls/ntdll/thread.c",
+      "destination": "dlls/ntdll/thread.c",
+      "sha256": "993e627b438e8f3f4874e8a4c11d6eb6a90ac483176fb9ff1fbdcb3d67c2885e"
+    },
+    {
+      "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/dlls/ntdll/unix/thread.c",
+      "destination": "dlls/ntdll/unix/thread.c",
+      "sha256": "870c049b0c9d995dd15158ad395763139280c7b72c9bc2589acb9b25e72f2d2b"
+    },
+    {
+      "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/dlls/ntdll/sync.c",
+      "destination": "dlls/ntdll/sync.c",
+      "sha256": "c44c989202fbe1ec66d65fc08368bbaf6540a2c0465c56142b03458dd2403382"
+    },
+    {
+      "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/dlls/winemac.drv/dllmain.c",
+      "destination": "dlls/winemac.drv/dllmain.c",
+      "sha256": "cb56a3447bb64d317da438d612bca847fff1360f82d19c044583e22b3094f47e"
+    },
+    {
+      "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/vibewine/tests/lifecycle-diagnostics/run.py",
+      "destination": "vibewine/tests/lifecycle-diagnostics/run.py",
+      "sha256": "8bb05456cae1f894c59116f31cae5577c4018cd17fa689a466b59aa5178aa3fa"
+    },
+    {
+      "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/vibewine/tests/lifecycle-diagnostics/test_quit.py",
+      "destination": "vibewine/tests/lifecycle-diagnostics/test_quit.py",
+      "sha256": "809ee38c9f27794b71f09ad96ec7bb888e72d2e4d16e1ac8096936328517f0a1"
+    },
+    {
+      "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/vibewine/tests/lifecycle-diagnostics/quit_fixture.c.in",
+      "destination": "vibewine/tests/lifecycle-diagnostics/quit_fixture.c.in",
+      "sha256": "5f66c886a95dec616bacf5ecfad3d1ca17d77db3f90bffe2b6f269027f6cf5e0"
+    },
+    {
+      "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/vibewine/tests/lifecycle-diagnostics/README.md",
+      "destination": "vibewine/tests/lifecycle-diagnostics/README.md",
+      "sha256": "ad45c0db2fabe6afd9824f77007571af67b8d26a80b5af8dc3390de32e7ccf15"
+    },
+    {
+      "source": "steam-quit-recurrence-20261028/lifecycle-diagnostics/vibewine/tests/lifecycle-diagnostics/REVIEW.md",
+      "destination": "vibewine/tests/lifecycle-diagnostics/REVIEW.md",
+      "sha256": "8f6713add92dce256fa3664aa042d1256d8f2b72a4fcd1d71ebfa11c663f8319"
     }
   ]
 }

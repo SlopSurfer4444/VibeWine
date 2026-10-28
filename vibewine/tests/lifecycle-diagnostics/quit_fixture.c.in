@@ -1,0 +1,194 @@
+/* Native harness; @PRODUCTION_*@ fragments come from current dllmain.c. */
+#include <assert.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef int32_t BOOL;
+typedef int32_t LONG;
+typedef uint32_t UINT;
+typedef uint32_t DWORD;
+typedef uint32_t ULONG;
+typedef uint16_t WCHAR;
+typedef void *HWND;
+typedef intptr_t LPARAM;
+typedef uintptr_t ULONG_PTR;
+typedef intptr_t LRESULT;
+typedef int NTSTATUS;
+typedef struct { uint16_t Length, MaximumLength; WCHAR *Buffer; } UNICODE_STRING;
+#define CALLBACK
+#define WINAPI
+#define TRUE 1
+#define FALSE 0
+#define STATUS_SUCCESS 0
+#define WM_QUERYENDSESSION 0x0011
+#define WM_ENDSESSION 0x0016
+#define ERROR_INVALID_WINDOW_HANDLE 1400
+#define TRACE(...) ((void)0)
+#define WARN(...) ((void)0)
+#define TRACE_ON(channel) trace_enabled
+#define TRACE_(channel) diagnostic_trace
+#define MACDRV_CALL(function, params) mock_quit_result(params)
+
+struct app_quit_request_params { DWORD flags; };
+struct quit_result_params { int result; };
+static int eligible, veto, query_mode, end_mode, send_fault, alloc_fault, enum_fault;
+static int replies, reply_value = -1, terminations, allocations, allocation_attempts;
+static int queries, ends, foreign_messages, trace_enabled, trace_lines;
+static DWORD last_error;
+static DWORD GetCurrentProcessId(void) { return 0x1234; }
+static DWORD GetCurrentThreadId(void) { return 0x5678; }
+static LONG InterlockedCompareExchange(LONG *value, LONG exchange, LONG compare)
+{
+    return __sync_val_compare_and_swap(value, compare, exchange);
+}
+static void diagnostic_trace(const char *format, ...) __attribute__((format(printf, 1, 2)));
+static void diagnostic_trace(const char *format, ...)
+{
+    va_list args;
+    assert(trace_enabled);
+    trace_lines++;
+    fputs("TRACE ", stdout);
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+}
+
+@PRODUCTION_QUOTA@
+
+static void *GetProcessHeap(void) { return NULL; }
+static void *GetCurrentProcess(void) { return (void *)(intptr_t)-1; }
+static void *HeapAlloc(void *heap, unsigned int flags, size_t bytes)
+{
+    void *ptr;
+    (void)heap;
+    (void)flags;
+    if (++allocation_attempts == alloc_fault) return NULL;
+    ptr = malloc(bytes);
+    assert(ptr);
+    allocations++;
+    return ptr;
+}
+static void *HeapReAlloc(void *heap, unsigned int flags, void *ptr, size_t bytes)
+{
+    void *replacement;
+    (void)heap;
+    (void)flags;
+    if (++allocation_attempts == alloc_fault) return NULL;
+    replacement = realloc(ptr, bytes);
+    assert(replacement);
+    return replacement;
+}
+static void HeapFree(void *heap, unsigned int flags, void *ptr)
+{
+    (void)heap;
+    (void)flags;
+    if (ptr) { allocations--; free(ptr); }
+}
+static int IsWindow(HWND hwnd)
+{
+    return !(send_fault == 1 && (uintptr_t)hwnd == (uintptr_t)eligible);
+}
+static DWORD RtlGetLastWin32Error(void) { return last_error; }
+static void mock_quit_result(const struct quit_result_params *params)
+{
+    replies++;
+    reply_value = params->result;
+}
+static void TerminateProcess(void *process, unsigned int status)
+{
+    assert(process == GetCurrentProcess());
+    assert(status == 0);
+    terminations++;
+}
+static void NtUserGetWindowThread(HWND hwnd, DWORD *pid)
+{
+    *pid = (uintptr_t)hwnd >= 1000 ? 0x9999 : GetCurrentProcessId();
+}
+static BOOL NtUserGetClassName(HWND hwnd, BOOL ignored, UNICODE_STRING *name)
+{
+    static const WCHAR tray[] = {
+        'C','h','r','o','m','e','_','S','t','a','t','u','s','T','r','a','y','W','i','n','d','o','w',0
+    };
+    (void)ignored;
+    if ((uintptr_t)hwnd != 999) return FALSE;
+    assert(name->MaximumLength >= sizeof(tray));
+    memcpy(name->Buffer, tray, sizeof(tray));
+    return TRUE;
+}
+typedef void (*callback_fn)(HWND, UINT, ULONG_PTR, LRESULT);
+struct pending { HWND hwnd; UINT msg; ULONG_PTR data; callback_fn callback; };
+static struct pending queue[512];
+static unsigned int head, tail;
+static BOOL SendMessageCallbackW(HWND hwnd, UINT msg, ULONG_PTR wparam, ULONG_PTR lparam,
+                                callback_fn callback, ULONG_PTR data)
+{
+    uintptr_t window = (uintptr_t)hwnd;
+    int mode = msg == WM_QUERYENDSESSION ? query_mode : end_mode;
+    (void)wparam;
+    (void)lparam;
+    if (window >= 999) foreign_messages++;
+    if (msg == WM_QUERYENDSESSION) queries++;
+    else { assert(msg == WM_ENDSESSION); ends++; }
+    if (window == (uintptr_t)eligible &&
+        ((msg == WM_QUERYENDSESSION && (send_fault == 1 || send_fault == 2)) ||
+         (msg == WM_ENDSESSION && send_fault == 3)))
+    {
+        last_error = send_fault == 1 ? ERROR_INVALID_WINDOW_HANDLE : 5;
+        return FALSE;
+    }
+    if (mode == 1 || (mode == 2 && window % 2))
+        callback(hwnd, msg, data, msg == WM_QUERYENDSESSION ? window != (uintptr_t)veto : 0);
+    else
+    {
+        assert(tail < sizeof(queue) / sizeof(queue[0]));
+        queue[tail++] = (struct pending){hwnd, msg, data, callback};
+    }
+    return TRUE;
+}
+
+@PRODUCTION_ENUM@
+
+static BOOL EnumWindows(BOOL (*callback)(HWND, LPARAM), LPARAM data)
+{
+    if (enum_fault) return FALSE;
+    /* Foreign process and excluded tray windows never receive session messages. */
+    if (!callback((HWND)(uintptr_t)1000, data) || !callback((HWND)(uintptr_t)1001, data) ||
+        !callback((HWND)(uintptr_t)999, data)) return FALSE;
+    for (int i = 1; i <= eligible; i++)
+        if (!callback((HWND)(uintptr_t)i, data)) return FALSE;
+    return TRUE;
+}
+
+@PRODUCTION_METHODS@
+
+int main(int argc, char **argv)
+{
+    struct app_quit_request_params params;
+    int reverse, status;
+    assert(argc == 11);
+    eligible = atoi(argv[1]);
+    veto = atoi(argv[2]);
+    query_mode = atoi(argv[3]);
+    end_mode = atoi(argv[4]);
+    send_fault = atoi(argv[5]);
+    alloc_fault = atoi(argv[6]);
+    enum_fault = atoi(argv[7]);
+    reverse = atoi(argv[8]);
+    trace_enabled = atoi(argv[9]);
+    params.flags = (DWORD)strtoul(argv[10], NULL, 0);
+    status = macdrv_app_quit_request(&params, sizeof(params));
+    while (head < tail)
+    {
+        struct pending item = reverse ? queue[--tail] : queue[head++];
+        item.callback(item.hwnd, item.msg, item.data,
+                      item.msg == WM_QUERYENDSESSION ? (uintptr_t)item.hwnd != (uintptr_t)veto : 0);
+    }
+    printf("{\"status\":%d,\"replies\":%d,\"reply_value\":%d,\"terminations\":%d,"
+           "\"allocations\":%d,\"queries\":%d,\"ends\":%d,\"foreign_messages\":%d,"
+           "\"counter\":%d,\"trace_lines\":%d}\n", status, replies, reply_value, terminations,
+           allocations, queries, ends, foreign_messages, lifecycle_event_count, trace_lines);
+    return 0;
+}

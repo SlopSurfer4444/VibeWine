@@ -40,6 +40,34 @@
 WINE_DEFAULT_DEBUG_CHANNEL(sync);
 WINE_DECLARE_DEBUG_CHANNEL(relay);
 
+WINE_DECLARE_DEBUG_CHANNEL(vw_lifecycle);
+
+/* Opt-in diagnostic only. The last slot is a single saturation marker. */
+#define LIFECYCLE_EVENT_LIMIT 64u
+static LONG lifecycle_event_count;
+
+static BOOL lifecycle_trace_admit(void)
+{
+    LONG count, observed;
+
+    if (!TRACE_ON(vw_lifecycle)) return FALSE;
+    count = InterlockedCompareExchange( &lifecycle_event_count, 0, 0 );
+    for (;;)
+    {
+        if (count >= (LONG)LIFECYCLE_EVENT_LIMIT) return FALSE;
+        observed = InterlockedCompareExchange( &lifecycle_event_count, count + 1, count );
+        if (observed == count) break;
+        count = observed;
+    }
+    if (count == (LONG)LIFECYCLE_EVENT_LIMIT - 1)
+    {
+        TRACE_(vw_lifecycle)( "event=quota source=ntdll_pe_sync limit=%u\n", LIFECYCLE_EVENT_LIMIT );
+        return FALSE;
+    }
+    return TRUE;
+}
+
+
 static const char *debugstr_timeout( const LARGE_INTEGER *timeout )
 {
     if (!timeout) return "(infinite)";
@@ -293,6 +321,44 @@ NTSTATUS WINAPI RtlDeleteCriticalSection( RTL_CRITICAL_SECTION *crit )
 }
 
 
+/* A timeout snapshot is evidence, not an atomic lock snapshot or a dead-owner verdict. */
+static void lifecycle_trace_critical_timeout( RTL_CRITICAL_SECTION *crit )
+{
+    OBJECT_ATTRIBUTES attr;
+    CLIENT_ID id;
+    THREAD_BASIC_INFORMATION basic = {0};
+    HANDLE owner, owner_after, thread = NULL;
+    LONG lock_count, recursion_count;
+    NTSTATUS open_status = STATUS_SUCCESS, query_status = STATUS_SUCCESS;
+    BOOL queried = FALSE;
+
+    if (!lifecycle_trace_admit()) return;
+    owner = ReadPointerAcquire( (void * volatile *)&crit->OwningThread );
+    lock_count = crit->LockCount;
+    recursion_count = crit->RecursionCount;
+    id.UniqueProcess = ULongToHandle(GetCurrentProcessId());
+    id.UniqueThread = owner;
+    if (owner)
+    {
+        InitializeObjectAttributes( &attr, NULL, 0, NULL, NULL );
+        open_status = NtOpenThread( &thread, THREAD_QUERY_LIMITED_INFORMATION, &attr, &id );
+        if (!open_status)
+        {
+            queried = TRUE;
+            query_status = NtQueryInformationThread( thread, ThreadBasicInformation, &basic, sizeof(basic), NULL );
+            NtClose( thread );
+        }
+    }
+    owner_after = ReadPointerAcquire( (void * volatile *)&crit->OwningThread );
+    TRACE_(vw_lifecycle)( "event=critical_timeout pid=%08x tid=%08x section=%p owner=%p owner_after=%p owner_stable=%u lock_count=%ld recursion=%ld open_attempted=%u open_status=%08x query_attempted=%u query_status=%08x queried_pid=%p queried_tid=%p owner_identity_matches=%u owner_exit_status=%08x\n",
+                         (unsigned int)GetCurrentProcessId(), (unsigned int)GetCurrentThreadId(), crit,
+                         owner, owner_after, (unsigned int)(owner == owner_after), (long)lock_count, (long)recursion_count,
+                         (unsigned int)!!owner, (unsigned int)open_status, (unsigned int)queried,
+                         (unsigned int)query_status, basic.ClientId.UniqueProcess, basic.ClientId.UniqueThread,
+                         (unsigned int)(queried && !query_status && basic.ClientId.UniqueProcess == id.UniqueProcess &&
+                                        basic.ClientId.UniqueThread == owner), (unsigned int)basic.ExitStatus );
+}
+
 /******************************************************************************
  *      RtlpWaitForCriticalSection   (NTDLL.@)
  */
@@ -317,6 +383,7 @@ NTSTATUS WINAPI RtlpWaitForCriticalSection( RTL_CRITICAL_SECTION *crit )
 
         timeout = (TRACE_ON(relay) ? 300 : 60);
 
+        lifecycle_trace_critical_timeout( crit );
         ERR( "section %p %s wait timed out in thread %04lx, blocked by %04lx, retrying (%u sec)\n",
              crit, debugstr_a(crit_section_get_name(crit)), GetCurrentThreadId(), HandleToULong(crit->OwningThread), timeout );
     }
