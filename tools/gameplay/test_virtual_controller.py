@@ -249,7 +249,7 @@ class HostTests(unittest.TestCase):
 
         Observe the actually published binary snapshot before emitting a receipt.
         A controlled clock keeps disk/fsync and thread scheduling outside tests
-        whose subject is rejection/interrupt propagation rather than latency.
+        whose subject is pulse sequencing/rejection rather than transport latency.
         """
         original_publish = vc.publish
         polls = 0
@@ -268,21 +268,24 @@ class HostTests(unittest.TestCase):
             return seq
         with mock.patch.object(vc, "publish", side_effect=publish), \
              mock.patch.object(vc.time, "monotonic", side_effect=lambda: now[0]):
-            yield
+            yield now
 
     def test_pulse_single_lock_arm_state_hold_release(self):
-        self.pulse_peers()
-        original_publish = vc.publish
         observed = []
-        def publish(directory, manifest, flags, *args, **kwargs):
+        published_at = []
+        def published(flags, now):
             if flags == vc.STATE:
                 with self.assertRaisesRegex(vc.ControllerError, "another command"):
                     vc.command(self.path, vc.ARM, timeout_ms=1)
-            seq = original_publish(directory, manifest, flags, *args, **kwargs)
             observed.append(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes()))
-            return seq
-        with mock.patch.object(vc, "publish", side_effect=publish):
-            result = vc.pulse(self.path, hold_ms=60, buttons=2)
+            published_at.append(now[0])
+        with self.synchronous_pulse_peer(on_publish=published) as now:
+            def advance_hold(seconds):
+                now[0] += seconds
+            with mock.patch.object(vc.time, "sleep", side_effect=advance_hold) as sleep:
+                result = vc.pulse(self.path, hold_ms=60, buttons=2)
+                sleep.assert_called_once()
+                self.assertAlmostEqual(sleep.call_args.args[0], 0.06)
         self.assertEqual([packet[-1] for packet in observed], [vc.ARM, vc.STATE, vc.RELEASE])
         self.assertEqual([packet[2] for packet in observed], [1, 2, 3])
         self.assertEqual(observed[0][3], 1000)
@@ -290,7 +293,50 @@ class HostTests(unittest.TestCase):
         self.assertEqual(observed[1][4], 2)
         self.assertEqual(observed[2][4:11], (0, 0, 0, 0, 0, 0, 0))
         self.assertEqual(set(result["receipts"]), {"arm", "state", "release"})
+        self.assertEqual([result["receipts"][name]["receipt"]["status"]
+                          for name in ("arm", "state", "release")], ["READY", "STATE", "RELEASE"])
+        self.assertAlmostEqual(published_at[2] - published_at[1], 0.06)
         self.assertFalse(vc.status(self.path)["last_command_acknowledged"])
+
+    def test_pulse_valid_state_receipt_completion_budget_matrix(self):
+        observed = []
+        def published(flags, now):
+            observed.append(vc.SNAPSHOT.unpack((self.path / vc.STATE_FILE).read_bytes()))
+        original_command = vc._command_locked
+        with self.synchronous_pulse_peer(on_publish=published) as now:
+            for index, latency_ms in enumerate((10, 59, 61)):
+                with self.subTest(receipt_completion_ms=latency_ms):
+                    observed.clear()
+                    accepted_state = []
+                    def delayed_completion(*args, **kwargs):
+                        result, started = original_command(*args, **kwargs)
+                        if args[2] == vc.STATE:
+                            # Receipt identity/deadline checks and manifest save
+                            # have already succeeded. Delay only its return to pulse.
+                            accepted_state.append(result["receipt"])
+                            now[0] += latency_ms / 1000
+                        return result, started
+                    def advance_hold(seconds):
+                        now[0] += max(0, seconds)
+                    with mock.patch.object(vc, "_command_locked", side_effect=delayed_completion), \
+                         mock.patch.object(vc.time, "sleep", side_effect=advance_hold) as sleep:
+                        if latency_ms < 60:
+                            result = vc.pulse(self.path, hold_ms=60, buttons=2)
+                            sleep.assert_called_once()
+                            self.assertAlmostEqual(sleep.call_args.args[0], (60 - latency_ms) / 1000)
+                            self.assertEqual(result["receipts"]["release"]["receipt"]["status"], "RELEASE")
+                        else:
+                            with self.assertRaisesRegex(vc.ControllerError, "pulse failed: state hold budget elapsed before its receipt completed"):
+                                vc.pulse(self.path, hold_ms=60, buttons=2)
+                            sleep.assert_not_called()
+                    self.assertEqual(len(accepted_state), 1)
+                    self.assertEqual(accepted_state[0]["status"], "STATE")
+                    self.assertEqual(accepted_state[0]["seq"], index * 3 + 2)
+                    self.assertEqual([packet[-1] for packet in observed], [vc.ARM, vc.STATE, vc.RELEASE])
+                    self.assertEqual([packet[2] for packet in observed], list(range(index * 3 + 1, index * 3 + 4)))
+                    self.assertEqual(observed[1][3:5], (60, 2))
+                    self.assertEqual(observed[2][4:11], (0, 0, 0, 0, 0, 0, 0))
+                    self.assertFalse(vc.status(self.path)["last_command_acknowledged"])
 
     def test_pulse_invalid_arguments_do_not_publish_arm(self):
         for values in ({"hold_ms": 0}, {"hold_ms": 501}, {"buttons": 0x0800},
