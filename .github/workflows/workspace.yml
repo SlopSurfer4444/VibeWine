@@ -22,6 +22,7 @@ jobs:
           node-version: '22'
       - run: node --test tools/gameplay/*.test.mjs
       - run: python3 -m unittest discover -s tools/gameplay -p 'test_*.py'
+      - run: python3 -m unittest discover -s tools/benchmarks -p 'test_*.py'
       - run: python3 -m unittest discover -s tests/workspace
       - run: python3 scripts/workspace.py check --metadata-only
       - run: python3 scripts/workspace.py init

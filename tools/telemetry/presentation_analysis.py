@@ -54,7 +54,7 @@ def presentation_analysis(events, summary, profile, wave7, chunks, detailed, sta
     for (queue, seq), es in rawchunks.items():
         if not queue or not seq or Counter(e['type'] for e in es) != Counter({k: 1 for k in range(20, 25)}):
             bad('incomplete_or_duplicate_raw_chunk_identity')
-        if profile['name']=='combined-bounded' and any(count>1 for count in Counter(e['type'] for e in es).values()):bad('duplicate_raw_chunk_identity')
+        if profile['name'] in ('presentation-waits','combined-bounded') and any(count>1 for count in Counter(e['type'] for e in es).values()):bad('duplicate_raw_chunk_identity')
         if any(not e['thread'] for e in es):
             bad('missing_chunk_thread_identity')
         if any(e['flags'] != (4 if e['type'] in (23,24) else 0) or
@@ -125,13 +125,13 @@ def presentation_analysis(events, summary, profile, wave7, chunks, detailed, sta
         key=(c['swapchain'],c['session'])
         if c['complete'] and key in last_native and any(c['values'][k]<last_native[key][k] for k in ('accepted','completed','abandoned','overflow','rejected')):bad('native_counter_regression')
         if c['complete']:last_native[key]=c['values']
-        if profile['name']=='combined-bounded' and any(c['values'].get(k, 0) for k in ('abandoned', 'overflow', 'rejected')):bad('observed_native_counter_loss')
+        if profile['name'] in ('presentation-waits','combined-bounded') and any(c['values'].get(k, 0) for k in ('abandoned', 'overflow', 'rejected')):bad('observed_native_counter_loss')
         if not c['complete'] or any(c['values'].get(k, 0) for k in ('abandoned', 'overflow', 'rejected')):
             bad('native_counter_loss_or_incomplete_sample')
     close_groups=defaultdict(Counter)
     for e in events:
         if e['type'] in (75,78):close_groups[(e['object'],e['start'])][e['type']]+=1
-    if profile['name']=='combined-bounded' and any(any(count>1 for count in g.values()) for g in close_groups.values()):bad('duplicate_native_close_part')
+    if profile['name'] in ('presentation-waits','combined-bounded') and any(any(count>1 for count in g.values()) for g in close_groups.values()):bad('duplicate_native_close_part')
     if any(g!=Counter({75:1,78:1}) for g in close_groups.values()):bad('incomplete_or_duplicate_native_close_pair')
     for c in wave7['native_session_closes']:
         if c['status'] or c['abandoned_handler_count']:
@@ -142,8 +142,8 @@ def presentation_analysis(events, summary, profile, wave7, chunks, detailed, sta
             # errors/abandonment and all counter/duplicate guards stay failures.
             bad('native_close_pending_handlers')
     for c in wave7['native_close_queued_discard_accounting']:
-        if profile['name']=='combined-bounded' and c['status']:bad('native_close_accounting_failure')
-        if profile['name']=='combined-bounded' and c['queued_discarded']:bad('observed_native_close_discard')
+        if profile['name'] in ('presentation-waits','combined-bounded') and c['status']:bad('native_close_accounting_failure')
+        if profile['name'] in ('presentation-waits','combined-bounded') and c['queued_discarded']:bad('observed_native_close_discard')
         if not c['accounting_verified'] or c['queued_discarded']:
             bad('native_close_discard_or_unknown')
     if not detailed['capture_usable']:
@@ -182,7 +182,7 @@ def presentation_analysis(events, summary, profile, wave7, chunks, detailed, sta
     if any(count>1 for count in counter_parts.values()):contradictions.append('duplicate_native_counter_part')
     if any(e['type']==72 and not e['padding1'] for e in events):contradictions.append('zero_observed_configuration_revision')
     contradictions=sorted(set(contradictions))
-    return dict(**(dict(coverage='observed_identity_joined_frames' if joined else 'unknown',observed_contradictions=contradictions) if profile['name']=='combined-bounded' else {}),capture_usable=not failures, failures=failures, completion_finish_observations=finishes, swapchain_admission_waits=admission, event_counts={str(k): v for k, v in sorted(counts.items())},
+    return dict(**(dict(coverage='observed_identity_joined_frames' if joined else 'unknown') if profile['name']=='combined-bounded' else {}),**(dict(observed_contradictions=contradictions) if profile['name'] in ('presentation-waits','combined-bounded') else {}),capture_usable=not failures, failures=failures, completion_finish_observations=finishes, swapchain_admission_waits=admission, event_counts={str(k): v for k, v in sorted(counts.items())},
                 joined_frames=joined,
                 frame_latency_wait=stats([int(r['frame_latency_wait_ms']*1e6) for r in joined]) if joined else None,
                 drawable_acquire=stats([int(r['drawable_acquire_ms']*1e6) for r in joined]) if joined else None,

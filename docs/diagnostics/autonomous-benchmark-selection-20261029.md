@@ -1,8 +1,12 @@
 # Autonomous D3D11 scene benchmark: source selection
 
 Reviewed 29 October 2026. Owner: VibeWine benchmark integration/root.
-Status: **source selection and acceptance contract; not implemented, built or run**.
-DS3, installed runtime selection and collection remain untouched.
+Status: **implemented and installed as VibeWine Bench; all six scenes passed the
+normal ten-second run through the installed app**.
+See `tools/benchmarks/README.md` for the implemented protocol and limits. This
+selection record preserves the original research below. The separate benchmark
+prefix reuses read-only pinned engine files; DS3 settings, saves and prefix are
+not its measurement target.
 
 ## Requested scenario
 
@@ -35,7 +39,9 @@ already a benchmark.
 
 ## Initial workload matrix
 
-These are implementation targets, not enabled or validated scenes.
+These were the selection targets. Implemented scenes are `cube`, `drawstress`,
+`instanced`, `dynamicupload`, `pixelheavy` and `textured`; compute/tessellation/
+atomics remain future work. A scene completion is not pixel-golden validation.
 
 | Segment | Purpose | Source route |
 | --- | --- | --- |
@@ -93,7 +99,12 @@ Collection must enforce limits at source and stop before overflow. Cleanup is
 manual exact-owner/reference/hold recheck until an existing owner mechanism is
 integrated; these limits are **not an installed cleaner or an enforced quota**.
 
-This research produced no external binary, build, benchmark, metrics capture or
-compatibility/FPS result. No external source was executed. Integration still
-needs a D3D11-only finite guest, collector/barrier/phase binding and a real
-short smoke run before this can replace manual DS3 measurements.
+The research itself executed no external source or binary. Subsequent local
+implementation built a D3D11-only finite guest from the existing DXMT foundation
+and new procedural workloads; no AIO source, binary or assets were incorporated.
+All six scenes completed both a short Wine/DXMT smoke run and the normal app
+run with real decoded CPU/GPU observations. The app opened its report and exited
+without human input; original failures from integration remain preserved.
+This establishes an autonomous synthetic harness, not DS3 coverage
+or a measured performance improvement. Native presentation feedback is partial
+and its strict whole-capture acceptance remains separate from CPU/GPU metrics.

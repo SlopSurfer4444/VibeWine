@@ -159,7 +159,10 @@ class CombinedProfileTests(unittest.TestCase):
             r=report(es)
             self.assertNotIn('helper_compile_scopes',r)
             self.assertNotIn('coverage',r['presentation_capture'])
-            self.assertNotIn('observed_contradictions',r['presentation_capture'])
+            if r['producer_profile']['name']=='presentation-waits':
+                self.assertEqual(r['presentation_capture']['observed_contradictions'],[])
+            else:
+                self.assertNotIn('observed_contradictions',r['presentation_capture'])
 
     def test_old_profiles_reject_helper_expected_cli(self):
         for profile in (None,1,3,4):

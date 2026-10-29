@@ -1,0 +1,395 @@
+#!/usr/bin/env python3
+"""Finite D3D11 suite. Explicit private runtime only; no game/helper dispatch."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import signal
+import stat
+import subprocess
+import sys
+import time
+import uuid
+
+CAPACITY = 131072
+RAW_BYTES = 8392704
+PROBE_SENTINEL = 1685613940
+COMMAND_CAP = 24 * 1024 * 1024
+
+
+def require(condition, reason):
+    if not condition:
+        raise ValueError(reason)
+
+
+def regular(path, maximum=None):
+    path = Path(path)
+    info = path.lstat()
+    require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, 'regular single-link file required: ' + str(path))
+    require(maximum is None or info.st_size <= maximum, 'file exceeds cap: ' + str(path))
+    return info
+
+
+def digest(path):
+    regular(path)
+    h = hashlib.sha256()
+    with open(path, 'rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            h.update(block)
+    return h.hexdigest()
+
+
+def write_json(path, value):
+    raw = (json.dumps(value, indent=2, allow_nan=False) + '\n').encode()
+    require(len(raw) <= 1024 * 1024, 'receipt exceeds cap')
+    path = Path(path)
+    temporary = path.with_name('.' + path.name + '-' + uuid.uuid4().hex)
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path)  # atomic visibility; refuses an existing target
+    finally:
+        temporary.unlink()
+
+
+def read_json(path, cap=65536):
+    regular(path, cap)
+    with open(path, encoding='utf8') as stream:
+        return json.load(stream)
+
+
+def terminate_owned(child):
+    if child.poll() is not None:
+        return
+    # start_new_session gives this launch a group unrelated to the invoking shell.
+    require(os.getpgid(child.pid) == child.pid, 'owned process group changed; cleanup unknown')
+    os.killpg(child.pid, signal.SIGTERM)
+    try:
+        child.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        os.killpg(child.pid, signal.SIGKILL)
+        child.wait(timeout=2)
+
+
+def command(argv, timeout=10, cap=COMMAND_CAP):
+    child = subprocess.Popen(list(map(str, argv)), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             start_new_session=True)
+    chunks = [bytearray(), bytearray()]
+    sel = selectors.DefaultSelector()
+    for i, stream in enumerate((child.stdout, child.stderr)):
+        sel.register(stream, selectors.EVENT_READ, i)
+    end = time.monotonic() + timeout
+    try:
+        while sel.get_map():
+            require(time.monotonic() < end, 'command timeout: ' + str(argv[0]))
+            for key, _ in sel.select(min(.1, max(.001, end - time.monotonic()))):
+                part = os.read(key.fileobj.fileno(), 65536)
+                if not part:
+                    sel.unregister(key.fileobj)
+                else:
+                    chunks[key.data].extend(part)
+                    require(sum(map(len, chunks)) <= cap, 'command output cap')
+        code = child.wait(timeout=max(.001, end - time.monotonic()))
+        require(code == 0, 'command exit ' + str(code) + ': ' + bytes(chunks[1])[:2048].decode(errors='replace'))
+        return bytes(chunks[0])
+    finally:
+        sel.close()
+        terminate_owned(child)
+        child.stdout.close()
+        child.stderr.close()
+
+
+def wait_for(path, child, deadline, logs=(), tick=None):
+    while time.monotonic() < deadline:
+        for log in logs:
+            require(log.stat().st_size <= 65536, 'guest output cap')
+        if tick is not None:
+            tick()
+        if path.exists():
+            return read_json(path)
+        require(child.poll() is None, 'guest exited before ' + path.name + ': ' + str(child.returncode))
+        time.sleep(.025)
+    raise ValueError('guest deadline waiting for ' + path.name)
+
+
+def bound_message(value, run_id, pid=None):
+    require(value.get('schema') == 1 and value.get('runId') == run_id, 'guest protocol/run binding')
+    require(type(value.get('pid')) is int and value['pid'] > 0, 'guest Windows PID')
+    require(pid is None or value['pid'] == pid, 'guest PID changed')
+    return value
+
+
+def validate_probe_completion(value):
+    require(value.get('gpuEventComplete') is True, 'probe GPU EVENT completion proof missing or false')
+    require(value.get('cpuReadbackComplete') is True, 'probe CPU readback completion proof missing or false')
+    require(type(value.get('readbackValue')) is int and value['readbackValue'] == PROBE_SENTINEL,
+            'probe CPU readback sentinel mismatch/type')
+
+
+def native_binding(trace_file, child, modules):
+    # lsof observes the mapped producer file rather than guessing Windows/native PID equality.
+    holders = command(['/usr/sbin/lsof', '-t', str(trace_file)], cap=65536).decode().split()
+    candidates = []
+    for text in set(holders):
+        if text.isdigit():
+            pid = int(text)
+            try:
+                if os.getpgid(pid) == child.pid:
+                    candidates.append(pid)
+            except ProcessLookupError:
+                pass
+    require(len(candidates) == 1, 'exactly one owned native trace holder required')
+    pid = candidates[0]
+    birth = command(['/bin/ps', '-p', str(pid), '-o', 'lstart='], cap=65536).decode().strip()
+    require(bool(birth), 'native birth unavailable')
+    mapped = command(['/usr/sbin/lsof', '-a', '-p', str(pid), '-Fn'], cap=1024*1024).decode(errors='replace')
+    names = {line[1:] for line in mapped.splitlines() if line.startswith('n')}
+    proof = {}
+    for module in modules:
+        module = Path(module).resolve(strict=True)
+        require(str(module) in names, 'required module not mapped: ' + str(module))
+        proof[str(module)] = digest(module)
+    require(bool(proof), 'at least one independently mapped runtime module required')
+    return dict(nativePid=pid, birth=birth, processGroup=child.pid, mappedModules=proof)
+
+
+def controller(cli, expected_hash, *args):
+    require(digest(cli) == expected_hash, 'collector bytes changed')
+    return json.loads(command([cli, *args]))
+
+
+def execute_scene(args, scene, run_root):
+    run_id = str(uuid.uuid4())
+    out = run_root / (scene + '-' + run_id)
+    out.mkdir(mode=0o700)
+    cli = args.trace_controller
+    collector_hash = digest(cli)
+    prelaunch_modules = {str(path.resolve(strict=True)): digest(path.resolve(strict=True)) for path in args.module}
+    session = controller(cli, collector_hash, 'new-session', str(out))['session']
+    clock = controller(cli, collector_hash, 'clock-sample')
+    ready_at = time.monotonic()
+    # This receipt proves the native observer can operate before guest creation.
+    # Producer attachment and first real data are independently required below.
+    write_json(out / 'observer-ready.json', dict(schema=1, runId=run_id,
+               phase='prelaunch-native-controller-ready', requestedProfile=args.profile, collectorSha256=collector_hash,
+               traceSession=session, clock=clock, producerAttached=False, requiredModuleSha256=prelaunch_modules))
+    env = os.environ.copy()
+    env.update(args.environment)
+    env.update(WINEPREFIX=str(args.prefix), DXMT_CS2_TRACE_DIR='Z:' + session.replace('/', '\\'),
+               DXMT_CS2_TRACE_PROFILE=args.profile, DXMT_CS2_TRACE_DETAIL_LIMIT='12000')
+    argv = [str(args.wine), str(args.guest), '--scene', scene, '--duration', str(args.duration),
+            '--warmup', str(args.warmup), '--frames', '10000', '--width', str(args.width), '--height', str(args.height),
+            '--vsync', str(args.vsync), '--output', 'Z:' + str(out).replace('/', '\\'), '--run-id', run_id, '--barrier']
+    logs = [out / 'stdout.log', out / 'stderr.log']
+    child = None
+    trace_file = trace_identity = None
+    armed = stopped = False
+    capture_generation = '1'
+    receipt = dict(schema=1, runId=run_id, scene=scene, status='failed', profile=args.profile, requestedProfile=args.profile,
+                   guestSha256=digest(args.guest), collectorSha256=collector_hash,
+                   cpuMetricsScope='guest CPU loop/Present call, not displayed FPS',
+                   observerReadyBeforeLaunch=True)
+    end = time.monotonic() + args.timeout
+    try:
+        with open(logs[0], 'xb', buffering=0) as stdout, open(logs[1], 'xb', buffering=0) as stderr:
+            child = subprocess.Popen(argv, env=env, stdout=stdout, stderr=stderr, start_new_session=True,
+                                     cwd=out)
+        receipt['launchMonotonic'] = time.monotonic()
+        require(receipt['launchMonotonic'] >= ready_at, 'observer launch ordering')
+        ready = bound_message(wait_for(out / 'ready.json', child, end, logs), run_id)
+        receipt['startupToReadySeconds'] = time.monotonic() - receipt['launchMonotonic']
+        receipt['startupScope'] = 'process launch through initialization and requested warmup; not cold-driver-cache cost'
+        require(ready.get('scene') == scene, 'ready scene mismatch')
+        pid = ready['pid']
+        trace_file = Path(session) / ('events-' + str(pid) + '.bin')
+        while not trace_file.exists() and time.monotonic() < end:
+            require(child.poll() is None, 'guest ended before trace attachment')
+            time.sleep(.025)
+        require(regular(trace_file).st_size == RAW_BYTES, 'trace geometry')
+        receipt['nativeBinding'] = native_binding(trace_file, child, args.module)
+        require(receipt['nativeBinding']['mappedModules'] == prelaunch_modules, 'module bytes changed since prelaunch pin')
+        initial = controller(cli, collector_hash, 'inspect', str(trace_file))
+        require(initial['capture'] == 0 and initial['next_reserved'] == 0 and initial['dropped'] == 0,
+                'producer not fresh')
+        trace_identity = initial['identity']
+        receipt['probeClockBegin'] = controller(cli, collector_hash, 'clock-sample')
+        armed = True  # uncertain ARM must still receive one STOP attempt
+        arm = controller(cli, collector_hash, 'arm', str(trace_file), '1', trace_identity, '110000', '21072')
+        require(arm['capture'] == 1 and arm['generation'] == 1, 'ARM rejected')
+        write_json(out / 'probe.json', dict(schema=1, runId=run_id, pid=pid))
+        probe_completion = bound_message(wait_for(out / 'probe-done.json', child, end, logs), run_id, pid)
+        receipt['probeCompletion'] = probe_completion
+        validate_probe_completion(probe_completion)
+        progress = controller(cli, collector_hash, 'inspect', str(trace_file))
+        require(progress['identity'] == trace_identity and progress['capture'] == 1 and
+                4 <= progress['next_reserved'] < 110000 and progress['dropped'] == 0,
+                'no useful fresh probe records or trace exhausted')
+        receipt['preMeasureRecords'] = progress['next_reserved']
+        probe_stop = controller(cli, collector_hash, 'stop', str(trace_file), '1', trace_identity)
+        require(probe_stop['capture'] == 0 and probe_stop['producer_quiescence_verified'] is True and
+                probe_stop['generation'] == 1, 'probe STOP not quiescent')
+        armed = False
+        receipt['probeStop'] = probe_stop
+        receipt['probeClockEnd'] = controller(cli, collector_hash, 'clock-sample')
+        probe_raw = command([cli, 'decode', trace_file, capture_generation, trace_identity], cap=1024*1024)
+        with open(out / 'probe.ndjson', 'xb') as stream:
+            stream.write(probe_raw)
+        from analyze import native_trace
+        probe_analysis = native_trace(out / 'probe.ndjson', dict(width=args.width, height=args.height), expected_profile=args.profile)
+        # Preserve the computed refusal before any gate can raise; the stopped
+        # original and decoded probe remain useful diagnosis after a failed arm.
+        receipt['probeAnalysis'] = probe_analysis
+        probe_rows = [json.loads(line) for line in probe_raw.splitlines()]
+        require(probe_rows[-1]['generation'] == 1 and probe_rows[-1]['identity'] == trace_identity,
+                'probe decoder generation/identity mismatch')
+        require(probe_analysis['observationUsable'],
+                'probe observation rejected: ' + ','.join(probe_analysis.get('failures', [])) +
+                '; rejections=' + ','.join(key for key, count in probe_analysis.get('rejections', {}).items() if count))
+        require(any(row.get('type') == 40 for row in probe_rows[:-1]),
+                'no parsed useful Present records before measurement')
+        # Generation 2 is fresh without resetting the lifetime ring or prior evidence.
+        remaining = controller(cli, collector_hash, 'inspect', str(trace_file))
+        require(remaining['identity'] == trace_identity and remaining['capture'] == 0 and
+                remaining['remaining_capacity'] >= 120000, 'insufficient measured capture capacity')
+        capture_generation = '2'
+        armed = True
+        measure_arm = controller(cli, collector_hash, 'arm', str(trace_file), '2', trace_identity, '100000', '20000')
+        require(measure_arm['capture'] == 2 and measure_arm['generation'] == 2, 'measured ARM rejected')
+        receipt['measureClockBegin'] = controller(cli, collector_hash, 'clock-sample')
+        receipt['guestReady'] = ready
+        receipt['readyToMeasureSeconds'] = time.monotonic() - receipt['launchMonotonic'] - receipt['startupToReadySeconds']
+        write_json(out / 'go.json', dict(schema=1, runId=run_id, pid=pid))
+        last_poll = [0.0]
+        def capture_tick():
+            if time.monotonic() - last_poll[0] >= .2:
+                progress = controller(cli, collector_hash, 'inspect', str(trace_file))
+                require(progress['identity'] == trace_identity and progress['capture'] == 2 and
+                        progress['next_reserved'] < 110000 and progress['dropped'] == 0,
+                        'capture identity/budget reached')
+                last_poll[0] = time.monotonic()
+        results = wait_for(out / 'results.json', child, end, logs, tick=capture_tick)
+        while child.poll() is None and time.monotonic() < end:
+            for log in logs:
+                require(log.stat().st_size <= 65536, 'guest output cap')
+            progress = controller(cli, collector_hash, 'inspect', str(trace_file))
+            require(progress['next_reserved'] < 110000 and progress['dropped'] == 0, 'capture budget reached')
+            time.sleep(.025)
+        require(child.poll() == 0, 'guest nonzero exit or timeout')
+        bound_message(results, run_id, pid)
+        require(results.get('status') == 'complete' and results.get('scene') == scene,
+                'guest failed or wrong scene')
+        require(regular(out / 'perframe.csv', 4*1024*1024).st_size > 0, 'missing CPU frames')
+        receipt['guestResult'] = results
+        receipt['status'] = 'complete'
+    except Exception as error:
+        receipt['error'] = str(error)
+    finally:
+        if armed:
+            try:
+                stop = controller(cli, collector_hash, 'stop', str(trace_file), capture_generation, trace_identity)
+                require(stop['capture'] == 0 and stop['producer_quiescence_verified'] is True and
+                        stop['generation'] == int(capture_generation), 'STOP not quiescent')
+                stopped = True
+                receipt['traceStop'] = stop
+                receipt['measureClockEnd'] = controller(cli, collector_hash, 'clock-sample')
+            except Exception as error:
+                receipt['status'] = 'failed'
+                receipt['traceStopError'] = str(error)
+        if child is not None:
+            try:
+                terminate_owned(child)
+                receipt['guestExit'] = child.returncode
+            except Exception as error:
+                receipt['cleanupUnknown'] = str(error)
+                receipt['status'] = 'failed'
+        if stopped:
+            try:
+                require(digest(cli) == collector_hash, 'collector bytes changed before decode')
+                raw = command([cli, 'decode', trace_file, capture_generation, trace_identity])
+                with open(out / 'trace.ndjson', 'xb') as stream:
+                    stream.write(raw)
+                from analyze import analyze_run
+                receipt['analysis'] = analyze_run(out, receipt.get('guestResult'), expected_profile=args.profile)
+                trace_result = receipt['analysis']['trace']
+                require(trace_result['observationUsable'], 'decoded trace not accepted: ' +
+                        ','.join(trace_result['failures']) + '; profile=' +
+                        ','.join(trace_result.get('producerProfile', {}).get('failures', [])))
+            except Exception as error:
+                receipt['status'] = 'failed'
+                receipt['analysisError'] = str(error)
+        write_json(out / 'run.json', receipt)
+    return receipt, out
+
+
+def parser():
+    p = argparse.ArgumentParser(description=__doc__)
+    for name in ('wine', 'prefix', 'guest', 'trace-controller', 'output'):
+        p.add_argument('--' + name, required=True, type=Path)
+    p.add_argument('--module', action='append', required=True, type=Path,
+                   help='actual required mapped runtime module path; repeat for D3D11/DXGI/native bridge')
+    p.add_argument('--env', action='append', default=[], help='explicit runtime environment NAME=VALUE')
+    p.add_argument('--profile', choices=('presentation-waits', 'combined-bounded'), default='presentation-waits')
+    p.add_argument('--scenes', default='cube,drawstress,instanced,dynamicupload,pixelheavy,textured')
+    p.add_argument('--duration', type=float, default=2)
+    p.add_argument('--warmup', type=float, default=.5)
+    p.add_argument('--vsync', type=int, choices=(0, 1), default=0)
+    p.add_argument('--width', type=int, default=1280)
+    p.add_argument('--height', type=int, default=720)
+    p.add_argument('--timeout', type=float, default=45)
+    return p
+
+
+def main():
+    args = parser().parse_args()
+    try:
+        require(0.1 <= args.duration <= 10 and 0 <= args.warmup <= 10, 'bounded scene duration/warmup')
+        require(64 <= args.width <= 3840 and 64 <= args.height <= 2160, 'bounded geometry')
+        require(10 <= args.timeout <= 120, 'bounded process timeout')
+        args.environment = {}
+        for value in args.env:
+            key, sep, val = value.partition('=')
+            require(sep and re.fullmatch('[A-Z][A-Z0-9_]*', key), 'environment NAME=VALUE required')
+            require(key not in ('WINEPREFIX', 'DXMT_CS2_TRACE_DIR', 'DXMT_CS2_TRACE_PROFILE',
+                                'DXMT_CS2_TRACE_DETAIL_LIMIT'), 'runner-owned environment')
+            args.environment[key] = val
+        scenes = args.scenes.split(',')
+        require(1 <= len(scenes) <= 6 and len(set(scenes)) == len(scenes) and
+                all(re.fullmatch('[a-z][a-z0-9-]{0,30}', s) for s in scenes), 'bounded unique scene names')
+        require(4 <= len(args.module) <= 6 and len(set(args.module)) == len(args.module),
+                'four to six explicit required module paths required')
+        for path in args.module:
+            require(path.is_absolute(), 'absolute module path required')
+            regular(path.resolve(strict=True))
+        for path in (args.wine, args.guest, args.trace_controller):
+            require(path.is_absolute(), 'absolute executable path required')
+            regular(path)
+        require(args.prefix.is_absolute() and args.prefix.is_dir(), 'existing explicit private prefix required')
+        require(args.output.is_absolute() and not args.output.exists(), 'new absolute output directory required')
+        args.output.mkdir(mode=0o700)
+        results = []
+        for scene in scenes:
+            result, directory = execute_scene(args, scene, args.output)
+            results.append(dict(scene=scene, directory=str(directory), status=result['status']))
+            if result['status'] != 'complete':
+                break
+        complete = len(results) == len(scenes) and all(x['status'] == 'complete' for x in results)
+        write_json(args.output / 'suite.json', dict(schema=1, status='complete' if complete else 'failed',
+                   scenes=results, plannedScenes=scenes, profile=args.profile, requestedProfile=args.profile,
+                   limits=['Synthetic workload only; no DS3/game FPS claim.',
+                           'Native feedback scope includes calibration and shutdown; per-scene CPU timing is separate.',
+                           'Collector overhead and A/A then A/B repeats require separate controlled runs.']))
+        print(json.dumps(dict(status='complete' if complete else 'failed', output=str(args.output))))
+        return 0 if complete else 1
+    except Exception as error:
+        print(str(error), file=sys.stderr)
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())
