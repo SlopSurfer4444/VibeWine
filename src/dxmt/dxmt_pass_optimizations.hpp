@@ -55,6 +55,46 @@ DiscardAdjacentColorStores(RenderEncoderData *render, ClearEncoderData *clear) {
   return true;
 }
 
+// Eliminate only a dead full color clear in the ORIGINAL adjacent list. The
+// survivor retains the last clear value, all external dependencies and both
+// completion identities. Never seek through even an inert-looking Null node.
+inline bool
+CoalesceAdjacentColorClears(ClearEncoderData *former, ClearEncoderData *latter) {
+  if (former->next != latter || former->type != EncoderType::Clear || latter->type != EncoderType::Clear ||
+      former->clear_dsv || latter->clear_dsv || former->array_length != 1 || latter->array_length != 1 ||
+      !former->attachment || !latter->attachment || former->attachment.ptr() != latter->attachment.ptr() ||
+      former->fence_wait.intersectedWith(former->fence_update))
+    return false;
+  auto *view = latter->attachment.ptr();
+  auto *allocation = view->allocation;
+  if (!allocation || !allocation->flags().test(TextureAllocationFlag::GpuPrivate) ||
+      allocation->flags().test(TextureAllocationFlag::Shared) ||
+      allocation->flags().test(TextureAllocationFlag::AllocatedOnHeap) || allocation->mappedMemory)
+    return false;
+  auto *texture = allocation->descriptor;
+  if (!texture || texture->textureType() != WMTTextureType2D || texture->sampleCount() != 1 ||
+      texture->arrayLength() != 1 || texture->miplevelCount() != 1 || texture->depth() != 1 ||
+      !texture->width() || !texture->height() || former->width != texture->width() ||
+      former->height != texture->height() || latter->width != texture->width() ||
+      latter->height != texture->height())
+    return false;
+  if (view->key.index || view->key.mip_start || view->key.mip_end != 1 || view->key.array_start ||
+      view->key.array_end != 1 || !view->texture || view->texture != allocation->texture())
+    return false;
+  if (view->texture.width() != latter->width || view->texture.height() != latter->height)
+    return false;
+
+  // This is the same fence contraction as existing Clear->Render folding.
+  // Only former's internal completion waits disappear; unrelated waits remain.
+  latter->fence_wait.merge(former->fence_wait);
+  latter->fence_wait.subtract(former->fence_update);
+  latter->fence_update.merge(former->fence_update);
+  former->~ClearEncoderData();
+  former->next = nullptr;
+  former->type = EncoderType::Null;
+  return true;
+}
+
 inline size_t
 DeduplicateRenderResidency(wmtcmd_render_nop &head) {
   struct Entry {

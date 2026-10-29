@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// The extracted production optimizer above selects the REAL Metal encoders below.
+#include <cmath>
+#include <chrono>
+#include <cstring>
+static id<MTLDevice> native_device;
+static id<MTLCommandQueue> native_queue;
+static id<MTLFence> native_fences[256];
+static void checked(bool ok,const char *what){if(!ok){std::fprintf(stderr,"FAIL %s\n",what);std::exit(30);}}
+static id<MTLTexture> target(unsigned size){
+  auto*d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:size height:size mipmapped:NO];
+  d.storageMode=MTLStorageModePrivate;d.usage=MTLTextureUsageRenderTarget;d.hazardTrackingMode=MTLHazardTrackingModeUntracked;
+  auto t=[native_device newTextureWithDescriptor:d];checked(t!=nil,"texture");return t;
+}
+static void bind(Surface&s,id<MTLTexture> t){
+  s.desc.w=(unsigned)t.width;s.desc.h=(unsigned)t.height;
+  s.base.texture.handle=s.allocation.object.handle=(obj_handle_t)(__bridge void*)t;
+}
+static void emit_clear(id<MTLCommandBuffer> cb,ClearEncoderData*c){
+  auto*p=[MTLRenderPassDescriptor renderPassDescriptor];
+  p.colorAttachments[0].texture=(__bridge id<MTLTexture>)(void*)c->attachment.texture().handle;
+  p.colorAttachments[0].loadAction=MTLLoadActionClear;p.colorAttachments[0].storeAction=MTLStoreActionStore;
+  p.colorAttachments[0].clearColor=MTLClearColorMake(c->color.r,c->color.g,c->color.b,c->color.a);
+  auto e=[cb renderCommandEncoderWithDescriptor:p];checked(e!=nil,"clear encoder");
+  c->fence_wait.forEach([&](auto id){[e waitForFence:native_fences[id] beforeStages:MTLRenderStageFragment];});
+  c->fence_update.forEach([&](auto id){[e updateFence:native_fences[id] afterStages:MTLRenderStageFragment];});
+  [e endEncoding];
+}
+static void finish(id<MTLCommandBuffer> cb){
+  [cb commit];[cb waitUntilCompleted];
+  if(cb.error)std::fprintf(stderr,"METAL_ERROR %.512s\n",cb.error.description.UTF8String);
+  checked(cb.status==MTLCommandBufferStatusCompleted && !cb.error,"command completion");
+}
+static void copy_image(id<MTLBlitCommandEncoder> e,id<MTLTexture> t,id<MTLBuffer> b){
+  [e copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOrigin{0,0,0} sourceSize:MTLSize{t.width,t.height,1}
+     toBuffer:b destinationOffset:0 destinationBytesPerRow:t.width*4 destinationBytesPerImage:t.width*t.height*4];
+}
+static void pixels(id<MTLBuffer>b,unsigned size,std::array<unsigned char,4>gold,bool corrupt){
+  auto*p=static_cast<unsigned char*>(b.contents);checked(p!=nullptr,"readback contents");
+  for(unsigned y=0;y<size;++y)for(unsigned x=0;x<size;++x){auto expected=gold;if(corrupt && !x && !y)expected[0]^=1;
+    checked(!std::memcmp(p+(y*size+x)*4,expected.data(),4),"pixel golden");}
+}
+static void image_case(bool optimized,unsigned mode,bool corrupt){
+  constexpr unsigned size=64;auto t=target(size);auto other=target(size);
+  auto read=[native_device newBufferWithLength:size*size*4 options:MTLResourceStorageModeShared];
+  auto before=[native_device newBufferWithLength:size*size*4 options:MTLResourceStorageModeShared];
+  auto final=[native_device newBufferWithLength:size*size*4 options:MTLResourceStorageModeShared];
+  checked(read && before && final,"readback allocation");
+  Surface s,o;bind(s,t);bind(o,other);Arena arena;ArgumentEncodingContext ctx;
+  auto cb=[native_queue commandBuffer];checked(cb!=nil,"image command buffer");
+  // Real prior reader: blue initialize -> old-image read -> candidate clears.
+  auto init=clear(arena,s);init->color={0,0,1,1};init->fence_update.set(3);emit_clear(cb,init);
+  auto blit=[cb blitCommandEncoder];checked(blit!=nil,"prior reader");[blit waitForFence:native_fences[3]];
+  copy_image(blit,t,before);[blit updateFence:native_fences[7]];[blit endEncoding];
+  auto*x=clear(arena,s),*y=clear(arena,mode==2?o:s);x->color={1,0,0,1};y->color={0,1,0,1};
+  x->fence_wait.set(7);x->fence_update.set(9);y->fence_wait.set(9);y->fence_update.set(11);
+  std::vector<EncoderData*> nodes{x,y};x->next=y;
+  if(mode==1){auto*g=arena.make<EncoderData>(EncoderType::Blit);x->next=g;g->next=y;nodes={x,g,y};}
+  if(optimized)ctx.optimize(nodes);
+  unsigned emitted=0;
+  for(auto*n:nodes){
+    if(n->type==EncoderType::Clear){emit_clear(cb,static_cast<ClearEncoderData*>(n));++emitted;}
+    else if(n->type==EncoderType::Blit){
+      auto e=[cb blitCommandEncoder];checked(e!=nil,"intervening old-image reader");[e waitForFence:native_fences[9]];
+      copy_image(e,t,read);[e updateFence:native_fences[13]];[e endEncoding];
+      // A real gap reader is complete before the following clear.
+      y->fence_wait.set(13);
+    }
+  }
+  checked(emitted==((optimized && mode==0)?1u:2u),"physical clear count");
+  blit=[cb blitCommandEncoder];checked(blit!=nil,"final reader");
+  // Wait on eliminated predecessor's completion identity, not just survivor's.
+  [blit waitForFence:native_fences[9]];[blit waitForFence:native_fences[11]];
+  copy_image(blit,t,final);
+  if(mode!=1)copy_image(blit,mode==2?other:t,read);
+  [blit endEncoding];finish(cb);
+  pixels(before,size,{0,0,255,255},false);
+  pixels(final,size,mode==2?std::array<unsigned char,4>{255,0,0,255}:std::array<unsigned char,4>{0,255,0,255},corrupt);
+  pixels(read,size,mode==1?std::array<unsigned char,4>{255,0,0,255}:std::array<unsigned char,4>{0,255,0,255},false);
+  std::printf("CASE_PASS optimized=%u mode=%u clears=%u\n",optimized,mode,emitted);
+}
+static double timed(bool optimized){
+  constexpr unsigned count=128,size=512;auto t=target(size);Surface s;bind(s,t);Arena arena;ArgumentEncodingContext ctx;
+  std::vector<EncoderData*> nodes;
+  for(unsigned n=0;n<count;++n){auto*c=clear(arena,s);c->id=1000+n;c->color={(n%2)?0.0:1.0,(n%2)?1.0:0.0,0,1};
+    if(n)c->fence_wait.set(999+n);c->fence_update.set(1000+n);if(!nodes.empty())nodes.back()->next=c;nodes.push_back(c);}
+  if(optimized)ctx.optimize(nodes);
+  auto cb=[native_queue commandBuffer];checked(cb!=nil,"timing command buffer");unsigned emitted=0;
+  for(auto*n:nodes)if(n->type==EncoderType::Clear){emit_clear(cb,static_cast<ClearEncoderData*>(n));++emitted;}
+  checked(emitted==(optimized?64u:128u),"timing physical count");finish(cb);
+  checked(std::isfinite(cb.GPUStartTime)&&std::isfinite(cb.GPUEndTime)&&cb.GPUEndTime>cb.GPUStartTime,"GPU interval");
+  return(cb.GPUEndTime-cb.GPUStartTime)*1000.0;
+}
+int main(int argc,const char**argv){@autoreleasepool{
+  const bool corrupt=argc==2&&!std::strcmp(argv[1],"--wrong-golden");if(argc!=1&&!corrupt)return 2;
+  native_device=MTLCreateSystemDefaultDevice();checked(native_device!=nil,"Metal device");native_queue=[native_device newCommandQueue];checked(native_queue!=nil,"Metal queue");
+  for(auto&f:native_fences){f=[native_device newFence];checked(f!=nil,"Metal fence");}
+  std::printf("DEVICE %s\n",native_device.name.UTF8String);
+  for(unsigned mode=0;mode<3;++mode){image_case(false,mode,false);image_case(true,mode,corrupt);}
+  for(unsigned warm=0;warm<3;++warm){timed(false);timed(true);}
+  for(unsigned round=0;round<15;++round)for(unsigned order=0;order<2;++order){bool optimized=(round+order)%2;double ms=timed(optimized);std::printf("TIMING %u %u %.9f\n",round,optimized,ms);}
+  std::printf("PASS images=18 scenarios=6\n");return 0;
+}}
