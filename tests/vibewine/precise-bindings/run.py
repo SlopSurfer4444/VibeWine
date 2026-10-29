@@ -88,6 +88,7 @@ def generate(contents):
                                 '  template <PipelineStage stage>\n  void\n  bindConstantBufferOffset('),
         'ENCODE_CB': block(get('dxmt_context.cpp'),
                            'template <PipelineStage stage, PipelineKind kind>\nvoid\nArgumentEncodingContext::encodeConstantBuffers('),
+        'QUEUE_FAILED': block(impl, '  bool CommandQueueFailed() const') if '  bool CommandQueueFailed() const' in impl else '',
         'ALLOCATE_ARGUMENTS': block(impl, '  uint64_t PreAllocateArgumentBuffer('),
         'UPLOAD': block(impl, '  template <PipelineStage stage, PipelineKind kind>\n  void\n  UploadShaderStageResourceBinding()'),
         'SET_CB': block(impl, '  template <PipelineStage Stage>\n  void\n  SetConstantBuffer('),
@@ -109,7 +110,14 @@ def generate(contents):
 def mutate(contents, kind):
     contents = dict(contents)
     helper = 'src/d3d11/d3d11_precise_bindings.hpp'
-    if kind in ('missing-dependent', 'unrelated', 'first-alias', 'broad-slot'):
+    if kind in ('queue-arguments', 'queue-map-publication'):
+        key = 'src/d3d11/d3d11_context_impl.cpp' if kind == 'queue-arguments' else 'src/d3d11/d3d11_context_imm.cpp'
+        marker = '  uint64_t PreAllocateArgumentBuffer(' if kind == 'queue-arguments' else '    if (auto dynamic = GetDynamicBuffer(pResource, &buffer_length, &bind_flag))'
+        before = 'if (CommandQueueFailed()) return 0;' if kind == 'queue-arguments' else 'if (auto failure = cmd_queue.FailureReason()) return failure;'
+        section = block(contents[key], marker)
+        assert section.count(before) == 1
+        contents[key] = contents[key].replace(section, section.replace(before, '(void)0;'), 1)
+    elif kind in ('missing-dependent', 'unrelated', 'first-alias', 'broad-slot'):
         text = contents[helper]
         if kind == 'missing-dependent':
             text = text.replace('== discarded)', '== nullptr)')
@@ -199,6 +207,8 @@ def main():
                               'srv-upper-qword', 'srv-residency-drop',
                               'immediate-resource-callsite', 'deferred-resource-callsite')]
     variants += [('residency-drop', mutate(current, 'residency-drop'), ['-DDXMT_PRECISE_BINDINGS=1'], True, False)]
+    variants += [(kind, mutate(current, kind), ['-DDXMT_PRECISE_BINDINGS=1'], True, False)
+                 for kind in ('queue-arguments', 'queue-map-publication')]
     results = []
     with tempfile.TemporaryDirectory(prefix='dxmt-precise-bindings-') as directory:
         scratch = Path(directory)

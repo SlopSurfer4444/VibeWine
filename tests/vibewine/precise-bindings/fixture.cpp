@@ -242,7 +242,13 @@ struct ArgumentEncodingContext {
 };
 // ENCODE_CB
 // ENCODE_VB
+// Interface substitute only: native queue allocation, wake and cancellation
+// ownership are checked by the queue family's production tests.
 struct Queue {
+  static constexpr HRESULT out_of_memory = int32_t(0x8007000e);
+  std::atomic<HRESULT> failure_{0};
+  HRESULT FailureReason() const { return failure_.load(std::memory_order_acquire); }
+  void Fail(HRESULT reason) { HRESULT expected = 0; failure_.compare_exchange_strong(expected, reason, std::memory_order_acq_rel); }
   uint64_t CurrentSeqId() { return 9; }
   uint64_t CoherentSeqId() { return 7; }
 };
@@ -264,11 +270,16 @@ template <bool replayable> struct CommonContext {
   ArgumentEncodingContext enc;
   std::vector<std::function<void(ArgumentEncodingContext &)>> recorded;
   size_t executed = 0;
-  template <class F> void EmitST(F &&fn) { recorded.emplace_back(std::forward<F>(fn)); }
+  bool fail_next_emit = false;
+  template <class F> void EmitST(F &&fn) {
+    if (std::exchange(fail_next_emit, false)) { cmd_queue.Fail(Queue::out_of_memory); return; }
+    recorded.emplace_back(std::forward<F>(fn));
+  }
   template <class T> static Rc<T> forward_rc(Rc<T> &value) {
     if constexpr (replayable) return value;
     else return std::move(value);
   }
+  // QUEUE_FAILED
   // ALLOCATE_ARGUMENTS
   // UPLOAD
   // SET_CB
@@ -603,6 +614,34 @@ template <class Context> void resource_all_stages() {
   }
 }
 
+// These controls invoke unchanged extracted guards, rather than replacing
+// them with successful fixture stubs. Old source failures occur in the original
+// contract scenarios before these current-interface controls are reached.
+void queue_failure_controls() {
+  ++scenarios;
+  {
+    Immediate ctx;
+    require(ctx.cmd_queue.FailureReason() == S_OK, "healthy queue status");
+    require(ctx.PreAllocateArgumentBuffer(64, 32) == 0 && ctx.argument_size == 64, "healthy argument reservation");
+    ctx.cmd_queue.Fail(Queue::out_of_memory);
+    ctx.cmd_queue.Fail(E_INVALIDARG);
+    require(ctx.cmd_queue.FailureReason() == Queue::out_of_memory, "first queue failure retained");
+    auto before = ctx.argument_size;
+    require(ctx.PreAllocateArgumentBuffer(32, 16) == 0 && ctx.argument_size == before, "failed queue reserved argument bytes");
+  }
+  {
+    Immediate ctx;
+    Rc<D3D11ResourceCommon> resource = new D3D11ResourceCommon;
+    auto before = resource->gpu->current();
+    auto sentinel = reinterpret_cast<void *>(uintptr_t(0xBAD));
+    D3D11_MAPPED_SUBRESOURCE mapped{sentinel, 77, 88};
+    ctx.fail_next_emit = true;
+    require(ctx.map(resource.ptr(), D3D11_MAP_WRITE_DISCARD, &mapped) == Queue::out_of_memory, "failed recording Map status");
+    require(mapped.pData == sentinel && mapped.RowPitch == 77 && mapped.DepthPitch == 88, "failed recording published Map output");
+    require(ctx.recorded.empty() && resource->gpu->current().ptr() == before.ptr(), "failed recording queued rename");
+  }
+}
+
 } // namespace dxmt
 int main() {
   try {
@@ -613,6 +652,7 @@ int main() {
     dxmt::interleaved_contexts();
     dxmt::resource_all_stages<dxmt::Immediate>();
     dxmt::resource_all_stages<dxmt::Deferred>();
+    dxmt::queue_failure_controls();
     std::cout << "PASS scenarios=" << scenarios << " checks=" << checks
               << " precise=" << EXPECT_PRECISE << '\n';
     return 0;

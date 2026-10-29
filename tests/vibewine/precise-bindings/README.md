@@ -105,3 +105,29 @@ encoder/shader changes dominate, or the dependency scan costs more than it saves
 Keep general UAV table caching separate: encoding also performs required access,
 residency, retention and counter-allocation work, so replacing `uav_bound` with a
 dirty-bit condition is unsafe.
+
+## Combined queue-interface fixture compatibility
+
+The publication source `35d1f00403efa35482420722dbd4165e3cc9b967` adds
+`CommandQueueFailed` to argument reservation and reads queue failure after the
+immediate dynamic-map helper. The CPU Queue adapter now models healthy status and
+first-error retention; the runner extracts the actual `CommandQueueFailed` helper
+when present. Production argument/Map guards remain in generated candidate code.
+Historical sources without that helper keep their historical bodies unchanged.
+
+One additional scenario checks healthy argument reservation, rejection after a
+terminal queue error without advancing argument storage, first-error retention,
+and unchanged mapped pointer/pitches when injected command-recording failure is
+observed after the actual map helper. Two generated source mutations remove only
+the argument-admission or post-map-publication guard and must fail connected
+assertions. Existing defaults, explicit gate choices, historical baselines,
+CB/VB/SRV data and dirty-mask controls and all existing mutation expectations are retained.
+The current positive variants run 52 scenarios; original failure contracts remain
+unchanged. The CB range-reset fixture imports these repaired adapters and retains
+its original setter/getter/reset/replay assertions and negative expectations.
+
+Queue failure/recording endpoints are explicit CPU substitutes. This does not
+exercise native queue allocation/OOM, wake/cancellation or GPU execution; those
+remain the queue owner's tests. No production source, installed runtime, game,
+metrics or Git-index state is changed by this fixture repair. Generated scratch
+still uses the existing TemporaryDirectory lifetime and enclosing retention rules.
