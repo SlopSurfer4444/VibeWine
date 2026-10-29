@@ -1,10 +1,12 @@
 # Patch origins and scope
 
-Audited checkpoint: **2026-10-28**. This is a source map, not an FPS leaderboard
+Audited checkpoint: **2026-10-29**. This is a source map, not an FPS leaderboard
 or a claim that every feature is enabled in the installed test runtime.
 
 | Area | Origin | Scope / default | Source and evidence |
 | --- | --- | --- | --- |
+| Exact index bindings, upload completion refresh, adjacent clear contraction and terminal queue consumers | Local continuation of existing DXMT owners; independent source review | General engine paths; exact operation/payload/failure/native-image controls, game FPS separate | [Sustained wave](diagnostics/sustained-wave-20261029.md) |
+| Nonblocking MSync replies and foreground cursor warp policy | Local Wine corrections and explicit native experiment | General synchronization; cursor opt-in, real Mission Control gesture remains open | [Sustained wave](diagnostics/sustained-wave-20261029.md) |
 | Lazy buffer/alternate texture views, compute urgency, variant retry and ring splice | Local VibeWine continuation on existing owners | General mechanisms, default paths preserved; fixture work reduction, not measured FPS | [Eight-direction wave](diagnostics/next-wave-20261028.md), [component contract](../components/dxmt/docs/next-wave-20261028.md) |
 | Metal4 compiler and persistent ARM converter | Local integration reusing public Apple APIs and the existing LGPL converter; standalone pilots retained as earlier evidence | Explicit opt-in, complete supported recipe/lifetime/error gates; separate worker build/deployment | [Eight-direction wave](diagnostics/next-wave-20261028.md) |
 | Monotonic MSync relative waits, minimum free hint and native cursor ownership | Local independently reproduced Wine repairs | General timing/reuse/focus classes; full Mach/liveness and actual Mission Control delivery remain open | [Eight-direction wave](diagnostics/next-wave-20261028.md) |

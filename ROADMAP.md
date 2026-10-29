@@ -1,5 +1,46 @@
 # VibeWine roadmap
 
+## Current sustained-performance campaign — 29 October 2026
+
+The user accepted all eight follow-on directions after playing the current
+native1080 build. This section is the current ledger; earlier campaigns below
+are historical checkpoints. Root owns canonical H/D/W/control indices,
+integration, matched builds, runtime adoption and live game/GPU/focus activity.
+Editors own only the isolated checkouts listed in
+`outputs/sustained-wave-20261029/worktrees.json`; they return patches and checks.
+Start: H `e71d1ad9`, D `61aca2a3`, W `271e5cda`, control `89255567`.
+Preserve installed playable runtime, saves, VPN, caches and rollback.
+
+Terminal checkpoint: advance every direction through a concrete implementation
+with discriminating correctness/cost checks or an explicitly justified negative
+result; integrate admitted changes, build the matched closure and verify the
+affected real workflow. Performance acceptance requires phase-bound comparable
+captures, including a warm reference and collection-overhead control. Existing
+user-reported smoothness and the 29 October aggregate capture do not establish
+A/B gain. No blanket enablement of experimental compiler paths, removal of
+synchronization or full-engine rewrite is implied.
+
+| ID | Required deliverable / consumer | Dependencies and acceptance | Current state |
+| --- | --- | --- | --- |
+| T1 | Useful bounded gameplay capture / root | Reuse collectors and long-wait profiles; scene/start binding, immutable stopped payload proof, limits/cleanup and missing-data controls; actual fresh parsed records before game/focus handoff | source committed ad778628;22 root offline checks pass;live scene capture pending |
+| T2 | CPU→GPU queue economy / root | Profile-guided source improvement, exact ordering/lifetime/failure controls; normal pacing distinguished from idle work; no blind queue-depth reduction | queue5847d276 integrated; ring-backed compute-counter setup removes100 separate allocations; complete matched false/true162-step builds pass |
+| T3 | Per-frame CPU resource/state economy / root | Continue current requested-view/setter/residency work; production consumer, failing baseline/mutation and unchanged data/pixels | source da1afda1 plus combined fixture a422a932;native/Rosetta controls and root combined checks pass;matched false/true162-step builds pass |
+| T4 | Upload/resource-memory economy / root | Reuse current allocators/retirement owners; completed vs inflight/recorded lifetime, bounded allocation/reclamation and source-level cost discriminator | source021c38b5;completion refresh, old lifetime controls and root combined check pass;matched false/true162-step builds pass |
+| T5 | ARM/Metal4/compiler-demand continuation / root | Matched persistent ARM worker delivery and bounded runtime experiment; Metal4 supported recipe/performance/lifetime; explicit activation and no implicit retry | ARMsource2eee5fa1+matchedworker/nativeparity accepted;Metal4corpus7ba9fe06 accepts negative cache result;activation pending |
+| T6 | Actual GPU work/traffic reduction / root | Reuse existing pass/store/copy and profiling seams; exact image/hazard controls and measured cost, rejected derivative alternative stays off | source916fbbe7+18nativeimages/cost accepted;queue-context integration and root combined controls pass;matched false/true162-step builds pass |
+| T7 | Queue-failure and Wine synchronization correctness / root | Complete failure/publication consumers or bounded discriminating repair; classify held Mach/Rosetta failures before admission | MSync237eab39+SDKrepairae1d0e73 built;queue5847d276 independently reviewed and integrated incl ctor/OOM repairs;old broad Mach held |
+| T8 | Native focus/cursor and repeatable autonomous scenario / root | Public APIs, owned-window/real callback evidence, trustworthy input progress, ordinary close/relaunch and visible game handoff; no invented accessibility tree | opt-in d4e9f2b1+native/Rosetta controls accepted;owned PE fixture built;real cursor/game acceptance pending |
+| TI | Review/build/install/measure / root | T1–T8 admitted independently; source/build/install/game/performance states separate; stop task-owned producers; exact recovery retained | D a422a932/W ae1d0e73 clean;7Wine targets built;paired162-step graphics builds pass;four helpers installed2c5f568d with readback/no-op;native runtime unchanged |
+
+Private artifact root `outputs/sustained-wave-20261029`. Logs seven days/32MiB
+per branch; curated results thirty days/8MiB per branch. Aggregate new builds
+40GiB with20GiB free reserve. Maximum four compiler processes aggregate, one per
+granted editor; root exclusively grants native GPU/live game slots. Existing
+telemetry raw seven days/64MiB per experiment, decoded derivatives12MiB and
+curated thirty days/4MiB remain in force. Active work, unique unresolved evidence
+and recovery are holds. Cleanup uses exact owned paths, identity/reference/hold
+rechecks and preservation first; no automatic cleaner or unrelated capture.
+
 ## Current eight-direction campaign — 28 October 2026
 
 User explicitly said “remember and go with all” eight next directions. This is
