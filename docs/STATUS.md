@@ -6,9 +6,9 @@ Reconciled **29 October 2026**. This table supersedes earlier checkpoints.
 | --- | --- | --- |
 | Source |DXMT `a422a932`; Wine `ae1d0e73`|Binding/upload/clear economy, queue failure and MSync repairs; opt-in cursor/compiler experiments|
 | Checks |Combined source controls pass; independent queue review repairs admitted|Operation counts/native fixtures are separate from game FPS|
-| Build |Seven affected Wine targets pass; complete paired162-step DXMT builds pass|No complete new Wine distribution or new engine installation yet|
-| Lifecycle |Four helper endpoints updated coherently, exact readback and no-op pass|Engine, game profile and saves retained|
-| Game/FPS |Prior playable native1080 runtime remains selected|This wave has no live gameplay or measured FPS gain yet|
+| Build |Seven affected Wine targets pass; complete paired162-step DXMT builds pass|Matched engine installed; seven fresh Wine targets plus retained runtime closure|
+| Lifecycle |Four helpers installed coherently; matched runtime adopted as `d029bcfc`, all 32 after-images, installed status and no-op convergence verified|Existing game profile/saves retained; recovery preserved|
+| Game/FPS |New native1080 runtime selected; game and collectors stopped at owner request|Old-baseline observer recorded 60 intervals, but scene was unknown and detail was unarmed; no FPS comparison|
 
 [Wave details](diagnostics/sustained-wave-20261029.md) and
 [ROADMAP](../ROADMAP.md) separate source, build, installation and observation.
