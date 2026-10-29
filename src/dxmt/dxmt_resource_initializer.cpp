@@ -573,8 +573,23 @@ ResourceInitializer::encode(WMT::CommandBuffer cmdbuf) {
   return true;
 }
 
+void
+ResourceInitializer::refreshUploadCompletion() {
+  // The read immediately after commit commonly precedes GPU completion. A
+  // checked allocation can still succeed by growing the ring, so its OOM retry
+  // alone never discovers storage that completed between upload generations.
+  // Poll once before that first allocation, without polling every subresource
+  // in the same pending generation or waiting for an incomplete submission.
+  if (current_seq_id_ > 1 && cached_coherent_seq_id < current_seq_id_ - 1 &&
+      upload_poll_seq_id_ != current_seq_id_) {
+    upload_poll_seq_id_ = current_seq_id_;
+    cached_coherent_seq_id = upload_queue_event_.signaledValue();
+  }
+}
+
 InitStatus
 ResourceInitializer::reserveGpu(std::span<const size_t> sizes, std::span<UploadHeap::Reservation> reservations) {
+  refreshUploadCompletion();
   if (gpu_command_heap_allocator.allocateChecked(
           current_seq_id_, uploadReuseBoundary(current_seq_id_, cached_coherent_seq_id), sizes,
           kResourceInitializerGpuUploadHeapAlignment, reservations))

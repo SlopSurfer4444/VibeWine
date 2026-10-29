@@ -47,6 +47,13 @@ void refreshed_completion_upload() {
   t.w=8192; t.h=1024; std::array<unsigned char,64> data{};
   success(r.initWithData(&t,&ta,0,0,data.data(),32768,0,0));
   r.flushToWait(); auto first=obs.encoded.at(0).src;
+  // Consume the bounded generation poll through its production helper first,
+  // then deliberately stale the cache to isolate the independent OOM refresh.
+  // It must still perform the original failed attempt and exact retry counts.
+  r.cached_coherent_seq_id=0;
+  assert(r.upload_poll_seq_id_!=r.current_seq_id_);
+  r.refreshUploadCompletion();
+  assert(r.upload_poll_seq_id_==r.current_seq_id_ && r.cached_coherent_seq_id==obs.signal);
   r.cached_coherent_seq_id=0; obs.fail_all=true;
   auto result=r.initWithData(&t,&ta,0,0,data.data(),32768,0,0);
   if(INCLUSIVE) {

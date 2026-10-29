@@ -186,10 +186,15 @@ private:
 
   InitStatus reserveGpu(std::span<const size_t> sizes, std::span<UploadHeap::Reservation> reservations);
 
+  void refreshUploadCompletion(); // caller holds mutex_
+
   bool retainAllocation(Allocation *allocation);
 
   uint64_t current_seq_id_ = 1;
   uint64_t cached_coherent_seq_id = 0;
+  // At most one speculative completion read for each submitted generation.
+  // Allocation failure keeps its existing independent refresh/retry path.
+  uint64_t upload_poll_seq_id_ = 0;
   WMT::Device device_;
   WMT::Reference<WMT::CommandQueue> upload_queue_;
   WMT::Reference<WMT::SharedEvent> upload_queue_event_;
