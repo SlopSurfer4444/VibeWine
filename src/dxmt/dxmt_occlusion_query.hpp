@@ -185,14 +185,23 @@ public:
         visibility_result_heap_info.memory.set(nullptr);
 #ifdef __i386__
         visibility_result_heap_info.memory.set(wsi::aligned_malloc(num_results * sizeof(uint64_t), DXMT_PAGE_SIZE));
+        if (!visibility_result_heap_info.memory.get()) throw std::bad_alloc{};
 #endif
         visibility_result_heap_info.length = num_results * sizeof(uint64_t);
         visibility_result_heap = device.newBuffer(visibility_result_heap_info);
+        if (!visibility_result_heap) {
+#ifdef __i386__
+          wsi::aligned_free(visibility_result_heap_info.memory.get());
+#endif
+          throw std::bad_alloc{};
+        }
       }
-  ~VisibilityResultReadback() {
+  void publish() {
     for (auto query : queries) {
       query->issue(seq_id, (uint64_t *)visibility_result_heap_info.memory.get(), num_results);
     }
+  }
+  ~VisibilityResultReadback() {
 #ifdef __i386__
     wsi::aligned_free(visibility_result_heap_info.memory.get());
 #endif
@@ -252,16 +261,16 @@ public:
       WMT::Device device, WMT::CommandBuffer cmdbuf, uint64_t num_samples, TimestampQueryList &&queries
   ) :
       queries_(std::move(queries)),
-      num_samples_(num_samples) {
+      num_samples_(num_samples),
+      results_(num_samples) {
     sample_buffer_ = device.newCounterSampleBuffer(num_samples, true);
+    if (!sample_buffer_) throw std::bad_alloc{};
   }
 
-  ~TimestampReadbackSBuf() {
-    // TODO: small_vector opt
-    std::vector<uint64_t> results(num_samples_);
-    sample_buffer_.resolveCounterRange(0, num_samples_, results.data(), num_samples_ * sizeof(uint64_t));
+  void publish() {
+    sample_buffer_.resolveCounterRange(0, num_samples_, results_.data(), num_samples_ * sizeof(uint64_t));
     for (const auto &[query, sample_index] : queries_) {
-      query->issue(results[sample_index]);
+      query->issue(results_[sample_index]);
     }
   }
 
@@ -277,6 +286,7 @@ private:
   TimestampQueryList queries_;
   WMT::Reference<WMT::CounterSampleBuffer> sample_buffer_;
   uint64_t num_samples_;
+  std::vector<uint64_t> results_;
 };
 
 class TimestampReadbackCBuf {
@@ -285,24 +295,15 @@ public:
       WMT::Device device, WMT::CommandBuffer cmdbuf, uint64_t num_samples, TimestampQueryList &&queries
   ) :
       queries_(std::move(queries)),
-      num_samples_(num_samples),
-      cmdbuf_(cmdbuf) {}
+      cmdbuf_(cmdbuf) { (void)num_samples; }
 
-  ~TimestampReadbackCBuf() {
-    // TODO: small_vector opt
-    std::vector<uint64_t> results(num_samples_);
-    /**
-    There is no implicit relationship between `gpuEndTime` and order of commit, but we still want a later issued query
-    to return a timestamp greater or equal to previous ones, so check and use maximum.
-
-    `thread_local` makes sense because this destructor is only called on 1. finishing thread 2. (abnormal) device
-    destruction
-    */
+  // Discard is the default, including allocation unwinds before GPU commit.
+  void publish() noexcept {
     thread_local uint64_t latest_ts_on_finish_thread = 0;
     latest_ts_on_finish_thread = std::max(cmdbuf_.gpuEndTime(), latest_ts_on_finish_thread);
-    std::fill(results.begin(), results.end(), latest_ts_on_finish_thread);
     for (const auto &[query, sample_index] : queries_) {
-      query->issue(results[sample_index]);
+      (void)sample_index;
+      query->issue(latest_ts_on_finish_thread);
     }
   }
 
@@ -316,7 +317,6 @@ public:
 
 private:
   TimestampQueryList queries_;
-  uint64_t num_samples_;
   WMT::CommandBuffer cmdbuf_;
 };
 
@@ -359,6 +359,10 @@ private:
 struct QueryReadbacks {
   std::unique_ptr<VisibilityResultReadback> visibility;
   std::unique_ptr<TimestampReadback> timestamp;
+  void publish() {
+    if (visibility) visibility->publish();
+    if (timestamp) timestamp->publish();
+  }
 };
 
 } // namespace dxmt

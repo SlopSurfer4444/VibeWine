@@ -27,7 +27,7 @@ struct WMTBufferInfo {
 };
 constexpr uint64_t WMTResourceHazardTrackingModeUntracked = 1;
 namespace WMT {
-struct Buffer { std::shared_ptr<uint64_t[]> data; };
+struct Buffer { std::shared_ptr<uint64_t[]> data; explicit operator bool() const { return bool(data); } };
 template <typename T> using Reference = T;
 struct Device {
   static inline unsigned allocations = 0;
@@ -41,6 +41,7 @@ struct Device {
 };
 }
 namespace dxmt {
+static bool fail_query_wrapper=false;
 template <typename T> struct WrapperCounts {
   static inline std::atomic<unsigned> allocations = 0, deletions = 0;
 };
@@ -118,21 +119,39 @@ struct FlushSeam {
   }
 };
 }
+template <class Readback> void publish_completed(Readback &readback) {
+  if constexpr (requires { readback.publish(); }) readback.publish();
+}
 using namespace dxmt;
-struct ImmediateInterface { virtual HRESULT GetData(ID3D11Asynchronous *, void *, UINT, UINT) = 0; };
+struct CommandQueue { enum class Failure:int32_t{OutOfMemory=int32_t(0x8007000e),DeviceRemoved=int32_t(0x887a0005)}; };
+struct ArgumentEncodingContext {
+ void beginVisibilityResultQuery(Rc<VisibilityResultQuery>){}void endVisibilityResultQuery(Rc<VisibilityResultQuery>){}
+ void signalEvent(uint64_t){}void sampleTimestamp(Rc<TimestampQuery>){}
+};
+struct ImmediateInterface { virtual HRESULT GetData(ID3D11Asynchronous *, void *, UINT, UINT) = 0;virtual void Begin(ID3D11Asynchronous*)=0;virtual void End(ID3D11Asynchronous*)=0; };
 struct ImmediateSeam : ImmediateInterface {
   struct Queue {
     uint64_t signaled = 0;
+    int32_t failure = 0;
+    int32_t FailureReason() const { return failure; }
+    void Fail(CommandQueue::Failure reason){if(!failure)failure=int32_t(reason);}
     struct { unsigned event_stall = 0; } stats;
     uint64_t traceSerial() { return 1; }
     uint64_t SignaledEventSeqId() { return signaled; }
     uint64_t CurrentFrameSeq() { return 1; }
+    uint64_t GetNextEventSeqId(){return ++signaled;}
+    uint64_t GetCurrentEventSeqId(){return signaled;}
     template <typename F> void UpdateCurrentFrameStatistics(F f) { f(stats); }
   } cmd_queue;
   d3d11_device_mutex mutex;
+  struct {bool has_dirty_op_since_last_event=false;}ctx_state;
+  bool promote_flush=false;
+  void InvalidateCurrentPass(bool){}
+  template<class F>void EmitST(F){}template<class F>void EmitOP(F){}
   unsigned flushes = 0;
   void Flush() { std::lock_guard lock(mutex); flushes++; }
 #include "immediate-under-test.hpp"
+#include "query-issue-under-test.hpp"
 };
 struct StatisticsQuery : ID3D11Query {
   UINT GetDataSize() override { return sizeof(D3D11_QUERY_DATA_PIPELINE_STATISTICS); }
@@ -207,6 +226,7 @@ void functional() {
     seam.pending_queries_.push_back(query);
     auto readback = seam.flush(9);
     check(seam.pending_queries_.empty(), "same chunk empty removed");
+    if (readback.visibility) publish_completed(*readback.visibility);
     readback.visibility.reset();
     check(query->getValue(&value) && value == 0, "same chunk empty flushed ready");
   }
@@ -231,8 +251,10 @@ void functional() {
     check(WMT::Device::allocations == allocations, "empty chunk no native allocation");
     check(seam.pending_queries_.empty(), "ended query removed");
     check(!query->getValue(&value), "empty end waits for finish");
+    if (first.visibility) publish_completed(*first.visibility);
     first.visibility.reset();
     check(!query->getValue(&value), "earlier readback cannot finish later end");
+    if (last.visibility) publish_completed(*last.visibility);
     last.visibility.reset();
     check(query->getValue(&value) && value == (prior_draw ? 17 : 0),
           prior_draw ? "empty trailing completion ready" : "all empty completion ready");
@@ -282,7 +304,7 @@ void generations() {
     check(readback->queries.size() == 1 && readback->queries[0] == query, "readback owns last query");
     static_cast<uint64_t *>(readback->visibility_result_heap_info.memory.get())[0] = 1;
     queries.clear(); query = nullptr;
-    std::thread finish([owned = std::move(readback)]() mutable { owned.reset(); });
+    std::thread finish([owned = std::move(readback)]() mutable { publish_completed(*owned); owned.reset(); });
     finish.join();
   }
 }
@@ -447,7 +469,7 @@ void frontier() {
     check(fresh != old, "empty retained readback generation preserved");
     fresh->begin(7, 0); api.End(); fresh->end(7, 1);
     // A bad rotation would make late readback issue seq 6 into generation 7.
-    if (fresh != old) readback.reset();
+    if (fresh != old) { publish_completed(*readback); readback.reset(); }
     check(imm.GetData(&empty, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE,
           "late empty readback cannot publish new generation");
     fresh->issue(7, &sample, 1);
@@ -470,11 +492,46 @@ void frontier() {
   check(WrapperCounts<VisibilityResultQuery>::deletions == deleted + 1, "retained backend final release");
 }
 
+void queue_failure_consumer() {
+#if HAS_QUEUE_FAILURE
+  {
+    ImmediateSeam api;OcclusionQuery visible;visible.desc_.Query=D3D11_QUERY_OCCLUSION;
+    api.Begin(&visible);api.End(&visible);fail_query_wrapper=true;api.Begin(&visible);fail_query_wrapper=false;
+    check(api.cmd_queue.failure==int32_t(0x8007000e),"Begin query replacement OOM contained at void COM boundary");
+  }
+  {
+    ImmediateSeam api;MTLD3D11TimestampQueryImpl ts;ts.desc_.Query=D3D11_QUERY_TIMESTAMP;
+    api.End(&ts);fail_query_wrapper=true;api.End(&ts);fail_query_wrapper=false;
+    check(api.cmd_queue.failure==int32_t(0x8007000e),"End query replacement OOM contained at void COM boundary");
+  }
+  for (bool timestamp : {false,true}) {
+    ImmediateSeam api;
+    OcclusionQuery visibility;visibility.desc_.Query=D3D11_QUERY_OCCLUSION;
+    MTLD3D11TimestampQueryImpl ts;ts.desc_.Query=D3D11_QUERY_TIMESTAMP;
+    if(timestamp){auto q=static_cast<MTLD3D11TimestampQuery&>(ts).End();q->issue(42);}else{auto&v=static_cast<MTLD3D11OcclusionQuery&>(visibility);auto q=v.Begin();q->begin(1,0);v.End();q->end(1,1);uint64_t sample=7;q->issue(1,&sample,1);}
+    uint64_t value=0;fail_query_wrapper=true;
+    auto hr=api.GetData(timestamp?static_cast<ID3D11Asynchronous*>(&ts):static_cast<ID3D11Asynchronous*>(&visibility),&value,sizeof(value),0);
+    fail_query_wrapper=false;
+    check(hr==int32_t(0x8007000e)&&api.cmd_queue.failure==hr,"query rotation OOM contained at HRESULT COM boundary");
+  }
+  ImmediateSeam api;
+  StatisticsQuery query;
+  D3D11_QUERY_DATA_PIPELINE_STATISTICS output{};
+  std::memset(&output, 0x5a, sizeof(output));
+  auto preserved = output;
+  for (int32_t failure : {int32_t(0x887a0005), int32_t(0x8007000e)}) {
+    api.cmd_queue.failure = failure;
+    check(api.GetData(&query, &output, sizeof(output), 0) == failure, "terminal GetData error consumed");
+    check(std::memcmp(&output, &preserved, sizeof(output)) == 0 && !api.flushes, "terminal GetData no data publication/retry");
+    check(api.GetData(&query, &output, 0, 0) == failure, "terminal status-only GetData error consumed");
+  }
+#endif
+}
 int main(int argc, char **argv) {
   bool race_only = argc == 2 && std::string(argv[1]) == "race";
   bool frontier_only = argc == 2 && std::string(argv[1]) == "frontier";
   bool empty_only = argc == 2 && std::string(argv[1]) == "empty";
-  if (!empty_only && !frontier_only) publication_race();
+  if (!empty_only && !frontier_only) { queue_failure_consumer(); publication_race(); }
   if (!race_only && !frontier_only) functional();
   if (!race_only && !empty_only) { generations(); concurrent_encoder_finish_poll(); frontier(); }
   if (failures) return 1;

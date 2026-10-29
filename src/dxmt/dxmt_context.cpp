@@ -57,21 +57,25 @@ ArgumentEncodingContext::ArgumentEncodingContext(CommandQueue &queue, WMT::Devic
   dummy_sampler_info_.max_anisotroy = 1;
   dummy_sampler_info_.lod_average = false;
   dummy_sampler_ = device.newSamplerState(dummy_sampler_info_);
+  cpu_buffer_chunks_.emplace_back();
   dummy_cbuffer_host_ = wsi::aligned_malloc(65536, DXMT_PAGE_SIZE);
+  if (!dummy_cbuffer_host_) throw std::bad_alloc{};
+  std::unique_ptr<void, decltype(&wsi::aligned_free)> host_owner(dummy_cbuffer_host_, wsi::aligned_free);
   dummy_cbuffer_info_.length = 65536;
   dummy_cbuffer_info_.memory.set(dummy_cbuffer_host_);
   dummy_cbuffer_info_.options = WMTResourceOptionCPUCacheModeWriteCombined | WMTResourceStorageModeShared |
                                 WMTResourceHazardTrackingModeUntracked;
   dummy_cbuffer_ = device.newBuffer(dummy_cbuffer_info_);
   std::memset(dummy_cbuffer_info_.memory.get(), 0, 65536);
-  cpu_buffer_chunks_.emplace_back();
   barrier_event_ = device_.newEvent();
   for (unsigned i = 0; i < kParityLane; i++) {
     fence_pool_[i] = device.newFence();
   }
+  host_owner.release();
 };
 
 ArgumentEncodingContext::~ArgumentEncodingContext() {
+  discardCommands();
   wsi::aligned_free(dummy_cbuffer_host_);
 };
 
@@ -900,6 +904,8 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
     }
     assert(encoder_index == encoder_count);
   }
+  flushing_encoders_ = {encoders, encoder_count};
+  flushing_next_ = 0;
 
 #if defined(DXMT_DEAD_ATTACHMENT_STORES) && DXMT_DEAD_ATTACHMENT_STORES
   // Only original adjacent Render->Clear pairs carry the full-clear proof.
@@ -1022,6 +1028,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       }
       auto gpu_buffer_ = data->allocated_argbuf;
       auto encoder = cmdbuf.renderCommandEncoder(render_pass_info);
+      if (!encoder) throw std::bad_alloc{};
       data->fence_wait.forEach(
           data->fence_wait_vertex, // if a fence is waited pre-raster, no need to wait again at fragment
           [&](auto id) { encoder.waitForFence(fence_pool_[id], WMTRenderStagePreRaster); },
@@ -1191,6 +1198,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
     case EncoderType::Compute: {
       auto data = static_cast<ComputeEncoderData *>(current);
       auto encoder = cmdbuf.computeCommandEncoder(true);
+      if (!encoder) throw std::bad_alloc{};
       data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id]); });
 #if defined(DXMT_PERF_REF_W4_BATCHING) && DXMT_PERF_REF_W4_BATCHING
       wmtcmd_compute_setbuffer setcmd;
@@ -1239,6 +1247,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
     case EncoderType::Blit: {
       auto data = static_cast<BlitEncoderData *>(current);
       auto encoder = cmdbuf.blitCommandEncoder();
+      if (!encoder) throw std::bad_alloc{};
       data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id]); });
       encoder.encodeCommands(&data->cmd_head);
       data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id]); });
@@ -1277,6 +1286,8 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
         // Missing drawable / pipeline failure still completes this encoder's
         // dependency edges. Later passes may wait on its fence in this buffer.
         auto encoder = cmdbuf.blitCommandEncoder();
+        if (!encoder) throw std::bad_alloc{};
+      if (!encoder) throw std::bad_alloc{};
         data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id]); });
         data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id]); });
         encoder.endEncoding();
@@ -1312,6 +1323,8 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
         }
         info.render_target_array_length = data->array_length;
         auto encoder = cmdbuf.renderCommandEncoder(info);
+        if (!encoder) throw std::bad_alloc{};
+        if (!encoder) throw std::bad_alloc{};
         encoder.setLabel(WMT::String::string("ClearPass", WMTUTF8StringEncoding));
         data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id], WMTRenderStageFragment); });
         data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id], WMTRenderStageFragment); });
@@ -1331,6 +1344,8 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
         info.colors[0].resolve_texture = data->dst.texture();
 
         auto encoder = cmdbuf.renderCommandEncoder(info);
+        if (!encoder) throw std::bad_alloc{};
+        if (!encoder) throw std::bad_alloc{};
         encoder.setLabel(WMT::String::string("ResolvePass", WMTUTF8StringEncoding));
         data->fence_wait.forEach([&](auto id) { encoder.waitForFence(fence_pool_[id], WMTRenderStageFragment); });
         data->fence_update.forEach([&](auto id) { encoder.updateFence(fence_pool_[id], WMTRenderStageFragment); });
@@ -1343,6 +1358,8 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       auto data = static_cast<SpatialUpscaleData *>(current);
 
       auto begin_scaler = cmdbuf.blitCommandEncoder();
+      if (!begin_scaler) throw std::bad_alloc{};
+      if (!begin_scaler) throw std::bad_alloc{};
       begin_scaler.setLabel(WMT::String::string("BeginScaler", WMTUTF8StringEncoding));
       data->fence_wait.forEach([&](auto id) { begin_scaler.waitForFence(fence_pool_[id]); });
       begin_scaler.updateFence(data->scaler->fence());
@@ -1351,6 +1368,8 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       cmdbuf.encodeSpatialScale(data->scaler->scaler(), data->backbuffer, data->upscaled, data->scaler->fence());
 
       auto end_scaler = cmdbuf.blitCommandEncoder();
+      if (!end_scaler) throw std::bad_alloc{};
+      if (!end_scaler) throw std::bad_alloc{};
       end_scaler.waitForFence(data->scaler->fence());
       end_scaler.setLabel(WMT::String::string("EndScaler", WMTUTF8StringEncoding));
       data->fence_update.forEach([&](auto id) { end_scaler.updateFence(fence_pool_[id]); });
@@ -1375,6 +1394,8 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       auto data = static_cast<TemporalUpscaleData *>(current);
 
       auto begin_scaler = cmdbuf.blitCommandEncoder();
+      if (!begin_scaler) throw std::bad_alloc{};
+      if (!begin_scaler) throw std::bad_alloc{};
       begin_scaler.setLabel(WMT::String::string("BeginScaler", WMTUTF8StringEncoding));
       data->fence_wait.forEach([&](auto id) { begin_scaler.waitForFence(fence_pool_[id]); });
       begin_scaler.updateFence(data->scaler->fence());
@@ -1386,6 +1407,8 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
       );
 
       auto end_scaler = cmdbuf.blitCommandEncoder();
+      if (!end_scaler) throw std::bad_alloc{};
+      if (!end_scaler) throw std::bad_alloc{};
       end_scaler.waitForFence(data->scaler->fence());
       end_scaler.setLabel(WMT::String::string("EndScaler", WMTUTF8StringEncoding));
       data->fence_update.forEach([&](auto id) { end_scaler.updateFence(fence_pool_[id]); });
@@ -1408,6 +1431,7 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
         sample_buffer_info.start_of_encoder_sample_index = data->readback_index;
         sample_buffer_info.end_of_encoder_sample_index = ~0ull; /* MTLCounterDontSample */
         auto encoder = cmdbuf.blitCommandEncoderWithSampleBuffers(&sample_buffer_info, 1);
+        if (!encoder) throw std::bad_alloc{};
         encoder.setLabel(WMT::String::string("SampleTimestamp", WMTUTF8StringEncoding));
         {
           /**
@@ -1434,11 +1458,13 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
     default:
       break;
     }
+    ++flushing_next_; // remaining array survives optimizer Null links and unwind
     encoder_index--;
   }
   encoder_head.next = nullptr;
   encoder_last = &encoder_head;
   encoder_count_ = 0;
+  flushing_encoders_ = {};
 
   cmdbuf.encodeSignalEvent(queue_.event, event_seq_id);
 
@@ -1449,6 +1475,45 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
   }
 
   return readbacks;
+}
+
+void
+ArgumentEncodingContext::discardCommands() noexcept {
+  auto destroy = [](EncoderData *current) {
+    switch (current->type) {
+    case EncoderType::Render: static_cast<RenderEncoderData *>(current)->~RenderEncoderData(); break;
+    case EncoderType::Compute: static_cast<ComputeEncoderData *>(current)->~ComputeEncoderData(); break;
+    case EncoderType::Blit: static_cast<BlitEncoderData *>(current)->~BlitEncoderData(); break;
+    case EncoderType::Clear: static_cast<ClearEncoderData *>(current)->~ClearEncoderData(); break;
+    case EncoderType::Resolve: static_cast<ResolveEncoderData *>(current)->~ResolveEncoderData(); break;
+    case EncoderType::Present: static_cast<PresentData *>(current)->~PresentData(); break;
+    case EncoderType::SpatialUpscale: static_cast<SpatialUpscaleData *>(current)->~SpatialUpscaleData(); break;
+    case EncoderType::TemporalUpscale: static_cast<TemporalUpscaleData *>(current)->~TemporalUpscaleData(); break;
+    case EncoderType::SignalEvent: static_cast<SignalEventData *>(current)->~SignalEventData(); break;
+    case EncoderType::WaitForEvent: static_cast<WaitForEventData *>(current)->~WaitForEventData(); break;
+    case EncoderType::SampleTimestamp: static_cast<SampleTimestampData *>(current)->~SampleTimestampData(); break;
+    default: break;
+    }
+  };
+  bool current_owned = false;
+  if (!flushing_encoders_.empty()) {
+    for (auto entry : flushing_encoders_) current_owned |= entry == encoder_current;
+    for (; flushing_next_ < flushing_encoders_.size(); ++flushing_next_)
+      destroy(flushing_encoders_[flushing_next_]);
+  } else {
+    while (auto current = encoder_head.next) {
+      encoder_head.next = current->next;
+      current_owned |= current == encoder_current;
+      destroy(current);
+    }
+  }
+  if (encoder_current && !current_owned) destroy(encoder_current);
+  flushing_encoders_ = {};
+  encoder_head.next = nullptr;
+  encoder_last = &encoder_head;
+  encoder_current = nullptr;
+  encoder_count_ = 0;
+  pending_queries_.clear();
 }
 
 DXMT_ENCODER_LIST_OP

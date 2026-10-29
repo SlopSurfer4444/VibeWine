@@ -77,14 +77,31 @@ public:
   };
 
   UINT64 STDMETHODCALLTYPE GetCompletedValue() final {
+    if (this->m_parent->GetDXMTDevice().queue().FailureReason()) return UINT64_MAX;
     return event.signaledValue();
   };
 
   HRESULT STDMETHODCALLTYPE SetEventOnCompletion(UINT64 Value,
                                                  HANDLE Event) final {
-    auto shared_event_listener = this->m_parent->GetDXMTDevice().queue().GetSharedEventListener();
-    MTLSharedEvent_setWin32EventAtValue(event.handle, shared_event_listener, Event, Value);
-    return S_OK;
+    auto &queue = this->m_parent->GetDXMTDevice().queue();
+    if (Event) return queue.RegisterEvent(event, Event, Value);
+    // A null event is the documented blocking form of this API. Use a PE
+    // event so terminal queue cancellation can release this CPU waiter too.
+    if (auto failure = queue.FailureReason()) return failure;
+    if (event.signaledValue() >= Value) return S_OK;
+    HANDLE completion = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (!completion) return E_OUTOFMEMORY;
+    HRESULT result = queue.RegisterEvent(event, completion, Value);
+    if (SUCCEEDED(result)) {
+      if (WaitForSingleObject(completion, INFINITE) != WAIT_OBJECT_0) {
+        queue.Fail(CommandQueue::Failure::DeviceRemoved);
+        // Retire the listener before closing a possibly pending private HANDLE.
+        queue.ShutdownAndJoin();
+      }
+      result = queue.FailureReason();
+    }
+    CloseHandle(completion);
+    return result;
   };
 };
 

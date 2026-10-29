@@ -138,12 +138,14 @@ public:
   STDMETHODCALLTYPE
   Map(ID3D11Resource *pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags,
       D3D11_MAPPED_SUBRESOURCE *pMappedResource) override {
+    try {
     cs2trace::ApiScope api(42,cmd_queue.traceSerial(),(uint64_t)pResource,(uint64_t(MapType)<<32)|MapFlags);
     return api.invoke([&]() -> HRESULT {
     std::lock_guard<d3d11_device_mutex> lock(mutex);
 
     if (unlikely(!pResource))
       return E_INVALIDARG;
+    if (auto failure = cmd_queue.FailureReason()) return failure;
     UINT buffer_length = 0, &row_pitch = buffer_length;
     UINT bind_flag = 0, &depth_pitch = bind_flag;
     auto current_seq_id = cmd_queue.CurrentSeqId();
@@ -183,7 +185,9 @@ public:
 #endif
         }
 
-        pMappedResource->pData = MapDynamicBuffer(dynamic, current_seq_id, coherent_seq_id);
+        auto mapped_data = MapDynamicBuffer(dynamic, current_seq_id, coherent_seq_id);
+        if (auto failure = cmd_queue.FailureReason()) return failure;
+        pMappedResource->pData = mapped_data;
         pMappedResource->RowPitch = buffer_length;
         pMappedResource->DepthPitch = buffer_length;
         break;
@@ -211,7 +215,9 @@ public:
           stage.SRVs.set_dirty();
         }
 
-        pMappedResource->pData = MapDynamicBuffer(dynamic, current_seq_id, coherent_seq_id);
+        auto mapped_data = MapDynamicBuffer(dynamic, current_seq_id, coherent_seq_id);
+        if (auto failure = cmd_queue.FailureReason()) return failure;
+        pMappedResource->pData = mapped_data;
         pMappedResource->RowPitch = row_pitch;
         pMappedResource->DepthPitch = depth_pitch;
         break;
@@ -238,12 +244,14 @@ public:
           auto _ = texture->rename(forward_rc(allocation));
         });
 
+        if (auto failure = cmd_queue.FailureReason()) return failure;
         pMappedResource->pData = dynamic->mappedMemory();
         pMappedResource->RowPitch = row_pitch;
         pMappedResource->DepthPitch = depth_pitch;
         break;
       }
       case D3D11_MAP_WRITE_NO_OVERWRITE: {
+        if (auto failure = cmd_queue.FailureReason()) return failure;
         pMappedResource->pData = dynamic->mappedMemory();
         pMappedResource->RowPitch = row_pitch;
         pMappedResource->DepthPitch = depth_pitch;
@@ -279,6 +287,7 @@ public:
           result = StagingMapResult::Mappable;
         }
         if (result == StagingMapResult::Mappable) {
+          if (auto failure = cmd_queue.FailureReason()) return failure;
           TRACE("staging map ready");
           pMappedResource->pData = staging->mappedImmediateMemory();
           pMappedResource->RowPitch = staging->bytesPerRow;
@@ -297,7 +306,7 @@ public:
         auto t0 = clock::now();
 #endif
         { cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=30,.object=coherent_seq_id+uint64_t(result),.flags=(uint32_t)MapType,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
-          cmd_queue.WaitCPUFence(coherent_seq_id + uint64_t(result)); }
+          if (!cmd_queue.WaitCPUFence(coherent_seq_id + uint64_t(result))) return cmd_queue.FailureReason(); }
 #ifdef DXMT_DEBUG
         auto t1 = clock::now();
         cmd_queue.UpdateCurrentFrameStatistics([&](auto &statistics) {
@@ -315,6 +324,14 @@ public:
     return E_INVALIDARG;
 
     });
+
+    } catch (const std::bad_alloc &) {
+      cmd_queue.Fail(CommandQueue::Failure::OutOfMemory);
+    return cmd_queue.FailureReason();
+    } catch (...) {
+      cmd_queue.Fail(CommandQueue::Failure::DeviceRemoved);
+    return cmd_queue.FailureReason();
+    }
   }
 
   void
@@ -339,6 +356,8 @@ public:
   void
   STDMETHODCALLTYPE
   Begin(ID3D11Asynchronous *pAsync) override {
+    try {
+    if (cmd_queue.FailureReason()) return;
     if (unlikely(!pAsync))
       return;
 
@@ -369,12 +388,20 @@ public:
       ERR("Unknown query type ", desc.Query);
       break;
     }
+
+    } catch (const std::bad_alloc &) {
+      cmd_queue.Fail(CommandQueue::Failure::OutOfMemory);
+    } catch (...) {
+      cmd_queue.Fail(CommandQueue::Failure::DeviceRemoved);
+    }
   }
 
   // See Begin()
   void
   STDMETHODCALLTYPE
   End(ID3D11Asynchronous *pAsync) override {
+    try {
+    if (cmd_queue.FailureReason()) return;
     if (unlikely(!pAsync))
       return;
 
@@ -426,11 +453,18 @@ public:
       ERR("Unknown query type ", desc.Query);
       break;
     }
+
+    } catch (const std::bad_alloc &) {
+      cmd_queue.Fail(CommandQueue::Failure::OutOfMemory);
+    } catch (...) {
+      cmd_queue.Fail(CommandQueue::Failure::DeviceRemoved);
+    }
   }
 
   HRESULT
   STDMETHODCALLTYPE
   GetData(ID3D11Asynchronous *pAsync, void *pData, UINT DataSize, UINT GetDataFlags) override {
+    try {
     cs2trace::ApiScope api(41,cmd_queue.traceSerial(),(uint64_t)pAsync,(uint64_t(DataSize)<<32)|GetDataFlags);
     return api.invoke([&]() -> HRESULT {
     if (!pAsync || (DataSize && !pData))
@@ -448,6 +482,7 @@ public:
     // Query state is shared with Begin/End. The device mutex is recursive,
     // so the existing not-ready Flush below remains safe under protection.
     std::lock_guard<d3d11_device_mutex> lock(mutex);
+    if (auto failure = cmd_queue.FailureReason()) return failure;
     HRESULT hr = S_FALSE;
 
     D3D11_QUERY_DESC desc;
@@ -518,9 +553,17 @@ public:
       cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=31,.object=(uint64_t)pAsync,.flags=(uint32_t)desc.Query,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
       Flush();
     }
-    return hr;
+    return cmd_queue.FailureReason() ? cmd_queue.FailureReason() : hr;
 
     });
+
+    } catch (const std::bad_alloc &) {
+      cmd_queue.Fail(CommandQueue::Failure::OutOfMemory);
+    return cmd_queue.FailureReason();
+    } catch (...) {
+      cmd_queue.Fail(CommandQueue::Failure::DeviceRemoved);
+    return cmd_queue.FailureReason();
+    }
   }
 
   void
@@ -536,6 +579,11 @@ public:
     std::lock_guard<d3d11_device_mutex> lock(mutex);
     cs2trace::ReasonScope reason(cs2trace::CommitReason::ExplicitFlush,cmd_queue.traceSerial(),true);
 
+    if (cmd_queue.FailureReason()) {
+      if (hEvent) SetEvent(hEvent);
+      api.result = cmd_queue.FailureReason();
+      return;
+    }
     api.result=0; // no submission unless Commit below actually runs
     if (ctx_state.has_dirty_op_since_last_event || promote_flush) {
       api.result=1;
@@ -543,10 +591,7 @@ public:
       Commit();
     }
     if (hEvent) {
-      auto shared_event_listener = cmd_queue.GetSharedEventListener();
-      MTLSharedEvent_setWin32EventAtValue(
-          cmd_queue.event, shared_event_listener, hEvent, cmd_queue.GetCurrentEventSeqId()
-      );
+      cmd_queue.RegisterEvent(cmd_queue.event, hEvent, cmd_queue.GetCurrentEventSeqId());
     }
   }
 
@@ -558,6 +603,7 @@ public:
   STDMETHODCALLTYPE
   ExecuteCommandList(ID3D11CommandList *pCommandList, BOOL RestoreContextState) override {
     std::lock_guard<d3d11_device_mutex> lock(mutex);
+    if (cmd_queue.FailureReason()) return;
 
     ResetEncodingContextState();
 
@@ -567,9 +613,16 @@ public:
     promote_flush = cmdlist->promote_flush;
 
     auto query_list = AllocateCommandData<Rc<VisibilityResultQuery>>(cmdlist->visibility_query_count);
+    if (!query_list) return;
+    try {
     for (const auto &[query, index] : cmdlist->issued_visibility_query) {
       query_list[index] = new VisibilityResultQuery();
       query->DoDeferredQuery(query_list[index].ptr());
+    }
+
+    } catch (const std::bad_alloc &) {
+      cmd_queue.Fail(CommandQueue::Failure::OutOfMemory);
+      return;
     }
 
     for (const auto &query : cmdlist->issued_event_query) {
@@ -635,7 +688,7 @@ public:
     if(!InvalidateCurrentPass())
       Commit();
     { cs2trace::SyncScope trace{.gen=cs2trace::operationGeneration(cmd_queue.traceSerial()),.type=32,.object=seq,.queue=cmd_queue.traceSerial(),.frame=cmd_queue.CurrentFrameSeq()-1};
-      cmd_queue.WaitCPUFence(seq); }
+      if (!cmd_queue.WaitCPUFence(seq)) cmd_queue.ShutdownAndJoin(); }
   };
 
   void
@@ -649,6 +702,8 @@ public:
   HRESULT STDMETHODCALLTYPE Signal(ID3D11Fence *pFence, UINT64 Value) override {
     std::lock_guard<d3d11_device_mutex> lock(mutex);
     cs2trace::ReasonScope reason(cs2trace::CommitReason::FenceSignal,cmd_queue.traceSerial());
+    if (auto failure = cmd_queue.FailureReason()) return failure;
+    if (!pFence) return E_INVALIDARG;
     auto fence = static_cast<MTLD3D11Fence *>(pFence);
 
     InvalidateCurrentPass();
@@ -657,12 +712,14 @@ public:
     });
     Flush();
 
-    return S_OK;
+    return cmd_queue.FailureReason();
   }
 
   HRESULT STDMETHODCALLTYPE Wait(ID3D11Fence *pFence, UINT64 Value) override {
     std::lock_guard<d3d11_device_mutex> lock(mutex);
     cs2trace::ReasonScope reason(cs2trace::CommitReason::FenceWait,cmd_queue.traceSerial());
+    if (auto failure = cmd_queue.FailureReason()) return failure;
+    if (!pFence) return E_INVALIDARG;
     auto fence = static_cast<MTLD3D11Fence *>(pFence);
 
     Flush();
@@ -670,7 +727,7 @@ public:
       enc.waitEvent(std::move(event), Value);
     });
 
-    return S_OK;
+    return cmd_queue.FailureReason();
   }
 
   UINT
@@ -682,6 +739,7 @@ public:
   HRESULT
   AcquireSync(ID3D11Resource *pResource, UINT64 Key, DWORD dwMilliseconds) override {
     std::lock_guard<d3d11_device_mutex> lock(mutex);
+    if (auto failure = cmd_queue.FailureReason()) return failure;
     auto resource = GetResourceCommon(pResource);
     if (!resource->keyedMutex())
       return DXGI_ERROR_INVALID_CALL;
@@ -699,6 +757,7 @@ public:
   HRESULT
   ReleaseSync(ID3D11Resource *pResource, UINT64 Key) override {
     std::lock_guard<d3d11_device_mutex> lock(mutex);
+    if (auto failure = cmd_queue.FailureReason()) return failure;
     auto resource = GetResourceCommon(pResource);
     if (!resource->keyedMutex())
       return DXGI_ERROR_INVALID_CALL;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source-bound ring economy and held actual-consumer failure discriminators."""
+"""Source-bound terminal allocation, explicit readback and canceled-fence controls."""
 import argparse
 import hashlib
 import json
@@ -29,7 +29,7 @@ def main():
     source = tests.parents[2]
     paths = ['src/dxmt/dxmt_ring_bump_allocator.hpp', 'src/dxmt/dxmt_command_queue.hpp',
              'src/dxmt/dxmt_occlusion_query.hpp', 'src/util/rc/util_rc_ptr.hpp', 'src/util/util_likely.hpp',
-             'src/dxmt/dxmt_context.hpp']
+             'src/dxmt/dxmt_context.hpp', 'src/dxmt/dxmt_command_queue.cpp', 'src/util/util_cpu_fence.hpp', 'src/d3d11/d3d11_context_impl.cpp']
     data = {f: subprocess.check_output(['git', 'show', args.source_ref + ':' + f], cwd=source)
             if args.source_ref else (source / f).read_bytes() for f in paths}
     ring, queue, query = [data[f].decode() for f in paths[:3]]
@@ -42,8 +42,14 @@ def main():
         'moveonly-list-under-test.hpp': block(queue, 'template <typename T> class moveonly_list', True),
         'timestamp-under-test.hpp': block(query, 'class TimestampQuery {', True),
         'readback-under-test.hpp': block(query, 'class TimestampReadbackCBuf {', True),
+        'reserve-under-test.hpp': block(queue, '  template <typename Allocator>\n  typename Allocator::Reservation\n  Reserve(') if '  Reserve(' in queue else '',
+        'failure-under-test.hpp': block(data[paths[6]].decode(), 'void\nCommandQueue::Fail(') if 'CommandQueue::Fail(' in data[paths[6]].decode() else 'void CommandQueue::Fail(Failure) noexcept {}',
+        'fence-under-test.hpp': (source / paths[7]).read_text(), # current fixture plumbing; old fence unused by baseline modes
         'pointer-under-test.hpp': block(data[paths[5]].decode(), 'inline void *\nptr_add('),
     }
+    counter = block(data[paths[8]].decode(), '  void\n  SwitchToComputeEncoder()')
+    counter = counter[counter.index('    auto allocated_encoder_argbuf_size ='):counter.index('    cmdbuf_state =')]
+    generated['counter-under-test.hpp'] = counter
     print(json.dumps({'source_ref': args.source_ref, 'baseline': args.baseline, 'sanitize': args.sanitize,
                       'source_sha256': {f: hashlib.sha256(b).hexdigest() for f, b in data.items()},
                       'fixture_sha256': {f: hashlib.sha256((tests / f).read_bytes()).hexdigest()
@@ -57,18 +63,21 @@ def main():
         (scratch / 'rc/util_rc_ptr.hpp').write_bytes(data[paths[3]])
         (scratch / 'util_likely.hpp').write_bytes(data[paths[4]])
         command = [shutil.which('clang++') or 'c++', '-std=c++20', '-O1', '-g', '-Wall', '-Wextra',
-                   '-Werror', '-Wno-unused-parameter', '-pthread', '-I', str(scratch), str(tests / 'fixture.cpp'), '-o', str(scratch / 'fixture')]
+                   '-Werror', '-Wno-unused-function', '-Wno-unused-parameter', '-DEXPECT_RECYCLE_NODES=' + ('0' if 'fifo.splice(fifo.end(), fifo, fifo.begin())' in ring else '100'), '-pthread', '-I', str(scratch), str(tests / 'fixture.cpp'), '-o', str(scratch / 'fixture')]
         if args.sanitize: command += ['-fsanitize=address,undefined', '-fno-sanitize-recover=all']
         subprocess.run(command, check=True, timeout=60)
         subprocess.run([str(scratch / 'fixture'), 'baseline' if args.baseline else 'candidate'], check=True, timeout=10)
         failure = subprocess.run([str(scratch / 'fixture'), 'allocation-consumer'], capture_output=True, text=True, timeout=10)
-        if failure.returncode == 0:
-            raise RuntimeError('held allocation discriminator unexpectedly returned success')
-        if args.sanitize and not ('moveonly-list-under-test.hpp:5:' in failure.stderr and
-                                  'constructor call on null pointer' in failure.stderr):
-            raise RuntimeError('expected sanitizer-attributed actual consumer failure: ' + failure.stderr)
-        print('HELD_CPU18: actual command allocation consumer exits with failure=' + str(failure.returncode))
-        print(failure.stderr[-3000:], end='')
+        if args.baseline:
+            if failure.returncode == 0 or (args.sanitize and 'constructor call on null pointer' not in failure.stderr):
+                raise RuntimeError('baseline did not expose actual null placement consumer: ' + failure.stderr)
+            print('OLDFAIL actual null placement constructor rejected baseline, exit=' + str(failure.returncode))
+            print(failure.stderr[-1800:], end='')
+        elif failure.returncode:
+            raise RuntimeError('candidate allocation consumer failed: ' + failure.stderr)
+        else:
+            print(failure.stdout, end='')
+
 
 
 if __name__ == '__main__': main()

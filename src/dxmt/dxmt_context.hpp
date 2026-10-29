@@ -17,6 +17,7 @@
  */
 
 #pragma once
+#include <span>
 
 #include "Metal.hpp"
 #include "dxmt_buffer.hpp"
@@ -854,6 +855,7 @@ public:
 
   ArgumentEncodingContext(CommandQueue &queue, WMT::Device device, InternalCommandLibrary &lib);
   ~ArgumentEncodingContext();
+  void discardCommands() noexcept;
 
   uint32_t tess_num_output_control_point_element;
   uint32_t tess_threads_per_patch;
@@ -911,6 +913,8 @@ private:
   EncoderData *encoder_last = &encoder_head;
   EncoderData *encoder_current = nullptr;
   unsigned encoder_count_ = 0;
+  std::span<EncoderData *> flushing_encoders_{};
+  size_t flushing_next_ = 0;
 
   uint64_t encoder_id_ = kParityLane; // actually important to not start from 0
   std::array<WMT::Reference<WMT::Fence>, kParityLane> fence_pool_;
@@ -925,6 +929,7 @@ private:
 
     chunk() {
       ptr = malloc(kEncodingContextCPUHeapSize);
+      if (!ptr) throw std::bad_alloc{};
       underused_times = 0;
     }
     chunk(const chunk &copy) = delete;

@@ -49,7 +49,7 @@ namespace dxmt {
 template <typename T> class moveonly_list {
 public:
   moveonly_list(T *storage, size_t size) : storage(storage), size_(size) {
-    for (unsigned i = 0; i < size_; i++) {
+    for (unsigned i = 0; storage && i < size_; i++) {
       new (storage + i) T();
     }
   }
@@ -63,7 +63,7 @@ public:
   };
 
   ~moveonly_list() {
-    for (unsigned i = 0; i < size_; i++) {
+    for (unsigned i = 0; storage && i < size_; i++) {
       storage[i].~T();
     }
   };
@@ -77,6 +77,8 @@ public:
   span() const {
     return std::span<T>(storage, size_);
   }
+
+  explicit operator bool() const { return storage || size_ == 0; }
 
   T *
   data() const {
@@ -95,6 +97,13 @@ private:
 
 constexpr uint32_t kCommandChunkCount = 32;
 
+struct QueueFailureWake {
+  QueueFailureWake *next = nullptr;
+  void (*notify)(void *) noexcept = nullptr;
+  void *context = nullptr;
+  bool registered = false;
+};
+
 class CommandQueue;
 
 class CommandChunk {
@@ -103,11 +112,22 @@ public:
 
   void *
   allocate_cpu_heap(size_t size, size_t alignment);
+  void fail_allocation() noexcept;
+  void fail_encoding() noexcept;
 
   template <CommandWithContext<ArgumentEncodingContext> F>
   void
   emitcc(F &&func) {
-    list_enc.emit(std::forward<F>(func), allocate_cpu_heap(list_enc.calculateCommandSize<F>(), 16));
+    auto storage = allocate_cpu_heap(list_enc.calculateCommandSize<F>(), 16);
+    if (!storage)
+      return;
+    try {
+      list_enc.emit(std::forward<F>(func), storage);
+    } catch (const std::bad_alloc &) {
+      fail_allocation();
+    } catch (...) {
+      fail_encoding();
+    }
   }
 
   void
@@ -149,6 +169,7 @@ public:
 private:
   CommandQueue *queue;
   WMT::Reference<WMT::CommandBuffer> attached_cmdbuf;
+  bool submitted = false;
 
   CommandList<ArgumentEncodingContext> list_enc;
   AllocationRefTracking ref_tracker;
@@ -160,6 +181,7 @@ public:
 
   void
   reset(uint64_t traceQueue = 0) noexcept {
+    submitted = false;
     signal_frame_latency_fence_ = ~0ull;
     readback = {};
     const auto gen = traceQueue && cs2trace::detailLimit() ? trace_generation : 0;
@@ -196,9 +218,13 @@ private:
   std::atomic_uint64_t ready_for_encode = 1; // we start from 1, so 0 is always coherent
   std::atomic_uint64_t ready_for_commit = 1;
   std::atomic_uint64_t chunk_ongoing = 0;
-  CpuFence cpu_coherent;
-  CpuFence frame_latency_fence_;
-  std::atomic_bool stopped;
+  std::shared_ptr<CpuFence::WaitState> wait_state_ = std::make_shared<CpuFence::WaitState>();
+  CpuFence cpu_coherent{wait_state_};
+  CpuFence frame_latency_fence_{wait_state_};
+  QueueFailureWake *failure_wakes_ = nullptr;
+  dxmt::mutex failure_mutex_;
+  std::atomic<int32_t> failure_reason_{0};
+  std::atomic_bool stopped{false};
   dxmt::mutex shutdown_mutex_;
   bool shutdown_complete_ = false;
 
@@ -243,7 +269,7 @@ private:
   };
 #endif
 
-  obj_handle_t shared_event_listener;
+  obj_handle_t shared_event_listener = 0;
   dxmt::thread event_listener_thread;
 
   friend class CommandChunk;
@@ -267,6 +293,21 @@ public:
     return {};
 #endif
   }
+
+  // The first error is terminal. Cancellation never advances a completion value.
+  enum class Failure : int32_t { OutOfMemory = int32_t(0x8007000e), DeviceRemoved = int32_t(0x887a0005) };
+  int32_t FailureReason() const noexcept { return failure_reason_.load(std::memory_order_acquire); }
+  // GetDeviceRemovedReason has a documented DXGI-only reason set. Keep the
+  // original HRESULT above for operation errors and diagnostics; unclassified
+  // translator/native failure does not establish physical removal or reset.
+  int32_t DeviceRemovedReason() const noexcept {
+    return FailureReason() ? int32_t(0x887a0020) : 0; // DXGI_ERROR_DRIVER_INTERNAL_ERROR
+  }
+  void Fail(Failure reason) noexcept;
+  void RegisterFailureWake(QueueFailureWake &wake) noexcept;
+  void UnregisterFailureWake(QueueFailureWake &wake) noexcept;
+  int32_t RegisterEvent(WMT::SharedEvent event, void *handle, uint64_t value) noexcept;
+  std::shared_ptr<CpuFence::WaitState> WaitState() const { return wait_state_; }
 
   // Called only from the raw-buffer residency path on the encoding owner.
   // Returning false preserves the existing per-encoder declaration.
@@ -346,7 +387,7 @@ public:
   // present chunk commit: subsequent CPU submissions belong to the next frame.
   uint64_t AdvanceFrame() { return frame_count++; }
 
-  void
+  bool
   PresentBoundary(uint64_t presented_frame, uint32_t max_latency) {
     const auto next_frame = presented_frame + 1;
 #ifdef DXMT_DEBUG
@@ -359,7 +400,7 @@ public:
 #endif
       { cs2trace::PresentationScope exact(96,traceSerial(),presented_frame,next_frame-max_latency,max_latency);
         cs2trace::Scope trace{.type=11,.object=next_frame,.flags=max_latency};
-        frame_latency_fence_.wait(next_frame - max_latency); }
+        if (!frame_latency_fence_.wait(next_frame - max_latency)) return false; }
 #ifdef DXMT_DEBUG
       wait_interval = clock::now() - t0;
 #endif
@@ -373,46 +414,67 @@ public:
     });
 #endif
     statistics.cpuComplete(presented_frame);
+    return !FailureReason();
   }
 
   uint32_t GetMaxLatency() { return max_latency_.load(std::memory_order_relaxed); }
 
   void SetMaxLatency(uint32_t value) { max_latency_.store(value, std::memory_order_relaxed); };
 
-  void
+  bool
   WaitCPUFence(uint64_t seq) {
-    cpu_coherent.wait(seq);
+    return cpu_coherent.wait(seq);
   };
 
+  template <typename Allocator>
+  typename Allocator::Reservation
+  Reserve(Allocator &allocator, uint64_t seq, size_t size, size_t alignment) {
+    typename Allocator::Reservation reservation;
+    if (FailureReason() || !allocator.allocateChecked(seq, cpu_coherent.signaledValue(),
+          std::span<const size_t>(&size, 1), alignment, std::span(&reservation, 1)))
+      throw std::bad_alloc{};
+    return reservation;
+  }
+
   std::tuple<WMT::Buffer, uint64_t>
-  AllocateStagingBuffer(size_t size, size_t alignment) {
-    auto [block, offset] = staging_allocator.allocate(ready_for_encode, cpu_coherent.signaledValue(), size, alignment);
-    return {block.buffer, offset};
+  AllocateStagingBuffer(size_t size, size_t alignment) noexcept {
+    try {
+      auto r = Reserve(staging_allocator, ready_for_encode, size, alignment);
+      return {r.block->buffer, r.offset};
+    } catch (const std::bad_alloc &) {
+      Fail(Failure::OutOfMemory);
+      return {};
+    }
   }
 
   std::pair<WMT::Buffer, uint64_t>
   AllocateTempBuffer(uint64_t seq, size_t size, size_t alignment) {
-    auto [block, offset] = copy_temp_allocator.allocate(seq, cpu_coherent.signaledValue(), size, alignment);
-    return {block.buffer, offset};
+    auto r = Reserve(copy_temp_allocator, seq, size, alignment);
+    return {r.block->buffer, r.offset};
   }
 
   AllocatedTempBufferSlice
   AllocateTempBuffer1(uint64_t seq, size_t size, size_t alignment) {
-    auto [block, offset] = copy_temp_allocator.allocate(seq, cpu_coherent.signaledValue(), size, alignment);
-    return {block.buffer, offset, block.gpu_address};
+    auto r = Reserve(copy_temp_allocator, seq, size, alignment);
+    return {r.block->buffer, r.offset, r.block->gpu_address};
   }
 
   std::tuple<void *, WMT::Buffer, uint64_t>
   AllocateArgumentBuffer(uint64_t seq, size_t size) {
-    auto [block, offset] = argbuf_allocator.allocate(seq, cpu_coherent.signaledValue(), size, 64);
-    return {ptr_add(block.mapped_address, offset), block.buffer, offset};
+    auto r = Reserve(argbuf_allocator, seq, std::max(size, size_t(1)), 64);
+    return {ptr_add(r.block->mapped_address, r.offset), r.block->buffer, r.offset};
   }
 
   void *
-  AllocateCommandData(size_t size, size_t alignment) {
-    auto [block, offset] =
-        cpu_command_allocator.allocate(ready_for_encode, cpu_coherent.signaledValue(), size, alignment);
-    return ptr_add(block.ptr, offset);
+  AllocateCommandData(size_t size, size_t alignment) noexcept {
+    if (!size) return nullptr;
+    try {
+      auto r = Reserve(cpu_command_allocator, ready_for_encode, size, alignment);
+      return ptr_add(r.block->ptr, r.offset);
+    } catch (const std::bad_alloc &) {
+      Fail(Failure::OutOfMemory);
+      return nullptr;
+    }
   }
 
   void Retain(uint64_t seq, Allocation *allocation);
