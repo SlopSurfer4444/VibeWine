@@ -52,6 +52,7 @@ enum {
 
     NSMutableArray* keyWindows;
     NSMutableSet* triedWindows;
+    BOOL foregroundCursorWarp;
     unsigned long windowFocusSerial;
 
     TISInputSourceRef lastKeyboardInputSource;
