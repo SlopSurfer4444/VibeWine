@@ -5,6 +5,11 @@ This is the maintained collector/analyzer, derived from the historical
 collector uses the protocol from the exact `components/dxmt` gitlink, not a
 second copy of the header. These tools neither install a runtime nor start a game.
 
+For a bounded detailed window after observed world load, use the maintained
+[scene-triggered adapter](SCENE_CAPTURE.md). It reuses this controller and the
+existing phase markers, preserves the original stopped payload and physical
+gamepad route, and documents sampled caps, closure, missing data and retention.
+
 ## Offline verification
 
 On macOS with Xcode Command Line Tools:
