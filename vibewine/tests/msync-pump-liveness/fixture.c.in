@@ -1,0 +1,283 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+#include <assert.h>
+#include <errno.h>
+#include <limits.h>
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#include <mach/mach_vm.h>
+#include <mach/task_special_ports.h>
+#include <dlfcn.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/sysctl.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+#include "wine/msync_table.h"
+#define MAXIMUM_WAIT_OBJECTS 64
+#define MSYNC_MUTEX 4
+#define STATUS_PENDING 0x103
+#define STATUS_TIMEOUT 0x102
+#define STATUS_SUCCESS 0
+#define UL_COMPARE_AND_WAIT_SHARED 3
+#define ULF_NO_ERRNO 0x01000000
+#define min(a,b) ((a)<(b)?(a):(b))
+#define max(a,b) ((a)>(b)?(a):(b))
+#define TRACE(...) do {} while (0)
+#define ERR(...) fprintf(stderr, __VA_ARGS__)
+typedef uint64_t ULONGLONG;
+typedef int64_t LONGLONG;
+typedef int NTSTATUS;
+typedef struct { int64_t QuadPart; } LARGE_INTEGER;
+extern int __ulock_wait(uint32_t, void *, uint64_t, uint32_t);
+extern int __ulock_wait2(uint32_t, void *, uint64_t, uint64_t, uint64_t);
+extern int __ulock_wake(uint32_t, void *, uint64_t);
+enum { MSYNC_ATTR_REGISTER_SEND, MSYNC_ATTR_UNREGISTER_SEND, MSYNC_ATTR_SIGNAL_SEND, MSYNC_ATTR_ACK };
+static uint64_t msync_attribution_begin(unsigned int kind) { return 0; }
+static void msync_attribution_end(unsigned int kind, uint64_t start, int status) {}
+struct event { int signaled, unused; unsigned short msync_type, refcount; int multiple_waiters; };
+struct mutex { int tid, count; unsigned short msync_type, refcount; int multiple_waiters; };
+struct msync_shm { int low, high; unsigned short msync_type, refcount; int multiple_waiters; };
+struct tid_node { struct tid_node *next; int tid; };
+struct tid_list { struct tid_node *head; };
+typedef struct { mach_msg_header_t header; unsigned int shm_idx[65]; mach_msg_trailer_t trailer; } mach_register_message_t;
+typedef struct { mach_msg_header_t header; int entry; mach_msg_trailer_t trailer; } mach_map_message_t;
+typedef struct { mach_msg_header_t header; mach_msg_body_t body; mach_msg_port_descriptor_t descriptor; } mach_map_message_reply_t;
+struct shared_state {
+    int phase, start, release, result, done, ack_calls, offender_sent, offender_done;
+    unsigned sends, timed_out, invalid_dest;
+    int reply_entered;
+};
+static struct shared_state *shared;
+static struct msync_shm *objects;
+static int *shm_tid_map;
+static mach_port_t server_port, receive_port;
+static const mach_msg_bits_t msgh_bits_send = MACH_MSGH_BITS_REMOTE(MACH_MSG_TYPE_COPY_SEND);
+static struct tid_list *tid_map;
+static size_t tid_map_size;
+static struct msync_table shm_addrs;
+static long pagesize;
+static mach_vm_size_t shm_tid_size;
+static unsigned nodes;
+static pid_t children[2] = {-1,-1};
+static int child_count;
+static pid_t supervisor;
+static int stopping;
+static mach_port_t exported_name, reply_name;
+static const unsigned STOP_ID = 0x7fffffff;
+static uint64_t now_ns(void) {
+    struct timespec ts; assert(!clock_gettime(CLOCK_MONOTONIC, &ts));
+    return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+static void NtQueryPerformanceCounter(LARGE_INTEGER *v, LARGE_INTEGER *frequency) {
+    v->QuadPart = now_ns()/100; if (frequency) frequency->QuadPart = 10000000;
+}
+static void NtQuerySystemTime(LARGE_INTEGER *v) { v->QuadPart = now_ns()/100; }
+static void abort_thread(int status) { _exit(90); }
+static void require(int yes, const char *what) {
+    if (!yes) { fprintf(stderr, "fixture infrastructure failure: %s pid=%d\n", what, getpid()); if(getpid()==supervisor) exit(2); _exit(2); }
+}
+static void pause_us(unsigned us) {
+    struct timespec ts = {us/1000000, (us%1000000)*1000};
+    while (nanosleep(&ts,&ts) && errno==EINTR) {}
+}
+static void await(int *word, int value, const char *what) {
+    uint64_t end = now_ns()+2000000000;
+    while (__atomic_load_n(word,__ATOMIC_ACQUIRE)!=value) {
+        require(now_ns()<end,what); pause_us(25);
+    }
+}
+static struct tid_node *pool_alloc(void) { require(nodes<128,"node cap"); nodes++; return calloc(1,sizeof(struct tid_node)); }
+static void pool_free(struct tid_node *p) { require(nodes>0,"node underflow"); nodes--; free(p); }
+static void *get_shm(unsigned int i) { require(i<8,"object bound"); return objects+i; }
+static void destroy_all_internal(unsigned int i) { require(0,"unexpected destroy"); }
+@WRAPPER@
+static mach_msg_return_t mach_msg2(mach_msg_header_t *data, uint64_t options,
+    mach_msg_size_t send_size, mach_msg_size_t rcv_size, mach_port_t rcv_name,
+    uint64_t timeout, uint32_t priority) {
+    if ((options&MACH_SEND_MSG) && (data->msgh_bits&MACH_MSGH_BITS_COMPLEX)) {
+        reply_name=data->msgh_remote_port;
+        __atomic_store_n(&shared->reply_entered,1,__ATOMIC_RELEASE);
+    }
+    mach_msg_return_t mr = production_mach_msg2(data,options,send_size,rcv_size,rcv_name,timeout,priority);
+    if ((options&MACH_SEND_MSG) && (data->msgh_bits&MACH_MSGH_BITS_COMPLEX)) {
+        __atomic_add_fetch(&shared->sends,1,__ATOMIC_RELAXED);
+        if (mr==MACH_SEND_TIMED_OUT) __atomic_add_fetch(&shared->timed_out,1,__ATOMIC_RELAXED);
+        if (mr==MACH_SEND_INVALID_DEST) __atomic_add_fetch(&shared->invalid_dest,1,__ATOMIC_RELAXED);
+    }
+    if ((options&MACH_RCV_MSG) && mr==MACH_MSG_SUCCESS && (unsigned)data->msgh_id==STOP_ID) {
+        require(__atomic_load_n(&stopping,__ATOMIC_ACQUIRE),"unexpected stop packet"); pthread_exit(NULL);
+    }
+    return mr;
+}
+@CLIENT_CONSTANTS@
+@CLIENT@
+static inline void wake_tid_word(int *shm);
+@SERVER_ACK@
+static void acknowledge_wait(int tid) {
+    production_acknowledge_wait(tid);
+    __atomic_add_fetch(&shared->ack_calls,1,__ATOMIC_RELEASE);
+}
+static kern_return_t observed_export(vm_map_t task, memory_object_size_t *size,
+    memory_object_offset_t offset, vm_prot_t permission, mem_entry_name_port_t *entry,
+    mem_entry_name_port_t parent) {
+    kern_return_t kr=mach_make_memory_entry_64(task,size,offset,permission,entry,parent);
+    if(kr==KERN_SUCCESS) exported_name=*entry;
+    return kr;
+}
+#define mach_make_memory_entry_64 observed_export
+@SERVER@
+#undef mach_make_memory_entry_64
+
+static mach_port_t private_port(void) {
+    mach_port_t p; mach_port_limits_t limits={1};
+    require(mach_port_allocate(mach_task_self(),MACH_PORT_RIGHT_RECEIVE,&p)==KERN_SUCCESS,"allocate private port");
+    require(mach_port_insert_right(mach_task_self(),p,p,MACH_MSG_TYPE_MAKE_SEND)==KERN_SUCCESS,"insert private send");
+    require(mach_port_set_attributes(mach_task_self(),p,MACH_PORT_LIMITS_INFO,(mach_port_info_t)&limits,MACH_PORT_LIMITS_INFO_COUNT)==KERN_SUCCESS,"qlimit one");
+    return p;
+}
+static void header_send(mach_port_t p, unsigned id) {
+    mach_msg_header_t m={0}; m.msgh_bits=MACH_MSGH_BITS_REMOTE(MACH_MSG_TYPE_COPY_SEND);
+    m.msgh_remote_port=p; m.msgh_size=sizeof(m); m.msgh_id=id;
+    require(mach_msg(&m,MACH_SEND_MSG|MACH_SEND_TIMEOUT,sizeof(m),0,MACH_PORT_NULL,100,MACH_PORT_NULL)==MACH_MSG_SUCCESS,"bounded harness send");
+}
+static void child_client(int role, int is_dead, int is_alert, pid_t parent) {
+    alarm(7);
+    require(task_get_special_port(mach_task_self(),TASK_BOOTSTRAP_PORT,&server_port)==KERN_SUCCESS,"inherited private rendezvous");
+    require(getppid()==parent,"parent identity");
+    if (role==0) {
+        mach_port_t reply=private_port();
+        if (!is_dead) header_send(reply,123);
+        mach_map_message_t m={0};
+        m.header.msgh_bits=MACH_MSGH_BITS_SET(MACH_MSG_TYPE_COPY_SEND,MACH_MSG_TYPE_COPY_SEND,0,0);
+        m.header.msgh_remote_port=server_port; m.header.msgh_local_port=reply;
+        m.header.msgh_size=sizeof(mach_msg_header_t)+sizeof(int); m.entry=0;
+        require(mach_msg(&m.header,MACH_SEND_MSG|MACH_SEND_TIMEOUT,m.header.msgh_size,0,MACH_PORT_NULL,100,MACH_PORT_NULL)==MACH_MSG_SUCCESS,"offender request");
+        __atomic_store_n(&shared->offender_sent,1,__ATOMIC_RELEASE);
+        if (!is_dead) {
+            await(&shared->release,1,"release full queue");
+            struct { mach_msg_header_t h; char tail[128]; } got;
+            require(mach_msg(&got.h,MACH_RCV_MSG|MACH_RCV_TIMEOUT,0,sizeof(got),reply,100,MACH_PORT_NULL)==MACH_MSG_SUCCESS,"drain sentinel");
+            require(got.h.msgh_id==123,"sentinel identity");
+        }
+        require(mach_port_destroy(mach_task_self(),reply)==KERN_SUCCESS,"destroy offender receive and queued reply");
+        __atomic_store_n(&shared->offender_done,1,__ATOMIC_RELEASE);
+    } else {
+        await(&shared->start,1,"start healthy client");
+        const int ids[]={1,2}; void *shm[]={objects+1,objects+2};
+        LARGE_INTEGER duration={-1000000}; ULONGLONG end=msync_get_deadline(&duration);
+        int ret=msync_wait_multiple(ids,shm,is_alert?3:0,is_alert?objects+3:NULL,2,&end,7);
+        __atomic_store_n(&shared->result,ret,__ATOMIC_RELEASE);
+        __atomic_store_n(&shared->done,1,__ATOMIC_RELEASE);
+    }
+    mach_port_deallocate(mach_task_self(),server_port);
+    _exit(0);
+}
+/* fork happens before any thread starts. Only this fixture's bootstrap special
+ * port is temporarily swapped, without registering a service or touching the
+ * launchd namespace. The parent restores it immediately after each fork. */
+static void fork_client(int role, int is_dead, int is_alert) {
+    mach_port_t saved; pid_t parent=getpid();
+    require(task_get_special_port(mach_task_self(),TASK_BOOTSTRAP_PORT,&saved)==KERN_SUCCESS,"save own bootstrap");
+    require(task_set_special_port(mach_task_self(),TASK_BOOTSTRAP_PORT,receive_port)==KERN_SUCCESS,"set own private rendezvous");
+    pid_t pid=fork();
+    if (!pid) child_client(role,is_dead,is_alert,parent);
+    require(task_set_special_port(mach_task_self(),TASK_BOOTSTRAP_PORT,saved)==KERN_SUCCESS,"restore own bootstrap");
+    mach_port_t restored;
+    require(task_get_special_port(mach_task_self(),TASK_BOOTSTRAP_PORT,&restored)==KERN_SUCCESS && restored==saved,"restored bootstrap readback");
+    mach_port_deallocate(mach_task_self(),restored);
+    mach_port_deallocate(mach_task_self(),saved);
+    require(pid>0,"fork private client"); children[child_count++]=pid;
+}
+static void reap(int index) {
+    int status; pid_t pid;
+    do pid=waitpid(children[index],&status,0); while(pid<0 && errno==EINTR);
+    require(pid==children[index] && WIFEXITED(status) && WEXITSTATUS(status)==0,"owned child reaped normally");
+    children[index]=-1;
+}
+static void cleanup_children(void) {
+    for(int i=0;i<child_count;i++) if(children[i]>0) {
+        int status; pid_t p;
+        do p=waitpid(children[i],&status,WNOHANG); while(p<0 && errno==EINTR);
+        /* An unreaped direct child cannot have its PID reused. */
+        if(!p) { kill(children[i],SIGKILL); while(waitpid(children[i],&status,0)<0 && errno==EINTR) {} }
+    }
+}
+static void normal_mapping(void) {
+    mach_port_t p=private_port(); mach_map_message_t m={0};
+    m.header.msgh_remote_port=p; m.entry=0;
+    send_shm_to_client(&m);
+    struct { mach_map_message_reply_t reply; mach_msg_trailer_t trailer; } got={0};
+    require(mach_msg(&got.reply.header,MACH_RCV_MSG|MACH_RCV_TIMEOUT,0,sizeof(got),p,100,MACH_PORT_NULL)==MACH_MSG_SUCCESS,"normal reply receive");
+    require((got.reply.header.msgh_bits&MACH_MSGH_BITS_COMPLEX) && got.reply.body.msgh_descriptor_count==1,"normal descriptor");
+    mach_vm_address_t mapped=0;
+    require(mach_vm_map(mach_task_self(),&mapped,pagesize,0,VM_FLAGS_ANYWHERE,got.reply.descriptor.name,0,FALSE,VM_PROT_DEFAULT,VM_PROT_DEFAULT,VM_INHERIT_NONE)==KERN_SUCCESS,"map actual exported entry");
+    require(((struct msync_shm *)mapped)[4].low==0x12345678,"mapped bytes");
+    mach_vm_deallocate(mach_task_self(),mapped,pagesize);
+    mach_msg_destroy(&got.reply.header); mach_port_destroy(mach_task_self(),p);
+}
+static void no_entry_right(void) {
+    mach_port_type_t type=0;
+    require(exported_name!=MACH_PORT_NULL,"actual memory entry exported");
+    require(mach_port_type(mach_task_self(),exported_name,&type)==KERN_INVALID_NAME,"invocation entry send right released");
+    if(MACH_PORT_VALID(reply_name))
+        require(mach_port_type(mach_task_self(),reply_name,&type)==KERN_INVALID_NAME,"invocation destination send right released");
+    else require(reply_name==MACH_PORT_DEAD,"dead receiver delivered a sentinel, no owned name");
+}
+int main(int argc,char **argv) {
+    supervisor=getpid(); require(argc==3,"arguments"); alarm(9); atexit(cleanup_children);
+    pagesize=vm_kernel_page_size; shm_tid_size=pagesize;
+    shared=mmap(NULL,pagesize,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANON,-1,0);
+    objects=mmap(NULL,pagesize,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANON,-1,0);
+    shm_tid_map=mmap(NULL,pagesize,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANON,-1,0);
+    require(shared!=MAP_FAILED && objects!=MAP_FAILED && shm_tid_map!=MAP_FAILED,"bounded shared pages");
+    void **slot=msync_table_slot(&shm_addrs,0); require(slot!=NULL,"table slot"); *slot=objects;
+    objects[4].low=0x12345678;
+    if(!strcmp(argv[1],"trap")) { mach_msg2_trap=(mach_msg2_trap_ptr_t)dlsym(RTLD_DEFAULT,"mach_msg2_trap"); require(mach_msg2_trap!=NULL,"real trap required"); }
+    else require(!strcmp(argv[1],"fallback"),"backend");
+    if(!strcmp(argv[2],"normal-map")) {
+        normal_mapping(); no_entry_right(); printf("PASS normal-map actual exported bytes rights=released backend=%s\n",argv[1]);
+    } else {
+        int is_dead=!strcmp(argv[2],"dead-client"), is_alert=!strcmp(argv[2],"full-alert");
+        receive_port=private_port();
+        mach_port_limits_t limits={64};
+        require(mach_port_set_attributes(mach_task_self(),receive_port,MACH_PORT_LIMITS_INFO,(mach_port_info_t)&limits,MACH_PORT_LIMITS_INFO_COUNT)==KERN_SUCCESS,"server bounded queue");
+        fork_client(0,is_dead,is_alert); await(&shared->offender_sent,1,"offender queued before healthy client");
+        if(is_dead) reap(0);
+        fork_client(1,is_dead,is_alert);
+        pthread_t pump; require(!pthread_create(&pump,NULL,mach_message_pump,NULL),"start actual pump");
+        await(&shared->reply_entered,1,"production reply send entered");
+        __atomic_store_n(&shared->start,1,__ATOMIC_RELEASE);
+        if(is_alert) {
+            uint64_t end=now_ns()+30000000;
+            while(!__atomic_load_n(&shared->ack_calls,__ATOMIC_ACQUIRE) && now_ns()<end) pause_us(25);
+            __atomic_store_n(&objects[3].low,1,__ATOMIC_SEQ_CST); header_send(receive_port,3);
+        }
+        await(&shared->done,1,"healthy wait completion");
+        int acks_before=__atomic_load_n(&shared->ack_calls,__ATOMIC_ACQUIRE), blocked=!acks_before;
+        int result=__atomic_load_n(&shared->result,__ATOMIC_ACQUIRE);
+        if(!is_dead) __atomic_store_n(&shared->release,1,__ATOMIC_RELEASE);
+        reap(1); if(!is_dead) reap(0);
+        /* FIFO completion fence after client unregister and offender drain. */
+        __atomic_store_n(&stopping,1,__ATOMIC_RELEASE); header_send(receive_port,STOP_ID); require(!pthread_join(pump,NULL),"pump joined");
+        require(!nodes,"all registration nodes removed");
+        require(!objects[1].multiple_waiters && !objects[2].multiple_waiters && !objects[3].multiple_waiters,"waiter refs balanced");
+        require(result==(is_alert?STATUS_PENDING:STATUS_TIMEOUT) || (is_alert && result==STATUS_SUCCESS),"healthy cancel/timeout result");
+        require(shared->sends==1,"one actual export reply attempt");
+        if(!blocked) require(is_dead?shared->invalid_dest==1:shared->timed_out==1,"real failed send result");
+        no_entry_right();
+        mach_port_destroy(mach_task_self(),receive_port);
+        printf("%s case=%s backend=%s ack_before_release=%d ack_final=%d timeout=%u dead=%u nodes=%u waiter_refs=0 entry_right=released destination=%s children=reaped\n",
+               blocked?"FAIL independent ACK blocked behind full reply queue":"PASS",argv[2],argv[1],acks_before,shared->ack_calls,shared->timed_out,shared->invalid_dest,nodes,MACH_PORT_VALID(reply_name)?"released":"dead-sentinel");
+        if(blocked) return 1;
+    }
+    for(size_t i=0;i<tid_map_size;i++) require(!tid_map[i].head,"no retained waiter");
+    free(tid_map); for(unsigned i=0;i<32;i++) free(shm_addrs.segments[i]);
+    munmap(shared,pagesize); munmap(objects,pagesize); munmap(shm_tid_map,pagesize); alarm(0);
+    return 0;
+}

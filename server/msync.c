@@ -294,7 +294,7 @@ static os_unfair_lock shm_addrs_lock = OS_UNFAIR_LOCK_INIT;
 
 static void send_shm_to_client( mach_map_message_t *message )
 {
-    static mach_map_message_reply_t reply;
+    mach_map_message_reply_t reply = {0};
     mach_msg_return_t mr;
     kern_return_t kr;
     memory_object_offset_t offset = 0;
@@ -330,11 +330,19 @@ static void send_shm_to_client( mach_map_message_t *message )
     reply.descriptor.disposition = MACH_MSG_TYPE_COPY_SEND;
     reply.descriptor.type = MACH_MSG_PORT_DESCRIPTOR;
 
-    mr = mach_msg2( &reply.header, MACH_SEND_MSG, reply.header.msgh_size,
+    /* Every normal mapping request has its own empty reply port. A client
+     * that stops receiving (or reuses a full port) must not block the single
+     * pump and prevent other clients' registrations from being acknowledged. */
+    mr = mach_msg2( &reply.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, reply.header.msgh_size,
                     0, MACH_PORT_NULL, MACH_MSG_TIMEOUT_NONE, 0 );
 
     if (mr != MACH_MSG_SUCCESS)
+    {
         fprintf( stderr, "msync: error: failed to send shm entry to client: %x\n", mr );
+        /* Consume any pseudo-received COPY_SEND copies, while the original
+         * destination and memory-entry references remain owned below. */
+        mach_msg_destroy( &reply.header );
+    }
 
     mach_port_deallocate( mach_task_self(), message->header.msgh_remote_port );
     mach_port_deallocate( mach_task_self(), entry_port );
