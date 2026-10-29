@@ -191,3 +191,41 @@ integration/runtime checks. No production retention behavior changes; temporary
 fixture sources/executables are automatically removed. Private branch logs are
 seven days/32MiB and curated results thirty days/8MiB, with active integration and
 required recovery holds; cleanup belongs to the root integration owner.
+
+### Combined queue-failure interface compatibility
+
+The combined source `5847d276c13e77c11c740884bde115190fb714c5` adds terminal
+queue guards to methods already extracted by this fixture. Its old vector-backed
+`AllocateCommandData` substitute could not represent the new nullable result;
+it also lacked the queue alias and `CommandQueueFailed` API. This fixture repair
+changes only test interfaces and preserves every production guard.
+
+The runner now extracts the actual `moveonly_list`, queue failure enum/status
+method and, when present in the selected implementation, `CommandQueueFailed`.
+Fixture-owned raw storage outlives the move-only list and its element destruction;
+boxed callables allow the existing `std::function` endpoint to retain move-only
+captures. The queue scheduler/Fail endpoint remains a first-error interface
+substitute. No native queue implementation is claimed by this fixture.
+
+All twelve default groups pass on native arm64 and x86_64 ASan/UBSan, including
+the original 100→0 command/COM/Rc counts, 100 draws/accesses, data/getter/hazard,
+DISCARD, restore flags and replay checks. The new group executes full production
+`ExecuteCommandList` with a healthy nonempty visibility-query list, then checks
+terminal admission, null-list allocation and query-clone `bad_alloc` rejection.
+It also exercises the actual failed render-reopen guard and the extracted DISCARD
+case's refusal to publish pointer/pitches after injected recording failure.
+Four additional source mutations remove admission, clone-failure publication,
+render-failure or Map-publication guards; each must fail its connected case.
+
+The original immutable `61aca2a3` baseline and seven index mutations remain valid.
+Baseline selection replaces only `context_impl.cpp`; current immediate/deferred
+bodies and queue/list interfaces remain bound in reported source hashes. Its
+`--index-only` mode runs the four historical index groups and does not assert
+queue-failure behavior absent from that older implementation. No source guards
+are erased to compile either selection.
+
+Native queue scheduling, actual host-allocation OOM, queue wake/publication
+semantics and real native destruction remain the queue owner's separate tests.
+The fixture's queue state, allocation failure and command-recording failure are
+explicit substitutes. These tests establish context-consumer compatibility and
+failure branching, not native GPU/game/runtime acceptance.

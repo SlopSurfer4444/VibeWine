@@ -15,8 +15,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 PATHS = ['src/d3d11/d3d11_context_impl.cpp', 'src/d3d11/d3d11_context_imm.cpp',
          'src/d3d11/d3d11_context_def.cpp', 'src/d3d11/d3d11_context_state.hpp',
-         'src/dxmt/dxmt_context.hpp', 'src/dxmt/dxmt_context.cpp', 'src/dxmt/dxmt_binding_set.hpp']
-CASES = ['index-repeat', 'index-data', 'index-lifecycle', 'index-discard', 'layout-repeat', 'shader-repeat', 'vb-repeat', 'lifecycle', 'discard', 'controls', 'actual-callers']
+         'src/dxmt/dxmt_context.hpp', 'src/dxmt/dxmt_context.cpp', 'src/dxmt/dxmt_binding_set.hpp',
+         'src/dxmt/dxmt_command_queue.hpp']
+CASES = ['index-repeat', 'index-data', 'index-lifecycle', 'index-discard', 'layout-repeat', 'shader-repeat', 'vb-repeat', 'lifecycle', 'discard', 'controls', 'actual-callers', 'queue-failure']
 NEGATIVES = {
     'index-repeat': 'ctx.emitted == before && ctx.validations == 101',
     'index-discard': 'ctx.enc.index_binds == binds',
@@ -40,7 +41,7 @@ def block(text, marker):
 
 
 def generate(contents):
-    impl, imm, deferred, state, native, cpp, _ = (contents[path] for path in PATHS)
+    impl, imm, deferred, state, native, cpp, _ = (contents[path] for path in PATHS[:7])
     vb = block(state, 'struct VERTEX_BUFFER_B') + ';\n' + block(state, 'template <> struct redundant_binding_trait<VERTEX_BUFFER_B>') + ';'
     setters = [block(impl, marker).replace(' override', '') for marker in [
         'void\n  STDMETHODCALLTYPE\n  IASetIndexBuffer(', 'void\n  STDMETHODCALLTYPE\n  IAGetIndexBuffer(',
@@ -52,6 +53,8 @@ def generate(contents):
         'void\n  InvalidateRenderPipeline()', 'void\n  InvalidateComputePipeline()',
         'bool\n  InvalidateCurrentPass(', 'void ResetEncodingContextState()',
         'void ResetD3D11ContextState()', 'void\n  STDMETHODCALLTYPE\n  ClearState()']]
+    if 'bool CommandQueueFailed() const' in impl:
+        setters.append(block(impl, 'bool CommandQueueFailed() const'))
     setters.append('void *\n' + block(imm, 'MapDynamicBuffer(Rc<DynamicBuffer> &dynamic,'))
     setters.append(block(imm, 'void\n  STDMETHODCALLTYPE\n  ExecuteCommandList(').replace(' override', ''))
     setters.append(block(deferred, 'HRESULT \n  STDMETHODCALLTYPE\n  FinishCommandList(').replace(' override', ''))
@@ -76,7 +79,10 @@ def generate(contents):
         raise RuntimeError('Deferred DISCARD no longer independently dirties vertex buffers')
     fixture = (HERE / 'fixture.cpp').read_text()
     forward = '\n'.join(block(source, 'template<typename Object> Rc<Object> forward_rc(').replace('forward_rc(', name + '(', 1) for source, name in [(imm, 'immediate_forward_rc'), (deferred, 'deferred_forward_rc')])
-    values = {'FORWARD_RC': forward, 'NATIVE_METHODS': '\n'.join(native_methods), 'CONTEXT_METHODS': '\n'.join(setters),
+    queue = contents[PATHS[7]]
+    values = {'MOVEONLY_LIST': 'namespace dxmt {\n' + block(queue, 'template <typename T> class moveonly_list') + ';\n}',
+              'QUEUE_FAILURE_API': block(queue, 'enum class Failure : int32_t') + ';\n' + block(queue, 'int32_t FailureReason() const'),
+              'FORWARD_RC': forward, 'NATIVE_METHODS': '\n'.join(native_methods), 'CONTEXT_METHODS': '\n'.join(setters),
               'COMMAND_STATE': block(impl, 'enum class CommandBufferState') + ';',
               'RESTORE_VERTEX': restore, 'REOPEN_DIRTY': reopen,
               'EXECUTE_RESTORE': execute, 'FINISH_RESTORE': finish, 'DISCARD_CASE': discard}
@@ -89,6 +95,10 @@ def generate(contents):
 
 
 MUTATIONS = {
+    'queue-admission': ('if (cmd_queue.FailureReason()) return;', '(void)0;', 'queue-failure'),
+    'queue-clone-failure': ('cmd_queue.Fail(CommandQueue::Failure::OutOfMemory);', '(void)0;', 'queue-failure'),
+    'queue-render-failure': ('if (CommandQueueFailed()) return false;', '(void)0;', 'queue-failure'),
+    'queue-map-publication': ('if (auto failure = cmd_queue.FailureReason()) return failure;', '(void)0;', 'queue-failure'),
     'identity-always': ('if (state_.InputAssembler.IndexBuffer.ptr() != pBuffer)', 'if (true)', 'index-repeat'),
     'skip-hazard': ('ValidateIAHazard(pBuffer)', 'true', 'index-data'),
     'drop-format': ('state_.InputAssembler.IndexBufferFormat = Format;', '(void)Format;', 'index-data'),
@@ -100,9 +110,14 @@ MUTATIONS = {
 
 def mutate(contents, name):
     old, new, _ = MUTATIONS[name]
-    path = PATHS[4] if name == 'drop-suboffset' else PATHS[0]
+    path = PATHS[4] if name == 'drop-suboffset' else PATHS[1] if name in ('queue-admission', 'queue-clone-failure', 'queue-map-publication') else PATHS[0]
     text = contents[path]
-    if name == 'drop-restore':
+    if name.startswith('queue-'):
+        marker = 'case D3D11_MAP_WRITE_DISCARD:' if name == 'queue-map-publication' else 'bool\n  SwitchToRenderEncoder()' if name == 'queue-render-failure' else 'void\n  STDMETHODCALLTYPE\n  ExecuteCommandList('
+        section = block(text, marker)
+        if section.count(old) != 1: raise RuntimeError('Queue mutation binding changed')
+        contents[path] = text.replace(section, section.replace(old, new))
+    elif name == 'drop-restore':
         section = block(text, 'void\n  RestoreEncodingContextState()')
         if section.count(old) != 1: raise RuntimeError('Mutation binding changed')
         contents[path] = text.replace(section, section.replace(old, new))
@@ -146,7 +161,8 @@ def main():
         run = [str(scratch / 'fixture')]
         if args.arch == 'x86_64' and platform.machine() == 'arm64': run = ['/usr/bin/arch', '-x86_64'] + run
         mutation_observed = False
-        for case in (CASES[:4] if args.index_only else CASES):
+        cases = ['queue-failure'] if args.mutation and args.mutation.startswith('queue-') else CASES[:4] if args.index_only else CASES
+        for case in cases:
             result = subprocess.run(run + [case], timeout=20, capture_output=True, text=True, env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1'})
             print(result.stdout, end=''); print(result.stderr, end='')
             negative = {'index-repeat': 'ctx.emitted == before && ctx.validations == 101', 'index-discard': 'ctx.enc.index_binds == binds'} if args.index_only else NEGATIVES
@@ -164,7 +180,7 @@ def main():
     print(json.dumps({'mutation': args.mutation, 'arch': args.arch, 'sanitize': args.sanitize, 'baseline_ref': args.baseline_ref,
         'fixture_sha256': hashlib.sha256(fixture.encode()).hexdigest(),
         'test_sources_sha256': {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in (HERE / 'run.py', HERE / 'fixture.cpp')},
-        'groups': 4 if args.index_only else len(CASES), 'expected_negatives': len(negative) if args.baseline_ref else 0,
+        'groups': len(cases), 'expected_negatives': len(negative) if args.baseline_ref else 0,
         'source_sha256': {path: hashlib.sha256(value.encode()).hexdigest() for path, value in {**contents, **{path: (ROOT / path).read_text() for path in ('src/util/com/com_pointer.hpp', 'src/util/rc/util_rc_ptr.hpp', 'src/util/util_bit.hpp')}}.items()}}, sort_keys=True))
 
 
