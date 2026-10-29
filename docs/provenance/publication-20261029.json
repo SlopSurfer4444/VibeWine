@@ -141,7 +141,7 @@
           "treeEqual": true
         }
       ],
-      "publishedHead": "35d1f00403efa35482420722dbd4165e3cc9b967",
+      "publishedHead": "584a15f69d4e1f457dd5397668d1cd92dbb108b7",
       "publicationOnlyPaths": [
         "docs/PUBLICATION-20261028.json",
         "docs/PUBLICATION-20261029.json",
@@ -164,6 +164,7 @@
         "tests/vibewine/packed-ir-compaction/README.md",
         "tests/vibewine/packed-ir-compaction/run-corpus.py",
         "tests/vibewine/precise-bindings/README.md",
+        "tests/vibewine/precise-bindings/fixture.cpp",
         "tests/vibewine/precise-bindings/run.py",
         "tests/vibewine/pso-normalization/README.md",
         "tests/vibewine/pso-normalization/run-createshader.py",
@@ -174,7 +175,13 @@
         "tests/vibewine/reftracker-retirement/README.md",
         "tests/vibewine/staging-initial-data/README.md",
         "tests/vibewine/staging-initial-data/run.py"
-      ]
+      ],
+      "fixtureCompatibilityRepair": {
+        "commit": "584a15f69d4e1f457dd5397668d1cd92dbb108b7",
+        "parent": "35d1f00403efa35482420722dbd4165e3cc9b967",
+        "scope": "three precise-bindings test files only; production guards preserved",
+        "checked": "64 arm64/x86_64 ASan/UBSan variants; original baseline and mutations preserved"
+      }
     }
   },
   "hub": {
