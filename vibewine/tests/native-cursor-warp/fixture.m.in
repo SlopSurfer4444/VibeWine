@@ -1,0 +1,164 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later
+ * Actual production methods with observable cursor/queue seams; no native UI. */
+#import <Foundation/Foundation.h>
+#import <CoreGraphics/CoreGraphics.h>
+#include <stdio.h>
+#include <stdlib.h>
+static int checks, failures, warps, associations, suppressions, delegated, discards, resets, stops, clips, errors, traces;
+#define TRACE(...) do { traces++; } while (0)
+#define ERR(...) do { errors++; } while (0)
+typedef int INT;
+#define OnMainThread(block) (block)()
+#define cgpoint_mac_from_win(point) (point)
+static BOOL warpSucceeds = YES, stopSucceeds = YES;
+static CGPoint lastPosition;
+#define CHECK(name, test) do { checks++; if (!(test)) { printf("FAIL %s\n", name); failures++; } } while (0)
+static CGError observedWarp(CGPoint p) { warps++; lastPosition = p; return warpSucceeds ? kCGErrorSuccess : kCGErrorFailure; }
+static CGError observedAssociate(boolean_t on) { associations++; return kCGErrorSuccess; }
+static void observedSuppress(CFTimeInterval time) { suppressions++; }
+#define CGWarpMouseCursorPosition observedWarp
+#define CGAssociateMouseAndMouseCursorPosition observedAssociate
+#define CGSetLocalEventsSuppressionInterval observedSuppress
+#define event_mask_for_type(t) (1u << (t))
+enum { MOUSE_MOVED_RELATIVE, MOUSE_MOVED_ABSOLUTE };
+@interface WineEventQueue : NSObject
+- (void)discardEventsMatchingMask:(unsigned)mask forWindow:(id)window;
+- (void)resetMouseEventPositions:(CGPoint)point;
+@end
+@implementation WineEventQueue
+- (void)discardEventsMatchingMask:(unsigned)mask forWindow:(id)window { discards++; }
+- (void)resetMouseEventPositions:(CGPoint)point { resets++; }
+@end
+@interface WineWindow : NSObject
+@property BOOL closing, visible, miniaturized, onActiveSpace;
+- (BOOL)isVisible; - (BOOL)isMiniaturized; - (BOOL)isOnActiveSpace;
+- (void)updateForCursorClipping;
+@end
+@implementation WineWindow
+- (BOOL)isVisible { return self.visible; }
+- (BOOL)isMiniaturized { return self.miniaturized; }
+- (BOOL)isOnActiveSpace { return self.onActiveSpace; }
+- (void)updateForCursorClipping { }
+@end
+@interface ObservedApplication : NSObject
+@property BOOL active;
+@property(retain) id keyWindow;
+@property(retain) NSArray *windows;
+- (BOOL)isActive;
+@end
+@implementation ObservedApplication
+- (BOOL)isActive { return self.active; }
+@end
+static ObservedApplication *NSApp;
+@protocol CursorPositioning
+@optional
+- (BOOL)setCursorPosition:(CGPoint)position;
+@end
+@interface ClipHandler : NSObject <CursorPositioning>
+@property BOOL clippingCursor;
+- (BOOL)stopClippingCursor;
+- (void)clipCursorLocation:(CGPoint*)position;
+@end
+@implementation ClipHandler
+- (BOOL)stopClippingCursor { stops++; if (stopSucceeds) self.clippingCursor = NO; return stopSucceeds; }
+- (void)clipCursorLocation:(CGPoint*)position { clips++; position->x = 25; }
+@end
+@interface DelegatingClipHandler : ClipHandler
+- (BOOL)setCursorPosition:(CGPoint)position;
+@end
+@implementation DelegatingClipHandler
+- (BOOL)setCursorPosition:(CGPoint)position { delegated++; lastPosition = position; return warpSucceeds; }
+@end
+/* ENV_METHOD */
+@interface WineApplicationController : NSObject
+{
+@public
+    BOOL foregroundCursorWarp, temporarilyIgnoreResignEventsForDialog;
+    NSMutableSet *windowsBeingDragged;
+    ClipHandler *clipCursorHandler;
+    NSLock *eventQueuesLock;
+    NSArray *eventQueues;
+    NSTimeInterval lastSetCursorPositionTime;
+}
+@property(readonly) BOOL clippingCursor;
++ (WineApplicationController*)sharedController;
+/* POLICY_DECLARATION */
+- (BOOL)canClipCursor;
+- (BOOL)setCursorPosition:(CGPoint)position;
+- (BOOL)stopClippingCursor;
+- (void)updateWindowsForCursorClipping;
+@end
+static WineApplicationController *controller;
+@implementation WineApplicationController
++ (WineApplicationController*)sharedController { return controller; }
+/* APP_METHODS */
+@end
+/* C_WRAPPERS */
+static WineWindow *window;
+static BOOL policy;
+static void reset(BOOL tap, BOOL clipping)
+{
+    controller = [WineApplicationController new];
+    controller->foregroundCursorWarp = policy;
+    controller->windowsBeingDragged = [NSMutableSet new];
+    controller->clipCursorHandler = tap ? [DelegatingClipHandler new] : [ClipHandler new];
+    controller->clipCursorHandler.clippingCursor = clipping;
+    controller->eventQueuesLock = [NSLock new];
+    controller->eventQueues = @[[WineEventQueue new]];
+    controller->lastSetCursorPositionTime = 17.5;
+    NSApp = [ObservedApplication new]; NSApp.active = YES;
+    window = [WineWindow new]; window.visible = YES; window.onActiveSpace = YES;
+    NSApp.keyWindow = window; NSApp.windows = @[window];
+    warps = associations = suppressions = delegated = discards = resets = stops = clips = errors = traces = 0;
+    warpSucceeds = stopSucceeds = YES;
+}
+static void ineligible(const char *name)
+{
+    BOOL releasing = controller.clippingCursor && stopSucceeds;
+    BOOL result = macdrv_SetCursorPos(70, 80);
+    if (policy)
+        CHECK(name, !result && !warps && !associations && !suppressions && !delegated && !discards && !resets && !clips && !traces && errors == (controller.clippingCursor && !stopSucceeds ? 1 : 0) && (releasing ? controller->lastSetCursorPositionTime != 17.5 : controller->lastSetCursorPositionTime == 17.5));
+    else
+        CHECK(name, result && warps + delegated == 1 && discards == 1 && resets == 1);
+}
+int main(void)
+{
+    @autoreleasepool {
+        policy = foreground_cursor_warp_enabled();
+        for (int tap = 0; tap < 2; tap++) {
+            reset(tap, tap); NSApp.active = NO; ineligible(tap ? "inactive-tap" : "inactive-direct");
+            reset(tap, tap); NSApp.keyWindow = nil; ineligible(tap ? "keyless-tap" : "keyless-direct");
+            reset(tap, tap); NSApp.keyWindow = [NSObject new]; ineligible(tap ? "native-key-tap" : "native-key-direct");
+            reset(tap, tap); window.visible = NO; ineligible(tap ? "hidden-tap" : "hidden-direct");
+            reset(tap, tap); window.miniaturized = YES; ineligible(tap ? "mini-tap" : "mini-direct");
+            reset(tap, tap); window.onActiveSpace = NO; ineligible(tap ? "space-tap" : "space-direct");
+            reset(tap, tap); window.closing = YES; ineligible(tap ? "closing-tap" : "closing-direct");
+            reset(tap, YES); NSApp.active = NO;
+            ineligible(tap ? "stale-tap" : "stale-direct");
+            CHECK("stale-release", policy ? stops == 1 && !controller.clippingCursor : stops == 0 && controller.clippingCursor);
+            reset(tap, YES); NSApp.active = NO; stopSucceeds = NO;
+            ineligible(tap ? "stop-failure-tap" : "stop-failure-direct");
+            CHECK("stop-failure-preserved", controller.clippingCursor);
+            reset(tap, YES);
+            CHECK("foreground-success", macdrv_SetCursorPos(70, 80) && warps + delegated == 1 && discards == 1 && resets == 1 && (tap ? clips == 0 : clips == 1 && lastPosition.x == 25));
+            reset(tap, tap); warpSucceeds = NO;
+            CHECK("warp-failure", !macdrv_SetCursorPos(70, 80) && warps + delegated == 1 && !discards && !resets && !associations && controller->lastSetCursorPositionTime == 17.5 && errors == 1);
+            reset(tap, tap); [controller->windowsBeingDragged addObject:window];
+            CHECK("drag-still-refused", !macdrv_SetCursorPos(70, 80) && !warps && !delegated && !discards && !resets);
+            reset(tap, YES); NSApp.active = NO; NSApp.keyWindow = nil;
+            controller->temporarilyIgnoreResignEventsForDialog = YES;
+            CHECK("permission-exception", macdrv_SetCursorPos(70, 80) && warps + delegated == 1 && !stops);
+            reset(tap, tap); NSApp.active = NO; ineligible(tap ? "return-inactive-tap" : "return-inactive-direct");
+            NSApp.active = YES;
+            int previous = warps + delegated;
+            CHECK("explicit-return-warp", macdrv_SetCursorPos(70, 80) && warps + delegated == previous + 1);
+        }
+        reset(NO, NO); NSApp.active = NO;
+        BOOL internalResult = [controller setCursorPosition:CGPointMake(70, 80)];
+        CHECK("internal-selector-veto", policy ? !internalResult && !warps && !discards : internalResult && warps == 1 && discards == 1);
+        reset(NO, NO);
+        CHECK("internal-selector-foreground", [controller setCursorPosition:CGPointMake(70,80)] && warps == 1 && discards == 1);
+        printf("CURSOR_WARP_CHECKS=%d FAILURES=%d POLICY=%d\n", checks, failures, policy);
+    }
+    return failures ? 42 : 0;
+}

@@ -837,12 +837,14 @@ done:
  */
 BOOL macdrv_SetCursorPos(INT x, INT y)
 {
-    BOOL ret = macdrv_set_cursor_position(CGPointMake(x, y));
-    if (ret)
+    int ret = macdrv_set_cursor_position(CGPointMake(x, y));
+    if (ret > 0)
         TRACE("warped to %d,%d\n", x, y);
-    else
+    else if (!ret)
         ERR("failed to warp to %d,%d\n", x, y);
-    return ret;
+    /* An explicit process-policy veto is expected while in the background.
+       Keep its FALSE result without producing a per-request error stream. */
+    return ret > 0;
 }
 
 

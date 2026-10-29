@@ -233,6 +233,7 @@ extern int macdrv_get_current_process_explicit_app_user_model_id(UniChar *buffer
 /* cursor */
 extern void macdrv_set_cursor(CFStringRef name, CFArrayRef frames);
 extern int macdrv_get_cursor_position(CGPoint *pos);
+/* 1: success, 0: native failure, -1: explicit process-policy veto. */
 extern int macdrv_set_cursor_position(CGPoint pos);
 extern int macdrv_clip_cursor(CGRect rect);
 

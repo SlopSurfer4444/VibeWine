@@ -59,6 +59,14 @@ static NSString* const WineExternalQuitNotificationWinePrefixKey = @"WinePrefix"
 
 bool macdrv_err_on;
 
+/* Optional process-local desktop-interference policy.  Win32 SetCursorPos
+ * otherwise retains its existing background behavior. */
+static BOOL foreground_cursor_warp_enabled(void)
+{
+    return [[[[NSProcessInfo processInfo] environment]
+             objectForKey:@"VIBEWINE_FOREGROUND_CURSOR_WARP"] isEqualToString:@"1"];
+}
+
 
 #if !defined(MAC_OS_VERSION_14_0) || MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_VERSION_14_0
 @interface NSApplication (CooperativeActivationSelectorsForOldSDKs)
@@ -202,6 +210,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
             latentDisplayModes = [[NSMutableDictionary alloc] init];
 
             windowsBeingDragged = [[NSMutableSet alloc] init];
+            foregroundCursorWarp = foreground_cursor_warp_enabled();
 
             if (!requests || !requestsManipQueue || !eventQueues || !eventQueuesLock ||
                 !keyWindows || !originalDisplayModes || !latentDisplayModes)
@@ -1417,9 +1426,23 @@ static NSString* WineLocalizedString(unsigned int stringID)
         }
     }
 
-    - (BOOL) setCursorPosition:(CGPoint)pos
+    - (BOOL) setCursorPosition:(CGPoint)pos restricted:(BOOL*)restricted
     {
         BOOL ret;
+
+        if (restricted) *restricted = FALSE;
+
+        /* A background Windows thread may keep calling SetCursorPos after
+           native focus loss has released clipping.  Reject that independent
+           warp path too, before it can move the desktop cursor or discard
+           queued mouse events.  Keep the existing permission-dialog exception. */
+        if (foregroundCursorWarp && !temporarilyIgnoreResignEventsForDialog && ![self canClipCursor])
+        {
+            BOOL released = [self stopClippingCursor];
+            /* A failed native release is a genuine failure, not a quiet veto. */
+            if (restricted) *restricted = released;
+            return FALSE;
+        }
 
         if ([windowsBeingDragged count])
             ret = FALSE;
@@ -1472,6 +1495,11 @@ static NSString* WineLocalizedString(unsigned int stringID)
         }
 
         return ret;
+    }
+
+    - (BOOL) setCursorPosition:(CGPoint)pos
+    {
+        return [self setCursorPosition:pos restricted:NULL];
     }
 
     - (void) updateWindowsForCursorClipping
@@ -3098,15 +3126,18 @@ int macdrv_get_cursor_position(CGPoint *pos)
 /***********************************************************************
  *              macdrv_set_cursor_position
  *
- * Sets the cursor position without generating events.  Returns zero on
- * failure, non-zero on success.
+ * Sets the cursor position without generating events.  Returns one on
+ * success, zero on native failure, or minus one for an explicit policy veto.
  */
 int macdrv_set_cursor_position(CGPoint pos)
 {
     __block int ret;
 
     OnMainThread(^{
-        ret = [[WineApplicationController sharedController] setCursorPosition:cgpoint_mac_from_win(pos)];
+        BOOL restricted = FALSE;
+        ret = [[WineApplicationController sharedController] setCursorPosition:cgpoint_mac_from_win(pos)
+                                                                 restricted:&restricted];
+        if (restricted) ret = -1;
     });
 
     return ret;
