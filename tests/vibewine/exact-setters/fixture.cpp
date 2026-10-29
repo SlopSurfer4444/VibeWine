@@ -1,4 +1,7 @@
 #include <array>
+#include <atomic>
+#include <new>
+#include <span>
 #include <cassert>
 #include <concepts>
 #include <cstdint>
@@ -35,6 +38,20 @@ constexpr UINT D3D11_BIND_INDEX_BUFFER = 8;
 constexpr UINT D3D11_BIND_VERTEX_BUFFER = 1, D3D11_BIND_CONSTANT_BUFFER = 2, D3D11_BIND_SHADER_RESOURCE = 4;
 constexpr unsigned D3D11_MAP_WRITE_DISCARD = 0;
 using namespace dxmt;
+/* MOVEONLY_LIST */
+// Queue scheduling/native failure propagation is tested by its owner. This
+// interface substitute exposes terminal status to unchanged context methods.
+struct CommandQueue {
+  std::atomic<int32_t> failure_reason_{0};
+  unsigned fail_calls = 0;
+  /* QUEUE_FAILURE_API */
+  void Fail(Failure reason) noexcept { ++fail_calls; int32_t expected = 0; failure_reason_.compare_exchange_strong(expected, int32_t(reason)); }
+  unsigned traceSerial() const { return 0; }
+  uint64_t CurrentSeqId() const { return 1; }
+};
+struct ArgumentEncodingContext;
+template<class F> std::function<void(ArgumentEncodingContext &)> box_command(F &&fn);
+
 struct RefObject : IUnknown {
   unsigned refs = 0, com_adds = 0, com_releases = 0;
   bool convertible = true;
@@ -111,7 +128,7 @@ struct ArgumentEncodingContext {
   struct VB { Rc<Buffer> buffer; unsigned offset = 0, stride = 0; };
   std::array<VB, 32> vbuf_;
   Rc<Buffer> ibuf_;
-  unsigned index_binds = 0;
+  unsigned index_binds = 0, visibility_pushes = 0, visibility_pops = 0;
   std::vector<wmtcmd_render_draw_indexed> draws;
   unsigned full_binds = 0, offset_binds = 0, uploads = 0, tracks = 0, clears = 0, ends = 0;
   wmtcmd_render_setbufferoffset command{};
@@ -129,8 +146,8 @@ struct ArgumentEncodingContext {
   template<PipelineStage> void trackBuffer(Allocation *, int) { ++tracks; }
   void clearState() { vbuf_ = {}; ibuf_ = {}; ++clears; }
   void endPass() { ++ends; }
-  template<class T> void pushDeferredVisibilityQueries(T *) {}
-  void popDeferredVisibilityQueries() {}
+  template<class T> void pushDeferredVisibilityQueries(T *) { ++visibility_pushes; }
+  void popDeferredVisibilityQueries() { ++visibility_pops; }
   /* NATIVE_METHODS */
   void bindIndexBuffer(Rc<Buffer> &&buffer) { ++index_binds; bindIndexBufferImpl(std::move(buffer)); }
   void bindVertexBuffer(unsigned slot, unsigned offset, unsigned stride, Rc<Buffer> &&buffer) {
@@ -144,7 +161,22 @@ struct ArgumentEncodingContext {
 static bool deferred_replay = false;
 template<class T> Rc<T> forward_rc(Rc<T> &value) { return deferred_replay ? deferred_forward_rc(value) : immediate_forward_rc(value); }
 namespace cs2trace { enum class CommitReason { PassPromotion }; struct ReasonScope { ReasonScope(CommitReason, unsigned, bool) {} }; }
-struct VisibilityResultQuery : RcObject, RefObject { void DoDeferredQuery(VisibilityResultQuery *) {} };
+struct VisibilityResultQuery : RcObject, RefObject {
+  static inline bool fail_clone = false;
+  static inline std::vector<std::unique_ptr<unsigned char[]>> clone_storage;
+  unsigned deferred_calls = 0;
+  VisibilityResultQuery() { if (fail_clone) throw std::bad_alloc{}; }
+  static void *operator new(size_t size) {
+    auto memory = std::make_unique<unsigned char[]>(size); auto result = memory.get();
+    clone_storage.push_back(std::move(memory)); return result;
+  }
+  static void operator delete(void *) noexcept {}
+  void DoDeferredQuery(VisibilityResultQuery *) { ++deferred_calls; }
+};
+template<class F> std::function<void(ArgumentEncodingContext &)> box_command(F &&fn) {
+  auto command = std::make_shared<std::decay_t<F>>(std::forward<F>(fn));
+  return [command = std::move(command)](ArgumentEncodingContext &enc) { (*command)(enc); };
+}
 struct Staging : RcObject { void useCopySource(uint64_t) {} void useCopyDestination(uint64_t) {} };
 struct ID3D11CommandList : RefObject {};
 struct MTLD3D11CommandList final : ID3D11CommandList {
@@ -156,7 +188,7 @@ struct MTLD3D11CommandList final : ID3D11CommandList {
   std::vector<Com<VisibilityResultQuery>> issued_event_query, issued_timestamp_query;
   std::vector<Rc<Staging>> read_staging_resources, written_staging_resources;
   std::vector<std::function<void(ArgumentEncodingContext &)>> commands;
-  template<class F> void Emit(F &&fn) { commands.emplace_back(std::forward<F>(fn)); }
+  template<class F> void Emit(F &&fn) { commands.emplace_back(box_command(std::forward<F>(fn))); }
   void Execute(ArgumentEncodingContext &enc) { const bool previous = std::exchange(deferred_replay, true); for (auto &command : commands) command(enc); deferred_replay = previous; }
 };
 struct FixtureDevice {
@@ -172,18 +204,21 @@ struct Context {
   State state_;
   ArgumentEncodingContext enc;
   unsigned errors = 0, validations = 0, emitted = 0, encoder_opens = 0;
+  std::vector<std::unique_ptr<unsigned char[]>> command_storage;
+  bool fail_command_data = false, fail_next_emit = false;
+  D3D11_MAPPED_SUBRESOURCE last_mapped{};
   FixtureDevice device_storage;
   FixtureDevice *device = &device_storage;
   bool recording_deferred = false;
   std::vector<std::function<void(ArgumentEncodingContext &)>> commands;
   /* COMMAND_STATE */
   CommandBufferState cmdbuf_state = CommandBufferState::Idle, previous_render_pipeline_state = CommandBufferState::Idle;
-  template<class F> void EmitST(F &&fn) { ++emitted; if (recording_deferred) ctx_state.current_cmdlist->Emit(std::forward<F>(fn)); else commands.emplace_back(std::forward<F>(fn)); }
+  template<class F> void EmitST(F &&fn) { if (std::exchange(fail_next_emit, false)) { cmd_queue.Fail(CommandQueue::Failure::OutOfMemory); return; } ++emitted; if (recording_deferred) ctx_state.current_cmdlist->Emit(std::forward<F>(fn)); else commands.emplace_back(box_command(std::forward<F>(fn))); }
   enum class DrawCallStatus { Invalid, Ordinary, Geometry, Tessellation };
   template<bool> DrawCallStatus PreDraw() { return state_.InputAssembler.IndexBuffer ? DrawCallStatus::Ordinary : DrawCallStatus::Invalid; }
   void GeometryDrawIndexed(UINT, UINT, INT, UINT, UINT) {}
   void TessellationDrawIndexed(UINT, UINT, UINT, INT, UINT, UINT) {}
-  template<class F> void EmitDrawOP(F &&fn) { if (recording_deferred) ctx_state.current_cmdlist->Emit(std::forward<F>(fn)); else commands.emplace_back(std::forward<F>(fn)); }
+  template<class F> void EmitDrawOP(F &&fn) { if (recording_deferred) ctx_state.current_cmdlist->Emit(std::forward<F>(fn)); else commands.emplace_back(box_command(std::forward<F>(fn))); }
   template<class F> void EmitOP(F &&fn) { EmitST(std::forward<F>(fn)); }
   void flush() { for (auto &command : commands) command(enc); commands.clear(); }
   bool ValidateIAHazard(D3D11ResourceCommon *resource) { ++validations; return resource->allowed; }
@@ -193,13 +228,19 @@ struct Context {
   bool promote_flush = false;
   void *allocated_encoder_argbuf_size_ = nullptr;
   struct {
-    struct { unsigned traceSerial() { return 0; } uint64_t CurrentSeqId() { return 1; } } cmd_queue;
+    CommandQueue cmd_queue;
     Com<MTLD3D11CommandList> current_cmdlist;
     std::vector<std::pair<unsigned, std::pair<Com<VisibilityResultQuery>, unsigned>>> building_visibility_queries;
     std::vector<unsigned> current_dynamic_buffer_allocations, current_dynamic_texture_allocations;
   } ctx_state;
-  Context() { device->CreateCommandList((ID3D11CommandList **)&ctx_state.current_cmdlist); }
-  template<class T> std::vector<T> AllocateCommandData(size_t count) { return std::vector<T>(count); }
+  CommandQueue &cmd_queue;
+  Context() : cmd_queue(ctx_state.cmd_queue) { device->CreateCommandList((ID3D11CommandList **)&ctx_state.current_cmdlist); }
+  template<class T> moveonly_list<T> AllocateCommandData(size_t count) {
+    if (fail_command_data && count) { cmd_queue.Fail(CommandQueue::Failure::OutOfMemory); return {nullptr, count}; }
+    if (!count) return {nullptr, 0};
+    auto storage = std::make_unique<unsigned char[]>(sizeof(T) * count); auto data = reinterpret_cast<T *>(storage.get());
+    command_storage.push_back(std::move(storage)); return {data, count};
+  }
   template<class T> void End(T *) {}
   /* CONTEXT_METHODS */
   // Production preamble through all independent binding dirty marks; native
@@ -217,11 +258,12 @@ struct Context {
     ResetEncodingContextState(); flush();
     /* FINISH_RESTORE */
   }
-  void MapDiscard(Rc<DynamicBuffer> &dynamic, UINT bind_flag = D3D11_BIND_VERTEX_BUFFER) {
+  HRESULT MapDiscard(Rc<DynamicBuffer> &dynamic, UINT bind_flag = D3D11_BIND_VERTEX_BUFFER) {
     UINT buffer_length = 1024;
     uint64_t current_seq_id = 1, coherent_seq_id = 0;
-    D3D11_MAPPED_SUBRESOURCE mapped{}, *pMappedResource = &mapped;
+    D3D11_MAPPED_SUBRESOURCE *pMappedResource = &last_mapped;
     switch (D3D11_MAP_WRITE_DISCARD) { /* DISCARD_CASE */ }
+    return S_OK;
   }
 };
 static void vb(Context &ctx, D3D11ResourceCommon *resource, UINT stride = 16, UINT offset = 32) {
@@ -506,6 +548,57 @@ static void index_lifecycle() {
   ctx.IASetIndexBuffer(&resource, DXGI_FORMAT_R16_UINT, 0); ctx.flush(); CHECK(ctx.enc.ibuf_.ptr() == &resource.storage);
 }
 
+
+static void queue_failure() {
+  D3D11ResourceCommon resource; resource.flags = D3D11_BIND_INDEX_BUFFER;
+  VisibilityResultQuery query;
+  // Full extracted ExecuteCommandList must consume a healthy nullable/move-only
+  // list, and execute its command exactly once with balanced visibility scopes.
+  {
+    Context ctx; Com<ID3D11CommandList> list; ctx.device->CreateCommandList(&list);
+    auto *commands = static_cast<MTLD3D11CommandList *>(list.ptr());
+    commands->visibility_query_count = 1; commands->issued_visibility_query.push_back({&query, 0});
+    unsigned executions = 0; commands->Emit([&](ArgumentEncodingContext &) { ++executions; });
+    ctx.ExecuteCommandList(list.ptr(), false); ctx.flush();
+    CHECK(executions == 1 && query.deferred_calls == 1 && ctx.enc.visibility_pushes == 1 && ctx.enc.visibility_pops == 1);
+    CHECK(ctx.cmd_queue.FailureReason() == 0 && ctx.command_storage.size() == 1);
+  }
+  for (unsigned failure = 0; failure < 3; ++failure) {
+    Context ctx; ctx.IASetIndexBuffer(&resource, DXGI_FORMAT_R32_UINT, 12); ctx.flush();
+    Com<ID3D11CommandList> list; ctx.device->CreateCommandList(&list);
+    auto *commands = static_cast<MTLD3D11CommandList *>(list.ptr());
+    commands->visibility_query_count = 1; commands->issued_visibility_query.push_back({&query, 0});
+    unsigned executions = 0; commands->Emit([&](ArgumentEncodingContext &) { ++executions; });
+    if (failure == 0) ctx.cmd_queue.Fail(CommandQueue::Failure::DeviceRemoved);
+    if (failure == 1) ctx.fail_command_data = true;
+    if (failure == 2) VisibilityResultQuery::fail_clone = true;
+    const auto before = ctx.emitted, deferred_calls = query.deferred_calls;
+    ctx.ExecuteCommandList(list.ptr(), false); VisibilityResultQuery::fail_clone = false; ctx.flush();
+    CHECK(executions == 0 && query.deferred_calls == deferred_calls);
+    CHECK(ctx.state_.InputAssembler.IndexBuffer.ptr() == &resource);
+    CHECK(ctx.cmd_queue.FailureReason() == int32_t(failure == 0 ? CommandQueue::Failure::DeviceRemoved : CommandQueue::Failure::OutOfMemory));
+    CHECK(ctx.emitted == before + unsigned(failure != 0));
+    CHECK(ctx.enc.visibility_pushes == 0 && ctx.enc.visibility_pops == 0);
+    const auto emitted = ctx.emitted, clears = ctx.enc.clears;
+    CHECK(!ctx.SwitchToRenderEncoder());
+    CHECK(ctx.emitted == emitted && ctx.enc.clears == clears && ctx.encoder_opens == 0);
+    ctx.cmd_queue.Fail(CommandQueue::Failure::OutOfMemory);
+    CHECK(ctx.cmd_queue.FailureReason() == int32_t(failure == 0 ? CommandQueue::Failure::DeviceRemoved : CommandQueue::Failure::OutOfMemory));
+  }
+  // The real DISCARD case checks failure before publishing its mapped pointer
+  // and pitches, even when the existing map helper returns a nonnull address.
+  {
+    DynamicBuffer dynamic(&resource.storage); Rc<DynamicBuffer> handle(&dynamic); Context ctx;
+    struct Cleanup { D3D11ResourceCommon &resource; ~Cleanup() { resource.storage.allocation = nullptr; } } cleanup{resource};
+    auto sentinel = reinterpret_cast<void *>(uintptr_t(0xBAD)); ctx.last_mapped = {sentinel, 77, 88};
+    ctx.fail_next_emit = true;
+    CHECK(ctx.MapDiscard(handle, D3D11_BIND_INDEX_BUFFER) == int32_t(CommandQueue::Failure::OutOfMemory));
+    CHECK(ctx.last_mapped.pData == sentinel && ctx.last_mapped.RowPitch == 77 && ctx.last_mapped.DepthPitch == 88);
+    ctx.commands.clear();
+  }
+  std::cout << "COUNT queue-failure healthy=1 rejected-commandlists=3 failed-reopen=3 map-publications=0\n";
+}
+
 int main(int argc, char **argv) {
   if (argc != 2) return 3;
   const std::string test = argv[1];
@@ -521,6 +614,7 @@ int main(int argc, char **argv) {
     else if (test == "discard") discard();
     else if (test == "controls") controls();
     else if (test == "actual-callers") actual_callers();
+    else if (test == "queue-failure") queue_failure();
     else return 3;
     std::cout << "PASS " << test << '\n'; return 0;
   } catch (const std::exception &error) { std::cerr << "FAIL " << test << ": " << error.what() << '\n'; return 2; }
