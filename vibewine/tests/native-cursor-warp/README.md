@@ -37,7 +37,7 @@ assignment, then supplies application/window state, cursor primitives, clipping
 handler and event queues as seams. It creates no NSApplication, native window,
 cursor effect, Wine process or game. The native arm64 and translated x86_64
 variants run under `-Werror`, ASan and UBSan. Each tests 36 assertions in six
-environment modes; exact base `271e5cda` fails 23 linked assertions only for the
+environment modes; exact base `b6d49057` fails 23 linked assertions only for the
 opt-in mode, and passes compatibility modes. These counts are source behavior
 assertions, not independent end-to-end workflows. Existing native-cursor-focus
 checks remain separately runnable.

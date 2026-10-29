@@ -5,8 +5,8 @@ Run on Darwin from the Wine component root:
 ```sh
 python3 vibewine/tests/msync-deadline/run.py --arch arm64 --sanitize
 python3 vibewine/tests/msync-deadline/run.py --arch x86_64 --sanitize
-python3 vibewine/tests/msync-deadline/run.py --revision bb2c8919 --expect-regression --arch arm64 --sanitize
-python3 vibewine/tests/msync-deadline/run.py --revision bb2c8919 --expect-regression --arch x86_64 --sanitize
+python3 vibewine/tests/msync-deadline/run.py --revision 506004b7 --expect-regression --arch arm64 --sanitize
+python3 vibewine/tests/msync-deadline/run.py --revision 506004b7 --expect-regression --arch x86_64 --sanitize
 ```
 
 The runner extracts actual `msync_get_deadline`, `update_timeout`,

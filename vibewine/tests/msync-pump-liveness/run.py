@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 
-BASELINE = '271e5cdaa93c5a49c7cb219479cff36ead7cd8c8'
+BASELINE = 'b6d49057b9f473eb0a903b80f6942e0594afa514'
 
 
 def function(source, name):

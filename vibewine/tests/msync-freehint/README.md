@@ -5,8 +5,8 @@ Run from the Wine component root on Darwin:
 ```sh
 python3 vibewine/tests/msync-freehint/run.py --arch arm64 --sanitize
 python3 vibewine/tests/msync-freehint/run.py --arch x86_64 --sanitize
-python3 vibewine/tests/msync-freehint/run.py --revision bb2c8919 --expect-regression --arch arm64 --sanitize
-python3 vibewine/tests/msync-freehint/run.py --revision bb2c8919 --expect-regression --arch x86_64 --sanitize
+python3 vibewine/tests/msync-freehint/run.py --revision 506004b7 --expect-regression --arch arm64 --sanitize
+python3 vibewine/tests/msync-freehint/run.py --revision 506004b7 --expect-regression --arch x86_64 --sanitize
 ```
 
 The runner compiles the actual `destroy_all_internal` and `msync_alloc_shm`

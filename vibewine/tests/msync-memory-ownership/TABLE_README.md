@@ -4,7 +4,7 @@ Run from the checkout on macOS:
 
 ```sh
 python3 vibewine/tests/msync-memory-ownership/run_table.py --arch all --sanitize
-python3 vibewine/tests/msync-memory-ownership/run_table.py --revision 5ed4c56b --expect-regression --arch all --sanitize
+python3 vibewine/tests/msync-memory-ownership/run_table.py --revision 11293739 --expect-regression --arch all --sanitize
 ```
 
 The runner extracts the actual client `get_shm_slow`/`get_shm` and server

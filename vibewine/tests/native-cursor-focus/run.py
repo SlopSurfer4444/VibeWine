@@ -21,7 +21,7 @@ def body(source, signature):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--baseline-ref', default='bb2c891987c9551329fc7dfbb7c7f41abfceb582')
+    parser.add_argument('--baseline-ref', default='506004b729856034a7d280f0ab505a8b3cfe54d6')
     parser.add_argument('--translated', action='store_true')
     args = parser.parse_args()
     here = Path(__file__).resolve().parent

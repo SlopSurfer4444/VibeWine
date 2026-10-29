@@ -5,7 +5,7 @@ On Darwin, from the Wine component, with a campaign compiler/native slot:
 ```sh
 python3 vibewine/tests/msync-pump-liveness/run.py --arch arm64 --sanitize
 python3 vibewine/tests/msync-pump-liveness/run.py --arch x86_64 --sanitize
-python3 vibewine/tests/msync-pump-liveness/run.py --arch arm64 --sanitize --revision 271e5cdaa93c5a49c7cb219479cff36ead7cd8c8 --expect-blocked
+python3 vibewine/tests/msync-pump-liveness/run.py --arch arm64 --sanitize --revision b6d49057b9f473eb0a903b80f6942e0594afa514 --expect-blocked
 python3 vibewine/tests/msync-pump-liveness/run.py --arch arm64 --sanitize --mutation missing-failed-send-cleanup
 ```
 

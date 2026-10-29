@@ -13,7 +13,7 @@ import tempfile
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--baseline-ref', default='271e5cdaa93c5a49c7cb219479cff36ead7cd8c8')
+    parser.add_argument('--baseline-ref', default='b6d49057b9f473eb0a903b80f6942e0594afa514')
     parser.add_argument('--translated', action='store_true')
     args = parser.parse_args()
     here = Path(__file__).resolve().parent

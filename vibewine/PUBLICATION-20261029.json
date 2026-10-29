@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "date": "2026-10-29",
+  "kind": "public metadata equivalents and reachable test baselines",
+  "localSource": "ae1d0e73b4384130dd6db33c49c28be02999b500",
+  "sourceEquivalent": "274bb0ffe759bf2e6f422b1c340b1d6e47ed63b3",
+  "mapping": [
+    {
+      "localCommit": "5ed4c56bafab70a772b5e9bf88eee272de9bdd3a",
+      "publicEquivalent": "112937399b7bc2b53881a3f10db500786ca7b034",
+      "tree": "7ef26872a273030386cd61975e74f017e238d67e",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "bb2c891987c9551329fc7dfbb7c7f41abfceb582",
+      "publicEquivalent": "506004b729856034a7d280f0ab505a8b3cfe54d6",
+      "tree": "b10fbd9e488466b759adfcc6256f8a2d68d8ea33",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "271e5cdaa93c5a49c7cb219479cff36ead7cd8c8",
+      "publicEquivalent": "b6d49057b9f473eb0a903b80f6942e0594afa514",
+      "tree": "6ad1ebff3a7b79db1a7026b163e23663a8611803",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "237eab393bf23c1100e16f039833b36075c28455",
+      "publicEquivalent": "4b42c480a058fa4af9c3e5d01e0c97792ba1eb9a",
+      "tree": "182ddddbe82e5f811fc65554bc6d0bf5d32ff451",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "d4e9f2b1c62d5de143dce5f0593d91187ddcfd99",
+      "publicEquivalent": "3cf5dac3fdd2c17e252261f8ff276e97075c1538",
+      "tree": "fbdcfde5f8b4254aa6b676df7acd395063d829db",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "ae1d0e73b4384130dd6db33c49c28be02999b500",
+      "publicEquivalent": "274bb0ffe759bf2e6f422b1c340b1d6e47ed63b3",
+      "tree": "e753510489ad32ee21f41343127f45e0b6c990a4",
+      "treeEqual": true
+    }
+  ],
+  "previousPublicHead": "cd7f2eda6d9ebbfc2e8bbe6fb4ffd9ef4a90c327",
+  "previousPublicationMap": "publication-20261028",
+  "productionTreeUnchangedByOverlay": true,
+  "limits": "Source-equivalent commits have exact audited Git trees. This follow-up only repairs test/docs references and Wine source verification metadata; it is not another build, game validation or FPS result."
+}

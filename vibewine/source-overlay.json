@@ -1789,6 +1789,96 @@
       "source": "next-wave-20261028/integration-source/include/Makefile.in",
       "destination": "include/Makefile.in",
       "sha256": "0dee874ba3be40e7b9bed3e88c54d55b424d3cadf8f7ac1084afd14c861a35b1"
+    },
+    {
+      "source": "publication-20261029/dlls/winemac.drv/cocoa_app.h",
+      "destination": "dlls/winemac.drv/cocoa_app.h",
+      "sha256": "1869576dfae9c2eb313933b0ac4706e6d222f06bf3e9583b2ea9a0a10914097c"
+    },
+    {
+      "source": "publication-20261029/dlls/winemac.drv/cocoa_app.m",
+      "destination": "dlls/winemac.drv/cocoa_app.m",
+      "sha256": "98ddf3c0ba0b9065a7fc0883e023ed3ae12636187a9a176a479a64bf4d66361a"
+    },
+    {
+      "source": "publication-20261029/dlls/winemac.drv/macdrv_cocoa.h",
+      "destination": "dlls/winemac.drv/macdrv_cocoa.h",
+      "sha256": "9c5b52a0eea6de48f336230ddd6c2e8e7e751048c84099adb1a64b5e5384e2be"
+    },
+    {
+      "source": "publication-20261029/dlls/winemac.drv/mouse.c",
+      "destination": "dlls/winemac.drv/mouse.c",
+      "sha256": "e55fe8b650c136c3403a9dcf8c91406a63fe958f005c5d264d2de2f452abef5f"
+    },
+    {
+      "source": "publication-20261029/server/msync.c",
+      "destination": "server/msync.c",
+      "sha256": "2adfc011c65a56331050ef4b114b1b0104da00421f1acea88779ca7592202ee5"
+    },
+    {
+      "source": "publication-20261029/vibewine/PUBLICATION-20261029.json",
+      "destination": "vibewine/PUBLICATION-20261029.json",
+      "sha256": "5697b33166130afbd12c7485ed3cfdaf31b106c12a7b28427205f52a231fd0b2"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/msync-alert-ownership/README.md",
+      "destination": "vibewine/tests/msync-alert-ownership/README.md",
+      "sha256": "6597bd5cd7941d0267298145fbed0b6017b06cb4286cbb5f398a8fdbe8e8ff83"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/msync-deadline/README.md",
+      "destination": "vibewine/tests/msync-deadline/README.md",
+      "sha256": "2386d0ea36f38b1495874a8c845b227ffb10ea7bb15e1d8180ddbae2325f392e"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/msync-freehint/README.md",
+      "destination": "vibewine/tests/msync-freehint/README.md",
+      "sha256": "6ebd1feec02a41efeb9be06a0882ba66afd2ef99234d07f110f578ac7fa3c568"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/msync-memory-ownership/TABLE_README.md",
+      "destination": "vibewine/tests/msync-memory-ownership/TABLE_README.md",
+      "sha256": "ea38b6cc6d8a69e2a91a13a4c1cac9086ae378b925ce3017d8f521cd19884372"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/msync-pump-liveness/README.md",
+      "destination": "vibewine/tests/msync-pump-liveness/README.md",
+      "sha256": "409567e7c32434cb65eeef149b850b501b7d72604a950a4893949b5782cf652f"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/msync-pump-liveness/fixture.c.in",
+      "destination": "vibewine/tests/msync-pump-liveness/fixture.c.in",
+      "sha256": "7686c30eb07287ed82ea111ce200f756beb0c85983c95f83acb649168cf8c5e8"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/msync-pump-liveness/run.py",
+      "destination": "vibewine/tests/msync-pump-liveness/run.py",
+      "sha256": "6f181560bf062a26e560db5950bb69ea12b467d4e44e7366da92b91217f54a56"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/native-cursor-focus/run.py",
+      "destination": "vibewine/tests/native-cursor-focus/run.py",
+      "sha256": "ac1cfb788d5538b3a3e827eb190910b0eb6aea535cf3e3e2d7facc38bf88edb3"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/native-cursor-warp/README.md",
+      "destination": "vibewine/tests/native-cursor-warp/README.md",
+      "sha256": "7f8b535d7c8afaec8de7924ae792caeef4891624463aac40814750d763891741"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/native-cursor-warp/fixture.m.in",
+      "destination": "vibewine/tests/native-cursor-warp/fixture.m.in",
+      "sha256": "fce4e78e58dfad0bb231162a35a32f0ce6dea11a6ea7da3147b589531dbeaed1"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/native-cursor-warp/owned-window.c",
+      "destination": "vibewine/tests/native-cursor-warp/owned-window.c",
+      "sha256": "3dab0552dc693b9c32cb74995cc317fd7f44c2c96d9348b48c7ebc99cfc95070"
+    },
+    {
+      "source": "publication-20261029/vibewine/tests/native-cursor-warp/run.py",
+      "destination": "vibewine/tests/native-cursor-warp/run.py",
+      "sha256": "128634cad9d06f9d9385ab740c1b23713ce4acee99c731dfafd7d9b50d377fd9"
     }
   ]
 }

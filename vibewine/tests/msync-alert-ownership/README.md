@@ -21,7 +21,7 @@ successful alert acquisition exercises its actual cached return.
 python3 vibewine/tests/msync-alert-ownership/run.py --sanitize
 python3 vibewine/tests/msync-alert-ownership/run.py --sanitize --arch x86_64
 python3 vibewine/tests/msync-alert-ownership/run.py --sanitize --non-apple
-python3 vibewine/tests/msync-alert-ownership/run.py --sanitize --revision 5ed4c56b --expect-regression
+python3 vibewine/tests/msync-alert-ownership/run.py --sanitize --revision 11293739 --expect-regression
 ```
 
 The baseline must fail **only** the matching MSync-index cases, with the sentinel
