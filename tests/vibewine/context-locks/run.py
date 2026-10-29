@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--expect-unlocked-baseline', action='store_true')
     parser.add_argument('--arch', choices=('native', 'x86_64'), default='native')
     parser.add_argument('--sanitize', action='store_true')
+    parser.add_argument('--mutation', choices=('skip-failed-wait-shutdown',))
     args = parser.parse_args()
     tests = Path(__file__).resolve().parent
     source = (args.source_dir or tests.parents[2]).resolve()
@@ -52,6 +53,12 @@ def main():
             '  void STDMETHODCALLTYPE TemporalUpscale(', '  void STDMETHODCALLTYPE BeginUAVOverlap()',
             '  void STDMETHODCALLTYPE EndUAVOverlap()']),
     }
+    if args.mutation:
+        if args.source_ref or args.expect_unlocked_baseline:
+            parser.error('mutation requires current source and current lock expectations')
+        guard = 'if (!cmd_queue.WaitCPUFence(seq)) cmd_queue.ShutdownAndJoin();'
+        assert replacements['WAIT_IDLE'].count(guard) == 1
+        replacements['WAIT_IDLE'] = replacements['WAIT_IDLE'].replace(guard, '(void)cmd_queue.WaitCPUFence(seq);')
     generated = (tests / 'fixture.cpp').read_text()
     for marker, replacement in replacements.items():
         token = '// ' + marker
@@ -78,9 +85,13 @@ def main():
         completed = subprocess.run(run, text=True, capture_output=True, timeout=20)
         print(completed.stdout, end='')
         print(completed.stderr, end='')
-        completed.check_returncode()
+        if args.mutation:
+            assert completed.returncode == 1 and completed.stderr == 'context-locks FAIL: failed wait did not shut down and join\n', 'mutation escaped its connected assertion or failed elsewhere'
+        else:
+            completed.check_returncode()
     print(json.dumps({'scope': 'CPU context lock contract; no Wine/Metal/GPU/installed changes',
-                      'source': str(source), 'source_ref': args.source_ref, 'arch': args.arch,
+                      'source': str(source), 'mutation': args.mutation,
+                      'generated_sha256': hashlib.sha256(generated.encode()).hexdigest(), 'source_ref': args.source_ref, 'arch': args.arch,
                       'sanitizers': args.sanitize, 'expected_unlocked_baseline': args.expect_unlocked_baseline,
                       'fixture_sha256': hashlib.sha256((tests / 'fixture.cpp').read_bytes()).hexdigest(),
                       'runner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),

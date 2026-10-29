@@ -5,6 +5,20 @@ Run `python3 tests/vibewine/stall-finish/run.py` from the DXMT tree; add
 
 The runner extracts the entire production `CommandQueue::WaitForFinishThread`
 method and the complete production `CommandChunk::reset` method verbatim.
+It runs two source lanes. The historical lane binds both complete source files
+to `3f137007699b139e21db13e060c0d9bd9a449d5a` and retains every original
+scenario, assertion and mutation, including its former error-path publication
+behavior. That lane is regression evidence for the old contract, not permission
+to publish failed work in the current implementation.
+
+The current lane keeps all terminal-failure guards in the extracted method.
+Completed work retains the original endpoint order, with the additional native
+completion check and explicit readback publication. Error status, a wait ending
+in Error, an initial terminal failure, and failure injected at the publication
+lock must retain the pending chunk and publish no readback, fence, reset,
+counter decrement or allocator cleanup. The epoch/wait-state and failure-lock
+adapters are boundary spies; they do not implement native queue synchronization.
+
 Counted queue/native endpoints and diagnostic boundary spies check:
 
 - Readback release, reset, CPU-coherence fence, idle sweep, chunk counter
@@ -31,6 +45,12 @@ Counted queue/native endpoints and diagnostic boundary spies check:
   Controls also reject an extra GPU wait, completion finish before the wait, a
   missing initializer observation, reordered reset operations and a missing
   reset subscope; an unconditional unpublished-identity read is rejected too.
+  Every original mutation runs in both lanes. The counter mutation binds the
+  lane's complete decrement/notification pair (`notify_one` historically,
+  `wait_state_->notify` currently). Two additional current-lane mutations remove
+  native-completion or publication-failure admission and must fail the connected
+  failure-path oracle. Both positive lanes compile with idle retirement off/on;
+  `--arch` applies to all lanes and mutations.
 
 The fixture spies on `StallCompletionWait` and `StallScope`; it does not execute
 `GetThreadTimes`, the actual trace producer, Metal, resource

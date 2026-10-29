@@ -3,9 +3,13 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
+#include <mutex>
+#include <new>
 #include <stdexcept>
 
 namespace dxmt {
+using mutex = std::mutex;
 struct Counter {
   uint64_t value = 0, notifications = 0, waits = 0, waited = 0;
   uint64_t load(std::memory_order) const { return value; }
@@ -24,9 +28,9 @@ struct Statistics {
   bool operator==(const Statistics &) const = default;
 };
 struct Initializer {
-  bool fail = true;
+  bool fail = true, fail_oom = false;
   uint64_t event = 73, calls = 0;
-  uint64_t flushToWait() { ++calls; if (fail) throw std::runtime_error("injected preparation failure"); return event; }
+  uint64_t flushToWait() { ++calls; if (fail_oom) throw std::bad_alloc{}; if (fail) throw std::runtime_error("injected preparation failure"); return event; }
 };
 struct Coherent {
   uint64_t value = 3;
@@ -57,6 +61,15 @@ public:
   std::array<CommandChunk, kCommandChunkCount> chunks;
   uint64_t current_event_seq_id = 41, frame_count = 59;
   Initializer initializer;
+  enum class Failure : int32_t { OutOfMemory = int32_t(0x8007000e), DeviceRemoved = int32_t(0x887a0005) };
+  std::atomic<int32_t> failure_{0};
+  std::atomic<bool> stopped{false};
+  mutex failure_mutex_;
+  struct WaitState { Counter epoch; unsigned notifications = 0, cancellations = 0; void notify() { ++notifications; } void cancel() { ++cancellations; } };
+  std::shared_ptr<WaitState> wait_state_ = std::make_shared<WaitState>();
+  int32_t FailureReason() const { return failure_.load(std::memory_order_acquire); }
+  unsigned failures = 0;
+  void Fail(Failure reason) { ++failures; std::lock_guard<mutex> lock(failure_mutex_); int32_t expected = 0; if (failure_.compare_exchange_strong(expected, int32_t(reason), std::memory_order_acq_rel)) wait_state_->cancel(); }
   Statistics statistics;
   Allocator cpu_command_allocator;
   Coherent cpu_coherent;
@@ -87,6 +100,7 @@ struct Snapshot {
 };
 }
 
+#if LEGACY_INITIALIZER_CONTRACT
 int main() {
   using namespace dxmt;
   CommandQueue queue;
@@ -140,3 +154,61 @@ int main() {
 #endif
   );
 }
+
+#else
+int main() {
+  using namespace dxmt;
+  for (bool oom : {false, true}) {
+    CommandQueue failed;
+    failed.initializer.fail_oom = oom;
+    const Snapshot before(failed);
+    failed.CommitCurrentChunk();
+    const auto reason = oom ? CommandQueue::Failure::OutOfMemory : CommandQueue::Failure::DeviceRemoved;
+    if (!(Snapshot(failed) == before)) {
+      std::fputs("FAIL initializer failure mutated unpublished queue state\n", stderr); return 1;
+    }
+    assert(failed.FailureReason() == int32_t(reason) && failed.failures == 1 && failed.initializer.calls == 1);
+    assert(failed.wait_state_->notifications == 0 && failed.wait_state_->cancellations == 1);
+    failed.initializer.fail = false; failed.initializer.fail_oom = false;
+    failed.CommitCurrentChunk();
+    assert(failed.initializer.calls == 1 && failed.failures == 1 && Snapshot(failed) == before);
+    failed.Fail(CommandQueue::Failure::OutOfMemory);
+    assert(failed.FailureReason() == int32_t(reason) && failed.wait_state_->cancellations == 1);
+  }
+  for (bool stopped : {false, true}) {
+    CommandQueue rejected;
+    if (stopped) rejected.stopped.store(true);
+    else rejected.Fail(CommandQueue::Failure::DeviceRemoved);
+    const Snapshot before(rejected);
+    rejected.CommitCurrentChunk();
+    assert(Snapshot(rejected) == before && rejected.initializer.calls == 0 && rejected.wait_state_->notifications == 0);
+    assert(rejected.wait_state_->cancellations == unsigned(!stopped));
+  }
+  cs2trace::events = {};
+  CommandQueue queue;
+  queue.initializer.fail = false;
+  queue.CommitCurrentChunk();
+  assert(queue.initializer.calls == 1 && queue.current_event_seq_id == 42 && queue.FailureReason() == 0);
+  assert(queue.ready_for_encode.value == 6 && queue.ready_for_encode.notifications == 0 && queue.chunk_ongoing.value == 4);
+  assert(queue.wait_state_->notifications == 1 && queue.chunk_ongoing.waits == 0 && queue.internal_calls == 0);
+  const auto &chunk = queue.chunks[5];
+  assert(chunk.chunk_id == 5 && chunk.chunk_event_id == 42 && chunk.frame_ == 59);
+  assert(chunk.trace_generation == 97 && chunk.resource_initializer_event_id == 73);
+  assert(queue.statistics.command_buffer_count == 12 && queue.statistics.commit_interval == 12);
+  assert(queue.cpu_command_allocator.calls == 1 && queue.cpu_command_allocator.last == 3);
+  assert(cs2trace::events.generation == 1 && cs2trace::events.records == 1 && cs2trace::events.reasons == 1 && cs2trace::events.scopes == 0);
+  queue.initializer.event = 0;
+  queue.CommitCurrentChunk();
+  assert(queue.initializer.calls == 2 && queue.current_event_seq_id == 43 && queue.ready_for_encode.value == 7);
+  assert(queue.chunks[6].chunk_id == 6 && queue.chunks[6].chunk_event_id == 43 && queue.chunks[6].resource_initializer_event_id == 0);
+  assert(queue.chunk_ongoing.value == 5 && queue.wait_state_->notifications == 2);
+  assert(queue.statistics.command_buffer_count == 13 && queue.cpu_command_allocator.calls == 2);
+  std::printf("PASS exact current CommitCurrentChunk terminal/first-error/no-retry/healthy/idle async-define=%d debug=%d\n", ASYNC_ENCODING,
+#ifdef DXMT_DEBUG
+    1
+#else
+    0
+#endif
+  );
+}
+#endif

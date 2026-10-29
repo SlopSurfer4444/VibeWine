@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -113,6 +114,7 @@ struct CommandBuffer {
   uint64_t gpuEndTime() { event("gpu-end"); return gpu_end; }
 };
 struct Readback {
+  void publish() { event("readback-publish"); }
   Readback &operator=(const Readback &) { event("readback-release"); return *this; }
 };
 struct Chunk {
@@ -127,11 +129,29 @@ struct Chunk {
     trace_generation = 0; frame_ = 0; signal_frame_latency_fence_ = ~0ull;
   }
 };
-struct Stopped { bool value = false; bool load() const { return value; } };
+struct Stopped { bool value = false; bool load(std::memory_order = std::memory_order_seq_cst) const { return value; } };
+// Boundary spies only: no worker, cancellation or atomic-wait implementation.
+struct Epoch {
+  Stopped *stopped;
+  unsigned rounds = 0;
+  bool top_load_pending = false;
+  uint64_t load(std::memory_order) { ++rounds; top_load_pending = true; event("epoch-load"); return rounds; }
+  void wait(uint64_t value, std::memory_order) {
+    require(value == rounds && rounds == 2, "epoch wait sequence");
+    event("epoch-wait"); stopped->value = true;
+  }
+};
 struct Ready {
   Stopped *stopped;
+  Epoch *epoch;
   unsigned calls = 0;
-  uint64_t load(std::memory_order) {event("ready-commit-observed");return 3;}
+  uint64_t load(std::memory_order) {
+    if (epoch->top_load_pending) {
+      epoch->top_load_pending = false; event("ready-load");
+      return epoch->rounds == 1 ? 3 : 2;
+    }
+    event("ready-commit-observed"); return 3;
+  }
   void wait(uint64_t sequence, std::memory_order) {
     require(sequence == ++calls, "ready wait sequence");
     event("ready-" + std::to_string(sequence));
@@ -153,6 +173,21 @@ struct Counter {
   }
   void notify_one() { require(value == 0, "counter notify before decrement"); event("counter-notify"); }
 };
+struct WaitState {
+  Epoch epoch;
+  unsigned *ongoing;
+  void notify() { require(*ongoing == 0, "wait-state notify before decrement"); event("counter-notify"); }
+};
+namespace dxmt {
+struct mutex {
+  std::atomic<int32_t> *reason;
+  bool fail_on_lock = false;
+  void lock() {
+    if (fail_on_lock) { reason->store(int32_t(0x887a0005)); event("external-failure"); }
+  }
+  void unlock() {}
+};
+}
 struct Allocator {
   std::string name;
   void free_blocks(uint64_t sequence) { require(sequence == 1, "allocator sequence"); event(name); }
@@ -175,10 +210,20 @@ public:
   struct EncodeReady {uint64_t load(std::memory_order) {event("ready-encode-observed");return 4;}} ready_for_encode;
   Initializer initializer;
   Stopped stopped;
-  Ready ready_for_commit{&stopped};
   std::array<Chunk, kCommandChunkCount> chunks;
   Fence frame_latency_fence_{"latency-fence", 55}, cpu_coherent{"cpu-fence", 1};
   Counter chunk_ongoing;
+  WaitState wait_storage{Epoch{&stopped}, &chunk_ongoing.value};
+  WaitState *wait_state_ = &wait_storage;
+  Ready ready_for_commit{&stopped, &wait_storage.epoch};
+  enum class Failure : int32_t { OutOfMemory = int32_t(0x8007000e), DeviceRemoved = int32_t(0x887a0005) };
+  std::atomic<int32_t> failure_reason_{0};
+  dxmt::mutex failure_mutex_{&failure_reason_};
+  int32_t FailureReason() const { return failure_reason_.load(); }
+  void Fail(Failure reason) {
+    int32_t expected = 0;
+    if (failure_reason_.compare_exchange_strong(expected, int32_t(reason))) event("queue-fail");
+  }
   Idle idle;
   Idle *idle_retirement_ = &idle;
   Diagnostics idle_diagnostics_;
@@ -200,6 +245,7 @@ struct ResetIdentity {
   operator uint64_t() const {if(!initialized){std::cerr << "FAIL unpublished identity read\n";std::exit(1);}return value;}
 };
 struct ResetChunk {
+  bool submitted = true;
   uint64_t signal_frame_latency_fence_ = 55;
   ResetIdentity chunk_id{1,true}, frame_{77,true};
   unsigned trace_generation = 7;
@@ -221,6 +267,9 @@ static void run_reset_cases() {
       if(details && queue)expected.push_back("end-" + std::to_string(117+phase));
     }
     require(events == expected && chunk.signal_frame_latency_fence_ == ~0ull && chunk.frame_ == 77, "reset subphase order/binding");
+#if CURRENT_FAILURE_CONTRACT
+    require(!chunk.submitted, "reset retained submission marker");
+#endif
   }
   for (bool details : {false, true}) for (uint64_t queue : {uint64_t(0), uint64_t(42)}) {
     cs2trace::detail = details; events.clear();
@@ -235,10 +284,11 @@ static void run_reset_cases() {
 
 static void run_case(unsigned status, bool matching_generation, bool details,
                      bool gpu, bool logs, bool latency, bool diagnostics,
-                     bool invalid_gpu = false, bool stale_generation = false, bool completion = false, bool slow = false, bool wait_error = false, bool initializer_dependency = true) {
+                     bool invalid_gpu = false, bool stale_generation = false, bool completion = false, bool slow = false, bool wait_error = false, bool initializer_dependency = true, bool publication_failure = false) {
   events.clear();
   cs2trace::detail = details; cs2trace::gpu_profile = gpu; cs2trace::completion_profile = completion; cs2trace::completion_slow = slow;
   CommandQueue queue;
+  queue.failure_mutex_.fail_on_lock = publication_failure;
   auto &chunk = queue.chunks[1];
   chunk.attached_cmdbuf.state = status;
   chunk.attached_cmdbuf.with_logs = logs;
@@ -251,7 +301,13 @@ static void run_case(unsigned status, bool matching_generation, bool details,
   chunk.signal_frame_latency_fence_ = latency ? 55 : ~0ull;
   queue.idle_diagnostics_.active = diagnostics;
   require(queue.WaitForFinishThread() == 0, "finish return");
-  std::vector<std::string> expected{"ready-1", "status"};
+  std::vector<std::string> expected{
+#if CURRENT_FAILURE_CONTRACT
+    "epoch-load", "ready-load", "status"
+#else
+    "ready-1", "status"
+#endif
+  };
   if (status <= WMTCommandBufferStatusScheduled) {
     const bool active = completion && details && matching_generation;
     if (active) {
@@ -277,9 +333,22 @@ static void run_case(unsigned status, bool matching_generation, bool details,
   }
   expected.push_back("status");
   if (status == WMTCommandBufferStatusError) expected.push_back("error");
+#if CURRENT_FAILURE_CONTRACT
+  expected.push_back("status");
+  if (status != WMTCommandBufferStatusCompleted || publication_failure) {
+    expected.push_back(publication_failure ? "external-failure" : "queue-fail");
+    require(events == expected, "failure published or retired unfinished work");
+    require(queue.FailureReason() == int32_t(CommandQueue::Failure::DeviceRemoved), "native/terminal failure status");
+    require(queue.chunk_ongoing.value == 1 && chunk.frame_ == 77, "failure retained pending chunk");
+    return;
+  }
+#endif
   expected.push_back("logs");
   if (logs) expected.push_back("error");
   if (latency) expected.push_back("latency-fence");
+#if CURRENT_FAILURE_CONTRACT
+  expected.push_back("readback-publish");
+#endif
   expected.push_back("readback-release");
   if (details && has_generation) expected.push_back("detail-90");
   expected.insert(expected.end(), {"begin-110", "reset", "end-110"});
@@ -291,7 +360,13 @@ static void run_case(unsigned status, bool matching_generation, bool details,
 #endif
   if (details && has_generation) expected.push_back("detail-92");
   expected.insert(expected.end(), {"counter-decrement", "counter-notify", "begin-109",
-                                  "staging-free", "copy-free", "argbuf-free", "reftracker-free", "end-109", "ready-2"});
+                                  "staging-free", "copy-free", "argbuf-free", "reftracker-free", "end-109",
+#if CURRENT_FAILURE_CONTRACT
+                                  "epoch-load", "ready-load", "epoch-wait"
+#else
+                                  "ready-2"
+#endif
+                                  });
   if (events != expected) {
     std::cerr << "actual:"; for (const auto &item : events) std::cerr << " " << item;
     std::cerr << "\nexpected:"; for (const auto &item : expected) std::cerr << " " << item;
@@ -299,6 +374,9 @@ static void run_case(unsigned status, bool matching_generation, bool details,
     throw std::runtime_error("finish operation order/count/scope");
   }
   require(queue.chunk_ongoing.value == 0 && chunk.frame_ == 0, "final state");
+#if CURRENT_FAILURE_CONTRACT
+  require(queue.FailureReason() == 0, "healthy completion failed");
+#endif
 }
 
 int main() {
@@ -316,11 +394,26 @@ int main() {
     run_case(WMTCommandBufferStatusScheduled, true, false, false, false, true, false, false, false, true, true);
     run_case(WMTCommandBufferStatusScheduled, false, true, false, false, true, false, false, true, true, true);
     run_case(WMTCommandBufferStatusScheduled, true, true, false, false, true, false, false, false, true, true, false, false);
+#if CURRENT_FAILURE_CONTRACT
+    // A terminal failure injected at the publication lock must win over native
+    // completion. No fence, readback publication or retirement may follow.
+    run_case(WMTCommandBufferStatusCompleted, true, true, false, false, true, true,
+             false, false, false, false, false, true, true);
+    {
+      CommandQueue failed;
+      failed.Fail(CommandQueue::Failure::OutOfMemory); events.clear();
+      require(failed.WaitForFinishThread() == 0 &&
+              events == std::vector<std::string>{"epoch-load"} &&
+              failed.chunk_ongoing.value == 1 && failed.chunks[1].frame_ == 77,
+              "initial failure admitted pending work");
+    }
+#endif
     run_reset_cases();
     events.clear();
     CommandQueue stopped; stopped.stopped.value = true;
     require(stopped.WaitForFinishThread() == 0 && events.empty(), "initial stop");
     std::cout << "PASS complete finish method idle=" << DXMT_IDLE_RETIREMENT
+              << " current_failure_contract=" << CURRENT_FAILURE_CONTRACT
               << " operation order, saved identities, status/error/GPU/detail/stop branches\n";
     return 0;
   } catch (const std::exception &error) {

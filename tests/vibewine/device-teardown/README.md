@@ -6,6 +6,9 @@ Run from the component root:
 python3 tests/vibewine/device-teardown/run.py --sanitize address
 python3 tests/vibewine/device-teardown/run.py --sanitize thread
 python3 tests/vibewine/device-teardown/run.py --suite retirement --expect-bypass --sanitize address
+# Optional explicit macOS targets (Rosetta executes the x86_64 fixture on arm64):
+python3 tests/vibewine/device-teardown/run.py --arch arm64 --sanitize address
+python3 tests/vibewine/device-teardown/run.py --arch x86_64 --sanitize address
 ```
 
 `--suite` selects `ownership`, `shutdown`, `retirement`, `integrated`, or `all`
@@ -23,9 +26,23 @@ bodies with a handwritten reference algorithm.
 | Suite | Production code | Substituted boundaries and observations |
 | --- | --- | --- |
 | `ownership` | COM public/private counters, pointers and private-data implementation; device-child classes; immediate-context AddRef/Release; command-list retained fields, Recycle/Reset; command-list storage and the ExecuteCommandList capture | COM/platform type scaffolding, allocators, pool storage and an observed device shell. Checks public context/list parent references, ordinary weak query children, and final device release from deferred-capture cleanup on a modeled finish thread. |
-| `shutdown` | `CommandQueue::~CommandQueue()` and `ShutdownAndJoin()` | Counted CPU encode/finish/listener threads and chunk resets. Checks repeated and concurrent shutdown, blocked finish work, join-before-reset, and destructor reuse. |
+| `shutdown` | `CommandQueue::~CommandQueue()` and `ShutdownAndJoin()` | Actual `CpuFence::WaitState` cancellation with counted CPU encode/finish/listener threads, native command-buffer and encoding-context seams. Checks repeated/concurrent shutdown, blocked finish/drain work, join→submitted drain→discard→capture/listener/reset order, terminal Error versus pending/Completed/nil/unsubmitted buffers, and destructor reuse. |
 | `retirement` | `DeviceRetirement`, the COM destruction hook, and the outer device's `Destroy`/`Retire` methods | Counted Windows thread-pool/module APIs, gated context drain and an observed queue. Checks API/worker-origin release, a base-typed final `ReleasePrivate`, idle/pending drain, caller-held mutex, setup failures and balanced handles/module references. |
 | `integrated` | The ownership suite's real private-data/capture chain together with the actual retirement helper and outer methods | The same thread-pool seam, gated context drain and counted queue shutdown. Checks that capture cleanup returns before device destruction and that one independent retirement callback completes destruction. |
+
+The shutdown facade follows the extracted source generation. Current source uses
+its actual cancellation epoch; legacy `--source-ref` bodies retain their original
+ready-fence wake path. The pending-worker test observes stop publication rather
+than assuming listener destruction happens before joins. No production guard or
+shutdown body is removed for a normal run; optional residency-set behavior remains
+disabled in this CPU seam, while the universal submitted drain is exercised.
+
+Four source-bound negative controls are available with `--suite shutdown` and
+`--mutation skip-drain`, `discard-before-drain`, `wait-unsubmitted`, or
+`skip-discard`. Each changes only the temporary extracted shutdown copy and must
+exit1 with its exact order/ownership diagnostic. Crashes, timeouts, sanitizer
+reports, and unrelated failures are rejected. The existing `--expect-bypass`
+retirement control remains separate and unchanged.
 
 The decisive ownership chain is a deferred command list retaining a public query;
 the query's actual `SetPrivateDataInterface` retains the device. After application
@@ -65,8 +82,8 @@ mutation of the current source, not a complete historical renderer build.
 ## Evidence and limits
 
 The runner emits `receipt.json` containing source root/ref, sanitizer mode,
-per-suite outcomes, negative-control selection and SHA-256 hashes of every
-production file read for that run. Those hashes bind the extracted source
+per-suite outcomes, architecture/host, shutdown protocol, negative-control
+selection, and SHA-256 hashes of production, fixture and generated inputs. Those hashes bind the extracted source
 generation, not an installed DLL or native ABI. Keep the fixture revision with
 the receipt when comparing runs. A pre-change ref without the new helper cannot
 run the retirement/integrated suites.

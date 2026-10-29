@@ -142,11 +142,22 @@ struct SyncScope {uint64_t gen; int type; uint64_t object, queue, frame; ~SyncSc
 uint64_t operationGeneration(uint64_t) { return 0; }
 }
 struct Queue {
-  int waits = 0;
+  int waits = 0, shutdowns = 0;
+  bool healthy = true, joined = false;
+  std::vector<int> *order = nullptr;
   uint64_t traceSerial() { return 0; }
-  uint64_t CurrentSeqId() { access(); return 7; }
+  uint64_t CurrentSeqId() { access(); if (order) order->push_back(0); return 7; }
   uint64_t CurrentFrameSeq() { return 1; }
-  void WaitCPUFence(uint64_t seq) { access(); require(seq == 7, "wrong fence"); waits++; }
+  bool WaitCPUFence(uint64_t seq) {
+    access(); require(seq == 7, "wrong fence"); ++waits;
+    if (order) order->push_back(3);
+    return healthy;
+  }
+  void ShutdownAndJoin() {
+    access(); require(!healthy && waits > 0, "shutdown without failed wait");
+    require(order && order->back() == 3, "shutdown before fence result");
+    ++shutdowns; joined = true; order->push_back(4);
+  }
 };
 template<class Mutex> struct Context {
   using device_mutex_t = Mutex;
@@ -155,14 +166,16 @@ template<class Mutex> struct Context {
   Device *device = &owned_device;
   ArgumentEncodingContext enc;
   int invalidations = 0, emissions = 0;
-  bool InvalidateCurrentPass() { access(); invalidations++; return false; }
+  std::vector<int> dependency_order;
+  bool InvalidateCurrentPass() { access(); dependency_order.push_back(1); invalidations++; return false; }
   template<class F> void EmitOP(F fn) { access(); emissions++; fn(enc); }
 };
 struct WaitBase {virtual void WaitUntilGPUIdle() = 0; virtual ~WaitBase() = default;};
 struct Immediate : WaitBase, Context<d3d11_device_mutex> {
   Queue cmd_queue;
   int commits = 0;
-  void Commit() { access(); commits++; }
+  Immediate() { cmd_queue.order = &dependency_order; }
+  void Commit() { access(); dependency_order.push_back(2); commits++; }
   // WAIT_IDLE
 };
 struct ExtBase {
@@ -257,6 +270,18 @@ int main(int argc, char **) {
       // Disabled protection remains a no-op, without changing entry behavior.
       ctx.mutex.set_protected(false);
       ext.BeginUAVOverlap(); ext.EndUAVOverlap(); ctx.WaitUntilGPUIdle();
+      require(ctx.cmd_queue.shutdowns == 0 && !ctx.cmd_queue.joined, "healthy wait shut down queue");
+      // The full production failed-fence guard runs under the real contended
+      // mutex; every queue endpoint asserts ownership through access().
+      Immediate failed;
+      failed.mutex.set_protected(true);
+      failed.cmd_queue.healthy = false;
+      require(!contended(failed.mutex, [&] { failed.WaitUntilGPUIdle(); }), "failed wait was unlocked");
+      require(failed.cmd_queue.waits == 1 && failed.cmd_queue.shutdowns == 1 && failed.cmd_queue.joined,
+              "failed wait did not shut down and join");
+      require(failed.invalidations == 1 && failed.commits == 1 &&
+              failed.dependency_order == std::vector<int>({0, 1, 2, 3, 4}), "failed idle sequencing changed");
+      require(failed.mutex.owner_.load() == 0, "failed wait leaked mutex");
     }
     std::printf("context-locks PASS: %s; unlocked_entries=%d\n",
                 baseline ? "baseline exposes all four unlocked entries" : "contention, recursion, cache, early return, deferred, disabled", unlocked);

@@ -41,11 +41,17 @@ def without_includes(text):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-ref')
+    parser.add_argument('--arch', choices=['arm64', 'x86_64'], help='Explicit macOS fixture target; default is the host target')
+    parser.add_argument('--mutation', choices=['skip-drain', 'discard-before-drain', 'wait-unsubmitted', 'skip-discard'], help='Reject one corrupted temporary shutdown body')
     parser.add_argument('--sanitize', choices=['none', 'address', 'thread'], default='address')
     parser.add_argument('--keep', type=Path)
     parser.add_argument('--suite', choices=['ownership', 'shutdown', 'retirement', 'integrated', 'all'], default='all')
     parser.add_argument('--expect-bypass', action='store_true', help='Restore the old direct-delete body as a negative control')
     args = parser.parse_args()
+    if args.arch and platform.system() != 'Darwin':
+        parser.error('--arch requires the macOS compiler/runner')
+    if args.mutation and (args.suite != 'shutdown' or args.expect_bypass):
+        parser.error('--mutation requires --suite shutdown and cannot combine with --expect-bypass')
     tests = Path(__file__).resolve().parent
     source = tests.parents[2]
     files = ['src/util/com/com_object.hpp', 'src/util/com/com_pointer.hpp',
@@ -55,6 +61,7 @@ def main():
              'src/dxmt/dxmt_command_queue.cpp', 'src/dxmt/dxmt_command_queue.hpp']
     if args.suite in ['retirement', 'integrated', 'all']:
         files += ['src/util/device_retirement.hpp', 'src/d3d11/d3d11_device.cpp', 'src/util/util_error.hpp']
+    files += ['src/util/util_cpu_fence.hpp']
     contents = {name: subprocess.check_output(['git', 'show', args.source_ref + ':' + name], cwd=source, text=True)
                 if args.source_ref else (source / name).read_text() for name in files}
     with tempfile.TemporaryDirectory(prefix='dxmt-teardown-') as directory:
@@ -85,6 +92,26 @@ def main():
             queue = contents[files[8]]
             shutdown = method(queue, 'CommandQueue::~CommandQueue()')
             shutdown += method(queue, 'CommandQueue::ShutdownAndJoin()', 'void\n')
+            terminal_shutdown = 'wait_state_->cancel();' in shutdown
+            (work / 'shutdown-protocol.hpp').write_text('#define TEST_TERMINAL_SHUTDOWN ' + str(int(terminal_shutdown)) + '\n')
+            (work / 'cpu-fence-under-test.hpp').write_text(contents['src/util/util_cpu_fence.hpp'])
+            if args.mutation:
+                if not terminal_shutdown:
+                    parser.error('--mutation requires the terminal queue shutdown source')
+                old, new = {
+                    'skip-drain': ('      chunk.attached_cmdbuf.waitUntilCompleted();', '      (void)chunk;'),
+                    'discard-before-drain': ('  argument_encoding_ctx.discardCommands();', ''),
+                    'wait-unsubmitted': ('chunk.submitted && chunk.attached_cmdbuf', 'chunk.attached_cmdbuf'),
+                    'skip-discard': ('  argument_encoding_ctx.discardCommands();', ''),
+                }[args.mutation]
+                if shutdown.count(old) != 1:
+                    raise ValueError('shutdown mutation seam changed: ' + args.mutation)
+                shutdown = shutdown.replace(old, new)
+                if args.mutation == 'discard-before-drain':
+                    marker = '  for (auto &chunk : chunks) {'
+                    if shutdown.count(marker) != 1:
+                        raise ValueError('shutdown drain-loop seam changed')
+                    shutdown = shutdown.replace(marker, '  argument_encoding_ctx.discardCommands();\n' + marker)
             (work / 'shutdown-under-test.hpp').write_text(shutdown)
         if args.suite in ['retirement', 'integrated', 'all']:
             helper = contents[files[10]]
@@ -96,6 +123,8 @@ def main():
         command = [shutil.which(os.environ.get('CXX', 'clang++')), '-std=c++20', '-O1', '-g',
                    '-Wall', '-Wextra', '-Wno-unused-parameter', '-Wno-unused-variable', '-pthread',
                    '-I', str(work), str(tests / 'fixture.cpp'), '-o', str(work / 'fixture')]
+        if args.arch:
+            command += ['-arch', args.arch]
         if args.sanitize != 'none':
             command += ['-fsanitize=' + ('address,undefined' if args.sanitize == 'address' else 'thread'), '-fno-omit-frame-pointer']
         suites = ['ownership', 'shutdown', 'retirement', 'integrated'] if args.suite == 'all' else [args.suite]
@@ -109,14 +138,27 @@ def main():
             elif suite == 'integrated':
                 build_command += ['-DTEST_RETIREMENT']
             subprocess.run(build_command, check=True, timeout=60)
-            result = subprocess.run([str(work / 'fixture')], capture_output=True, text=True, timeout=15,
+            execute = [str(work / 'fixture')]
+            if args.arch == 'x86_64' and platform.machine() == 'arm64':
+                execute = ['/usr/bin/arch', '-x86_64'] + execute
+            result = subprocess.run(execute, capture_output=True, text=True, timeout=15,
                                 env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=' + ('0' if platform.system() == 'Darwin' else '1'),
                                      'UBSAN_OPTIONS': 'halt_on_error=1', 'TSAN_OPTIONS': 'exitcode=66:abort_on_error=0'})
             expected = ('PASS source ownership: API final release and finish-thread final release\n' if suite == 'ownership'
                         else 'PASS queue shutdown: repeated, concurrent, pending worker, destructor and capture ownership\n' if suite == 'shutdown'
                         else 'PASS retirement: origins, private hook, pending drain, setup failures and module pin\n' if suite == 'retirement'
                         else 'PASS integrated retirement: actual private-data capture chain\n')
-            if args.expect_bypass:
+            if args.mutation:
+                failure = {
+                    'skip-drain': 'discard-before-native-terminal',
+                    'discard-before-drain': 'discard-before-native-terminal',
+                    'wait-unsubmitted': 'waited-unsubmitted-buffer',
+                    'skip-discard': 'discard-before-capture',
+                }[args.mutation]
+                if result.returncode != 1 or result.stdout or result.stderr != 'FAIL shutdown ' + failure + '\n':
+                    raise SystemExit('unexpected shutdown mutation outcome:\n' + result.stdout + result.stderr)
+                print('PASS rejected shutdown mutation ' + args.mutation)
+            elif args.expect_bypass:
                 if result.returncode != 1 or result.stdout or result.stderr != 'FAIL deferred destruction required\n':
                     raise SystemExit('unexpected destruction-hook bypass outcome:\n' + result.stdout + result.stderr)
                 print('PASS old direct-delete body fails deferred-destruction requirement')
@@ -127,7 +169,11 @@ def main():
             (work / (suite + '-stderr.txt')).write_text(result.stderr)
             print(result.stdout, end='')
         report = {'source': str(source), 'ref': args.source_ref, 'results': reports, 'sanitize': args.sanitize,
-                  'bypass_negative_control': args.expect_bypass,
+                  'bypass_negative_control': args.expect_bypass, 'mutation': args.mutation,
+                  'arch': args.arch, 'host_arch': platform.machine(),
+                  'shutdown_protocol': ('terminal-cancel/drain/discard' if terminal_shutdown else 'legacy-ready-fences') if args.suite != 'ownership' else None,
+                  'fixture_sha256': {name: hashlib.sha256((tests / name).read_bytes()).hexdigest() for name in ['fixture.cpp', 'shutdown_fixture.cpp', 'retirement_fixture.cpp', 'mock_threadpool.hpp', 'run.py']},
+                  'generated_sha256': {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in work.iterdir() if path.suffix == '.hpp'},
                   'source_sha256': {name: hashlib.sha256(text.encode()).hexdigest() for name, text in contents.items()}}
         (work / 'receipt.json').write_text(json.dumps(report, indent=2) + '\n')
         if args.keep:
