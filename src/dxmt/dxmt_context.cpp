@@ -908,6 +908,14 @@ ArgumentEncodingContext::flushCommands(WMT::CommandBuffer cmdbuf, uint64_t seqId
     if (encoders[i - 1]->type == EncoderType::Render && encoders[i]->type == EncoderType::Clear)
       passopt::DiscardAdjacentColorStores(
           static_cast<RenderEncoderData *>(encoders[i - 1]), static_cast<ClearEncoderData *>(encoders[i]));
+    else if (encoders[i - 1]->type == EncoderType::Clear && encoders[i]->type == EncoderType::Clear &&
+             passopt::CoalesceAdjacentColorClears(
+                 static_cast<ClearEncoderData *>(encoders[i - 1]), static_cast<ClearEncoderData *>(encoders[i]))) {
+      updateFrameStatistics([](auto &statistics) { statistics.clear_pass_optimized++; });
+      // Contract disjoint ORIGINAL pairs only. FenceSet slots repeat after
+      // 256 IDs; accumulating an unbounded chain would lose generation proof.
+      ++i;
+    }
   }
 #endif
 

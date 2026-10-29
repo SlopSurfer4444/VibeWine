@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+static void adjacent_clear_cases() {
+  {
+    Surface s; Arena a; ArgumentEncodingContext ctx;
+    auto *c0=clear(a,s), *c1=clear(a,s); c0->next=c1;
+    c0->color={1,0,0,1}; c1->color={0,1,0,1};
+    c0->fence_wait.set(3); c0->fence_update.set(5);
+    c1->fence_wait.set(5); c1->fence_wait.set(7); c1->fence_update.set(9);
+    std::vector<EncoderData *> nodes{c0,c1}; ctx.optimize(nodes);
+    require(c0->type==(dead_enabled ? EncoderType::Null : EncoderType::Clear),"adjacent full clear removes exactly predecessor");
+    require(c1->type==EncoderType::Clear && c1->color.r==0 && c1->color.g==1,"last clear value survives");
+    require(c1->fence_wait.test(7) && c1->fence_update.test(9),"survivor external edges survive");
+    if(dead_enabled) {
+      require(c1->fence_wait.test(3) && !c1->fence_wait.test(5),"predecessor external wait retained and internal edge contracted");
+      require(c1->fence_update.test(5),"predecessor completion retained");
+      require(ctx.statistics.clear_pass_optimized==1,"one removed physical clear counted");
+    }
+  }
+  {
+    Surface s; Arena a; ArgumentEncodingContext ctx;
+    auto *c0=clear(a,s), *c1=clear(a,s), *c2=clear(a,s); auto *r=render(a,s);
+    c0->next=c1;c1->next=c2;c2->next=r;
+    c0->color={1,0,0,1};c1->color={0,1,0,1};c2->color={0,0,1,1};
+    c0->fence_wait.set(3);c0->fence_update.set(5);c1->fence_wait.set(5);c1->fence_update.set(9);c2->fence_wait.set(9);c2->fence_update.set(13);
+    std::vector<EncoderData *> nodes{c0,c1,c2,r};ctx.optimize(nodes);
+    require(r->colors[0].load_action==WMTLoadActionClear && r->colors[0].clear_color.b==1,"last clear survives subsequent existing render fold");
+    if(dead_enabled) {
+      require(c0->type==EncoderType::Null && c1->type==EncoderType::Null && c2->type==EncoderType::Null,"chain contracts then folds");
+      require(r->fence_wait.test(3) && !r->fence_wait.test(5) && !r->fence_wait.test(9),"chain external dependency survives fold without internal waits");
+      require(r->fence_update.test(5) && r->fence_update.test(9) && r->fence_update.test(13),"all chain completion identities survive fold");
+    }
+  }
+  {
+    Surface s;Arena a;ArgumentEncodingContext ctx;std::vector<EncoderData *> nodes;
+    for(unsigned n=0;n<257;++n) {
+      auto*c=clear(a,s);c->id=1000+n;c->fence_wait.set(999+n);c->fence_update.set(1000+n);
+      if(!nodes.empty())nodes.back()->next=c;
+      nodes.push_back(c);
+    }
+    ctx.optimize(nodes);unsigned live=0;
+    for(unsigned n=0;n<257;++n) {
+      if(nodes[n]->type==EncoderType::Null)continue;
+      ++live;
+      auto*c=static_cast<ClearEncoderData *>(nodes[n]);
+      const auto first=dead_enabled && (n%2) ? n-1 : n;
+      require(c->fence_wait.test(999+first),"257-chain retains every surviving predecessor dependency across slot wrap");
+      require(c->fence_update.test(1000+n),"257-chain retains terminal completion");
+      if(dead_enabled && (n%2))require(c->fence_update.test(999+n),"paired completion retained across slot wrap");
+    }
+    require(live==(dead_enabled ? 129u : 257u),"disjoint pairs bound aggregation to two original clears");
+    require(nodes.back()->type==EncoderType::Clear,"odd terminal clear survives modulo wrap");
+  }
+  {
+    Surface s;Arena a;ArgumentEncodingContext ctx;auto*x=clear(a,s),*y=clear(a,s);x->next=y;
+    x->fence_wait.set(3);x->fence_update.set(259);y->fence_wait.set(259);y->fence_update.set(260);
+    std::vector<EncoderData *> nodes{x,y};ctx.optimize(nodes);
+    require(x->type==EncoderType::Clear && y->type==EncoderType::Clear,"ambiguous prior-generation predecessor wait/update overlap fails closed");
+  }
+  using Change=std::function<void(Surface &,ClearEncoderData *,ClearEncoderData *,Surface &)>;
+  const std::vector<std::pair<const char *,Change>> rejected{
+    {"no predecessor attachment",[](auto&,auto*x,auto*,auto&){x->attachment={};}},
+    {"no survivor attachment",[](auto&,auto*,auto*y,auto&){y->attachment={};}},
+    {"different allocation",[](auto&,auto*,auto*y,auto&o){y->attachment=&o.base;}},
+    {"missing allocation",[](auto&s,auto*,auto*,auto&){s.base.allocation=nullptr;}},
+    {"missing descriptor",[](auto&s,auto*,auto*,auto&){s.allocation.descriptor=nullptr;}},
+    {"nonprivate",[](auto&s,auto*,auto*,auto&){s.allocation.allocation_flags.clr(TextureAllocationFlag::GpuPrivate);}},
+    {"shared",[](auto&s,auto*,auto*,auto&){s.allocation.allocation_flags.set(TextureAllocationFlag::Shared);}},
+    {"heap",[](auto&s,auto*,auto*,auto&){s.allocation.allocation_flags.set(TextureAllocationFlag::AllocatedOnHeap);}},
+    {"mapped",[](auto&s,auto*,auto*,auto&){s.allocation.mappedMemory=&s;}},
+    {"depth predecessor",[](auto&,auto*x,auto*,auto&){x->clear_dsv=1;}},
+    {"stencil survivor",[](auto&,auto*,auto*y,auto&){y->clear_dsv=2;}},
+    {"predecessor array",[](auto&,auto*x,auto*,auto&){x->array_length=2;}},
+    {"survivor array",[](auto&,auto*,auto*y,auto&){y->array_length=2;}},
+    {"predecessor partial width",[](auto&,auto*x,auto*,auto&){--x->width;}},
+    {"predecessor partial height",[](auto&,auto*x,auto*,auto&){--x->height;}},
+    {"survivor partial width",[](auto&,auto*,auto*y,auto&){--y->width;}},
+    {"survivor partial height",[](auto&,auto*,auto*y,auto&){--y->height;}},
+    {"multisample",[](auto&s,auto*,auto*,auto&){s.desc.samples=4;}},
+    {"multimip",[](auto&s,auto*,auto*,auto&){s.desc.mips=2;}},
+    {"multiarray",[](auto&s,auto*,auto*,auto&){s.desc.arrays=2;}},
+    {"3d",[](auto&s,auto*,auto*,auto&){s.desc.type=WMTTextureType3D;}},
+    {"depth extent",[](auto&s,auto*,auto*,auto&){s.desc.d=2;}},
+    {"zero width",[](auto&s,auto*x,auto*y,auto&){s.desc.w=x->width=y->width=0;}},
+    {"zero height",[](auto&s,auto*x,auto*y,auto&){s.desc.h=x->height=y->height=0;}},
+    {"nonbase",[](auto&s,auto*,auto*,auto&){s.base.key.index=1;}},
+    {"view mip",[](auto&s,auto*,auto*,auto&){s.base.key.mip_start=1;}},
+    {"view mip end",[](auto&s,auto*,auto*,auto&){s.base.key.mip_end=2;}},
+    {"view array",[](auto&s,auto*,auto*,auto&){s.base.key.array_start=1;}},
+    {"view array end",[](auto&s,auto*,auto*,auto&){s.base.key.array_end=2;}},
+    {"nil native",[](auto&s,auto*,auto*,auto&){s.base.texture.handle=0;}},
+    {"different native allocation",[](auto&s,auto*,auto*,auto&){s.allocation.object.handle=102;}},
+    {"native width",[](auto&s,auto*,auto*,auto&){--native_extents.at(s.base.texture.handle).first;}},
+    {"native height",[](auto&s,auto*,auto*,auto&){--native_extents.at(s.base.texture.handle).second;}},
+  };
+  for(auto &[name,change]:rejected) {
+    Surface s,o;Arena a;ArgumentEncodingContext ctx;auto*x=clear(a,s),*y=clear(a,s);x->next=y;change(s,x,y,o);
+    std::vector<EncoderData *> nodes{x,y};ctx.optimize(nodes);
+    require(x->type==EncoderType::Clear && y->type==EncoderType::Clear,name);
+  }
+  {
+    Surface s; TextureView alias=s.base; Arena a;ArgumentEncodingContext ctx;auto*x=clear(a,s),*y=clear(a,s);x->next=y;y->attachment=&alias;
+    std::vector<EncoderData *> nodes{x,y};ctx.optimize(nodes);
+    require(x->type==EncoderType::Clear,"distinct wrapper even same allocation rejected");
+  }
+  for(auto type:{EncoderType::Null,EncoderType::Compute,EncoderType::Blit,EncoderType::SignalEvent,EncoderType::WaitForEvent,EncoderType::SampleTimestamp}) {
+    Surface s;Arena a;ArgumentEncodingContext ctx;auto*x=clear(a,s),*y=clear(a,s);auto*gap=a.make<EncoderData>(type);x->next=gap;gap->next=y;
+    std::vector<EncoderData *> nodes{x,gap,y};ctx.optimize(nodes);
+    require(x->type==EncoderType::Clear && y->type==EncoderType::Clear,"no contraction across original gap");
+  }
+}
+int main(){adjacent_clear_cases();dead_store_cases();residency_cases();std::cout<<"PASS "<<checks<<" behavioral assertions dead="<<dead_enabled<<'\n';}
