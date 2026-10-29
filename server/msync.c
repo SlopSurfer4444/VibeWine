@@ -33,6 +33,7 @@
 # include <sys/stat.h>
 #endif
 #include <mach/mach_init.h>
+#include <mach/mach.h>
 #include <mach/mach_port.h>
 #include <mach/mach_vm.h>
 #include <mach/vm_page_size.h>
