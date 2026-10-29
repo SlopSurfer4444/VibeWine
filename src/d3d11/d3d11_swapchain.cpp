@@ -171,9 +171,33 @@ public:
     present_semaphore_ = CreateSemaphore(nullptr, frame_latency,
                                          DXGI_MAX_SWAP_CHAIN_BUFFERS, nullptr);
 
+    if (!present_semaphore_) {
+      initialization_result_ = E_OUTOFMEMORY;
+      return;
+    }
+    struct SemaphoreConstructionGuard {
+      HANDLE &handle;
+      bool adopted = false;
+      ~SemaphoreConstructionGuard() {
+        if (!adopted && handle) {
+          CloseHandle(handle);
+          handle = nullptr;
+        }
+      }
+    } semaphore_guard{present_semaphore_};
+
+    failure_wake_.context = this;
+    failure_wake_.notify = [](void *context) noexcept {
+      auto self = static_cast<MTLD3D11SwapChain *>(context);
+      // Wake the bounded frame-latency credits without forging GPU progress.
+      // Unregistration shares the queue's failure lock and precedes CloseHandle.
+      for (unsigned i = 0; i < DXGI_MAX_SWAP_CHAIN_BUFFERS; ++i)
+        if (!ReleaseSemaphore(self->present_semaphore_, 1, nullptr)) break;
+    };
+
     // without this flag, there is still a DXGIDevice level of frame latency control
     if (desc_.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) {
-      frame_latency_fence_ = std::make_unique<CpuFence>();
+      frame_latency_fence_ = std::make_unique<CpuFence>(pDevice->GetDXMTDevice().queue().WaitState());
     }
 
     if (pFullscreenDesc) {
@@ -224,6 +248,10 @@ public:
       fullscreen_desc_.Windowed = TRUE;
       initialization_result_ = EnterFullscreenMode(nullptr);
     }
+    // Registration is the final nonthrowing action: an unwinding constructor
+    // never leaves a queue pointer to its partially constructed swapchain.
+    semaphore_guard.adopted = true;
+    pDevice->GetDXMTDevice().queue().RegisterFailureWake(failure_wake_);
   };
 
   HRESULT CleanupFullscreenForDestruction() {
@@ -246,6 +274,7 @@ public:
   }
 
   ~MTLD3D11SwapChain() {
+    device_->GetDXMTDevice().queue().UnregisterFailureWake(failure_wake_);
     cs2trace::ApiScope trace_teardown(48,trace_serial_);
     trace_teardown.result=static_cast<uint32_t>(CleanupFullscreenForDestruction());
     if (native_view_) {
@@ -977,7 +1006,7 @@ public:
       if (current_frame_id > frame_latency) {
         cs2trace::PresentationScope exact(97,trace_serial_,current_frame_id,current_frame_id-frame_latency,frame_latency);
         cs2trace::Scope trace{.type=8,.object=current_frame_id};
-        frame_latency_fence_->wait(current_frame_id - frame_latency);
+        if (!frame_latency_fence_->wait(current_frame_id - frame_latency)) return {};
       }
       return SyncFrameState(current_frame_id, frame_latency_fence_.get());
     }
@@ -991,6 +1020,7 @@ public:
            const DXGI_PRESENT_PARAMETERS *pPresentParameters) final {
     cs2trace::ApiScope api(40,trace_serial_,SyncInterval,PresentFlags);
     return api.invoke([&]() -> HRESULT {
+    if (auto failure = device_->GetDXMTDevice().queue().FailureReason()) return failure;
     if (SyncInterval > 4)
       return DXGI_ERROR_INVALID_CALL;
 
@@ -1023,6 +1053,7 @@ public:
     if (hr == DXGI_STATUS_OCCLUDED) {
       // flush commands without presenting
       device_context_->Commit();
+      if (auto failure = device_->GetDXMTDevice().queue().FailureReason()) return failure;
       return hr;
     }
 
@@ -1045,6 +1076,7 @@ public:
     // visible to the GPU. The final presentation chunk owns the admission
     // token until retirement, including missing-drawable/failure paths.
     auto sync_state = SyncFrame(++presentation_count_);
+    if (auto failure = device_->GetDXMTDevice().queue().FailureReason()) return failure;
 #if defined(DXMT_SCENE_SUBMISSION) && DXMT_SCENE_SUBMISSION
     // Reuse Flush's dirty/promote gate: no extra empty scene chunk. Submission
     // stays on the existing ordered queue; frame completion belongs below.
@@ -1107,7 +1139,7 @@ public:
     buffer_lock.unlock();
     lock.unlock(); // since PresentBoundary() will and should only stall current thread
 
-    cmd_queue.PresentBoundary(presented_frame, max_latency);
+    if (!cmd_queue.PresentBoundary(presented_frame, max_latency)) return cmd_queue.FailureReason();
 
     return hr;
 
@@ -1394,6 +1426,7 @@ private:
   IMTLD3D11DeviceContext* device_context_;
   Com<D3D11ResourceCommon, false> backbuffer_;
   HANDLE present_semaphore_ = nullptr;
+  QueueFailureWake failure_wake_;
   std::unique_ptr<CpuFence> frame_latency_fence_;
   HWND hWnd;
   HMONITOR monitor_;

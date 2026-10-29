@@ -52,19 +52,21 @@ def main():
     generated = '\n'.join([strip(text[files[0]]), strip(text[files[1]]), generated_ring])
     methods = '\n'.join([body(text[files[4]], 'uint32_t\nCommandQueue::WaitForFinishThread()'),
                          body(text[files[4]], 'void CommandQueue::Retain(')])
+    reserve = body(text[files[3]], '  template <typename Allocator>\n  typename Allocator::Reservation\n  Reserve(') if '  Reserve(' in text[files[3]] else ''
     reset = body(text[files[3]], '  void\n  reset(uint64_t traceQueue = 0) noexcept')
-    constant = re.search(r'constexpr uint32_t kCommandChunkCount = \d+;', text[files[3]])[0]
+    constant = '#define HAS_TERMINAL_FAILURE ' + ('1' if 'CommandQueue::Fail(' in text[files[4]] else '0') + '\n' + re.search(r'constexpr uint32_t kCommandChunkCount = \d+;', text[files[3]])[0]
     fixtures = {f: (tests / f).read_bytes() for f in ('fixture.cpp', 'run.py')}
     print(json.dumps({'source_ref': revision, 'arch': args.arch, 'sanitize': args.sanitize,
           'source_sha256': {f: hashlib.sha256(b).hexdigest() for f, b in data.items()},
           'fixture_sha256': {f: hashlib.sha256(b).hexdigest() for f, b in fixtures.items()},
-          'generated_sha256': hashlib.sha256((generated + methods + reset + constant).encode()).hexdigest()}, sort_keys=True), flush=True)
+          'generated_sha256': hashlib.sha256((generated + methods + reset + constant + reserve).encode()).hexdigest()}, sort_keys=True), flush=True)
     with tempfile.TemporaryDirectory(prefix='dxmt-reftracker-') as directory:
         scratch = Path(directory)
         (scratch / 'owners.hpp').write_text(generated)
         (scratch / 'queue-methods.hpp').write_text(methods)
         (scratch / 'chunk-reset.hpp').write_text(reset)
         (scratch / 'queue-constant.hpp').write_text(constant)
+        (scratch / 'reserve.hpp').write_text(reserve)
         (scratch / 'fixture.cpp').write_bytes(fixtures['fixture.cpp'])
         exe = scratch / 'fixture'
         command = [shutil.which('clang++') or 'c++', '-std=c++20', '-O1', '-Wall', '-Wextra', '-Werror',

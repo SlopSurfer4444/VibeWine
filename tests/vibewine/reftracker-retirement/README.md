@@ -32,7 +32,12 @@ Unchanged acceptance requires ten completed 4 KiB blocks to remain through
 completion 301 and shrink to one at 302. The predecessor instead retains ten
 and fails with exit 2. Additional old-failing cases require reclamation while
 preserving four pending blocks and retirement after all 32 tracker slots clear,
-including a terminal-error command buffer. Controls cover inline-only tracking,
+including the historical terminal-error behavior. The current terminal-failure
+contract instead freezes true coherence at16 before Error17, retains pending
+trackers/storage, and resets them only through the explicit drained-shutdown
+seam. Historical source-ref runs select their historical completion contract;
+current source must satisfy cancellation, not ordinary Error completion.
+Controls cover inline-only tracking,
 strict frontier lag, independent resource ownership, pending storage remaining
 readable at reset, throwing C++ `operator new` during finish, and ordinary sequence
 arithmetic near UINT64_MAX without using the teardown sentinel. Existing ring

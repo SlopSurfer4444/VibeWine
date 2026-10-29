@@ -1952,6 +1952,19 @@ WINEMETAL_API void MTLCommandBuffer_encodeWaitForEvent(obj_handle_t cmdbuf, obj_
 
 WINEMETAL_API void MTLSharedEvent_signalValue(obj_handle_t event, uint64_t value);
 
+/* Reserved control: event == 0, nt_event_handle == NULL, at_value == 0 marks
+ * this listener terminally cancelled. Pending and later valid registrations
+ * wake once without advancing any Metal event value. Delivery runs on the PE
+ * listener thread; destroy drains any remaining cancelled registrations on its
+ * PE caller before returning. Normal destroy suppresses pending delivery.
+ * Other null event/handle combinations are invalid, not cancellation controls.
+ * The existing void ABI cannot report native registration allocation failure. */
+/* Same Unix packet/index as the legacy void wrapper. Returns native NTSTATUS
+ * so queue/fence callers can distinguish rejected allocation/handle requests. */
+WINEMETAL_API int32_t MTLSharedEvent_setWin32EventAtValueChecked(
+    obj_handle_t event, obj_handle_t shared_event_listener, void *nt_event_handle, uint64_t at_value
+);
+
 WINEMETAL_API void MTLSharedEvent_setWin32EventAtValue(
     obj_handle_t event, obj_handle_t shared_event_listener, void *nt_event_handle, uint64_t at_value
 );

@@ -693,8 +693,7 @@ public:
   UINT STDMETHODCALLTYPE GetCreationFlags() override { return feature_flags_ & 0x7fffffff; }
 
   HRESULT STDMETHODCALLTYPE GetDeviceRemovedReason() override {
-    // unless we are deal with eGPU, this method should awalys return S_OK?
-    return S_OK;
+    return device_.queue().DeviceRemovedReason();
   }
 
   void STDMETHODCALLTYPE

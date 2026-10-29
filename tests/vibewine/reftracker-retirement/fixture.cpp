@@ -111,22 +111,38 @@ namespace dxmt {
 struct CommandChunk {
   uint64_t signal_frame_latency_fence_ = ~0ull, chunk_id = 0, frame_ = 0, resource_initializer_event_id = 0;
   uint32_t trace_generation = 0;
+  bool submitted = true;
   CommandBuffer attached_cmdbuf;
   List list_enc;
   AllocationRefTracking ref_tracker;
-  struct Readback {} readback;
+  struct Readback { void publish() {} } readback;
 #include "chunk-reset.hpp"
 };
 struct IdleAllocator { void free_blocks(uint64_t) {} };
 struct CommandQueue {
   struct Ready {
     CommandQueue *queue;
+    bool commit;
+    uint64_t next = 1;
     void wait(uint64_t seq, std::memory_order) {
       if (seq > queue->finish_until) queue->stopped = true;
       else if (queue->before_finish) queue->before_finish(seq);
     }
-    uint64_t load(std::memory_order) const { return 0; }
-  } ready_for_commit{this}, ready_for_encode{this};
+    uint64_t load(std::memory_order) {
+      if (!commit) return 0;
+      auto seq = next++;
+      if (seq > queue->finish_until) { queue->stopped = true; return 0; }
+      if (queue->before_finish) queue->before_finish(seq);
+      return queue->finish_until + 1;
+    }
+  } ready_for_commit{this, true}, ready_for_encode{this, false};
+  struct WaitState { std::atomic<uint64_t> epoch{0}; void notify() {} };
+  std::shared_ptr<WaitState> wait_state_ = std::make_shared<WaitState>();
+  mutex failure_mutex_;
+  enum class Failure { DeviceRemoved, OutOfMemory };
+  bool failed_queue = false;
+  bool FailureReason() const { return failed_queue; }
+  void Fail(Failure) { failed_queue = true; }
   std::atomic<bool> stopped = false;
   std::atomic<unsigned> chunk_ongoing = 32;
   Fence cpu_coherent, frame_latency_fence_;
@@ -139,6 +155,7 @@ struct CommandQueue {
   uint64_t traceSerial() const { return 0; }
   uint32_t WaitForFinishThread();
   void Retain(uint64_t, Allocation *);
+#include "reserve.hpp"
 };
 #include "queue-methods.hpp"
 }
@@ -203,9 +220,23 @@ static void all_slots_and_error() {
       retain_blocks(queue, seq, 1, resources[seq - 1]);
       queue.chunks[seq % 32].attached_cmdbuf.state = seq == 17 ? WMTCommandBufferStatusError : WMTCommandBufferStatusCompleted;
     }
+    #if HAS_TERMINAL_FAILURE
+    queue.finish_until = 333;
+    queue.WaitForFinishThread();
+    assert(queue.failed_queue);
+    assert(queue.cpu_coherent.signaledValue() == 16);
+    for (unsigned i = 0; i < 16; ++i) assert(resources[i].freed == 1);
+    for (unsigned i = 16; i < 32; ++i) assert(resources[i].freed == 0);
+    // GPU-drain seam: no backing/tracker release until the submitted owners
+    // are terminal. This fixture's buffers are terminal Completed/Error.
+    for (auto &chunk : queue.chunks) chunk.reset();
+    for (auto &resource : resources) assert(resource.freed == 1);
+    check(storage.size() == 32, "terminal error retains storage until explicit drained reset");
+    #else
     finish(queue, 333);
     for (auto &resource : resources) assert(resource.freed == 1);
     check(storage.size() == 1, "all 32 completed tracker slots, including terminal error, retire");
+    #endif
   }
   assert(storage.empty());
 }

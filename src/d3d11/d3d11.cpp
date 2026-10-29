@@ -104,6 +104,8 @@ D3D11CoreCreateDevice(IDXGIFactory *pFactory, IDXGIAdapter *pAdapter,
         dxgi_adapter.ptr(), devFeatureLevel, Flags);
 
     return device->QueryInterface(IID_PPV_ARGS(ppDevice));
+  } catch (const std::bad_alloc &) {
+    return E_OUTOFMEMORY;
   } catch (const MTLD3DError &e) {
     Logger::err("D3D11CoreCreateDevice: Failed to create D3D11 device");
     return E_FAIL;
@@ -124,6 +126,7 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(
   if (pFeatureLevel)
     *pFeatureLevel = D3D_FEATURE_LEVEL(0);
 
+  try {
   Com<IDXGIFactory> dxgiFactory = nullptr;
   Com<IDXGIAdapter> dxgiAdapter = pAdapter;
   Com<ID3D11Device> device = nullptr;
@@ -202,6 +205,9 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(
     return S_FALSE;
 
   return S_OK;
+  } catch (const std::bad_alloc &) {
+    return E_OUTOFMEMORY;
+  }
 }
 
 extern "C" HRESULT WINAPI D3D11CreateDevice(

@@ -1242,6 +1242,7 @@ public:
         UNIMPLEMENTED("update buffer: staging");
       } else if (auto bindable = GetResourceCommon(pDstResource)) {
         auto [staging_buffer, offset] = AllocateStagingBuffer(copy_len, 16);
+        if (!staging_buffer) return;
         staging_buffer.updateContents(offset, pSrcData, copy_len);
         SwitchToBlitEncoder(CommandBufferState::UpdateBlitEncoderActive);
         EmitOP([staging_buffer, offset, dst = bindable->buffer(), copy_offset, copy_len](ArgumentEncodingContext &enc) {
@@ -3381,9 +3382,15 @@ public:
   std::pair<BufferAllocation *, uint32_t>
   GetDynamicBufferAllocation(Rc<DynamicBuffer> &dynamic);
 
+  bool CommandQueueFailed() const {
+    if constexpr (requires { ctx_state.cmd_queue; })
+      return ctx_state.cmd_queue.FailureReason() != 0;
+    return false;
+  }
   uint64_t *allocated_encoder_argbuf_size_ = nullptr;
 
   uint64_t PreAllocateArgumentBuffer(size_t size, size_t alignment) {
+    if (CommandQueueFailed()) return 0;
     assert(allocated_encoder_argbuf_size_ && "otherwise invalid call");
     std::size_t adjustment = align_forward_adjustment((void *)*allocated_encoder_argbuf_size_, alignment);
     auto aligned = *allocated_encoder_argbuf_size_ + adjustment;
@@ -4337,6 +4344,7 @@ public:
     if (auto dst = GetTexture(cmd.pDst)) {
       auto bytes_per_depth_slice = cmd.EffectiveRows * cmd.EffectiveBytesPerRow;
       auto [staging_buffer, offset] = AllocateStagingBuffer(bytes_per_depth_slice * cmd.DstSize.depth, 16);
+      if (!staging_buffer) return;
       if (cmd.EffectiveBytesPerRow == SrcRowPitch) {
         for (unsigned depthSlice = 0; depthSlice < cmd.DstSize.depth; depthSlice++) {
           auto dst_offset = offset + depthSlice * bytes_per_depth_slice;
@@ -4536,6 +4544,7 @@ public:
   */
   bool
   SwitchToRenderEncoder() {
+    if (CommandQueueFailed()) return false;
     if (cmdbuf_state == CommandBufferState::RenderPipelineReady)
       return true;
     if (cmdbuf_state == CommandBufferState::TessellationRenderPipelineReady)
@@ -4588,6 +4597,7 @@ public:
       // FIXME: is this value always valid?
       uint32_t render_target_array = state_.OutputMerger.ArrayLength;
       auto rtvs = AllocateCommandData<RENDER_TARGET_STATE>(state_.OutputMerger.NumRTVs);
+      if (!rtvs) return false;
       for (unsigned i = 0; i < state_.OutputMerger.NumRTVs; i++) {
         auto &rtv = state_.OutputMerger.RTVs[i];
         if (rtv) {
@@ -4635,15 +4645,16 @@ public:
         uav_only = true;
       }
 
-      auto allocated_encoder_argbuf_size = std::make_unique<uint64_t>(0);
-      allocated_encoder_argbuf_size_ = allocated_encoder_argbuf_size.get();
+      auto allocated_encoder_argbuf_size = AllocateCommandData<uint64_t>();
+      if (!allocated_encoder_argbuf_size) return false;
+      allocated_encoder_argbuf_size_ = allocated_encoder_argbuf_size.data();
 
       EmitST([rtvs = std::move(rtvs), dsv = std::move(dsv_info), effective_render_target, uav_only,
             render_target_height, render_target_width, sample_count,
             render_target_array, encoder_argbuf_size = std::move(allocated_encoder_argbuf_size)](ArgumentEncodingContext &ctx) {
         auto pool = WMT::MakeAutoreleasePool();
         uint32_t dsv_planar_flags = DepthStencilPlanarFlags(dsv.PixelFormat);
-        auto& info = *ctx.startRenderPass(dsv_planar_flags, dsv.ReadOnlyFlags, rtvs.size(), *encoder_argbuf_size.get());
+        auto& info = *ctx.startRenderPass(dsv_planar_flags, dsv.ReadOnlyFlags, rtvs.size(), *encoder_argbuf_size.data());
 
         for (auto &rtv : rtvs.span()) {
           if (rtv.PixelFormat == WMTPixelFormatInvalid) {
@@ -4715,6 +4726,7 @@ public:
   */
   void
   SwitchToComputeEncoder() {
+    if (CommandQueueFailed()) return;
     if (cmdbuf_state == CommandBufferState::ComputePipelineReady)
       return;
     if (cmdbuf_state == CommandBufferState::ComputeEncoderActive)
@@ -4727,12 +4739,13 @@ public:
     state_.ShaderStages[PipelineStage::Compute].SRVs.set_dirty();
     state_.ComputeStageUAV.UAVs.set_dirty();
 
-    auto allocated_encoder_argbuf_size = std::make_unique<uint64_t>(0);
-    allocated_encoder_argbuf_size_ = allocated_encoder_argbuf_size.get();
+    auto allocated_encoder_argbuf_size = AllocateCommandData<uint64_t>();
+    if (!allocated_encoder_argbuf_size) return;
+    allocated_encoder_argbuf_size_ = allocated_encoder_argbuf_size.data();
 
     EmitST([encoder_argbuf_size = std::move(allocated_encoder_argbuf_size)](
                ArgumentEncodingContext &enc) {
-      enc.startComputePass(*encoder_argbuf_size.get());
+      enc.startComputePass(*encoder_argbuf_size.data());
     });
 
     cmdbuf_state = CommandBufferState::ComputeEncoderActive;
@@ -4986,6 +4999,7 @@ public:
   template <bool IndexedDraw>
   DrawCallStatus
   PreDraw() {
+    if (CommandQueueFailed()) return DrawCallStatus::Invalid;
     DrawCallStatus status;
     if constexpr (IndexedDraw) {
       if (!state_.InputAssembler.IndexBuffer)
@@ -5034,6 +5048,7 @@ public:
     bool allow_scissor = current_rs->IsScissorEnabled();
     if (dirty_state.any(DirtyState::Viewport)) {
       auto viewports = AllocateCommandData<WMTViewport>(state_.Rasterizer.NumViewports);
+      if (!viewports) return DrawCallStatus::Invalid;
       for (unsigned i = 0; i < state_.Rasterizer.NumViewports; i++) {
         auto &d3dViewport = state_.Rasterizer.viewports[i];
         viewports[i] = {d3dViewport.TopLeftX, d3dViewport.TopLeftY, d3dViewport.Width,
@@ -5054,6 +5069,7 @@ public:
                                       ? (UINT)state_.Rasterizer.viewports[0].Height
                                       : state_.OutputMerger.RenderTargetHeight;
       auto scissors = AllocateCommandData<WMTScissorRect>(state_.Rasterizer.NumViewports);
+      if (!scissors) return DrawCallStatus::Invalid;
       for (unsigned i = 0; i < state_.Rasterizer.NumViewports; i++) {
         if (allow_scissor) {
           if (i < state_.Rasterizer.NumScissorRects) {
@@ -5100,6 +5116,7 @@ public:
   */
   bool
   FinalizeCurrentComputePipeline() {
+    if (CommandQueueFailed()) return false;
     if (cmdbuf_state == CommandBufferState::ComputePipelineReady)
       return true;
 

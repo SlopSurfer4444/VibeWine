@@ -83,7 +83,7 @@ def main():
         # production fields, methods, locking and Rc remain unchanged.
         for name in ['VisibilityResultQuery', 'TimestampQuery']:
             marker = 'class ' + name + ' {\npublic:'
-            hooks = ('\n  static void *operator new(size_t n) { WrapperCounts<' + name + '>::allocations++; return ::operator new(n); }'
+            hooks = ('\n  static void *operator new(size_t n) { if(fail_query_wrapper) throw std::bad_alloc{}; WrapperCounts<' + name + '>::allocations++; return ::operator new(n); }'
                      '\n  static void operator delete(void *p) noexcept { WrapperCounts<' + name + '>::deletions++; ::operator delete(p); }')
             if marker not in extracted:
                 raise ValueError('wrapper hook seam missing: ' + name)
@@ -98,13 +98,14 @@ def main():
                 api = api.replace(marker, '        (void)0; // invalid completed-generation reuse')
         (work / 'event-under-test.hpp').write_text('template <typename DataType>\n' + extract_class(contents[paths[4]], 'MTLD3D11EventQueryImpl'))
         (work / 'immediate-under-test.hpp').write_text(extract_method(contents[paths[3]], '  HRESULT\n  STDMETHODCALLTYPE\n  GetData(ID3D11Asynchronous'))
+        (work / 'query-issue-under-test.hpp').write_text(extract_method(contents[paths[3]], '  void\n  STDMETHODCALLTYPE\n  Begin(ID3D11Asynchronous') + '\n' + extract_method(contents[paths[3]], '  void\n  STDMETHODCALLTYPE\n  End(ID3D11Asynchronous'))
         (work / 'query-api-under-test.hpp').write_text(''.join(extract_class(api, name) for name in ['OcclusionQuery', 'MTLD3D11TimestampQueryImpl']))
         context = contents[paths[1]]
         start = context.index('  QueryReadbacks readbacks{};')
         end = context.index('  readbacks.timestamp =', start)
         (work / 'flush-under-test.hpp').write_text(context[start:end])
         command = [compiler, '-std=c++20', '-O0' if args.sanitize == 'thread' else '-O1', '-g', '-Wall', '-Wextra', '-pthread',
-                   '-I', str(source / 'src/util'), '-I', str(work), str(tests / 'fixture.cpp'), '-o', str(work / 'fixture')]
+                   '-DHAS_QUEUE_FAILURE=' + ('1' if 'cmd_queue.FailureReason()' in contents[paths[3]] else '0'), '-I', str(source / 'src/util'), '-I', str(work), str(tests / 'fixture.cpp'), '-o', str(work / 'fixture')]
         if args.arch:
             command += ['-arch', args.arch]
         if args.sanitize != 'none':
