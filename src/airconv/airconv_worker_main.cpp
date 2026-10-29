@@ -2,6 +2,7 @@
 #include "airconv_worker_protocol.hpp"
 #include "airconv_worker_recipe.hpp"
 #include <cerrno>
+#include <cstdio>
 #include <poll.h>
 #include <sys/resource.h>
 #include <unistd.h>
@@ -22,8 +23,23 @@ static std::string diagnostic(sm50_error_t e) {
   if(!e)return "converter failed without diagnostic";
   char s[MaxDiagnostic+1]{};SM50GetErrorMessage(e,s,MaxDiagnostic);SM50FreeError(e);return std::string(s,strnlen(s,MaxDiagnostic));
 }
-int main() {
+int main(int argc,char** argv) {
   if(!configured())return 78;
+  if(argc==2 && !strcmp(argv[1],"--build-info")) {
+#if defined(__aarch64__)
+    constexpr const char* architecture="arm64";
+#elif defined(__x86_64__)
+    constexpr const char* architecture="x86_64";
+#else
+    constexpr const char* architecture="unknown";
+#endif
+    // Inspection never opens the transport or initializes LLVM. Packaging can
+    // bind the actual executable rather than trusting a neighboring text file.
+    printf("{\"schema\":\"dxmt-native-arm-worker-info-v1\",\"build_id\":\"%s\",\"architecture\":\"%s\",\"protocol\":%u,\"max_requests\":%u}\n",
+           DXMT_WORKER_BUILD_ID,architecture,Protocol,MaxRequests);
+    return 0;
+  }
+  if(argc!=1)return 64;
   // Parent sets stdio only; no paths, environment overrides or dynamic plugins are accepted.
   rlimit core{0,0};setrlimit(RLIMIT_CORE,&core);
   for(uint32_t count=0;count<MaxRequests;++count) {
