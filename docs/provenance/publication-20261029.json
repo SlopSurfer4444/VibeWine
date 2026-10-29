@@ -65,7 +65,7 @@
         "vibewine/tests/native-cursor-warp/owned-window.c",
         "vibewine/tests/native-cursor-warp/run.py"
       ],
-      "publishedHead": "b24c04f9d74bba5bcd6df13a0b3535f107161261",
+      "publishedHead": "ffd567b1eee7d773bcff0eae4099da4778885574",
       "publicationOnlyPaths": [
         "vibewine/PUBLICATION-20261029.json",
         "vibewine/source-overlay.json",
@@ -74,11 +74,20 @@
         "vibewine/tests/msync-freehint/README.md",
         "vibewine/tests/msync-memory-ownership/TABLE_README.md",
         "vibewine/tests/msync-pump-liveness/README.md",
+        "vibewine/tests/msync-pump-liveness/fixture.c.in",
         "vibewine/tests/msync-pump-liveness/run.py",
         "vibewine/tests/native-cursor-focus/run.py",
         "vibewine/tests/native-cursor-warp/README.md",
         "vibewine/tests/native-cursor-warp/run.py"
-      ]
+      ],
+      "pumpFixtureCompatibilityRepair": {
+        "commit": "ffd567b1eee7d773bcff0eae4099da4778885574",
+        "parent": "b24c04f9d74bba5bcd6df13a0b3535f107161261",
+        "scope": "three pump test files plus source-verification/publication metadata",
+        "contract": "non-timeout primitive wakes trigger readiness recheck/retry under the original absolute deadline; terminal alert must be observed in the child",
+        "proof": "arm64/x86_64 sanitized candidate, historical blocked-ACK and ownership/single-adapter negatives;32 fixed-budget unsanitized cases",
+        "limits": "CPU/native Mach fixture only; original hosted scheduling unknown; production, installed runtime and game/FPS unchanged"
+      }
     },
     "dxmt": {
       "localBase": "8cf59a015b88361ed6f6320eb8a781c68b3b36c1",

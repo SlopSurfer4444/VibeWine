@@ -4,7 +4,7 @@ Reconciled **29 October 2026**. This table supersedes earlier checkpoints.
 
 | Layer | Current state | Acceptance boundary |
 | --- | --- | --- |
-| Source |DXMT `84761a31`; Wine `b24c04f9`|Binding/upload/clear economy, queue failure and MSync repairs; opt-in cursor/compiler experiments|
+| Source |DXMT `84761a31`; Wine `ffd567b1`|Binding/upload/clear economy, queue failure and MSync repairs; opt-in cursor/compiler experiments|
 | Checks |Combined source controls pass; independent queue review repairs admitted|Operation counts/native fixtures are separate from game FPS|
 | Build |Seven affected Wine targets pass; complete paired162-step DXMT builds pass|Matched engine installed; seven fresh Wine targets plus retained runtime closure|
 | Lifecycle |Four helpers installed coherently; matched runtime adopted as `d029bcfc`, all 32 after-images, installed status and no-op convergence verified|Existing game profile/saves retained; recovery preserved|
