@@ -2032,14 +2032,19 @@ public:
     std::lock_guard<mutex_t> lock(mutex);
 
     auto pBuffer = GetResourceCommon(pIndexBuffer);
-    if (pBuffer && (pBuffer->bindFlags() & D3D11_BIND_INDEX_BUFFER) && ValidateIAHazard(pBuffer)) {
+    if (!(pBuffer && (pBuffer->bindFlags() & D3D11_BIND_INDEX_BUFFER) && ValidateIAHazard(pBuffer)))
+      pBuffer = nullptr;
+    // Format/offset are consumed by each draw; encoding state owns only Buffer
+    // identity. Validate first so a new output hazard can still unbind a repeat.
+    if (state_.InputAssembler.IndexBuffer.ptr() != pBuffer) {
       state_.InputAssembler.IndexBuffer = pBuffer;
-      EmitST([buffer = state_.InputAssembler.IndexBuffer->buffer()](ArgumentEncodingContext &enc) mutable {
-        enc.bindIndexBuffer(forward_rc(buffer));
-      });
-    } else {
-      state_.InputAssembler.IndexBuffer = nullptr;
-      EmitST([](ArgumentEncodingContext &enc) { enc.bindIndexBuffer({}); });
+      if (pBuffer) {
+        EmitST([buffer = pBuffer->buffer()](ArgumentEncodingContext &enc) mutable {
+          enc.bindIndexBuffer(forward_rc(buffer));
+        });
+      } else {
+        EmitST([](ArgumentEncodingContext &enc) { enc.bindIndexBuffer({}); });
+      }
     }
     state_.InputAssembler.IndexBufferFormat = Format;
     state_.InputAssembler.IndexBufferOffset = Offset;

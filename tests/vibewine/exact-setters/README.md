@@ -1,6 +1,6 @@
 # Exact-repeat D3D11 setter guards
 
-Base: `a21579fb2a03aef5fbe93d7bcba1ea882e63a192`. Three local guards remove
+Base: `a21579fb2a03aef5fbe93d7bcba1ea882e63a192`. Four local guards remove
 repeated state work using existing D3D11 state under its existing lock:
 
 - `IASetInputLayout` compares the converted internal interface pointer before
@@ -9,6 +9,8 @@ repeated state work using existing D3D11 state under its existing lock:
 - `SetShader` returns for null/null only when `NumClassInstances == 0`.
   Nonzero unsupported class-instance diagnostics remain. Nonnull exact repeats
   already had an identity guard and retain that path.
+- `IASetIndexBuffer` compares effective resource identity after hazard validation;
+  format/offset are always updated. See the dated index-buffer evidence below.
 - In the existing nonreplacement VB branch, update effective stride/offset and
   emit `bindVertexBufferOffset` only if either changed. Hazard validation and
   BindingSet identity resolution still run first. Existing dirty bits remain
@@ -117,7 +119,7 @@ sanitizer crashes are rejected. `git diff --check` passes. Temporary generated
 sources/executables are private and automatically removed on runner exit; source
 hashes and operation counts are printed.
 
-Candidate `context_impl.cpp` SHA-256:
+2026-10-26 candidate `context_impl.cpp` SHA-256:
 `52534f9046d33d0b1c31373a1d5cd7ab140aaec2b16fff3f7a99873912301379`.
 Baseline SHA-256:
 `4459931bb0f9d1c5be9d287078ac9bd917cdebcf1dcef634d0e6214ff91d16ea`.
@@ -127,3 +129,65 @@ production build, native device/encoder, GPU buffer readback, game session or
 FPS comparison was run. Root owns canonical integration, index, production
 build, GPU acceptance and publication. All task changes remain unstaged and
 uncommitted in the isolated source worktree.
+
+## 29 October: index-buffer identity economy
+
+`IASetIndexBuffer` now validates the requested resource and normalizes an invalid
+binding to null before comparing effective resource identity. A changed binding
+still emits `bindIndexBuffer`; an unchanged binding skips the COM assignment,
+Buffer capture and state command. Format and offset are stored unconditionally,
+including null and rejected resources. No cache or new state is added.
+
+The production encoding setter only assigns `ibuf_`. The production indexed draw
+captures format/offset separately and obtains the current allocation/suballocation
+through `currentIndexBuffer` and `access` at execution. Existing explicit index
+restoration remains in `RestoreEncodingContextState`. Skipping the redundant
+setter therefore does not replace DISCARD, tracking or deferred restoration.
+
+The fixture now extracts those production methods, `IAGetIndexBuffer`, ordinary
+`DrawIndexed`, the index restoration block, and both actual `forward_rc`
+implementations. Command-list execution uses deferred copying so captured Buffer
+references survive replay. Its synthetic deferred recording boundary starts
+with ClearState; it does not assume that an immediate binding exists in a new
+command list.
+
+With 100 identical setters interleaved with 100 executed indexed draws, immutable
+base `61aca2a3621386f1c6777972327149e48675883e` emits 100 state commands and performs
+100 COM AddRef/Release pairs and 100 Buffer Rc retain/release pairs. Candidate
+performs zero of each. Both execute all 100 draws, track all 100 accesses, and
+perform 101 hazard validations including the initial bind. Final COM/Rc counts
+are equal. This is a deterministic operation-count result, not FPS or measured
+production CPU time.
+
+Four index groups check changed format/offset, getter state, null/nonindexable
+resources, same-resource hazard rejection, exact draw packets and 11 decoded
+index/vertex values from separate backing bytes, ordered allocation rename,
+same-allocation suballocation change, the actual immediate MapDynamicBuffer and
+DISCARD path, ClearState, both command-list restore flags, and replay twice.
+Native arm64 and x86_64 ASan/UBSan pass all eleven groups. The current immutable
+base fails only the two index work-saving assertions, after covered data checks.
+Seven source-connected mutations are rejected: unconditional emission, omitted
+hazard validation, omitted format, omitted offset, missing null unbind, missing
+index restoration, and omitted allocation suboffset.
+
+```sh
+python3 tests/vibewine/exact-setters/run.py --sanitize
+python3 tests/vibewine/exact-setters/run.py --arch x86_64 --sanitize
+python3 tests/vibewine/exact-setters/run.py --index-only --baseline-ref 61aca2a3621386f1c6777972327149e48675883e --sanitize
+python3 tests/vibewine/exact-setters/run.py --mutation drop-offset --sanitize
+```
+
+Each other mutation is named by `--help`; `--index-only` selects the four new
+index groups. The runner binds the extracted fixture, test sources and included
+production headers by SHA-256 and halts on UBSan errors. Baseline failures must
+match exact assertions; mutations must reach their connected target case and
+fail through an assertion, with sanitizer crashes rejected.
+
+Limits: native GPU objects, full D3D context/device, hazard-overlap implementation,
+PreDraw, GS/TS/indirect consumers and deferred MapDynamicBuffer are substituted or
+source-inspected. Ordinary draw packet/data parity is CPU evidence; no native
+GPU/game/FPS or full production-build acceptance is claimed. Root owns those
+integration/runtime checks. No production retention behavior changes; temporary
+fixture sources/executables are automatically removed. Private branch logs are
+seven days/32MiB and curated results thirty days/8MiB, with active integration and
+required recovery holds; cleanup belongs to the root integration owner.
