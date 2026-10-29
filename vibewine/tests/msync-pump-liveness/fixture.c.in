@@ -6,6 +6,7 @@
 #include <mach/mach_time.h>
 #include <mach/mach_vm.h>
 #include <mach/task_special_ports.h>
+#include <mach/thread_info.h>
 #include <dlfcn.h>
 #include <pthread.h>
 #include <signal.h>
@@ -52,6 +53,12 @@ struct shared_state {
     int phase, start, release, result, done, ack_calls, offender_sent, offender_done;
     unsigned sends, timed_out, invalid_dest;
     int reply_entered;
+    int normal_entered, normal_parked, delayed_wake, lower_success_unready, attempts;
+    int native_ret, native_word;
+    uint64_t native_value, native_timeout_ns, elapsed_ns;
+    int last_ulock_ret, last_ulock_word, terminal_alert_observed, helper_status;
+    uint32_t last_ulock_op;
+    uint64_t last_ulock_value, last_ulock_ns;
 };
 static struct shared_state *shared;
 static struct msync_shm *objects;
@@ -70,6 +77,8 @@ static pid_t supervisor;
 static int stopping;
 static mach_port_t exported_name, reply_name;
 static const unsigned STOP_ID = 0x7fffffff;
+static int late_ack;
+static mach_port_t healthy_thread;
 static uint64_t now_ns(void) {
     struct timespec ts; assert(!clock_gettime(CLOCK_MONOTONIC, &ts));
     return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
@@ -116,10 +125,32 @@ static mach_msg_return_t mach_msg2(mach_msg_header_t *data, uint64_t options,
     return mr;
 }
 @CLIENT_CONSTANTS@
+/* Observe the real ordinary wait. The late-ACK case gates the existing server
+ * ACK wake until this wait is parked; no syscall result or word is invented. */
+static int observed_wait2(uint32_t op, void *addr, uint64_t value, uint64_t ns, uint64_t value2) {
+    int observe=late_ack && addr==shm_tid_map+7 && value==1 &&
+        !__atomic_load_n(&shared->normal_entered,__ATOMIC_ACQUIRE);
+    if(observe) __atomic_store_n(&shared->normal_entered,1,__ATOMIC_RELEASE);
+    int ret=__ulock_wait2(op,addr,value,ns,value2);
+    if(observe) {
+        shared->native_ret=ret; shared->native_word=__atomic_load_n((int *)addr,__ATOMIC_ACQUIRE);
+        shared->native_value=value; shared->native_timeout_ns=ns;
+    }
+    if(addr==shm_tid_map+7 && value==1) {
+        shared->last_ulock_op=op; shared->last_ulock_ret=ret;
+        shared->last_ulock_word=__atomic_load_n((int *)addr,__ATOMIC_ACQUIRE);
+        shared->last_ulock_value=value; shared->last_ulock_ns=ns;
+    }
+    return ret;
+}
+#define __ulock_wait2 observed_wait2
 @CLIENT@
+#undef __ulock_wait2
 static inline void wake_tid_word(int *shm);
 @SERVER_ACK@
 static void acknowledge_wait(int tid) {
+    if(late_ack && !__atomic_load_n(&shared->delayed_wake,__ATOMIC_ACQUIRE))
+        await(shm_tid_map+tid,MSYNC_ACK_PARKED,"client armed ACK park before delayed publication");
     production_acknowledge_wait(tid);
     __atomic_add_fetch(&shared->ack_calls,1,__ATOMIC_RELEASE);
 }
@@ -130,9 +161,31 @@ static kern_return_t observed_export(vm_map_t task, memory_object_size_t *size,
     if(kr==KERN_SUCCESS) exported_name=*entry;
     return kr;
 }
+static int observed_wake(uint32_t op, void *addr, uint64_t value) {
+    int expected=0;
+    if(late_ack && addr==shm_tid_map+7 &&
+       __atomic_compare_exchange_n(&shared->delayed_wake,&expected,1,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))
+        await(&shared->normal_parked,1,"ordinary ulock parked before real ACK wake");
+    return __ulock_wake(op,addr,value);
+}
 #define mach_make_memory_entry_64 observed_export
+#define __ulock_wake observed_wake
 @SERVER@
+#undef __ulock_wake
 #undef mach_make_memory_entry_64
+
+static void *observe_ordinary_park(void *unused) {
+    await(&shared->normal_entered,1,"ordinary wait entered");
+    uint64_t end=now_ns()+1000000000;
+    for(;;) {
+        thread_basic_info_data_t info; mach_msg_type_number_t count=THREAD_BASIC_INFO_COUNT;
+        require(thread_info(healthy_thread,THREAD_BASIC_INFO,(thread_info_t)&info,&count)==KERN_SUCCESS,"observe owned healthy thread");
+        if(info.run_state==TH_STATE_WAITING) break;
+        require(now_ns()<end,"ordinary wait kernel park deadline"); pause_us(25);
+    }
+    __atomic_store_n(&shared->normal_parked,1,__ATOMIC_RELEASE);
+    return NULL;
+}
 
 static mach_port_t private_port(void) {
     mach_port_t p; mach_port_limits_t limits={1};
@@ -170,8 +223,35 @@ static void child_client(int role, int is_dead, int is_alert, pid_t parent) {
     } else {
         await(&shared->start,1,"start healthy client");
         const int ids[]={1,2}; void *shm[]={objects+1,objects+2};
-        LARGE_INTEGER duration={-1000000}; ULONGLONG end=msync_get_deadline(&duration);
-        int ret=msync_wait_multiple(ids,shm,is_alert?3:0,is_alert?objects+3:NULL,2,&end,7);
+        LARGE_INTEGER duration={late_ack?-5000000:-1000000}; ULONGLONG end=msync_get_deadline(&duration);
+        uint64_t started=now_ns(); pthread_t observer;
+        if(late_ack) {
+            healthy_thread=mach_thread_self();
+            require(!pthread_create(&observer,NULL,observe_ordinary_park,NULL),"start owned park observer");
+        }
+        int ret;
+        for(;;) {
+            require(!__atomic_load_n(&objects[1].low,__ATOMIC_ACQUIRE) &&
+                    !__atomic_load_n(&objects[2].low,__ATOMIC_ACQUIRE),"private objects remain unsignaled");
+            if(is_alert && __atomic_load_n(&objects[3].low,__ATOMIC_ACQUIRE)) {
+                shared->terminal_alert_observed=1; ret=STATUS_PENDING; break;
+            }
+            require(++shared->attempts<=64,"bounded healthy primitive attempts");
+            ret=msync_wait_multiple(ids,shm,is_alert?3:0,is_alert?objects+3:NULL,2,&end,7);
+            shared->helper_status=ret;
+            if(ret==STATUS_TIMEOUT) break;
+            /* The real WaitAny caller rechecks acquisition after every
+             * non-timeout primitive return. Keep the original deadline. */
+            if(ret==STATUS_SUCCESS && !check_shm_contention(shm,is_alert?objects+3:NULL,2,7))
+                shared->lower_success_unready++;
+            if(SINGLE_WAIT_ADAPTER) break;
+        }
+        shared->elapsed_ns=now_ns()-started;
+        if(late_ack) {
+            require(!pthread_join(observer,NULL),"owned park observer joined");
+            mach_port_deallocate(mach_task_self(),healthy_thread);
+        }
+        if(ret==STATUS_TIMEOUT) require(!update_timeout(end),"terminal timeout reached original deadline");
         __atomic_store_n(&shared->result,ret,__ATOMIC_RELEASE);
         __atomic_store_n(&shared->done,1,__ATOMIC_RELEASE);
     }
@@ -243,7 +323,8 @@ int main(int argc,char **argv) {
     if(!strcmp(argv[2],"normal-map")) {
         normal_mapping(); no_entry_right(); printf("PASS normal-map actual exported bytes rights=released backend=%s\n",argv[1]);
     } else {
-        int is_dead=!strcmp(argv[2],"dead-client"), is_alert=!strcmp(argv[2],"full-alert");
+        late_ack=!strcmp(argv[2],"late-ack");
+        int is_dead=!strcmp(argv[2],"dead-client") || late_ack, is_alert=!strcmp(argv[2],"full-alert");
         receive_port=private_port();
         mach_port_limits_t limits={64};
         require(mach_port_set_attributes(mach_task_self(),receive_port,MACH_PORT_LIMITS_INFO,(mach_port_info_t)&limits,MACH_PORT_LIMITS_INFO_COUNT)==KERN_SUCCESS,"server bounded queue");
@@ -267,7 +348,21 @@ int main(int argc,char **argv) {
         __atomic_store_n(&stopping,1,__ATOMIC_RELEASE); header_send(receive_port,STOP_ID); require(!pthread_join(pump,NULL),"pump joined");
         require(!nodes,"all registration nodes removed");
         require(!objects[1].multiple_waiters && !objects[2].multiple_waiters && !objects[3].multiple_waiters,"waiter refs balanced");
-        require(result==(is_alert?STATUS_PENDING:STATUS_TIMEOUT) || (is_alert && result==STATUS_SUCCESS),"healthy cancel/timeout result");
+        printf("healthy observation helper_status=%#x attempts=%d unready_success=%d ulock_addr=tid7 op=%#x value=%llu ret=%d word=%d timeout_ns=%llu child_alert_at_completion=%d elapsed_ns=%llu\n",
+               shared->helper_status,shared->attempts,shared->lower_success_unready,shared->last_ulock_op,
+               (unsigned long long)shared->last_ulock_value,shared->last_ulock_ret,shared->last_ulock_word,
+               (unsigned long long)shared->last_ulock_ns,shared->terminal_alert_observed,(unsigned long long)shared->elapsed_ns);
+        fflush(stdout);
+        if(late_ack) {
+            printf("native late-ACK observation helper_success_unready=%d syscall_ret=%d value=%llu word=%d timeout_ns=%llu objects=0,0 alert=0 attempts=%d elapsed_ns=%llu\n",
+                   shared->lower_success_unready,shared->native_ret,(unsigned long long)shared->native_value,shared->native_word,
+                   (unsigned long long)shared->native_timeout_ns,shared->attempts,(unsigned long long)shared->elapsed_ns);
+            fflush(stdout);
+            require(shared->normal_parked && shared->lower_success_unready>=1 && shared->native_ret==0 &&
+                    shared->native_word==1 && shared->native_value==1,"real unready late ACK wake observed");
+        }
+        require(result==(is_alert?STATUS_PENDING:STATUS_TIMEOUT),"healthy cancel/timeout result");
+        if(is_alert) require(shared->terminal_alert_observed && __atomic_load_n(&objects[3].low,__ATOMIC_ACQUIRE),"child observed terminal alert before completion");
         require(shared->sends==1,"one actual export reply attempt");
         if(!blocked) require(is_dead?shared->invalid_dest==1:shared->timed_out==1,"real failed send result");
         no_entry_right();

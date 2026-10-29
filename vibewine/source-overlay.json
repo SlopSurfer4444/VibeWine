@@ -1879,6 +1879,26 @@
       "source": "publication-20261029/vibewine/tests/native-cursor-warp/run.py",
       "destination": "vibewine/tests/native-cursor-warp/run.py",
       "sha256": "128634cad9d06f9d9385ab740c1b23713ce4acee99c731dfafd7d9b50d377fd9"
+    },
+    {
+      "source": "publication-ci-pump-20261029/vibewine/PUBLICATION-20261029.json",
+      "destination": "vibewine/PUBLICATION-20261029.json",
+      "sha256": "0f1c5fa76b2e6785ab161e4bef1fa2fec887568076ebdb4544b06daa05c08928"
+    },
+    {
+      "source": "publication-ci-pump-20261029/vibewine/tests/msync-pump-liveness/README.md",
+      "destination": "vibewine/tests/msync-pump-liveness/README.md",
+      "sha256": "70cffa373627c4f57ef59cedb5d2884ac668a0be451d2d60f223659f18194045"
+    },
+    {
+      "source": "publication-ci-pump-20261029/vibewine/tests/msync-pump-liveness/fixture.c.in",
+      "destination": "vibewine/tests/msync-pump-liveness/fixture.c.in",
+      "sha256": "ce901f566c461a7989c1a0bf3098899c4448666e08367351e46823c9675e2688"
+    },
+    {
+      "source": "publication-ci-pump-20261029/vibewine/tests/msync-pump-liveness/run.py",
+      "destination": "vibewine/tests/msync-pump-liveness/run.py",
+      "sha256": "bbbecde36bf67877a9daac49b27b3bf6d7aa72c8243b7296da8b3d64d8b23f8f"
     }
   ]
 }

@@ -45,5 +45,12 @@
   "previousPublicHead": "cd7f2eda6d9ebbfc2e8bbe6fb4ffd9ef4a90c327",
   "previousPublicationMap": "publication-20261028",
   "productionTreeUnchangedByOverlay": true,
-  "limits": "Source-equivalent commits have exact audited Git trees. This follow-up only repairs test/docs references and Wine source verification metadata; it is not another build, game validation or FPS result."
+  "limits": "Source-equivalent commits have exact audited Git trees. This follow-up only repairs test/docs references and Wine source verification metadata; it is not another build, game validation or FPS result.",
+  "pumpFixtureCompatibilityRepair": {
+    "previousPublishedHead": "b24c04f9d74bba5bcd6df13a0b3535f107161261",
+    "scope": "MSync pump test adapter and source-verification hashes only",
+    "contract": "Retry non-timeout lower wait returns under the original absolute deadline; recheck unsignaled objects and actual child-observed alert; preserve strict final timeout/alert oracle",
+    "proof": "Real gated late-ACK wake reproduces the single-call adapter defect; arm64/x86_64 sanitized candidate, historical blocked-ACK controls and cleanup/adapter negative controls; bounded32-case unsanitized stress",
+    "limits": "Exact syscall result and scheduling in the original hosted failure were not recorded; controlled proof establishes the adapter defect, not that exact interleaving. No production/runtime/game/FPS change."
+  }
 }

@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--expect-blocked', action='store_true')
     parser.add_argument('--sanitize', action='store_true')
     parser.add_argument('--generate-only', action='store_true')
-    parser.add_argument('--mutation', choices=('missing-failed-send-cleanup',))
+    parser.add_argument('--mutation', choices=('missing-failed-send-cleanup', 'single-wait-adapter'))
     parser.add_argument('--output', type=Path, help='private bounded evidence directory')
     args = parser.parse_args()
     if args.expect_blocked and not args.revision:
@@ -65,13 +65,13 @@ def main():
         'grow_tid_map', 'get_tid_list', 'add_tid', 'remove_tid', 'send_shm_to_client',
         'unregister_wait', 'wake_tid_word', 'wake_tid', 'signal_all_internal',
         'receive_mach_msg', 'decode_msgh_id', 'check_bit', 'mach_message_pump'))
-    if args.mutation:
+    if args.mutation == 'missing-failed-send-cleanup':
         cleanup = '        mach_msg_destroy( &reply.header );'
         if servers.count(cleanup) != 1:
             raise RuntimeError('failed-send mutation requires exactly one cleanup')
         servers = servers.replace(cleanup, '        /* Deliberate missing-cleanup negative control. */')
     ack = function(server, 'acknowledge_wait').replace(' acknowledge_wait(', ' production_acknowledge_wait(', 1)
-    generated = ((here / 'fixture.c.in').read_text()
+    generated = ('#define SINGLE_WAIT_ADAPTER ' + str(int(args.mutation == 'single-wait-adapter')) + '\n' + (here / 'fixture.c.in').read_text()
                  .replace('@WRAPPER@', wrapper).replace('@CLIENT_CONSTANTS@', constants)
                  .replace('@CLIENT@', clients).replace('@SERVER_ACK@', ack).replace('@SERVER@', servers))
     if '@' in generated:
@@ -104,7 +104,10 @@ def main():
         subprocess.run(command, check=True, timeout=60)
         results = []
         for backend in ('trap', 'fallback'):
-            for case in (('full-timeout',) if args.mutation else ('full-timeout', 'full-alert', 'dead-client', 'normal-map')):
+            cases = (('full-timeout',) if args.mutation == 'missing-failed-send-cleanup' else
+                     ('late-ack',) if args.mutation == 'single-wait-adapter' else
+                     ('full-timeout', 'full-alert', 'dead-client', 'normal-map', 'late-ack'))
+            for case in cases:
                 result = subprocess.run([str(binary), backend, case], text=True, capture_output=True, timeout=12)
                 observation = {'backend': backend, 'case': case, 'returncode': result.returncode,
                                'stdout': result.stdout, 'stderr': result.stderr}
@@ -114,7 +117,11 @@ def main():
                 print(json.dumps(observation), flush=True)
                 expected = args.expect_blocked and case.startswith('full-')
                 label = 'FAIL independent ACK blocked behind full reply queue'
-                if args.mutation:
+                if args.mutation == 'single-wait-adapter':
+                    if (result.returncode != 2 or 'healthy cancel/timeout result' not in result.stderr
+                            or 'helper_success_unready=1 syscall_ret=0 value=1 word=1' not in result.stdout):
+                        raise RuntimeError('one-shot adapter did not fail strict timeout oracle after native late ACK')
+                elif args.mutation == 'missing-failed-send-cleanup':
                     if result.returncode != 2 or 'invocation entry send right released' not in result.stderr:
                         raise RuntimeError('missing-cleanup control did not fail owned-right oracle')
                 elif expected:
