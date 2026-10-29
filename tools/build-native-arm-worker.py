@@ -37,6 +37,22 @@ def tool_output(command):
     return subprocess.check_output(command, text=True, timeout=30).strip()
 
 
+def worker_info(executable, build_id):
+    """Inspect this just-built executable before admitting its receipt."""
+    architectures = tool_output(['xcrun', 'lipo', '-archs', str(executable)]).split()
+    if architectures != ['arm64']:
+        raise ValueError('worker must contain only native arm64: ' + repr(architectures))
+    raw = subprocess.check_output([str(executable), '--build-info'], timeout=5)
+    if len(raw) > 1024:
+        raise ValueError('worker build-info exceeds 1024-byte cap')
+    info = json.loads(raw)
+    expected = {'schema': 'dxmt-native-arm-worker-info-v1', 'build_id': build_id,
+                'architecture': 'arm64', 'protocol': 2, 'max_requests': 256}
+    if info != expected:
+        raise ValueError('worker embedded build-info does not match builder inputs')
+    return info
+
+
 def meson_list(path, name, files=False):
     # Read the existing static Meson declarations, never execute/evaluate them.
     text = re.sub(r'#.*', '', path.read_text())
@@ -249,9 +265,10 @@ def main():
         checked = prepare(args)
         if checked[-1] != build_id:
             raise RuntimeError('input inventory/content/toolchain changed during build')
-        subprocess.run(['xcrun', 'lipo', '-verify_arch', 'arm64', str(executable)], check=True, timeout=30)
+        embedded = worker_info(executable, build_id)
         receipt.update(status='built', wall_seconds=time.monotonic() - start,
-                       executable={'path': str(executable), 'sha256': sha(executable), 'bytes': executable.stat().st_size})
+                       executable={'path': str(executable), 'sha256': sha(executable), 'bytes': executable.stat().st_size,
+                                   'architectures': ['arm64'], 'embedded_info': embedded})
         (output / 'bridge-build-id.txt').write_text(build_id + '\n')
         save()
         summary.update(executable=receipt['executable'], wall_seconds=receipt['wall_seconds'])

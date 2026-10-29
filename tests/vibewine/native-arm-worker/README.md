@@ -55,6 +55,35 @@ concurrent calls, rotation, pipe failures, identity mismatch, cancellation/reapi
 FD/environment isolation and deadlines including CPU cost. Measure cold spawn and
 warm IPC separately. Tiny owned fixtures do not establish game compatibility or FPS.
 
+`run-bridge.py` versions that real compiler-boundary acceptance. Build
+`bridge_fixture.cpp`, `full_recipe_fixture.cpp` and `cap_fixture.cpp` for x86_64
+with assertions enabled (`-UNDEBUG`), the current converter/parser sources and
+the current Unix bridge compiled with `-DDXMT_WORKER_TESTING`. Use the ARM
+builder's exact build ID for both the bridge and test objects. Do not link the
+worker main into these three test executables. Existing LLVM15 x86_64 archives
+remain separate from the ARM64 archives used by the actual worker.
+
+```sh
+python3 tests/vibewine/native-arm-worker/run-bridge.py \
+  --worker /absolute/airconv-worker-arm64 \
+  --bridge-executable /absolute/bridge-x86_64 \
+  --full-recipe-executable /absolute/full-recipe-x86_64 \
+  --cap-executable /absolute/cap-x86_64 \
+  --fixtures tests/vibewine/native-arm-worker/fixtures \
+  --output-dir /absolute/new-owned-acceptance-output
+```
+
+The runner requires a fresh output directory, matches executable-reported worker
+and bridge IDs/architectures, compares every AIR against the direct x64 converter,
+and records actual remote-success counts. It covers four unchanged Wine fixtures,
+common flags, all nine recipe nodes, synchronized host contention, 258-request
+rotation, shutdown, retained diagnostics, cancellation, FD/environment isolation,
+pipe/protocol/identity/cap failures, and half-close CPU cost. Its whole-run wall
+cap is85seconds (configurable30..90), each child has a bounded deadline/output,
+and task-owned process groups are killed/reaped on success or failure. Python
+`-O` is rejected. The source arrays, LGPL text and exact fixture provenance are
+under `fixtures/`; no game shaders are collected.
+
 ## Data lifecycle
 
 Owner: native compiler bridge within the process. Scope: ordinary shader DXBC,
@@ -71,3 +100,11 @@ The separately owned 2026-10-28 validation artifacts are described in that run's
 RETENTION.md: logs 7 days/32 MiB, results 30 days/8 MiB, builds 256 MiB; active
 integration holds override expiry. Cleanup is manual and must recheck exact
 ownership, active use and holds. No installed cleanup or vendor retention claim.
+
+For a new harness run, the caller owns the exact fresh output directory. Raw AIR
+evidence expires after7days with32MiB aggregate cap; JSON results expire
+after30days with8MiB cap; combined output cap40MiB. Fault shims and PID/FD reports
+are ephemeral validation evidence under the same seven-day log policy. Active
+integration, unresolved findings and explicit recovery pins are holds. Cleanup
+requires exact ownership, process absence and hold/reference rechecks; skip
+symlinks and unknown/changing objects. These are manual retention obligations.

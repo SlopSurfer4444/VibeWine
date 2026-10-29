@@ -57,6 +57,17 @@ The output contains:
   commands, executable hash and build result.
 - `build.log` and owned object files.
 
+The executable supports `--build-info`, a bounded one-line JSON object with schema
+`dxmt-native-arm-worker-info-v1`, embedded `build_id`, compiled `architecture`,
+`protocol` and `max_requests`. This command does not initialize LLVM, open a pipe,
+or create a child. Other command-line arguments are rejected. The builder admits
+the artifact only after its Mach-O slices are exactly `arm64` and this actual
+binary reports the expected identity, architecture and protocol; the result is
+recorded in `executable.embedded_info`. The neighboring text file alone is not
+binary identity evidence. A packager should recheck the executable hash, execute
+`--build-info`, and match its build ID to the bridge's expected build ID before
+setting the explicit opt-in for that process.
+
 Identity schema `dxmt-native-arm-worker-build-v2` hashes the current converter,
 bridge, protocol and recipe source/headers, selected DirectX headers, generated
 helpers, LLVM archives and

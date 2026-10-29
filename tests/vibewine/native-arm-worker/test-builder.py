@@ -8,12 +8,33 @@ import subprocess
 import sys
 import tempfile
 import time
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location('native_worker_builder', ROOT / 'tools/build-native-arm-worker.py')
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 checks = []
+build_id = 'a' * 64
+expected = {'schema': 'dxmt-native-arm-worker-info-v1', 'build_id': build_id,
+            'architecture': 'arm64', 'protocol': 2, 'max_requests': 256}
+with patch.object(builder, 'tool_output', return_value='arm64'), \
+     patch.object(builder.subprocess, 'check_output', return_value=json.dumps(expected).encode()):
+    assert builder.worker_info(Path('/owned/worker'), build_id) == expected
+    try:
+        builder.worker_info(Path('/owned/worker'), 'b' * 64)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('stale embedded build identity accepted')
+with patch.object(builder, 'tool_output', return_value='x86_64 arm64'):
+    try:
+        builder.worker_info(Path('/owned/worker'), build_id)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('universal/translated worker accepted as native-only')
+checks.append('embedded-identity-and-native-architecture-admission')
 with tempfile.TemporaryDirectory(prefix='dxmt-native-builder-controls-') as scratch:
     directory = Path(scratch)
     declaration = directory / 'meson.build'
