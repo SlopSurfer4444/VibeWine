@@ -105,6 +105,8 @@ def presentation_analysis(events, summary, profile, wave7, chunks, detailed, sta
         bad('unjoined_or_boundary_presentation_records')
     if not joined:
         bad('no_complete_identity_joined_frames')
+    if wave7.get('unavailable_native_presented_times'):
+        bad('unavailable_native_presented_time')
     if not any(c['intervals'] for c in wave7['native_presented_cadence']):
         bad('no_consecutive_native_cadence')
     if not all(f['strict_accepted'] and f['configuration_revision'] for f in feedback.values()):
@@ -132,8 +134,13 @@ def presentation_analysis(events, summary, profile, wave7, chunks, detailed, sta
     if profile['name']=='combined-bounded' and any(any(count>1 for count in g.values()) for g in close_groups.values()):bad('duplicate_native_close_part')
     if any(g!=Counter({75:1,78:1}) for g in close_groups.values()):bad('incomplete_or_duplicate_native_close_pair')
     for c in wave7['native_session_closes']:
-        if c['status'] or c['live_handler_tickets_at_close'] or c['abandoned_handler_count']:
+        if c['status'] or c['abandoned_handler_count']:
             bad('native_close_incomplete')
+        elif c['live_handler_tickets_at_close']:
+            # CLOSE never waits for copied Metal handler blocks to be released.
+            # Successful live-ticket accounting is an incomplete coverage tail;
+            # errors/abandonment and all counter/duplicate guards stay failures.
+            bad('native_close_pending_handlers')
     for c in wave7['native_close_queued_discard_accounting']:
         if profile['name']=='combined-bounded' and c['status']:bad('native_close_accounting_failure')
         if profile['name']=='combined-bounded' and c['queued_discarded']:bad('observed_native_close_discard')

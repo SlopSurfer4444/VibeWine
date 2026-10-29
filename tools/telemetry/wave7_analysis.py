@@ -19,7 +19,7 @@ def host_time(e):
 def wave7_analysis(events,summary,rejected,stats,expected_dimensions=None,expected_revision=None):
     frames=defaultdict(lambda:defaultdict(list));countergroups=defaultdict(lambda:defaultdict(list))
     capabilities=[];closes=[];failures=[];snapshots=[];apis=[];apply_failures=[];close_accounting=[]
-    raw_feedback=[];unidentified_feedback=0
+    raw_feedback=[];unidentified_feedback=0;unavailable_times=[]
     for e in events:
         t=e['type']
         if t in (44,45) and e['object'] and e['end']>=e['start']:
@@ -86,7 +86,7 @@ def wave7_analysis(events,summary,rejected,stats,expected_dimensions=None,expect
         records=[e for values in group.values() for e in values]
         if any(e['start']!=e['end'] for e in records):
             rejected['invalid_wave7_identity_or_noninstant']+=1;reasons.append('noninstant_feedback')
-        if any(e['flags'] for t in (72,73) for e in group.get(t,[])):
+        if any(not e['thread'] for e in records) or any(e['flags'] for t in (72,73) for e in group.get(t,[])):
             rejected['invalid_feedback_frame_identity_or_flags']+=1;reasons.append('invalid_companion_flags')
         if len({e['start'] for e in records})>1:
             if not duplicate:row['join_state']='receipt_disagreement'
@@ -99,7 +99,14 @@ def wave7_analysis(events,summary,rejected,stats,expected_dimensions=None,expect
         # Timestamp observations remain visible even when a companion is rejected.
         for e in group.get(71,[]):
             value,valid,domain,positive=host_time(e)
-            if not valid:
+            # The producer intentionally retains an unavailable +0 timestamp
+            # with CA-domain flags and its positive-time validity bit unset.
+            # This is incomplete presentation proof, not a contradictory record.
+            unavailable=e['flags']==1 and e['padding1']==0
+            if unavailable:
+                unavailable_times.append(dict(swapchain=swapchain,frame=frame,event_index=e['index']))
+                reasons.append('presented_time_unavailable')
+            elif not valid:
                 rejected['invalid_native_presented_timestamp_or_domain_flags']+=1
                 reasons.append('invalid_timestamp_or_domain_flags')
             if len(group[71])==1:
@@ -146,4 +153,4 @@ def wave7_analysis(events,summary,rejected,stats,expected_dimensions=None,expect
         counters.append(row)
     loss={k:summary.get(k,0) for k in ('dropped_before','dropped_after','uncommitted_reserved','boundary_rejected_total','wrong_generation')}
     loss.update({k:summary.get(k) for k in ('structurally_complete','producer_quiescence_verified','inconclusive_window','counters_changed')})
-    return {'raw_native_feedback_records':raw_feedback,'strict_acceptance':{'expected_dimensions':expected_dimensions,'expected_revision':expected_revision,'expected_configuration_supplied':expected_dimensions is not None and expected_revision is not None,'unidentified_feedback_records':unidentified_feedback,'capture_identity_quality_ok':unidentified_feedback==0},'native_presented_frames':frame_rows,'native_presented_cadence':cadence,'capabilities':capabilities,'native_counter_samples':counters,'native_session_closes':closes,'native_close_queued_discard_accounting':close_accounting,'native_configuration_apply_failures':apply_failures,'native_feedback_failures':failures,'resize_api_chronology':sorted(apis,key=lambda x:(x['start_cpu_ns'],x['event_index'])),'resize_snapshots':sorted(snapshots,key=lambda x:(x['receipt_cpu_ns'],x['event_index'])),'pe_capture_loss_evidence':loss,'limits':['Native feedback is drained on later Present or teardown; the last or single frame can remain outside capture. V2 writer quiescence is not native feedback finalization.', 'Event 78 reports negotiated queued record discards at CLOSE, not GPU drops, uncalled callbacks, or final pending-ticket totals; unsupported accounting stays unknown.', 'PE receipt timestamps and CoreAnimation host timestamps are separate domains; display latency is unavailable.','Strict presented cadence requires unique valid 71/72/73 triplets with matching receipt and consecutive identities, unchanged drawable dimensions and revision. Expected configuration filters are optional; without both, this is not acceptance of the requested game configuration. CPU Present cadence is separate.','A missing feedback record or resize sample is incomplete observation, never proof of a GPU drop.','Native overflow and rejection counters are separate from PE capture loss and callback observations.','Native pending and close live-ticket counts describe handler lifetime, including fired callbacks still alive; never missing-frame counts.','Resize snapshots are sampled instants; interval joins are diagnostic and do not assert atomic state or configuration revision equivalence.','Native frame geometry and revision join only by generation/swapchain/frame; resize has no revision identifier.']}
+    return {'raw_native_feedback_records':raw_feedback,'unavailable_native_presented_times':unavailable_times,'strict_acceptance':{'expected_dimensions':expected_dimensions,'expected_revision':expected_revision,'expected_configuration_supplied':expected_dimensions is not None and expected_revision is not None,'unidentified_feedback_records':unidentified_feedback,'capture_identity_quality_ok':unidentified_feedback==0},'native_presented_frames':frame_rows,'native_presented_cadence':cadence,'capabilities':capabilities,'native_counter_samples':counters,'native_session_closes':closes,'native_close_queued_discard_accounting':close_accounting,'native_configuration_apply_failures':apply_failures,'native_feedback_failures':failures,'resize_api_chronology':sorted(apis,key=lambda x:(x['start_cpu_ns'],x['event_index'])),'resize_snapshots':sorted(snapshots,key=lambda x:(x['receipt_cpu_ns'],x['event_index'])),'pe_capture_loss_evidence':loss,'limits':['Native feedback is drained on later Present or teardown; the last or single frame can remain outside capture. V2 writer quiescence is not native feedback finalization.', 'Event 78 reports negotiated queued record discards at CLOSE, not GPU drops, uncalled callbacks, or final pending-ticket totals; unsupported accounting stays unknown.', 'PE receipt timestamps and CoreAnimation host timestamps are separate domains; display latency is unavailable.','Strict presented cadence requires unique valid 71/72/73 triplets with matching receipt and consecutive identities, unchanged drawable dimensions and revision. Expected configuration filters are optional; without both, this is not acceptance of the requested game configuration. CPU Present cadence is separate.','A missing feedback record or resize sample is incomplete observation, never proof of a GPU drop.','Native overflow and rejection counters are separate from PE capture loss and callback observations.','Native pending and close live-ticket counts describe handler lifetime, including fired callbacks still alive; never missing-frame counts.','Resize snapshots are sampled instants; interval joins are diagnostic and do not assert atomic state or configuration revision equivalence.','Native frame geometry and revision join only by generation/swapchain/frame; resize has no revision identifier.']}

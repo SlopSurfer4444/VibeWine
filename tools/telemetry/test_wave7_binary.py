@@ -53,7 +53,9 @@ class Wave7Binary(tests_cli.CLITests):
         self.assertTrue(all(not r['native_presented_time_valid'] for r in rows[:-1]))
         self.assertIsNone(rows[2]['native_presented_seconds'])
         self.assertFalse(a['wave7']['native_presented_cadence'])
-        self.assertEqual(a['rejections']['invalid_native_presented_timestamp_or_domain_flags'],5)
+        self.assertEqual(a['rejections']['invalid_native_presented_timestamp_or_domain_flags'],4)
+        self.assertEqual(len(a['wave7']['unavailable_native_presented_times']),1)
+        self.assertEqual(a['wave7']['unavailable_native_presented_times'][0]['frame'],2)
 
     def test_flag_domain_and_validity_disagreement(self):
         es=[event(71,i+1,bits(10.0),flags) for i,flags in enumerate([1,0x102,0x301])]
