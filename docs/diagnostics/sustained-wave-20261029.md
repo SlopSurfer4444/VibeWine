@@ -37,8 +37,24 @@ ARM worker identity is
 The separate lifecycle source adds an explicit closed experiment route and
 extends the verified DS3 inactive-server cold-start probe from250ms to3s; other
 routes retain their budgets. Four mutually pinned helpers were updated together,
-with exact installed readback and unchanged-native/no-op verification. This is
-not installation of the new engine. No new gameplay FPS result exists yet.
+with exact installed readback and unchanged-native/no-op verification. The
+matched engine was then adopted by control intent `d029bcfc`; all 32 after-images,
+including 22 runtime files and four prefix graphics DLLs, match. Installed status
+reports `runtimeVerified=true`; a subsequent supported upgrade converges with
+`changed=false`. The sealed native closure passed an isolated
+five-library load and a 256-pixel offscreen oracle before adoption.
+
+The selected ARM worker is staged separately. Its bounded --build-info probe and
+installed bridge/provenance identities agree; it is not activated by normal play.
+The Metal4 and foreground-cursor experiments remain explicit process opt-ins.
+
+The owner closed the baseline game and deferred further play. The observer was
+ready before dispatch, proved fresh increasing records after binding the game
+process, and closed cleanly after its exit, retaining 60 accepted intervals. No loaded-world scene
+was observed and detailed capture was not armed. The fresh collector/controller
+passes all 301 offline checks; a post-install future session is prepared disabled.
+New-runtime game, native cursor gesture and controlled FPS acceptance are deferred by that explicit stop. No
+new launch or collector is started afterward.
 
 A valid comparison needs the same scene, resolution, cache/power conditions and
 collection overhead. Aggregate displayed counters, unknown scene boundaries,
