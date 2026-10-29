@@ -2,7 +2,7 @@
 
 ## Sustained continuation, 29 October 2026
 
-Current component `ae1d0e73b4384130dd6db33c49c28be02999b500`. The [sustained continuation](../diagnostics/sustained-wave-20261029.md) adds independently checked general repairs and bounded experiments.
+Current published component `b24c04f9d74bba5bcd6df13a0b3535f107161261`. The [publication map](publication-20261029.json) links exact audited source equivalents. The [sustained continuation](../diagnostics/sustained-wave-20261029.md) adds independently checked general repairs and bounded experiments.
 
 Previous component `271e5cdaa93c5a49c7cb219479cff36ead7cd8c8`. The [next-wave report](../diagnostics/next-wave-20261028.md)
 and [patch map](../PATCHES.md) separate general repairs, opt-in compilers,

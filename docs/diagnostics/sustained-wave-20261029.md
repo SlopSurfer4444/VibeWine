@@ -1,9 +1,9 @@
 # Sustained-performance continuation — 29 October 2026
 
-This wave continues all eight accepted directions. The current source pins are
+This wave continues all eight accepted directions. The audited local build-source pins are
 DXMT `a422a9324e6c655e43cfeb53423497e3ca390a0e` and Wine
 `ae1d0e73b4384130dd6db33c49c28be02999b500`. General engine changes contain no
-DS3 title detection. Selection of a private DS3 runtime and bounded diagnostic
+DS3 title detection. The [publication map](../provenance/publication-20261029.json) links each local identity to a public exact-tree equivalent; later publication-only fixes update tests and source-verification metadata. Selection of a private DS3 runtime and bounded diagnostic
 experiments belongs to the separate lifecycle owner.
 
 | Direction | Concrete change | Observed evidence and limit |

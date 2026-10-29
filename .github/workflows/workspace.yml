@@ -53,13 +53,13 @@ jobs:
       - run: python3 components/wine/vibewine/tests/thread-exit/run.py --sanitize --repetitions 2
       - run: python3 components/wine/vibewine/tests/backports.py
       - run: python3 components/wine/vibewine/tests/msync-alert-ownership/run.py --sanitize
-      - run: python3 components/wine/vibewine/tests/msync-alert-ownership/run.py --revision 5ed4c56bafab70a772b5e9bf88eee272de9bdd3a --expect-regression --sanitize
+      - run: python3 components/wine/vibewine/tests/msync-alert-ownership/run.py --revision 112937399b7bc2b53881a3f10db500786ca7b034 --expect-regression --sanitize
       - run: python3 components/wine/vibewine/tests/msync-memory-ownership/run_table.py --sanitize
-      - run: python3 components/wine/vibewine/tests/msync-memory-ownership/run_table.py --revision 5ed4c56bafab70a772b5e9bf88eee272de9bdd3a --expect-regression --sanitize
+      - run: python3 components/wine/vibewine/tests/msync-memory-ownership/run_table.py --revision 112937399b7bc2b53881a3f10db500786ca7b034 --expect-regression --sanitize
       - run: python3 components/wine/vibewine/tests/msync-deadline/run.py --sanitize
-      - run: python3 components/wine/vibewine/tests/msync-deadline/run.py --revision bb2c891987c9551329fc7dfbb7c7f41abfceb582 --expect-regression --sanitize
+      - run: python3 components/wine/vibewine/tests/msync-deadline/run.py --revision 506004b729856034a7d280f0ab505a8b3cfe54d6 --expect-regression --sanitize
       - run: python3 components/wine/vibewine/tests/msync-freehint/run.py --sanitize
-      - run: python3 components/wine/vibewine/tests/msync-freehint/run.py --revision bb2c891987c9551329fc7dfbb7c7f41abfceb582 --expect-regression --sanitize
+      - run: python3 components/wine/vibewine/tests/msync-freehint/run.py --revision 506004b729856034a7d280f0ab505a8b3cfe54d6 --expect-regression --sanitize
       - run: python3 components/wine/vibewine/tests/native-cursor-focus/run.py
       - run: python3 components/wine/vibewine/tests/msync_registration.py --source-dir components/wine
       - run: python3 components/wine/vibewine/tests/address-wait/run.py --sanitize
@@ -72,7 +72,7 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/chromaticity-lifetime/run.py
         working-directory: components/dxmt
-      - run: python3 tests/vibewine/chromaticity-lifetime/run.py --baseline-ref bbf22e6a41b383fe67be9dbba80c9f682908c01a
+      - run: python3 tests/vibewine/chromaticity-lifetime/run.py --baseline-ref f871ff41c29c240eda3a6f962c9d48f9e6c2d1fd
         working-directory: components/dxmt
       - run: python3 tests/vibewine/context-locks/run.py --sanitize
         working-directory: components/dxmt
@@ -146,13 +146,13 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/reftracker-retirement/run.py --sanitize
         working-directory: components/dxmt
-      - run: python3 tests/vibewine/reftracker-retirement/run.py --sanitize --source-ref 40e7b88f7f10240d3fe00c4b69669816b1f3791a --expect-retained-baseline
+      - run: python3 tests/vibewine/reftracker-retirement/run.py --sanitize --source-ref a6637cfe2c5f6a2c13ec17290e359f86b163de6e --expect-retained-baseline
         working-directory: components/dxmt
       - run: python3 tests/vibewine/packed-ir-compaction/run.py
         working-directory: components/dxmt
       - run: python3 tests/vibewine/dxgi-resource-usage/run.py
         working-directory: components/dxmt
-      - run: python3 tests/vibewine/dxgi-resource-usage/run.py --baseline-ref 40e7b88f7f10240d3fe00c4b69669816b1f3791a
+      - run: python3 tests/vibewine/dxgi-resource-usage/run.py --baseline-ref a6637cfe2c5f6a2c13ec17290e359f86b163de6e
         working-directory: components/dxmt
       - run: python3 tests/vibewine/ring-checked/run.py --sanitize
         working-directory: components/dxmt
@@ -182,7 +182,7 @@ jobs:
         working-directory: components/dxmt
       - run: python3 tests/vibewine/query-publication/run.py --sanitize thread
         working-directory: components/dxmt
-      - run: python3 tests/vibewine/query-publication/run.py --source-ref 8cf59a015b88361ed6f6320eb8a781c68b3b36c1 --expect-frontier-baseline --sanitize address
+      - run: python3 tests/vibewine/query-publication/run.py --source-ref e3845197978e3fde46a07b584073ba499fd0b25b --expect-frontier-baseline --sanitize address
         working-directory: components/dxmt
       - run: python3 tests/vibewine/pso-normalization/run.py --arch arm64
         working-directory: components/dxmt
@@ -211,4 +211,14 @@ jobs:
       - run: python3 tests/vibewine/native-arm-worker/test-builder.py
         working-directory: components/dxmt
       - run: python3 tests/vibewine/queue-failure-contract/run.py --sanitize
+        working-directory: components/dxmt
+      - run: python3 components/wine/vibewine/tests/msync-pump-liveness/run.py
+      - run: python3 components/wine/vibewine/tests/native-cursor-warp/run.py
+      - run: python3 tests/vibewine/initializer-completion-refresh/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/adjacent-clear/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/queue-terminal/run.py
+        working-directory: components/dxmt
+      - run: python3 tests/vibewine/queue-terminal/creation.py
         working-directory: components/dxmt

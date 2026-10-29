@@ -1,0 +1,261 @@
+{
+  "schema": 1,
+  "date": "2026-10-29",
+  "components": {
+    "wine": {
+      "localBase": "864a0f9f11f03871d67d27af2997802d555e0a2a",
+      "publicBase": "cd7f2eda6d9ebbfc2e8bbe6fb4ffd9ef4a90c327",
+      "localSource": "ae1d0e73b4384130dd6db33c49c28be02999b500",
+      "sourceEquivalent": "274bb0ffe759bf2e6f422b1c340b1d6e47ed63b3",
+      "mapping": [
+        {
+          "localCommit": "5ed4c56bafab70a772b5e9bf88eee272de9bdd3a",
+          "publicEquivalent": "112937399b7bc2b53881a3f10db500786ca7b034",
+          "tree": "7ef26872a273030386cd61975e74f017e238d67e",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "bb2c891987c9551329fc7dfbb7c7f41abfceb582",
+          "publicEquivalent": "506004b729856034a7d280f0ab505a8b3cfe54d6",
+          "tree": "b10fbd9e488466b759adfcc6256f8a2d68d8ea33",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "271e5cdaa93c5a49c7cb219479cff36ead7cd8c8",
+          "publicEquivalent": "b6d49057b9f473eb0a903b80f6942e0594afa514",
+          "tree": "6ad1ebff3a7b79db1a7026b163e23663a8611803",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "237eab393bf23c1100e16f039833b36075c28455",
+          "publicEquivalent": "4b42c480a058fa4af9c3e5d01e0c97792ba1eb9a",
+          "tree": "182ddddbe82e5f811fc65554bc6d0bf5d32ff451",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "d4e9f2b1c62d5de143dce5f0593d91187ddcfd99",
+          "publicEquivalent": "3cf5dac3fdd2c17e252261f8ff276e97075c1538",
+          "tree": "fbdcfde5f8b4254aa6b676df7acd395063d829db",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "ae1d0e73b4384130dd6db33c49c28be02999b500",
+          "publicEquivalent": "274bb0ffe759bf2e6f422b1c340b1d6e47ed63b3",
+          "tree": "e753510489ad32ee21f41343127f45e0b6c990a4",
+          "treeEqual": true
+        }
+      ],
+      "updatedSourceRegistrations": [
+        "dlls/winemac.drv/cocoa_app.h",
+        "dlls/winemac.drv/cocoa_app.m",
+        "dlls/winemac.drv/macdrv_cocoa.h",
+        "dlls/winemac.drv/mouse.c",
+        "server/msync.c",
+        "vibewine/PUBLICATION-20261029.json",
+        "vibewine/tests/msync-alert-ownership/README.md",
+        "vibewine/tests/msync-deadline/README.md",
+        "vibewine/tests/msync-freehint/README.md",
+        "vibewine/tests/msync-memory-ownership/TABLE_README.md",
+        "vibewine/tests/msync-pump-liveness/README.md",
+        "vibewine/tests/msync-pump-liveness/fixture.c.in",
+        "vibewine/tests/msync-pump-liveness/run.py",
+        "vibewine/tests/native-cursor-focus/run.py",
+        "vibewine/tests/native-cursor-warp/README.md",
+        "vibewine/tests/native-cursor-warp/fixture.m.in",
+        "vibewine/tests/native-cursor-warp/owned-window.c",
+        "vibewine/tests/native-cursor-warp/run.py"
+      ],
+      "publishedHead": "b24c04f9d74bba5bcd6df13a0b3535f107161261",
+      "publicationOnlyPaths": [
+        "vibewine/PUBLICATION-20261029.json",
+        "vibewine/source-overlay.json",
+        "vibewine/tests/msync-alert-ownership/README.md",
+        "vibewine/tests/msync-deadline/README.md",
+        "vibewine/tests/msync-freehint/README.md",
+        "vibewine/tests/msync-memory-ownership/TABLE_README.md",
+        "vibewine/tests/msync-pump-liveness/README.md",
+        "vibewine/tests/msync-pump-liveness/run.py",
+        "vibewine/tests/native-cursor-focus/run.py",
+        "vibewine/tests/native-cursor-warp/README.md",
+        "vibewine/tests/native-cursor-warp/run.py"
+      ]
+    },
+    "dxmt": {
+      "localBase": "8cf59a015b88361ed6f6320eb8a781c68b3b36c1",
+      "publicBase": "ad931f4aaf2c417c3fc0c949c6427751fa6c4868",
+      "localSource": "a422a9324e6c655e43cfeb53423497e3ca390a0e",
+      "sourceEquivalent": "c2dd4d6716e68e59c70fcc0c3d370c95aed0be4b",
+      "mapping": [
+        {
+          "localCommit": "8d0cef8dbcc8d1efbd0db97d4a0aee9e86d592d0",
+          "publicEquivalent": "9b24f994aac47ba95c4e2811e45f25a349965f69",
+          "tree": "8f999b3fdf82679bc15c6d98f19ff91ed2c9a5dd",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "61aca2a3621386f1c6777972327149e48675883e",
+          "publicEquivalent": "b3e92edfb749eac59d90dcf2932dfd4cef24bbe5",
+          "tree": "c0c384f026a19067649387ebddbe1d5f31bc3522",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "da1afda18e7636dc359965c68466d5b55d9b8bc5",
+          "publicEquivalent": "d46014283204113adad37e23d98b673c4ecb4734",
+          "tree": "174d78a22c41ebd0bdb0601ef5fc525eb58b6ed4",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "021c38b56fc2e442e5d3bf80d176aedd06983d19",
+          "publicEquivalent": "7b082cfe176c9165d853b043781b6f657982f795",
+          "tree": "d30db65538954304e85f3824c5738169e3d26aaa",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "916fbbe77c34bbcc383eab4049cd83d879326a49",
+          "publicEquivalent": "ac7006624ac87bae89c77dcecd5f6c22564b4ef4",
+          "tree": "a0013ee7f01965d418bbfee3e6bc8d0aaa63058e",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "2eee5fa1859d0f3ba4b5dfd2aa7e4715f87d8d22",
+          "publicEquivalent": "7fd7d69518e38079a131c3cb6ad9e99831bef54a",
+          "tree": "02fc749d0e239d88c438cc498e39ac0ddc945b9c",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "7ba9fe066af2b4a25708b67be7136ce9da5ca0a7",
+          "publicEquivalent": "3f137007699b139e21db13e060c0d9bd9a449d5a",
+          "tree": "4a8a09639525eea665e81132fc1eea717162e382",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "5847d276c13e77c11c740884bde115190fb714c5",
+          "publicEquivalent": "a4f60a000011c70adfc68bbe47b5bbda1cc6689f",
+          "tree": "22e516f1ca686e1c1908c2aee3a8034729015a07",
+          "treeEqual": true
+        },
+        {
+          "localCommit": "a422a9324e6c655e43cfeb53423497e3ca390a0e",
+          "publicEquivalent": "c2dd4d6716e68e59c70fcc0c3d370c95aed0be4b",
+          "tree": "d2105c79c7e5fda3d756a3f3b6c4d10215d51992",
+          "treeEqual": true
+        }
+      ],
+      "publishedHead": "35d1f00403efa35482420722dbd4165e3cc9b967",
+      "publicationOnlyPaths": [
+        "docs/PUBLICATION-20261028.json",
+        "docs/PUBLICATION-20261029.json",
+        "docs/dxgi-usage-20261028.md",
+        "docs/upstream-backports-20261023.md",
+        "tests/vibewine/adjacent-clear/README.md",
+        "tests/vibewine/adjacent-clear/run.py",
+        "tests/vibewine/bulk-depth-stencil/README.md",
+        "tests/vibewine/bulk-depth-stencil/run.py",
+        "tests/vibewine/call-return-lifetime/README.md",
+        "tests/vibewine/cb-range-reset/README.md",
+        "tests/vibewine/cb-range-reset/run.py",
+        "tests/vibewine/chromaticity-lifetime/README.md",
+        "tests/vibewine/cpu-view-economy/README.md",
+        "tests/vibewine/cpu-view-economy/run.py",
+        "tests/vibewine/exact-setters/README.md",
+        "tests/vibewine/gs-point-output/README.md",
+        "tests/vibewine/initializer-completion-refresh/README.md",
+        "tests/vibewine/native-arm-worker/fixtures/manifest.json",
+        "tests/vibewine/packed-ir-compaction/README.md",
+        "tests/vibewine/packed-ir-compaction/run-corpus.py",
+        "tests/vibewine/precise-bindings/README.md",
+        "tests/vibewine/precise-bindings/run.py",
+        "tests/vibewine/pso-normalization/README.md",
+        "tests/vibewine/pso-normalization/run-createshader.py",
+        "tests/vibewine/pso-normalization/run.py",
+        "tests/vibewine/query-publication/README.md",
+        "tests/vibewine/queue-failure-contract/README.md",
+        "tests/vibewine/queue-terminal/README.md",
+        "tests/vibewine/reftracker-retirement/README.md",
+        "tests/vibewine/staging-initial-data/README.md",
+        "tests/vibewine/staging-initial-data/run.py"
+      ]
+    }
+  },
+  "hub": {
+    "localBase": "28b121bfce1ef47d5868e008ff8f2748bef3d7d3",
+    "publicBase": "a0ca8890e0789b47231c94eb00f944b9d6d7768e",
+    "localSource": "5afdff72b0c1657099ef8a3a2c8107973a376646",
+    "sourceEquivalent": "ef4ad5d92931584bcf12cd5c4c15881b02c6abff",
+    "mapping": [
+      {
+        "localCommit": "f8f79ad161947017898ae1fd33b38a223d55c680",
+        "publicEquivalent": "41d2ccbc69cd6c1ebee1d35b92497d789ae182c7",
+        "onlyGitlinksDiffer": true,
+        "gitlinks": {
+          "components/wine": "112937399b7bc2b53881a3f10db500786ca7b034",
+          "components/dxmt": "e3845197978e3fde46a07b584073ba499fd0b25b"
+        }
+      },
+      {
+        "localCommit": "d60c1adc1fce318ea640051cc39071fea98bb6bf",
+        "publicEquivalent": "37027ea1b3b88697bf9d352eb4b2045034a3074d",
+        "onlyGitlinksDiffer": true,
+        "gitlinks": {
+          "components/wine": "506004b729856034a7d280f0ab505a8b3cfe54d6",
+          "components/dxmt": "9b24f994aac47ba95c4e2811e45f25a349965f69"
+        }
+      },
+      {
+        "localCommit": "4b398ba3fdd1a114b8979913280c66a7d0c3714d",
+        "publicEquivalent": "b6435210995146d36be664f381c9c4e9c0bf1f30",
+        "onlyGitlinksDiffer": true,
+        "gitlinks": {
+          "components/wine": "b6d49057b9f473eb0a903b80f6942e0594afa514",
+          "components/dxmt": "b3e92edfb749eac59d90dcf2932dfd4cef24bbe5"
+        }
+      },
+      {
+        "localCommit": "b3caae7cf527432d8e3a26ebf986fbe33f22de2b",
+        "publicEquivalent": "d5fbe2360b08d4d4d9230ad2d61b531089b3718f",
+        "onlyGitlinksDiffer": true,
+        "gitlinks": {
+          "components/wine": "b6d49057b9f473eb0a903b80f6942e0594afa514",
+          "components/dxmt": "b3e92edfb749eac59d90dcf2932dfd4cef24bbe5"
+        }
+      },
+      {
+        "localCommit": "e71d1ad9a77735c1b75e595ee5ccdcd5a0ecffcd",
+        "publicEquivalent": "121ced1cd866d7fc18be6f30287cb0db62f2d65f",
+        "onlyGitlinksDiffer": true,
+        "gitlinks": {
+          "components/wine": "b6d49057b9f473eb0a903b80f6942e0594afa514",
+          "components/dxmt": "b3e92edfb749eac59d90dcf2932dfd4cef24bbe5"
+        }
+      },
+      {
+        "localCommit": "ad7786282ba8f444a665a6738d910a6a451a2813",
+        "publicEquivalent": "dbc2ff81a49ae83e67feb03727d70f5f36b06b4d",
+        "onlyGitlinksDiffer": true,
+        "gitlinks": {
+          "components/wine": "b6d49057b9f473eb0a903b80f6942e0594afa514",
+          "components/dxmt": "b3e92edfb749eac59d90dcf2932dfd4cef24bbe5"
+        }
+      },
+      {
+        "localCommit": "b214d578ff4902390c43ec0335ee342f322635bf",
+        "publicEquivalent": "aef80911e9a3bb4af85045f33637734ec209a52e",
+        "onlyGitlinksDiffer": true,
+        "gitlinks": {
+          "components/wine": "274bb0ffe759bf2e6f422b1c340b1d6e47ed63b3",
+          "components/dxmt": "c2dd4d6716e68e59c70fcc0c3d370c95aed0be4b"
+        }
+      },
+      {
+        "localCommit": "5afdff72b0c1657099ef8a3a2c8107973a376646",
+        "publicEquivalent": "ef4ad5d92931584bcf12cd5c4c15881b02c6abff",
+        "onlyGitlinksDiffer": true,
+        "gitlinks": {
+          "components/wine": "274bb0ffe759bf2e6f422b1c340b1d6e47ed63b3",
+          "components/dxmt": "c2dd4d6716e68e59c70fcc0c3d370c95aed0be4b"
+        }
+      }
+    ]
+  },
+  "limits": "Full builds/installed runtime bind audited local source. Exact-tree public equivalents preserve that source; final publication overlays only repair test/documentation/reference/hash metadata. Controlled gameplay FPS remains unmeasured."
+}

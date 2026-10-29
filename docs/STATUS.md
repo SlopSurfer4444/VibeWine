@@ -4,13 +4,13 @@ Reconciled **29 October 2026**. This table supersedes earlier checkpoints.
 
 | Layer | Current state | Acceptance boundary |
 | --- | --- | --- |
-| Source |DXMT `a422a932`; Wine `ae1d0e73`|Binding/upload/clear economy, queue failure and MSync repairs; opt-in cursor/compiler experiments|
+| Source |DXMT `35d1f004`; Wine `b24c04f9`|Binding/upload/clear economy, queue failure and MSync repairs; opt-in cursor/compiler experiments|
 | Checks |Combined source controls pass; independent queue review repairs admitted|Operation counts/native fixtures are separate from game FPS|
 | Build |Seven affected Wine targets pass; complete paired162-step DXMT builds pass|Matched engine installed; seven fresh Wine targets plus retained runtime closure|
 | Lifecycle |Four helpers installed coherently; matched runtime adopted as `d029bcfc`, all 32 after-images, installed status and no-op convergence verified|Existing game profile/saves retained; recovery preserved|
 | Game/FPS |New native1080 runtime selected; game and collectors stopped at owner request|Old-baseline observer recorded 60 intervals, but scene was unknown and detail was unarmed; no FPS comparison|
 
-[Wave details](diagnostics/sustained-wave-20261029.md) and
+[Publication map](provenance/publication-20261029.json) · [Wave details](diagnostics/sustained-wave-20261029.md) and
 [ROADMAP](../ROADMAP.md) separate source, build, installation and observation.
 
 ## Earlier eight-direction checkpoint
@@ -66,7 +66,7 @@ are separate.
 | Shader-output keys |Epoch4 ordinary /5 shader-cleanup; AIRCONV API26 unchanged |Separated from previous2/3; existing installed caches untouched |
 | Installed game |Prior DXMT `bbf22e6a`, schema12 installation `e7410fc`; all 19 experiment flags incl initializer reuse enabled; native1440p retained |22runtime hashes and four prefix graphics pairs verified at installation; no new gameplay or FPS acceptance |
 | Latest validation |Actual-TU compiler/LLVM and ownership controls, exact failing baselines; 254 telemetry checks, 13 workspace tests, complete matched renderer builds |No complete new Wine distribution, real Dock/window, GPU error-path or game validation |
-| Publication |This source wave is committed locally; no push performed |Public branch tips and hosted CI may lag local source |
+| Publication |Public equivalents prepared; see [publication map](provenance/publication-20261028.json) |Public branch tips and hosted CI may lag local source |
 
 The source and release-build record for this wave is
 [integration notes](integrations/memory-queue-wave-20261028.md). The last installation
