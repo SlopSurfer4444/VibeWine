@@ -23,7 +23,7 @@ fixture reuses `pass-optimizations/run.py` and adapters; full production prepass
 reverse optimizer, relation methods, structures and helper are extracted.
 Actual `FenceSet` and native command wire layouts are included. Texture storage
 and extent getters are CPU adapters. This covers default/off/on, exact base
-`61aca2a3621386f1c6777972327149e48675883e` old-fail, connected helper/driver
+`b3e92edfb749eac59d90dcf2932dfd4cef24bbe5` old-fail, connected helper/driver
 mutations, both completion and external wait edges, 257-clear slot wrapping,
 subsequent existing render folding, and identity/storage/extent/gap exclusions.
 The existing dead-store/residency cases run too. Expected negative controls must

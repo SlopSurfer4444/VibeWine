@@ -23,5 +23,5 @@ no installed producer, runtime mutation or automatic cleanup.
 production extern-C creation bodies under low/high device and swapchain
 constructor OOM. It checks E_OUTOFMEMORY, cleared device/context/swap outputs,
 zero feature-level output, actual C++ partial member cleanup and normal success.
-`--source-ref 61aca2a3621386f1c6777972327149e48675883e --expect-baseline`
+`--source-ref b3e92edfb749eac59d90dcf2932dfd4cef24bbe5 --expect-baseline`
 rejects the old CoreCreateDevice body because bad_alloc escapes its C ABI.

@@ -4,7 +4,7 @@ import argparse, hashlib, json, platform, re, shutil, statistics, subprocess, te
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[2]
-BASE='8d0cef8dbcc8d1efbd0db97d4a0aee9e86d592d0'
+BASE='9b24f994aac47ba95c4e2811e45f25a349965f69'
 FILES=['src/dxmt/dxmt_'+kind+ext for kind in ('buffer','texture') for ext in ('.cpp','.hpp')]
 def block(text,marker):
     start=text.index(marker);pos=text.index('{',start)+1;depth=1

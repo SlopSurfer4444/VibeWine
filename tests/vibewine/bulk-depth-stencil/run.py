@@ -13,7 +13,7 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-BASE = '8cf59a015b88361ed6f6320eb8a781c68b3b36c1'
+BASE = 'e3845197978e3fde46a07b584073ba499fd0b25b'
 PRODUCTION = ('src/dxmt/dxmt_allocation.hpp', 'src/dxmt/dxmt_allocation.cpp',
               'src/dxmt/dxmt_ring_bump_allocator.hpp', 'src/dxmt/dxmt_resource_initializer.hpp',
               'src/dxmt/dxmt_resource_initializer.cpp')

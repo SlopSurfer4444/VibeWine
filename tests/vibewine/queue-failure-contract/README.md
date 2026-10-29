@@ -30,13 +30,13 @@ contain replacement-wrapper OOM at COM boundaries. Nil command buffers and all
 A terminal queue is not resumable: retain deduplication may already be marked.
 
 The allocation control executes the real compute-counter setup fragment and its
-CPU ring consumer. On the bound predecessor `61aca2a3621386f1c6777972327149e48675883e`,
+CPU ring consumer. On the bound predecessor `b3e92edfb749eac59d90dcf2932dfd4cef24bbe5`,
 100 setups allocate 100 standalone counter objects; the checked command-ring
 candidate allocates none after warming its block. Both encode the same value37
 and keep the counter alive through command ownership. This is allocation economy,
 not an FPS claim. Earlier completed ring-node splice behavior remains covered.
 
-`--source-ref 61aca2a3621386f1c6777972327149e48675883e --baseline --sanitize`
+`--source-ref b3e92edfb749eac59d90dcf2932dfd4cef24bbe5 --baseline --sanitize`
 replays the old destructor-publication hazard and the sanitizer-attributed real
 null-placement consumer. Running unchanged candidate assertions against that
 source rejects its standalone-counter allocation count. The current CpuFence is

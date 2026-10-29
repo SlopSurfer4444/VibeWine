@@ -63,7 +63,7 @@ attachment/depth/sample and remaining key fields, output0/sparse/no-color
 reflection, coverage on/off, preserved used bits and dual-source controls,
 direct-factory digest consistency and actual pixel compile arguments. Constant
 hash controls exercise full equality rather than relying on hash uniqueness.
-Baseline `8cf59a01` must fail the two requested reuse assertions. Connected
+Baseline `e3845197` must fail the two requested reuse assertions. Connected
 fault controls remove exclusions or factory normalization and must fail their
 specific semantic assertions. Both architectures use ASan/UBSan.
 

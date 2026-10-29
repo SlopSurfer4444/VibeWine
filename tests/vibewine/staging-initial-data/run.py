@@ -11,7 +11,7 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-BASELINE = '8cf59a015b88361ed6f6320eb8a781c68b3b36c1'
+BASELINE = 'e3845197978e3fde46a07b584073ba499fd0b25b'
 PATHS = ['src/d3d11/d3d11_resource_staging.cpp',
          'src/d3d11/d3d11_resource_helper.cpp', 'src/d3d11/d3d11_enumerable.cpp']
 TYPES = ['D3D11_TEXTURE1D_DESC', 'D3D11_TEXTURE2D_DESC1', 'D3D11_TEXTURE3D_DESC1']

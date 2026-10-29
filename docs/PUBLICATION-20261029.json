@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "date": "2026-10-29",
+  "kind": "public metadata equivalents and reachable test baselines",
+  "localSource": "a422a9324e6c655e43cfeb53423497e3ca390a0e",
+  "sourceEquivalent": "c2dd4d6716e68e59c70fcc0c3d370c95aed0be4b",
+  "mapping": [
+    {
+      "localCommit": "8d0cef8dbcc8d1efbd0db97d4a0aee9e86d592d0",
+      "publicEquivalent": "9b24f994aac47ba95c4e2811e45f25a349965f69",
+      "tree": "8f999b3fdf82679bc15c6d98f19ff91ed2c9a5dd",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "61aca2a3621386f1c6777972327149e48675883e",
+      "publicEquivalent": "b3e92edfb749eac59d90dcf2932dfd4cef24bbe5",
+      "tree": "c0c384f026a19067649387ebddbe1d5f31bc3522",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "da1afda18e7636dc359965c68466d5b55d9b8bc5",
+      "publicEquivalent": "d46014283204113adad37e23d98b673c4ecb4734",
+      "tree": "174d78a22c41ebd0bdb0601ef5fc525eb58b6ed4",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "021c38b56fc2e442e5d3bf80d176aedd06983d19",
+      "publicEquivalent": "7b082cfe176c9165d853b043781b6f657982f795",
+      "tree": "d30db65538954304e85f3824c5738169e3d26aaa",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "916fbbe77c34bbcc383eab4049cd83d879326a49",
+      "publicEquivalent": "ac7006624ac87bae89c77dcecd5f6c22564b4ef4",
+      "tree": "a0013ee7f01965d418bbfee3e6bc8d0aaa63058e",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "2eee5fa1859d0f3ba4b5dfd2aa7e4715f87d8d22",
+      "publicEquivalent": "7fd7d69518e38079a131c3cb6ad9e99831bef54a",
+      "tree": "02fc749d0e239d88c438cc498e39ac0ddc945b9c",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "7ba9fe066af2b4a25708b67be7136ce9da5ca0a7",
+      "publicEquivalent": "3f137007699b139e21db13e060c0d9bd9a449d5a",
+      "tree": "4a8a09639525eea665e81132fc1eea717162e382",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "5847d276c13e77c11c740884bde115190fb714c5",
+      "publicEquivalent": "a4f60a000011c70adfc68bbe47b5bbda1cc6689f",
+      "tree": "22e516f1ca686e1c1908c2aee3a8034729015a07",
+      "treeEqual": true
+    },
+    {
+      "localCommit": "a422a9324e6c655e43cfeb53423497e3ca390a0e",
+      "publicEquivalent": "c2dd4d6716e68e59c70fcc0c3d370c95aed0be4b",
+      "tree": "d2105c79c7e5fda3d756a3f3b6c4d10215d51992",
+      "treeEqual": true
+    }
+  ],
+  "previousPublicHead": "ad931f4aaf2c417c3fc0c949c6427751fa6c4868",
+  "previousPublicationMap": "publication-20261028",
+  "productionTreeUnchangedByOverlay": true,
+  "limits": "Source-equivalent commits have exact audited Git trees. This follow-up only repairs test/docs references and Wine source verification metadata; it is not another build, game validation or FPS result."
+}

@@ -14,7 +14,7 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 CALLER = 'src/d3d11/d3d11_pipeline_cache.cpp'
-BASELINE = '8cf59a01'
+BASELINE = 'e3845197'
 PATHS = [CALLER, 'src/d3d11/d3d11_shader_singleflight.hpp', 'src/airconv/airconv_public.h',
          'src/util/sha1/sha1.c', 'src/util/sha1/sha1_util.cpp', 'src/util/sha1/sha1_util.hpp']
 

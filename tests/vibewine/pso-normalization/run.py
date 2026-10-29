@@ -12,7 +12,7 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-BASELINE = '8cf59a01'
+BASELINE = 'e3845197'
 PATHS = ['src/d3d11/d3d11_pipeline_cache.cpp', 'src/d3d11/d3d11_shader.cpp',
          'src/d3d11/d3d11_pipeline.hpp', 'src/d3d11/d3d11_shader.hpp',
          'src/d3d11/d3d11_pso_normalization.hpp', 'src/airconv/airconv_public.h',

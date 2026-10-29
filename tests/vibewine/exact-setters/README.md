@@ -152,7 +152,7 @@ with ClearState; it does not assume that an immediate binding exists in a new
 command list.
 
 With 100 identical setters interleaved with 100 executed indexed draws, immutable
-base `61aca2a3621386f1c6777972327149e48675883e` emits 100 state commands and performs
+base `b3e92edfb749eac59d90dcf2932dfd4cef24bbe5` emits 100 state commands and performs
 100 COM AddRef/Release pairs and 100 Buffer Rc retain/release pairs. Candidate
 performs zero of each. Both execute all 100 draws, track all 100 accesses, and
 perform 101 hazard validations including the initial bind. Final COM/Rc counts
@@ -173,7 +173,7 @@ index restoration, and omitted allocation suboffset.
 ```sh
 python3 tests/vibewine/exact-setters/run.py --sanitize
 python3 tests/vibewine/exact-setters/run.py --arch x86_64 --sanitize
-python3 tests/vibewine/exact-setters/run.py --index-only --baseline-ref 61aca2a3621386f1c6777972327149e48675883e --sanitize
+python3 tests/vibewine/exact-setters/run.py --index-only --baseline-ref b3e92edfb749eac59d90dcf2932dfd4cef24bbe5 --sanitize
 python3 tests/vibewine/exact-setters/run.py --mutation drop-offset --sanitize
 ```
 
@@ -194,7 +194,7 @@ required recovery holds; cleanup belongs to the root integration owner.
 
 ### Combined queue-failure interface compatibility
 
-The combined source `5847d276c13e77c11c740884bde115190fb714c5` adds terminal
+The combined source `a4f60a000011c70adfc68bbe47b5bbda1cc6689f` adds terminal
 queue guards to methods already extracted by this fixture. Its old vector-backed
 `AllocateCommandData` substitute could not represent the new nullable result;
 it also lacked the queue alias and `CommandQueueFailed` API. This fixture repair
@@ -217,7 +217,7 @@ case's refusal to publish pointer/pitches after injected recording failure.
 Four additional source mutations remove admission, clone-failure publication,
 render-failure or Map-publication guards; each must fail its connected case.
 
-The original immutable `61aca2a3` baseline and seven index mutations remain valid.
+The original immutable `b3e92edf` baseline and seven index mutations remain valid.
 Baseline selection replaces only `context_impl.cpp`; current immediate/deferred
 bodies and queue/list interfaces remain bound in reported source hashes. Its
 `--index-only` mode runs the four historical index groups and does not assert

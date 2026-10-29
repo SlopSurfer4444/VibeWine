@@ -13,7 +13,7 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-BASELINE = '8cf59a015b88361ed6f6320eb8a781c68b3b36c1'
+BASELINE = 'e3845197978e3fde46a07b584073ba499fd0b25b'
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('precise_bindings', HERE.parent / 'precise-bindings/run.py')
 precise = importlib.util.module_from_spec(spec)

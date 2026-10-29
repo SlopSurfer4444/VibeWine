@@ -190,7 +190,7 @@ def main():
                 ('enabled', current, ['-DDXMT_PRECISE_BINDINGS=1'], True, True),
                 ('baseline', sources(args.source_dir, args.baseline_ref),
                  ['-DDXMT_PRECISE_BINDINGS=1'], True, False),
-                ('resource-baseline', sources(args.source_dir, '8cf59a015b88361ed6f6320eb8a781c68b3b36c1'),
+                ('resource-baseline', sources(args.source_dir, 'e3845197978e3fde46a07b584073ba499fd0b25b'),
                  ['-DDXMT_PRECISE_BINDINGS=1'], True, False)]
     variants += [(kind, mutate(current, kind), ['-DDXMT_PRECISE_BINDINGS=1'], True, False)
                  for kind in ('missing-dependent', 'unrelated', 'first-alias', 'broad-slot',

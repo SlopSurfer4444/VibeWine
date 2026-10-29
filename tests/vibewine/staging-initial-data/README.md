@@ -10,7 +10,7 @@ python3 tests/vibewine/staging-initial-data/run.py --arch x86_64
 The x86_64 binary runs through Rosetta on an arm64 Mac. Each run uses ASan and
 UBSan, compiles only the fixture, and removes its temporary source/binaries on
 exit. No Wine, renderer build, Metal device, game, runtime or Git index changes.
-The default baseline is `8cf59a015b88361ed6f6320eb8a781c68b3b36c1`;
+The default baseline is `e3845197978e3fde46a07b584073ba499fd0b25b`;
 `--source-dir` and `--baseline-ref` permit an explicitly bound alternate source.
 The runner reports hashes of the extracted source files, fixture and runner.
 

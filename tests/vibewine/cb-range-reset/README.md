@@ -32,7 +32,7 @@ the CB address/offset. This fixture does not prove shader out-of-bounds range
 enforcement or add such enforcement.
 
 Default, explicit-off and enabled precise-binding variants must pass with
-ASan/UBSan. Immutable `8cf59a015b88361ed6f6320eb8a781c68b3b36c1` context
+ASan/UBSan. Immutable `e3845197978e3fde46a07b584073ba499fd0b25b` context
 source must compile and fail specifically at reset metadata readback; compilation
 or sanitizer errors are not accepted negative controls. Connected mutations
 must also fail behaviorally: dropping the encoded offset reset retains stale

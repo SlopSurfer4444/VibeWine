@@ -37,7 +37,7 @@ hold and B's absence of a hold. Scratch free counts cover success and reservatio
 failure. All runs use ASan+UBSan. LeakSanitizer is unsupported on this platform;
 explicit scratch and destination-hold checks cover the changed ownership.
 
-Historical `8cf59a015b88361ed6f6320eb8a781c68b3b36c1` must pass the same data and
+Historical `e3845197978e3fde46a07b584073ba499fd0b25b` must pass the same data and
 transaction checks in legacy count mode (23 cases); the unchanged historical
 body must fail the candidate target specifically at the bulk-row call count.
 A normal failure/crash/sanitizer report cannot satisfy that negative control.

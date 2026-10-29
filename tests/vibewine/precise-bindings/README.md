@@ -64,7 +64,7 @@ source `e11476e33117b454bac60b997532f9823e34855b`, compiled with the enabled def
 must fail the precise contract. Connected mutations must also fail naturally:
 missing/wrong dependencies, first-alias-only invalidation, dirtying a complete
 slot set, missing immediate/deferred calls, omitted rename/suballocation
-operations, and omitted residency. The 28 October source `8cf59a01` separately
+operations, and omitted residency. The 28 October source `e3845197` separately
 must fail
 the new exact SRV/VB contract. Connected new negatives remove VB/SRV dependence,
 broaden their dirty sets, stop after the first SRV alias, drop upper-qword SRVs,

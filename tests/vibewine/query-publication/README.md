@@ -53,7 +53,7 @@ device release while a raw-pipeline encode callback is queued. See
 ## Status-only and cached-generation regressions (2026-10-28)
 
 ```sh
-python3 tests/vibewine/query-publication/run.py --source-ref 8cf59a01 --expect-frontier-baseline --sanitize address
+python3 tests/vibewine/query-publication/run.py --source-ref e3845197 --expect-frontier-baseline --sanitize address
 python3 tests/vibewine/query-publication/run.py --arch x86_64 --sanitize address
 python3 tests/vibewine/query-publication/run.py --negative reuse-generation --sanitize address
 python3 tests/vibewine/query-publication/run.py --negative drop-empty-completion --sanitize address

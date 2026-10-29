@@ -1,7 +1,7 @@
 {
   "schema": "dxmt-worker-fixtures-v1",
   "license": "LGPL-2.1-or-later",
-  "wine_revision": "271e5cdaa93c5a49c7cb219479cff36ead7cd8c8",
+  "wine_revision": "b6d49057b9f473eb0a903b80f6942e0594afa514",
   "source": "dlls/d3d11/tests/d3d11.c",
   "source_sha256": "b7da48c1013c22b16f25438893a3f8a648fcdbd1c545c24fafaf585e60a7eade",
   "extraction": "Original DWORD arrays packed as little-endian uint32; no token changes. Inactive #if 0 HLSL comments excluded. Reconstruct each binary with the matching array in source-arrays.c.",

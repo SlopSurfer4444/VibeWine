@@ -1,6 +1,6 @@
 # CPU view economy
 
-Base: `8d0cef8dbcc8d1efbd0db97d4a0aee9e86d592d0`.
+Base: `9b24f994aac47ba95c4e2811e45f25a349965f69`.
 
 Buffer `view_` and `residency` now materialize a contiguous allocation-local prefix
 through the requested descriptor, following the existing texture prefix design.

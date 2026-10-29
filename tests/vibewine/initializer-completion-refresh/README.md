@@ -53,7 +53,7 @@ The unchanged acceptance rejects the exact predecessor without checking it out:
 
 ```sh
 python3 tests/vibewine/initializer-completion-refresh/run.py \
-  --source-ref 61aca2a3621386f1c6777972327149e48675883e --mode on --case latest
+  --source-ref b3e92edfb749eac59d90dcf2932dfd4cef24bbe5 --mode on --case latest
 ```
 
 It observes two allocations where one is required. Explicit mutations also

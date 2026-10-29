@@ -4,7 +4,7 @@ import argparse, hashlib, importlib.util, json, platform, shutil, subprocess, te
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 REPO=HERE.parents[2]
-BASE='61aca2a3621386f1c6777972327149e48675883e'
+BASE='b3e92edfb749eac59d90dcf2932dfd4cef24bbe5'
 spec=importlib.util.spec_from_file_location('pass_fixture',HERE.parent/'pass-optimizations/run.py')
 shared=importlib.util.module_from_spec(spec);spec.loader.exec_module(shared)
 
