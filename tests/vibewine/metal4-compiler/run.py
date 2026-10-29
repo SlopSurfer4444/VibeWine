@@ -3,11 +3,14 @@
 from pathlib import Path
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
+from bounded_child import run as bounded_run
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
@@ -21,13 +24,44 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--probe-depth', action='store_true')
+    parser.add_argument('--translated-dir', type=Path)
+    parser.add_argument('--measure-cost', action='store_true')
+    parser.add_argument('--build-only', action='store_true')
+    parser.add_argument('--validate-only', action='store_true')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     paths = [ROOT / 'src/winemetal/unix/winemetal_unix.c',
              ROOT / 'src/winemetal/unix/next_metal4_compiler.inc',
              ROOT / 'src/winemetal/winemetal.h', ROOT / 'src/winemetal/winemetal_thunks.h',
-             HERE / 'fixture.mm.in', Path(__file__).resolve()]
+             HERE / 'fixture.mm.in', Path(__file__).resolve(), HERE / 'translated.inc', HERE / 'cost.inc', HERE / 'prepare-corpus.py', HERE / 'translate-corpus.py', HERE / 'bounded_child.py', HERE / 'check-harness.py']
     snapshots = {str(path): path.read_bytes() for path in paths}
+    if args.translated_dir:
+        corpus=args.translated_dir.resolve()
+        for name in ['corpus.json','translation.json']+[stem+suffix for stem in
+                ['blend-vs','blend-ps','mrt-vs','mrt-ps','noop-cs'] for suffix in ['.dxbc','.metallib']]:
+            path=corpus/name
+            snapshots[str(path)]=path.read_bytes()
+        manifest=json.loads(snapshots[str(corpus/'corpus.json')])
+        translated=json.loads(snapshots[str(corpus/'translation.json')])
+        expected={'blend-vs','blend-ps','mrt-vs','mrt-ps','noop-cs'}
+        assert translated['status']=='PASS' and translated['corpus_sha256']==digest(snapshots[str(corpus/'corpus.json')])
+        assert len(manifest['entries'])==5 and {e['name'] for e in manifest['entries']}==expected
+        assert len(translated['commands'])==5
+        original_source=Path(manifest['source'])
+        source_bytes=original_source.read_bytes()
+        assert len(source_bytes)<=4*1024*1024 and digest(source_bytes)==manifest['source_sha256']
+        snapshots[str(original_source)]=source_bytes
+        spec=importlib.util.spec_from_file_location('metal4_owned_corpus',HERE/'prepare-corpus.py')
+        owned=importlib.util.module_from_spec(spec);spec.loader.exec_module(owned)
+        extracted=owned.extract(source_bytes)
+        assert digest(Path(translated['converter']).read_bytes())==translated['converter_sha256']
+        for entry,command in zip(manifest['entries'],translated['commands']):
+            name=entry['name'];data=snapshots[str(corpus/(name+'.dxbc'))];air=snapshots[str(corpus/(name+'.metallib'))]
+            assert data==extracted[name][0] and len(data)==entry['bytes'] and digest(data)==entry['sha256']
+            assert command['exit']==0 and command['input_sha256']==digest(data)
+            assert Path(command['argv'][2]).resolve()==corpus/(name+'.dxbc')
+            assert len(air)==command['output_bytes'] and digest(air)==command['output_sha256']
+    assert not args.measure_cost or args.translated_dir, '--measure-cost requires --translated-dir'
     native = snapshots[str(paths[0])].decode()
     names = ['_MTLLibrary_newFunction', '_MTLLibrary_newFunctionWithConstants',
              '_MTLDevice_newRenderPipelineState', '_MTLDevice_newComputePipelineState']
@@ -41,10 +75,15 @@ def main():
     assert template.count('// EXACT_NATIVE_FUNCTIONS') == 1
     source = template.replace('// EXACT_NATIVE_FUNCTIONS', '\n\n'.join(functions))
     commands = []
+    if args.validate_only:
+        receipt={'status':'VALIDATED','scope':'source-and-translated-corpus-chain-only','compiler':False,'gpu':False,
+                 'sources':{p:digest(v) for p,v in snapshots.items()},'generated_source_sha256':digest(source.encode())}
+        (args.output/'validation-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+        print(json.dumps({'status':'VALIDATED','compiler':False,'gpu':False}))
+        return
 
     def run(label, command, expected=0, env=None):
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                timeout=60, env=env)
+        result = bounded_run(command,timeout=60,env=env)
         for suffix, output in [('stdout', result.stdout), ('stderr', result.stderr)]:
             assert len(output) <= 1024 * 1024, 'bounded child output exceeded'
             (args.output / (label + '.' + suffix)).write_bytes(output)
@@ -60,6 +99,8 @@ def main():
         fixture = work / 'fixture.m'
         fixture.write_text(source)
         (work / 'next_metal4_compiler.inc').write_bytes(snapshots[str(paths[1])])
+        (work / 'translated.inc').write_bytes(snapshots[str(HERE / 'translated.inc')])
+        (work / 'cost.inc').write_bytes(snapshots[str(HERE / 'cost.inc')])
         (work / 'winemetal.h').write_bytes(snapshots[str(paths[2])])
         (work / 'winemetal_thunks.h').write_bytes(snapshots[str(paths[3])])
         common = ['xcrun', 'clang', '-x', 'objective-c', '-std=c2x', '-fno-objc-arc', '-fblocks',
@@ -69,7 +110,23 @@ def main():
         binary = work / 'fixture'
         run('build', common + ['-DDXMT_METAL4_COMPILER=1', str(fixture), '-o', str(binary)])
         enabled = {**os.environ, 'DXMT_METAL4_COMPILER': '1'}
+        if args.build_only:
+            for path, original in snapshots.items():
+                assert Path(path).read_bytes()==original, 'source drift: '+path
+            retained=args.output.resolve()/'fixture'
+            shutil.copy2(binary,retained)
+            receipt={'status':'BUILD_ONLY','compiler':True,'gpu':False,
+                'binary':str(retained),'binary_sha256':digest(retained.read_bytes()),
+                'generated_source_sha256':digest(source.encode()),'commands':commands,
+                'sources':{p:digest(v) for p,v in snapshots.items()}}
+            (args.output/'build-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+            print(json.dumps({'status':'BUILD_ONLY','binary':str(retained),'sha256':receipt['binary_sha256']}))
+            return
         run('gpu', [str(binary)] + (['--probe-depth'] if args.probe_depth else []), env=enabled)
+        if args.translated_dir:
+            run('translated', [str(binary), '--translated-dir', str(args.translated_dir.resolve())], env=enabled)
+            if args.measure_cost:
+                run('cost', [str(binary), '--cost-dir', str(args.translated_dir.resolve())], env=enabled)
         include = work / 'next_metal4_compiler.inc'
         original_include = snapshots[str(paths[1])].decode()
         old = 'dst.blendingState = src.blendingEnabled ? MTL4BlendStateEnabled : MTL4BlendStateDisabled;'
@@ -80,6 +137,15 @@ def main():
         mutation = run('mutant-blend', [str(mutant)], expected=1, env=enabled)
         assert b'FAIL ' in mutation.stderr, 'missing connected mutation witness'
         include.write_text(original_include)
+        if args.translated_dir:
+            old_mask='dst.writeMask = src.writeMask;'
+            assert original_include.count(old_mask)==1
+            include.write_text(original_include.replace(old_mask,'dst.writeMask = MTLColorWriteMaskAll;'))
+            mask_mutant=work/'mutant-translated-mask'
+            run('build-mutant-translated-mask',common+['-DDXMT_METAL4_COMPILER=1',str(fixture),'-o',str(mask_mutant)])
+            mutation=run('mutant-translated-mask',[str(mask_mutant),'--translated-dir',str(args.translated_dir.resolve())],expected=1,env=enabled)
+            assert b'FAIL translated independent golden' in mutation.stderr,'missing translated GPU mutation witness'
+            include.write_text(original_include)
         # Same exact production slice must also compile with APIs erased and with
         # the build opt-in absent; this is not an old physical SDK/OS claim.
         guard = work / 'guard.m'
