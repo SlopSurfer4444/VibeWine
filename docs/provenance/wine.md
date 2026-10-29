@@ -1,8 +1,10 @@
 # Wine patch origins and installed-source gap
 
-## Eight-direction continuation,28 October 2026
+## Sustained continuation, 29 October 2026
 
-Current component `271e5cdaa93c5a49c7cb219479cff36ead7cd8c8`. The [next-wave report](../diagnostics/next-wave-20261028.md)
+Current component `ae1d0e73b4384130dd6db33c49c28be02999b500`. The [sustained continuation](../diagnostics/sustained-wave-20261029.md) adds independently checked general repairs and bounded experiments.
+
+Previous component `271e5cdaa93c5a49c7cb219479cff36ead7cd8c8`. The [next-wave report](../diagnostics/next-wave-20261028.md)
 and [patch map](../PATCHES.md) separate general repairs, opt-in compilers,
 measurement tooling and held negative findings. Full builds and source controls
 pass; runtime adoption/activation remains independently observed. Older dated

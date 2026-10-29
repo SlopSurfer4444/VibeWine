@@ -7,14 +7,14 @@ windows, Retina, accessibility, game compatibility and performance you can
 measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
-**Current checkpoint: 26 October 2026.** The
-[initializer repair](docs/diagnostics/initializer-repair-20261026.md) closes the
-resource transaction defects reproduced in the preceding deep hot-path round:
-checked capacity/staging reservations, complete depth/stencil publication,
-checked creation failures and native ownership cleanup. Two complete matched
-builds plus the final queue rebuild and 24 covered GPU stages per variant pass.
-These are general mechanisms. Installed DS3 and gameplay FPS acceptance remain
-separate; the playable runtime is preserved.
+**Current checkpoint: 29 October 2026.** The
+[sustained-performance continuation](docs/diagnostics/sustained-wave-20261029.md)
+reduces redundant bindings, completed-upload allocations and eligible adjacent
+clears, and completes terminal queue-failure handling. It also adds bounded
+scene capture, MSync pump repair and explicit native compiler/cursor experiments.
+Focused controls, seven affected Wine targets and both complete matched graphics
+builds pass. Installed-game behavior and measured FPS remain separate.
+[Current status](docs/STATUS.md) records those boundaries.
 
 The [first source drop](docs/releases/2026-10-25-source-preview.md),
 [neighbor wave](docs/integrations/neighbor-wave-20261025.md),

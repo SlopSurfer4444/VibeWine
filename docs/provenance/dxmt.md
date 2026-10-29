@@ -1,8 +1,10 @@
 # DXMT patch provenance
 
-## Eight-direction continuation,28 October 2026
+## Sustained continuation, 29 October 2026
 
-Current component `61aca2a3621386f1c6777972327149e48675883e`. The [next-wave report](../diagnostics/next-wave-20261028.md)
+Current component `a422a9324e6c655e43cfeb53423497e3ca390a0e`. The [sustained continuation](../diagnostics/sustained-wave-20261029.md) adds independently checked general repairs and bounded experiments.
+
+Previous component `61aca2a3621386f1c6777972327149e48675883e`. The [next-wave report](../diagnostics/next-wave-20261028.md)
 and [patch map](../PATCHES.md) separate general repairs, opt-in compilers,
 measurement tooling and held negative findings. Full builds and source controls
 pass; runtime adoption/activation remains independently observed. Older dated
