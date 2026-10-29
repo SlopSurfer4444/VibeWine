@@ -141,7 +141,7 @@
           "treeEqual": true
         }
       ],
-      "publishedHead": "584a15f69d4e1f457dd5397668d1cd92dbb108b7",
+      "publishedHead": "84761a313189d88570fb057630003dfd180e74dd",
       "publicationOnlyPaths": [
         "docs/PUBLICATION-20261028.json",
         "docs/PUBLICATION-20261029.json",
@@ -155,11 +155,20 @@
         "tests/vibewine/cb-range-reset/README.md",
         "tests/vibewine/cb-range-reset/run.py",
         "tests/vibewine/chromaticity-lifetime/README.md",
+        "tests/vibewine/context-locks/README.md",
+        "tests/vibewine/context-locks/fixture.cpp",
+        "tests/vibewine/context-locks/run.py",
         "tests/vibewine/cpu-view-economy/README.md",
         "tests/vibewine/cpu-view-economy/run.py",
+        "tests/vibewine/device-teardown/README.md",
+        "tests/vibewine/device-teardown/run.py",
+        "tests/vibewine/device-teardown/shutdown_fixture.cpp",
         "tests/vibewine/exact-setters/README.md",
         "tests/vibewine/gs-point-output/README.md",
         "tests/vibewine/initializer-completion-refresh/README.md",
+        "tests/vibewine/initializer-queue/README.md",
+        "tests/vibewine/initializer-queue/fixture.cpp.in",
+        "tests/vibewine/initializer-queue/run.py",
         "tests/vibewine/native-arm-worker/fixtures/manifest.json",
         "tests/vibewine/packed-ir-compaction/README.md",
         "tests/vibewine/packed-ir-compaction/run-corpus.py",
@@ -174,13 +183,25 @@
         "tests/vibewine/queue-terminal/README.md",
         "tests/vibewine/reftracker-retirement/README.md",
         "tests/vibewine/staging-initial-data/README.md",
-        "tests/vibewine/staging-initial-data/run.py"
+        "tests/vibewine/staging-initial-data/run.py",
+        "tests/vibewine/stall-finish/README.md",
+        "tests/vibewine/stall-finish/fixture.cpp.in",
+        "tests/vibewine/stall-finish/run.py"
       ],
       "fixtureCompatibilityRepair": {
         "commit": "584a15f69d4e1f457dd5397668d1cd92dbb108b7",
         "parent": "35d1f00403efa35482420722dbd4165e3cc9b967",
         "scope": "three precise-bindings test files only; production guards preserved",
         "checked": "64 arm64/x86_64 ASan/UBSan variants; original baseline and mutations preserved"
+      },
+      "queueFixtureCompatibilityRepair": {
+        "commit": "84761a313189d88570fb057630003dfd180e74dd",
+        "parent": "584a15f69d4e1f457dd5397668d1cd92dbb108b7",
+        "scope": "12 test-only files; context locks, device teardown, initializer and finish contracts",
+        "currentContract": "complete production bodies retain guards/catches; terminal failure does not retry or publish unfinished work; shutdown cancels, joins, drains then discards",
+        "historicalContract": "original initializer/finish assertions retained on immutable reachable public source 3f137007699b139e21db13e060c0d9bd9a449d5a",
+        "checked": "arm64/x86_64 ASan/UBSan positive and connected behavioral negative cases; shutdown also checked with ThreadSanitizer",
+        "limits": "CPU fixture contracts only; production source, installed runtime and game/FPS behavior unchanged"
       }
     }
   },
