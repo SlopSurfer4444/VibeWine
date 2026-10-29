@@ -11,7 +11,23 @@ typedef int NTSTATUS;
 static MTLPixelFormat to_metal_pixel_format(enum WMTPixelFormat f) {
   return (MTLPixelFormat)ORIGINAL_FORMAT(f);
 }
+#include <time.h>
+#include <pthread.h>
+struct CostRecord { uint64_t setup_ns,pipeline_ns,wait_ns,total_ns; unsigned setup_calls,pipeline_calls; };
+static _Thread_local struct CostRecord cost_current;
+static _Thread_local bool cost_unlocked;
+static uint64_t cost_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC_RAW,&t); return (uint64_t)t.tv_sec*1000000000+t.tv_nsec; }
+static int cost_mutex_lock(pthread_mutex_t *lock) {
+  if(cost_unlocked) return 0;
+  uint64_t start=cost_now(); int result=pthread_mutex_lock(lock); cost_current.wait_ns+=cost_now()-start; return result;
+}
+static int cost_mutex_unlock(pthread_mutex_t *lock) { return cost_unlocked ? 0:pthread_mutex_unlock(lock); }
+/* The unchanged helper's lock is observed, never bypassed in parity runs. */
+#define pthread_mutex_lock cost_mutex_lock
+#define pthread_mutex_unlock cost_mutex_unlock
 #include "next_metal4_compiler.inc"
+#undef pthread_mutex_lock
+#undef pthread_mutex_unlock
 // EXACT_NATIVE_FUNCTIONS
 
 #if !WMT_METAL4_AVAILABLE
@@ -410,7 +426,11 @@ static void pso_lifetime(id<MTLDevice> dev,id<MTLCommandQueue> q) {
   require(!memcmp(x,y,sizeof(x)),"PSO-only compute reuse"); [rp release]; [cp release];
   puts("PASS PSO-only retained lifetime after function+library release and autorelease drain");
 }
+#include "translated.inc"
+#include "cost.inc"
 int main(int argc,char **argv) { @autoreleasepool {
+  if(argc==3 && !strcmp(argv[1],"--translated-dir")) return translated_all(argv[2]);
+  if(argc==3 && !strcmp(argv[1],"--cost-dir")) return cost_all(argv[2]);
   require(argc==1 || (argc==2 && !strcmp(argv[1],"--probe-depth")),"usage: fixture [--probe-depth]");
   id<MTLDevice> dev=MTLCreateSystemDefaultDevice();
   if(!dev || !wmt_metal4_capable(dev)) { puts("SKIP Metal4 device/runtime opt-in unavailable"); [dev release]; return 77; }
