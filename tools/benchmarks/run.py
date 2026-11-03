@@ -184,7 +184,7 @@ def execute_scene(args, scene, run_root):
     env.update(WINEPREFIX=str(args.prefix), DXMT_CS2_TRACE_DIR='Z:' + session.replace('/', '\\'),
                DXMT_CS2_TRACE_PROFILE=args.profile, DXMT_CS2_TRACE_DETAIL_LIMIT='12000')
     argv = [str(args.wine), str(args.guest), '--scene', scene, '--duration', str(args.duration),
-            '--warmup', str(args.warmup), '--frames', '10000', '--width', str(args.width), '--height', str(args.height),
+            '--warmup', str(args.warmup), '--frames', str(args.frames), '--width', str(args.width), '--height', str(args.height),
             '--vsync', str(args.vsync), '--output', 'Z:' + str(out).replace('/', '\\'), '--run-id', run_id, '--barrier']
     logs = [out / 'stdout.log', out / 'stderr.log']
     child = None
@@ -338,6 +338,7 @@ def parser():
     p.add_argument('--scenes', default='cube,drawstress,instanced,dynamicupload,pixelheavy,textured')
     p.add_argument('--duration', type=float, default=2)
     p.add_argument('--warmup', type=float, default=.5)
+    p.add_argument('--frames', type=int, default=10000, help='stop at this measured frame cap or duration, whichever comes first')
     p.add_argument('--vsync', type=int, choices=(0, 1), default=0)
     p.add_argument('--width', type=int, default=1280)
     p.add_argument('--height', type=int, default=720)
@@ -349,6 +350,7 @@ def main():
     args = parser().parse_args()
     try:
         require(0.1 <= args.duration <= 10 and 0 <= args.warmup <= 10, 'bounded scene duration/warmup')
+        require(1 <= args.frames <= 10000, 'bounded measured frame cap: 1..10000')
         require(64 <= args.width <= 3840 and 64 <= args.height <= 2160, 'bounded geometry')
         require(10 <= args.timeout <= 120, 'bounded process timeout')
         args.environment = {}
@@ -381,6 +383,7 @@ def main():
         complete = len(results) == len(scenes) and all(x['status'] == 'complete' for x in results)
         write_json(args.output / 'suite.json', dict(schema=1, status='complete' if complete else 'failed',
                    scenes=results, plannedScenes=scenes, profile=args.profile, requestedProfile=args.profile,
+                   settings=dict(duration=args.duration, warmup=args.warmup, frames=args.frames, vsync=args.vsync, width=args.width, height=args.height),
                    limits=['Synthetic workload only; no DS3/game FPS claim.',
                            'Native feedback scope includes calibration and shutdown; per-scene CPU timing is separate.',
                            'Collector overhead and A/A then A/B repeats require separate controlled runs.']))

@@ -68,6 +68,7 @@ class ProtocolTests(unittest.TestCase):
             args=run.parser().parse_args(['--wine',str(cli),'--prefix',str(root),'--guest',str(guest),
                 '--trace-controller',str(cli),'--output',str(root/'out'),'--module',str(cli)])
             args.environment={}
+            args.frames=500
             operations=[]
             session=root/'dxmt-trace-session-fake';session.mkdir()
             inspections=[(0,0),(1,8),(0,8),(2,20)]
@@ -108,7 +109,7 @@ class ProtocolTests(unittest.TestCase):
                     (path.parent/'perframe.csv').write_text('frame,cpuFrameMs,presentCallMs\n0,2,1\n')
                 return value
             with patch.object(run,'controller',side_effect=control), \
-                 patch.object(run.subprocess,'Popen',return_value=Child()), \
+                 patch.object(run.subprocess,'Popen',return_value=Child()) as spawned, \
                  patch.object(run,'native_binding',return_value={'nativePid':4321,'birth':'now','mappedModules':{str(cli.resolve()):run.digest(cli)}}), \
                  patch.object(run,'wait_for',side_effect=wait), \
                  patch.object(run,'command',return_value=(json.dumps({'kind':'event','type':40 if actual else 95})+'\n'+json.dumps({'kind':'summary','identity':'1:2','generation':1})+'\n').encode()), \
@@ -116,6 +117,8 @@ class ProtocolTests(unittest.TestCase):
                      'failures':probe_failures or [], 'rejections':{'incomplete_chunk':1,'commit_reason_missing_or_rejected_chunk':1} if probe_failures else {}}), \
                  patch.object(analyze,'analyze_run',return_value={'trace':{'usable':True,'observationUsable':True,'failures':[]}}):
                 result,out=run.execute_scene(args,'cube',root)
+                argv=spawned.call_args.args[0]
+                self.assertEqual(argv[argv.index('--frames')+1], '500')
             accepted=actual and not probe_failures and not invalid_probe_proof
             self.assertEqual(result['status'],'complete' if accepted else 'failed',result)
             if not invalid_probe_proof:self.assertEqual(result['preMeasureRecords'],8)

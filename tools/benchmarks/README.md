@@ -69,8 +69,14 @@ Default scenes: `cube`, `drawstress`, `instanced`, `dynamicupload`, `pixelheavy`
 `textured`. `--scenes` selects up to six unique names; unknown scene failure is
 fatal. One process per scene gives each producer a fresh 131072-slot trace.
 Duration is bounded to 0.1..10 seconds and measured frames to 10000; the guest
-stops at the first limit, so actual elapsed duration must remain visible. Vsync
-is explicit: default zero measures submission-heavy workload; one also includes
+stops at the first limit, so actual elapsed duration must remain visible. Use
+an explicit `--frames 500 --duration 5 --vsync 0` for a capped investigation;
+`--frames` accepts 1..10000 and defaults to 10000. Suite settings record both
+limits. A frame cap does not guarantee fitting the trace budget; existing
+live capacity checks and refusal remain required. Compare actual frame counts
+and durations, and never describe a shortened frame-capped run as five seconds.
+Vsync is explicit: zero requests unsynchronized submission but can still wait
+for drawable availability and queue admission; one also includes
 presentation pacing. Compare identical settings and actual durations.
 
 ## Evidence and launch order
