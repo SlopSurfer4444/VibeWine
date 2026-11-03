@@ -151,6 +151,9 @@ presentation in games. Installed app defaults remain unchanged.
 For a separate native-only drawable availability control, see
 [`native_drawable_control.md`](native_drawable_control.md). It does not run Wine
 and is not a matched renderer performance comparison.
+The separate [`native_present_pipeline.md`](native_present_pipeline.md) compares
+coupled and split CPU encoding workers with every present request and complete
+image verification retained. Its tested split is not enabled in the renderer.
 
 CPU `cpuFrameMs` is guest loop entry through the return from Present;
 `presentCallMs` is its Present-call subset. Their mean/median/p95/p99/max describe

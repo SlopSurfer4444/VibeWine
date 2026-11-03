@@ -143,3 +143,10 @@ A future production candidate must preserve every requested frame and its image,
 retain dependency/lifetime/failure semantics, and demonstrate improvement with
 the same presentation workload. Simply skipping frames or removing latency
 bounds does not meet that requirement. No game/runtime change is installed.
+
+The subsequent [frame-preserving native pipeline experiment](../../tools/benchmarks/native_present_pipeline.md)
+kept every present request, added immutable snapshots and full-image verification,
+and isolated one versus two CPU encoding workers. After longer warmup, its heavy
+split-worker cases were approximately 4.12% slower. This specific candidate is
+held rather than promoted; it does not establish that every presentation
+architecture is unhelpful or measure Wine/game FPS.
