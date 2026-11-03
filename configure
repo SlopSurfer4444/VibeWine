@@ -12056,7 +12056,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_GLESv2=`$ac_cv_path_LDD conftest.exe | grep "GLESv2" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_GLESv2=`$OTOOL -L conftest$ac_exeext | grep "libGLESv2\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libGLESv2\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_GLESv2=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libGLESv2\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_GLESv2=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libGLESv2\\.$LIBEXT" | sed -e "s/^.*\\[\\(libGLESv2\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_GLESv2:+false} :
 then :
@@ -14439,7 +14439,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_EGL=`$ac_cv_path_LDD conftest.exe | grep "EGL" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_EGL=`$OTOOL -L conftest$ac_exeext | grep "libEGL\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libEGL\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_EGL=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libEGL\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_EGL=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libEGL\\.$LIBEXT" | sed -e "s/^.*\\[\\(libEGL\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_EGL:+false} :
 then :
@@ -14899,7 +14899,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_X11=`$ac_cv_path_LDD conftest.exe | grep "X11" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_X11=`$OTOOL -L conftest$ac_exeext | grep "libX11\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libX11\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_X11=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libX11\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_X11=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libX11\\.$LIBEXT" | sed -e "s/^.*\\[\\(libX11\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_X11:+false} :
 then :
@@ -14962,7 +14962,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_Xext=`$ac_cv_path_LDD conftest.exe | grep "Xext" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_Xext=`$OTOOL -L conftest$ac_exeext | grep "libXext\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libXext\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_Xext=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libXext\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_Xext=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libXext\\.$LIBEXT" | sed -e "s/^.*\\[\\(libXext\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_Xext:+false} :
 then :
@@ -15099,7 +15099,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_Xcursor=`$ac_cv_path_LDD conftest.exe | grep "Xcursor" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_Xcursor=`$OTOOL -L conftest$ac_exeext | grep "libXcursor\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libXcursor\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_Xcursor=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libXcursor\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_Xcursor=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libXcursor\\.$LIBEXT" | sed -e "s/^.*\\[\\(libXcursor\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_Xcursor:+false} :
 then :
@@ -15179,7 +15179,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_Xi=`$ac_cv_path_LDD conftest.exe | grep "Xi" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_Xi=`$OTOOL -L conftest$ac_exeext | grep "libXi\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libXi\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_Xi=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libXi\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_Xi=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libXi\\.$LIBEXT" | sed -e "s/^.*\\[\\(libXi\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_Xi:+false} :
 then :
@@ -15399,7 +15399,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_Xxf86vm=`$ac_cv_path_LDD conftest.exe | grep "Xxf86vm" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_Xxf86vm=`$OTOOL -L conftest$ac_exeext | grep "libXxf86vm\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libXxf86vm\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_Xxf86vm=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libXxf86vm\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_Xxf86vm=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libXxf86vm\\.$LIBEXT" | sed -e "s/^.*\\[\\(libXxf86vm\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_Xxf86vm:+false} :
 then :
@@ -15476,7 +15476,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_Xrender=`$ac_cv_path_LDD conftest.exe | grep "Xrender" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_Xrender=`$OTOOL -L conftest$ac_exeext | grep "libXrender\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libXrender\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_Xrender=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libXrender\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_Xrender=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libXrender\\.$LIBEXT" | sed -e "s/^.*\\[\\(libXrender\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_Xrender:+false} :
 then :
@@ -15667,7 +15667,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_Xrandr=`$ac_cv_path_LDD conftest.exe | grep "Xrandr" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_Xrandr=`$OTOOL -L conftest$ac_exeext | grep "libXrandr\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libXrandr\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_Xrandr=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libXrandr\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_Xrandr=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libXrandr\\.$LIBEXT" | sed -e "s/^.*\\[\\(libXrandr\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_Xrandr:+false} :
 then :
@@ -15781,7 +15781,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_Xfixes=`$ac_cv_path_LDD conftest.exe | grep "Xfixes" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_Xfixes=`$OTOOL -L conftest$ac_exeext | grep "libXfixes\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libXfixes\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_Xfixes=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libXfixes\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_Xfixes=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libXfixes\\.$LIBEXT" | sed -e "s/^.*\\[\\(libXfixes\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_Xfixes:+false} :
 then :
@@ -15874,7 +15874,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_Xinerama=`$ac_cv_path_LDD conftest.exe | grep "Xinerama" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_Xinerama=`$OTOOL -L conftest$ac_exeext | grep "libXinerama\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libXinerama\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_Xinerama=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libXinerama\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_Xinerama=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libXinerama\\.$LIBEXT" | sed -e "s/^.*\\[\\(libXinerama\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_Xinerama:+false} :
 then :
@@ -15955,7 +15955,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_Xcomposite=`$ac_cv_path_LDD conftest.exe | grep "Xcomposite" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_Xcomposite=`$OTOOL -L conftest$ac_exeext | grep "libXcomposite\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libXcomposite\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_Xcomposite=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libXcomposite\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_Xcomposite=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libXcomposite\\.$LIBEXT" | sed -e "s/^.*\\[\\(libXcomposite\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_Xcomposite:+false} :
 then :
@@ -16055,7 +16055,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_GL=`$ac_cv_path_LDD conftest.exe | grep "GL" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_GL=`$OTOOL -L conftest$ac_exeext | grep "libGL\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libGL\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_GL=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libGL\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_GL=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libGL\\.$LIBEXT" | sed -e "s/^.*\\[\\(libGL\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_GL:+false} :
 then :
@@ -16108,7 +16108,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_GL=`$ac_cv_path_LDD conftest.exe | grep "GL" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_GL=`$OTOOL -L conftest$ac_exeext | grep "libGL\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libGL\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_GL=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libGL\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_GL=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libGL\\.$LIBEXT" | sed -e "s/^.*\\[\\(libGL\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_GL:+false} :
 then :
@@ -16985,7 +16985,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_dbus_1=`$ac_cv_path_LDD conftest.exe | grep "dbus-1" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_dbus_1=`$OTOOL -L conftest$ac_exeext | grep "libdbus-1\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libdbus-1\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_dbus_1=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libdbus-1\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_dbus_1=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libdbus-1\\.$LIBEXT" | sed -e "s/^.*\\[\\(libdbus-1\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_dbus_1:+false} :
 then :
@@ -17119,7 +17119,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_gnutls=`$ac_cv_path_LDD conftest.exe | grep "gnutls" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_gnutls=`$OTOOL -L conftest$ac_exeext | grep "libgnutls\\(-deb0\\)\\{0,1\\}\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libgnutls\\(-deb0\\)\\{0,1\\}\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_gnutls=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libgnutls\\(-deb0\\)\\{0,1\\}\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_gnutls=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libgnutls\\(-deb0\\)\\{0,1\\}\\.$LIBEXT" | sed -e "s/^.*\\[\\(libgnutls\\(-deb0\\)\\{0,1\\}\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_gnutls:+false} :
 then :
@@ -17538,7 +17538,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_v4l2=`$ac_cv_path_LDD conftest.exe | grep "v4l2" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_v4l2=`$OTOOL -L conftest$ac_exeext | grep "libv4l2\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libv4l2\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_v4l2=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libv4l2\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_v4l2=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libv4l2\\.$LIBEXT" | sed -e "s/^.*\\[\\(libv4l2\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_v4l2:+false} :
 then :
@@ -17956,7 +17956,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_freetype=`$ac_cv_path_LDD conftest.exe | grep "freetype" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_freetype=`$OTOOL -L conftest$ac_exeext | grep "libfreetype\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libfreetype\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_freetype=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libfreetype\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_freetype=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libfreetype\\.$LIBEXT" | sed -e "s/^.*\\[\\(libfreetype\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_freetype:+false} :
 then :
@@ -19048,7 +19048,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_SDL2=`$ac_cv_path_LDD conftest.exe | grep "SDL2" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_SDL2=`$OTOOL -L conftest$ac_exeext | grep "libSDL2-2.0*\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libSDL2-2.0*\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_SDL2=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libSDL2-2.0*\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_SDL2=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libSDL2-2.0*\\.$LIBEXT" | sed -e "s/^.*\\[\\(libSDL2-2.0*\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_SDL2:+false} :
 then :
@@ -19290,7 +19290,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_cups=`$ac_cv_path_LDD conftest.exe | grep "cups" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_cups=`$OTOOL -L conftest$ac_exeext | grep "libcups\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libcups\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_cups=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libcups\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_cups=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libcups\\.$LIBEXT" | sed -e "s/^.*\\[\\(libcups\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_cups:+false} :
 then :
@@ -19406,7 +19406,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_fontconfig=`$ac_cv_path_LDD conftest.exe | grep "fontconfig" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_fontconfig=`$OTOOL -L conftest$ac_exeext | grep "libfontconfig\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libfontconfig\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_fontconfig=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libfontconfig\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_fontconfig=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libfontconfig\\.$LIBEXT" | sed -e "s/^.*\\[\\(libfontconfig\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_fontconfig:+false} :
 then :
@@ -19529,7 +19529,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_krb5=`$ac_cv_path_LDD conftest.exe | grep "krb5" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_krb5=`$OTOOL -L conftest$ac_exeext | grep "libkrb5\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libkrb5\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_krb5=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libkrb5\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_krb5=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libkrb5\\.$LIBEXT" | sed -e "s/^.*\\[\\(libkrb5\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_krb5:+false} :
 then :
@@ -19657,7 +19657,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_gssapi_krb5=`$ac_cv_path_LDD conftest.exe | grep "gssapi_krb5" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_gssapi_krb5=`$OTOOL -L conftest$ac_exeext | grep "libgssapi_krb5\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libgssapi_krb5\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_gssapi_krb5=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libgssapi_krb5\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_gssapi_krb5=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libgssapi_krb5\\.$LIBEXT" | sed -e "s/^.*\\[\\(libgssapi_krb5\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_gssapi_krb5:+false} :
 then :
@@ -19794,7 +19794,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_odbc=`$ac_cv_path_LDD conftest.exe | grep "odbc" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_odbc=`$OTOOL -L conftest$ac_exeext | grep "libodbc\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libodbc\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_odbc=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libodbc\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_odbc=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libodbc\\.$LIBEXT" | sed -e "s/^.*\\[\\(libodbc\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_odbc:+false} :
 then :
@@ -19890,7 +19890,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_netapi=`$ac_cv_path_LDD conftest.exe | grep "netapi" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_netapi=`$OTOOL -L conftest$ac_exeext | grep "libnetapi\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libnetapi\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_netapi=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libnetapi\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_netapi=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libnetapi\\.$LIBEXT" | sed -e "s/^.*\\[\\(libnetapi\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_netapi:+false} :
 then :
@@ -19978,7 +19978,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_vulkan=`$ac_cv_path_LDD conftest.exe | grep "vulkan" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_vulkan=`$OTOOL -L conftest$ac_exeext | grep "libvulkan\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libvulkan\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_vulkan=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libvulkan\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_vulkan=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libvulkan\\.$LIBEXT" | sed -e "s/^.*\\[\\(libvulkan\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_vulkan:+false} :
 then :
@@ -20043,7 +20043,7 @@ if ac_fn_c_try_link "$LINENO"
 then :
   case "$LIBEXT" in
     dll) ac_cv_lib_soname_MoltenVK=`$ac_cv_path_LDD conftest.exe | grep "MoltenVK" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_MoltenVK=`$OTOOL -L conftest$ac_exeext | grep "libMoltenVK\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libMoltenVK\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_MoltenVK=`$OTOOL -L conftest$ac_exeext | sed -n -e '/^[	 ]/!d' -e 's/ (compatibility version .*)[	 ]*$//' -e 's,^.*/,,' -e 's/^[	 ]*//' -e "/^libMoltenVK\.[0-9A-Za-z.]*dylib$/{p;q;}"` ;;
     *) ac_cv_lib_soname_MoltenVK=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libMoltenVK\\.$LIBEXT" | sed -e "s/^.*\\[\\(libMoltenVK\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
        if ${ac_cv_lib_soname_MoltenVK:+false} :
 then :
