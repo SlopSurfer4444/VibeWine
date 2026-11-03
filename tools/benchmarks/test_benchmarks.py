@@ -15,6 +15,29 @@ import analyze
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_guest_output_budget_matches_its_220_byte_option_limit(self):
+        run.validate_guest_paths(Path('/'+'a'*217),Path('/short/session'))
+        with self.assertRaisesRegex(ValueError,'guest output path'):
+            run.validate_guest_paths(Path('/'+'a'*218),Path('/short/session'))
+
+    def test_nested_trace_path_can_exceed_budget_even_when_guest_output_fits(self):
+        out=Path('/'+'a'*197)
+        session=out/('dxmt-trace-session-'+'b'*32)
+        with self.assertRaisesRegex(ValueError,'Win32 trace path'):
+            run.validate_guest_paths(out,session)
+        run.validate_guest_paths(Path('/short/scene'),Path('/short/scene/session'))
+
+    def test_oversized_trace_root_refuses_before_any_guest_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);cli=root/'cli';cli.write_text('fake')
+            args=run.parser().parse_args(['--wine',str(cli),'--prefix',str(root),'--guest',str(cli),
+                '--trace-controller',str(cli),'--output',str(root/'out'),'--module',str(cli)])
+            with patch.object(run,'controller',return_value={'session':'/'+'x'*255}), \
+                 patch.object(run.subprocess,'Popen') as spawn:
+                with self.assertRaisesRegex(ValueError,'Win32 trace path'):
+                    run.execute_scene(args,'cube',root)
+                spawn.assert_not_called()
+
     def test_offline_analysis_cannot_override_declared_presentation_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory=Path(tmp)

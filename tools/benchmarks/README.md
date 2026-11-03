@@ -65,6 +65,11 @@ gates remain unchanged; even a requested duration is not a guarantee that it
 fits the event budget. A budget failure preserves evidence, stops the suite,
 and never selects a lighter profile or retries automatically.
 
+Use a short absolute result root. Before creating Wine, the runner checks the
+guest's 220-byte output option limit and the nested Win32 trace-file path budget,
+including ten decimal PID digits. A path that fits the guest option can still
+make the trace leaf exceed MAX_PATH; such a run is refused before measurement.
+
 Default scenes: `cube`, `drawstress`, `instanced`, `dynamicupload`, `pixelheavy`,
 `textured`. `--scenes` selects up to six unique names; unknown scene failure is
 fatal. One process per scene gives each producer a fresh 131072-slot trace.

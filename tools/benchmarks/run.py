@@ -164,6 +164,17 @@ def controller(cli, expected_hash, *args):
     return json.loads(command([cli, *args]))
 
 
+def validate_guest_paths(output, session):
+    # Guest options and the producer's CreateFileA both have finite path budgets.
+    # Reserve ten decimal PID digits and the terminating NUL for the trace leaf.
+    windows_output = 'Z:' + str(output).replace('/', '\\')
+    trace_leaf = 'Z:' + str(session).replace('/', '\\') + '\\events-4294967295.bin'
+    require(len(windows_output.encode('utf-8')) <= 220,
+            'guest output path exceeds 220-byte budget; use a shorter result root')
+    require(len(trace_leaf.encode('utf-8')) < 260,
+            'Win32 trace path exceeds MAX_PATH budget; use a shorter result root')
+
+
 def execute_scene(args, scene, run_root):
     run_id = str(uuid.uuid4())
     out = run_root / (scene + '-' + run_id)
@@ -172,6 +183,7 @@ def execute_scene(args, scene, run_root):
     collector_hash = digest(cli)
     prelaunch_modules = {str(path.resolve(strict=True)): digest(path.resolve(strict=True)) for path in args.module}
     session = controller(cli, collector_hash, 'new-session', str(out))['session']
+    validate_guest_paths(out, session)  # Refuse before creating any Wine process.
     clock = controller(cli, collector_hash, 'clock-sample')
     ready_at = time.monotonic()
     # This receipt proves the native observer can operate before guest creation.
