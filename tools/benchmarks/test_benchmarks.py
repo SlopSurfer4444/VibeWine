@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -14,7 +15,78 @@ import run
 import analyze
 
 
+def image_metadata(width, height, pixels, scene='pixelheavy'):
+    fnv=14695981039346656037
+    for byte in pixels:
+        fnv=((fnv ^ byte)*1099511628211)&0xffffffffffffffff
+    return dict(schema=1,artifact='shader-image.rgba',scene=scene,frameId=120,
+                width=width,height=height,format='RGBA8_UNORM',rows=height,rowBytes=width*4,
+                byteCount=len(pixels),fnv1a64=format(fnv,'016x'),
+                gpuEventComplete=True,cpuReadbackComplete=True)
+
+
 class ProtocolTests(unittest.TestCase):
+    def test_image_proof_is_optional_and_default_guest_protocol_is_unchanged(self):
+        args=run.parser().parse_args(['--wine','/w','--prefix','/p','--guest','/g',
+            '--trace-controller','/c','--output','/o','--module','/m'])
+        self.assertFalse(args.image_proof)
+        self.assertIsNone(run.validate_image_proof({},args,'pixelheavy','/nonexistent'))
+
+    def test_actual_image_file_hash_size_types_and_ready_result_binding(self):
+        from types import SimpleNamespace
+        args=SimpleNamespace(image_proof=True,width=64,height=64)
+        pixels=bytes(range(256))*64
+        proof=image_metadata(64,64,pixels)
+        self.assertEqual(image_metadata(1,1,b'hello')['fnv1a64'],'a430d84680aabd0b')
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'shader-image.rgba';path.write_bytes(pixels)
+            ready=run.validate_image_proof({'imageProof':proof},args,'pixelheavy',tmp)
+            self.assertEqual(ready['sha256'],hashlib.sha256(pixels).hexdigest())
+            self.assertEqual(ready,run.validate_image_proof({'imageProof':proof},args,'pixelheavy',tmp,ready))
+            for key in proof:
+                missing=proof.copy();missing.pop(key)
+                with self.subTest(missing=key), self.assertRaises(ValueError):
+                    run.validate_image_proof({'imageProof':missing},args,'pixelheavy',tmp)
+            for key,value in (('schema',True),('frameId',120.0),('width',64.0),('height',True),
+                              ('rows',63),('rowBytes',255),('byteCount',16384.0),
+                              ('artifact','../shader-image.rgba'),('scene','cube'),
+                              ('format','BGRA8_UNORM'),('gpuEventComplete',1),
+                              ('cpuReadbackComplete',False),('fnv1a64',1),('fnv1a64','0'*16)):
+                with self.subTest(key=key,value=value), self.assertRaises(ValueError):
+                    run.validate_image_proof({'imageProof':dict(proof,**{key:value})},args,'pixelheavy',tmp)
+            path.write_bytes(pixels[:-1])
+            with self.assertRaisesRegex(ValueError,'byte count'):
+                run.validate_image_proof({'imageProof':proof},args,'pixelheavy',tmp)
+            changed=b'\xff'+pixels[1:];path.write_bytes(changed)
+            with self.assertRaisesRegex(ValueError,'guest hash'):
+                run.validate_image_proof({'imageProof':proof},args,'pixelheavy',tmp)
+            with self.assertRaisesRegex(ValueError,'readiness/result'):
+                run.validate_image_proof({'imageProof':image_metadata(64,64,changed)},args,'pixelheavy',tmp,ready)
+            path.unlink();path.symlink_to(Path(tmp)/'missing')
+            with self.assertRaises((ValueError,FileNotFoundError)):
+                run.validate_image_proof({'imageProof':proof},args,'pixelheavy',tmp)
+
+    def test_optional_image_proof_preserves_both_capture_barriers(self):
+        self._fake_lifecycle(image=True)
+
+    def test_missing_image_proof_refuses_before_arm(self):
+        self._fake_lifecycle(image=True,missing_image=True)
+
+    def test_image_changed_after_ready_cannot_complete(self):
+        self._fake_lifecycle(image=True,changed_image=True)
+
+    def test_guest_image_capture_uses_actual_draw_before_present_and_warmup(self):
+        source=(ROOT/'guest/main.cpp').read_text()
+        capture=source[source.index('  std::string captureImage('):source.index('  double frame(')]
+        self.assertIn('frame(o, frameId, false, true);',capture)
+        self.assertIn('ctx->CopyResource(staging, back);',capture)
+        self.assertIn('size_t(y) * mapped.RowPitch',capture)
+        self.assertIn('mapped.RowPitch < rowBytes',capture)
+        self.assertIn('bytes.append(reinterpret_cast<const char *>(row), rowBytes);',capture)
+        self.assertIn('!withoutPresent && (forcePresent || presents(o, n))',source)
+        self.assertLess(source.index('r.captureImage(o)'),source.index('phase("warmup")'))
+        self.assertLess(source.index('phase("warmup")'),source.index('phase("ready")'))
+
     def test_separate_window_requires_exact_render_and_client_geometry(self):
         args=run.parser().parse_args(['--wine','/w','--prefix','/p','--guest','/g',
             '--trace-controller','/c','--output','/o','--module','/m',
@@ -120,7 +192,8 @@ class ProtocolTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'budget exceeded'):
                 run.wait_for(Path(tmp)/'results.json',Child(),time.monotonic()+1,tick=tick)
 
-    def _fake_lifecycle(self, actual=True, probe_failures=None, invalid_probe_proof=False, window=False):
+    def _fake_lifecycle(self, actual=True, probe_failures=None, invalid_probe_proof=False, window=False,
+                        image=False, missing_image=False, changed_image=False):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);cli=root/'cli';cli.write_text('fake')
             guest=root/'guest';guest.write_text('fake')
@@ -128,6 +201,9 @@ class ProtocolTests(unittest.TestCase):
                 '--trace-controller',str(cli),'--output',str(root/'out'),'--module',str(cli)])
             args.environment={}
             args.frames=500
+            if image:
+                args.image_proof=True
+                args.width=args.height=64
             if window:
                 args.width,args.height,args.window_width,args.window_height=2560,1440,960,540
             operations=[]
@@ -157,6 +233,13 @@ class ProtocolTests(unittest.TestCase):
                 if window:
                     value['geometry']=dict(renderWidth=args.width,renderHeight=args.height,
                                            windowWidth=args.window_width,windowHeight=args.window_height)
+                if image and not missing_image:
+                    pixels=b'\0'*(args.width*args.height*4)
+                    if path.name=='results.json' and changed_image:
+                        pixels=b'\1'+pixels[1:]
+                    if path.name in ('ready.json','results.json'):
+                        (path.parent/'shader-image.rgba').write_bytes(pixels)
+                    value['imageProof']=image_metadata(args.width,args.height,pixels,scene='cube')
                 if path.name=='ready.json':
                     with open(session/'events-42.bin','wb') as stream:stream.truncate(run.RAW_BYTES)
                     self.assertNotIn('arm',operations)
@@ -184,16 +267,25 @@ class ProtocolTests(unittest.TestCase):
                 argv=spawned.call_args.args[0]
                 self.assertEqual(argv[argv.index('--frames')+1], '500')
                 self.assertNotIn('--present-every', argv)  # old guest compatibility
+                self.assertEqual('--image-proof' in argv, image)
                 if window:
                     self.assertEqual(argv[argv.index('--window-width')+1],'960')
                     self.assertEqual(argv[argv.index('--width')+1],'2560')
                 else:self.assertNotIn('--window-width',argv)
-            accepted=actual and not probe_failures and not invalid_probe_proof
+            admitted=actual and not probe_failures and not invalid_probe_proof and not missing_image
+            accepted=admitted and not changed_image
             self.assertEqual(result['status'],'complete' if accepted else 'failed',result)
-            if not invalid_probe_proof:self.assertEqual(result['preMeasureRecords'],8)
+            if not invalid_probe_proof and not missing_image:self.assertEqual(result['preMeasureRecords'],8)
             self.assertEqual(operations[-1],'clock-sample')
-            self.assertEqual((out/'go.json').exists(),bool(accepted))
+            self.assertEqual((out/'go.json').exists(),bool(admitted))
             self.assertEqual(run.read_json(out/'run.json')['guestExit'],0)
+            if missing_image:
+                self.assertEqual(operations.count('arm'),0)
+                self.assertIn('image proof missing',result['error'])
+            if changed_image:
+                self.assertIn('readiness/result',result['error'])
+            if image and accepted:
+                self.assertEqual(result['imageProof'],result['imageResultProof'])
             if not actual:self.assertIn('no parsed useful Present',result['error'])
             if invalid_probe_proof:
                 persisted=run.read_json(out/'run.json')

@@ -18,6 +18,8 @@ CAPACITY = 131072
 RAW_BYTES = 8392704
 PROBE_SENTINEL = 1685613940
 COMMAND_CAP = 24 * 1024 * 1024
+IMAGE_CAP = 3840 * 2160 * 4
+IMAGE_FRAME = 120
 
 
 def require(condition, reason):
@@ -190,6 +192,46 @@ def validate_geometry_proof(value, args):
             'verified render/window geometry mismatch or missing proof')
 
 
+def validate_image_proof(value, args, scene, directory, expected=None):
+    """Hash the retained actual pixels; correctness evidence outside measurement."""
+    if not args.image_proof:
+        return None  # Preserve default/old guest admission and argv.
+    proof = value.get('imageProof')
+    fields = dict(schema=1, artifact='shader-image.rgba', scene=scene, frameId=IMAGE_FRAME,
+                  width=args.width, height=args.height, format='RGBA8_UNORM',
+                  rows=args.height, rowBytes=args.width * 4, byteCount=args.width * args.height * 4,
+                  gpuEventComplete=True, cpuReadbackComplete=True)
+    require(type(proof) is dict and set(proof) == set(fields) | {'fnv1a64'},
+            'image proof missing or fields mismatch')
+    for key, wanted in fields.items():
+        require(type(proof[key]) is type(wanted) and proof[key] == wanted,
+                'image proof field mismatch/type: ' + key)
+    require(type(proof['fnv1a64']) is str and re.fullmatch('[0-9a-f]{16}', proof['fnv1a64']),
+            'image proof hash format')
+    path = Path(directory) / fields['artifact']
+    info = regular(path, IMAGE_CAP)
+    require(info.st_size == fields['byteCount'], 'image byte count mismatch')
+    sha, fnv, count = hashlib.sha256(), 14695981039346656037, 0
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, 'rb') as stream:
+        opened = os.fstat(stream.fileno())
+        require((opened.st_dev, opened.st_ino) == (info.st_dev, info.st_ino), 'image identity changed')
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            count += len(block)
+            require(count <= fields['byteCount'], 'image grew during hashing')
+            sha.update(block)
+            for byte in block:
+                fnv = ((fnv ^ byte) * 1099511628211) & 0xffffffffffffffff
+        after = os.fstat(stream.fileno())
+        require((after.st_size, after.st_mtime_ns, after.st_ctime_ns, after.st_nlink) ==
+                (info.st_size, info.st_mtime_ns, info.st_ctime_ns, 1), 'image changed during hashing')
+    require(count == fields['byteCount'], 'image truncated during hashing')
+    require(format(fnv, '016x') == proof['fnv1a64'], 'image guest hash mismatch')
+    result = dict(guest=proof, sha256=sha.hexdigest(), byteCount=count)
+    require(expected is None or result == expected, 'image readiness/result bytes or proof mismatch')
+    return result
+
+
 def execute_scene(args, scene, run_root):
     run_id = str(uuid.uuid4())
     out = run_root / (scene + '-' + run_id)
@@ -219,6 +261,8 @@ def execute_scene(args, scene, run_root):
         argv += ['--present-every', str(args.present_every)]
     if args.window_width or args.window_height:
         argv += ['--window-width', str(args.window_width), '--window-height', str(args.window_height)]
+    if args.image_proof:
+        argv += ['--image-proof']
     logs = [out / 'stdout.log', out / 'stderr.log']
     child = None
     trace_file = trace_identity = None
@@ -232,6 +276,8 @@ def execute_scene(args, scene, run_root):
                    guestSha256=digest(args.guest), collectorSha256=collector_hash,
                    cpuMetricsScope='guest CPU loop/Present call, not displayed FPS',
                    observerReadyBeforeLaunch=True)
+    if args.image_proof:
+        receipt['requestedImageProof'] = True
     end = time.monotonic() + args.timeout
     try:
         with open(logs[0], 'xb', buffering=0) as stdout, open(logs[1], 'xb', buffering=0) as stderr:
@@ -244,6 +290,10 @@ def execute_scene(args, scene, run_root):
         receipt['startupScope'] = 'process launch through initialization and requested warmup; not cold-driver-cache cost'
         require(ready.get('scene') == scene, 'ready scene mismatch')
         validate_geometry_proof(ready, args)
+        if args.image_proof:
+            receipt['imageProof'] = validate_image_proof(ready, args, scene, out)
+            receipt['startupScope'] += '; includes optional fixed-frame image proof'
+            require(time.monotonic() < end, 'guest deadline after readiness validation')
         require(type(ready.get('presentEvery', 1)) is int and
                 ready.get('presentEvery', 1) == args.present_every, 'ready presentation mode mismatch')
         pid = ready['pid']
@@ -326,6 +376,9 @@ def execute_scene(args, scene, run_root):
                 'guest failed or wrong scene')
         validate_presentation_result(results, args.present_every)
         validate_geometry_proof(results, args)
+        if args.image_proof:
+            receipt['imageResultProof'] = validate_image_proof(results, args, scene, out, receipt['imageProof'])
+            require(time.monotonic() < end, 'guest deadline after result validation')
         require(regular(out / 'perframe.csv', 4*1024*1024).st_size > 0, 'missing CPU frames')
         receipt['guestResult'] = results
         receipt['status'] = 'complete'
@@ -391,6 +444,7 @@ def parser():
     p.add_argument('--warmup', type=float, default=.5)
     p.add_argument('--frames', type=int, default=10000, help='stop at this measured frame cap or duration, whichever comes first')
     p.add_argument('--present-every', type=int, default=1, help='diagnostic render iterations per Present; values >1 are not displayed FPS')
+    p.add_argument('--image-proof', action='store_true', help='retain and verify actual fixed-frame RGBA8 pixels before warmup; outside timing')
     p.add_argument('--vsync', type=int, choices=(0, 1), default=0)
     p.add_argument('--width', type=int, default=1280)
     p.add_argument('--height', type=int, default=720)

@@ -78,6 +78,37 @@ old guests cannot satisfy this explicit mode. Omitting the pair preserves the
 existing coupled-size behavior and compatibility. This changes presentation
 scaling and is a diagnostic workload, not native-resolution game FPS.
 
+For an optional shader correctness capture, add `--image-proof` (for example,
+`--scenes pixelheavy --image-proof --frames 1 --duration .1`). This requires the
+new guest. Before warmup and readiness, the guest renders the unchanged scene
+at fixed frame index 120 (`time = 2.0` seconds), suppresses Present for that one
+frame, and copies the actual full RGBA8 render target into a CPU-readable staging
+texture. A five-second EVENT poll checks GPU ordering, followed by a READ Map;
+Map itself is bounded by the existing own-PID 15-second heartbeat guard and host
+absolute deadline. Dimensions, format, single-sample geometry and staging row
+pitch are checked. `shader-image.rgba` contains exactly `width * height * 4`
+bytes: top-to-bottom rows, left-to-right RGBA8_UNORM bytes, with no row padding.
+It is independent of the existing calibration sentinel and present divisor.
+
+Both guest readiness and completion carry `imageProof`: scene, fixed frame,
+render dimensions, rows, row bytes, total bytes, completion booleans and a
+16-digit FNV-1a-64 hash. FNV is a noncryptographic transport check. The host reads
+the retained file and verifies its exact size and guest hash before any trace
+ARM, computes SHA-256 into `run.json.imageProof.sha256`, then verifies the same
+metadata and bytes again after natural guest exit in `imageResultProof`.
+Missing, changed or malformed evidence refuses the run. Default invocation
+sends no new guest flag and retains old-guest compatibility. Calibration,
+probe STOP, measured ARM and go barriers remain required in either mode.
+
+For matched compiler-option comparisons, require complete runs, identical
+`imageProof.guest` metadata and identical `imageProof.sha256`; the retained
+files also permit direct byte comparison. Different images are a correctness
+failure for that exact fixture; equal images establish only this shader,
+geometry and fixed time. This is outside CPU measurement and is not an FPS or
+general semantic-equivalence claim. It also changes startup/cache history, so
+use separate matched image-proof runs for correctness before performance runs.
+The installed app does not enable this low-level opt-in mode.
+
 Default scenes: `cube`, `drawstress`, `instanced`, `dynamicupload`, `pixelheavy`,
 `textured`. `--scenes` selects up to six unique names; unknown scene failure is
 fatal. One process per scene gives each producer a fresh 131072-slot trace.
@@ -213,7 +244,11 @@ bytes; measured decoded output is capped at 24 MiB and probe decode at 1 MiB, CS
 100000 plus 20000 reserve and both stop at sampled lifetime count 110000;
 this is not a hard producer quota, while protocol capacity remains 131072.
 Outputs over caps fail and preserve evidence. Raw aggregate allowance is 224 MiB
-per suite including derivatives, TTL seven days. Curated run/suite reports share
+per suite including derivatives, TTL seven days. Image-proof mode additionally
+reserves at most 32 MiB per selected scene (one retained packed image, at most
+33177600 bytes), up to 192 MiB for six scenes; its raw aggregate allowance is
+therefore 416 MiB per suite. The same seven-day raw TTL applies to those images;
+curate referenced image evidence explicitly before retirement. Curated run/suite reports share
 4 MiB per suite and TTL 30 days. Source is durable repository content. Parent
 must reserve this space and bound the number of suites before launch.
 

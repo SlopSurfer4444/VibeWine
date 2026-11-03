@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <d3d11.h>
@@ -58,7 +59,7 @@ struct Options {
   double duration = 3, warmup = 1;
   unsigned frames = 0;
   unsigned presentEvery = 1;
-  bool barrier = false;
+  bool barrier = false, imageProof = false;
 };
 static const char *metricScope =
     "CPU wall time per rendered iteration; not GPU execution or display FPS";
@@ -90,6 +91,10 @@ static Options parse(int argc, char **argv) {
   Options o;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
+    if (a == "--image-proof") {
+      o.imageProof = true;
+      continue;
+    }
     if (a == "--barrier") {
       o.barrier = true;
       continue;
@@ -168,6 +173,8 @@ static Options parse(int argc, char **argv) {
       o.vsync > 1 || o.duration < 0.1 || o.duration > 60 || o.warmup < 0 ||
       o.warmup > 30)
     throw Failure("option outside bounded range");
+  if (o.imageProof && o.width > 3840)
+    throw Failure("image proof render width exceeds 3840");
   if (o.scene != "cube" && o.scene != "drawstress" && o.scene != "instanced" &&
       o.scene != "dynamicupload" && o.scene != "pixelheavy" &&
       o.scene != "textured")
@@ -625,7 +632,94 @@ struct Renderer {
       throw Failure("probe readback sentinel mismatch");
     beat();
   }
-  double frame(const Options &o, unsigned n, bool forcePresent = false) {
+  // Optional correctness capture: unchanged shader/frame path, before Present,
+  // warmup, readiness and both trace generations. Never part of CPU samples.
+  std::string captureImage(const Options &o) {
+    constexpr unsigned frameId = 120;
+    frame(o, frameId, false, true);
+    Com<ID3D11Texture2D> back, staging;
+    check(swap->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)back.out()),
+          "GetImageBackBuffer");
+    D3D11_TEXTURE2D_DESC desc{};
+    back->GetDesc(&desc);
+    if (desc.Width != UINT(o.width) || desc.Height != UINT(o.height) ||
+        desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM ||
+        desc.SampleDesc.Count != 1 || desc.SampleDesc.Quality != 0 ||
+        desc.MipLevels != 1 || desc.ArraySize != 1)
+      throw Failure("image backbuffer geometry/format mismatch");
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    desc.MiscFlags = 0;
+    check(dev->CreateTexture2D(&desc, nullptr, staging.out()), "CreateImageStaging");
+    ctx->OMSetRenderTargets(0, nullptr, nullptr);
+    ctx->CopyResource(staging, back);
+    Com<ID3D11Query> completion;
+    D3D11_QUERY_DESC query{};
+    query.Query = D3D11_QUERY_EVENT;
+    check(dev->CreateQuery(&query, completion.out()), "CreateImageEvent");
+    ctx->End(completion);
+    ctx->Flush();
+    const double deadline = clocksec() + 5.0;
+    for (;;) {
+      messages();
+      beat();
+      check(dev->GetDeviceRemovedReason(), "device removed during image wait");
+      if (clocksec() >= deadline)
+        throw Failure("image GPU event timeout", HRESULT_FROM_WIN32(WAIT_TIMEOUT));
+      BOOL done = FALSE;
+      HRESULT status = ctx->GetData(completion, &done, sizeof(done),
+                                   D3D11_ASYNC_GETDATA_DONOTFLUSH);
+      check(status, "GetData image event");
+      if (status == S_OK) {
+        if (done != TRUE)
+          throw Failure("image event returned S_OK without completion");
+        break;
+      }
+      if (status != S_FALSE)
+        throw Failure("unexpected image event status", status);
+      Sleep(1);
+    }
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    // READ Map has no timeout parameter; own-PID watchdog and host deadline
+    // bound it, just as for drainProbe's existing staging readback.
+    check(ctx->Map(staging, 0, D3D11_MAP_READ, 0, &mapped), "MapImageStaging");
+    struct Unmap {
+      ID3D11DeviceContext *context;
+      ID3D11Resource *resource;
+      ~Unmap() { context->Unmap(resource, 0); }
+    } unmap{ctx, staging};
+    const size_t rowBytes = size_t(o.width) * 4;
+    // Bound both address arithmetic and driver-reported staging padding.
+    if (!mapped.pData || mapped.RowPitch < rowBytes ||
+        mapped.RowPitch > 65536 || size_t(mapped.RowPitch) * o.height > 128u * 1024 * 1024)
+      throw Failure("invalid image staging row pitch/data");
+    std::string bytes;
+    bytes.reserve(rowBytes * o.height);
+    uint64_t fnv = UINT64_C(14695981039346656037);
+    for (int y = 0; y < o.height; ++y) {
+      const auto *row = static_cast<const unsigned char *>(mapped.pData) +
+                        size_t(y) * mapped.RowPitch;
+      bytes.append(reinterpret_cast<const char *>(row), rowBytes);
+      for (size_t x = 0; x < rowBytes; ++x)
+        fnv = (fnv ^ row[x]) * UINT64_C(1099511628211);
+      beat();
+    }
+    check(dev->GetDeviceRemovedReason(), "device removed after image readback");
+    writeAtomic(o, "shader-image.rgba", bytes);
+    std::ostringstream hash;
+    hash << std::hex << std::setfill('0') << std::setw(16) << fnv;
+    return "{\"schema\":1,\"artifact\":\"shader-image.rgba\",\"scene\":" + esc(o.scene) +
+           ",\"frameId\":120,\"width\":" + std::to_string(o.width) +
+           ",\"height\":" + std::to_string(o.height) +
+           ",\"format\":\"RGBA8_UNORM\",\"rows\":" + std::to_string(o.height) +
+           ",\"rowBytes\":" + std::to_string(rowBytes) +
+           ",\"byteCount\":" + std::to_string(bytes.size()) +
+           ",\"fnv1a64\":" + esc(hash.str()) +
+           ",\"gpuEventComplete\":true,\"cpuReadbackComplete\":true}";
+  }
+  double frame(const Options &o, unsigned n, bool forcePresent = false,
+               bool withoutPresent = false) {
     messages();
     RECT rect;
     if (!GetClientRect(window, &rect) || rect.right != o.windowWidth ||
@@ -698,7 +792,7 @@ struct Renderer {
       ctx->DrawIndexed(36, 0, 0);
     }
     double presentMs = 0;
-    if (forcePresent || presents(o, n)) {
+    if (!withoutPresent && (forcePresent || presents(o, n))) {
       double before = clocksec();
       HRESULT hr = swap->Present(o.vsync, 0);
       double after = clocksec();
@@ -723,7 +817,7 @@ int main(int argc, char **argv) {
   double elapsed = 0;
   int code = 1;
   std::string error;
-  std::string geometry = "null";
+  std::string geometry = "null", imageProof;
   HRESULT hr = S_OK;
   FILE *csv = nullptr;
   FILE *events = nullptr;
@@ -740,7 +834,8 @@ int main(int argc, char **argv) {
       throw Failure("output directory unavailable");
     for (const char *name :
          {"results.json", "ready.json", "perframe.csv", "phases.jsonl",
-          "probe-done.json", "watchdog.json"})
+          "probe-done.json", "watchdog.json", "shader-image.rgba",
+          "shader-image.rgba.tmp"})
       if (GetFileAttributesA(path(o, name).c_str()) != INVALID_FILE_ATTRIBUTES)
         throw Failure("output directory already has run artifacts");
     owner = CreateFileA(path(o, ".guest-owner").c_str(), GENERIC_WRITE, 0,
@@ -770,6 +865,10 @@ int main(int argc, char **argv) {
       Renderer r;
       r.init(o);
       geometry = r.geometry;
+      if (o.imageProof) {
+        phase("image-proof");
+        imageProof = ",\"imageProof\":" + r.captureImage(o);
+      }
       phase("warmup");
       double warmstart = clocksec();
       unsigned warmframes = 0;
@@ -780,7 +879,7 @@ int main(int argc, char **argv) {
                   "{" + identity(o) + ",\"scene\":" + esc(o.scene) +
                       ",\"width\":" + std::to_string(o.width) +
                       ",\"height\":" + std::to_string(o.height) +
-                      ",\"geometry\":" + geometry +
+                      ",\"geometry\":" + geometry + imageProof +
                       ",\"presentEvery\":" + std::to_string(o.presentEvery) +
                       ",\"metricScope\":" + esc(metricScope) +
                       ",\"featureLevel\":" + std::to_string(r.feature) +
@@ -853,7 +952,7 @@ int main(int argc, char **argv) {
         << ",\"durationSeconds\":" << elapsed
         << ",\"requestedDurationSeconds\":" << o.duration
         << ",\"width\":" << o.width << ",\"height\":" << o.height
-        << ",\"geometry\":" << geometry
+        << ",\"geometry\":" << geometry << imageProof
         << ",\"vsync\":" << o.vsync
         << ",\"presentEvery\":" << o.presentEvery
         << ",\"measuredPresentCalls\":" << measuredPresentCalls
