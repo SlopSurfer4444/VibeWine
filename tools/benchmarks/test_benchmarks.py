@@ -15,6 +15,25 @@ import analyze
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_separate_window_requires_exact_render_and_client_geometry(self):
+        args=run.parser().parse_args(['--wine','/w','--prefix','/p','--guest','/g',
+            '--trace-controller','/c','--output','/o','--module','/m',
+            '--width','2560','--height','1440','--window-width','960','--window-height','540'])
+        geometry=dict(renderWidth=2560,renderHeight=1440,windowWidth=960,windowHeight=540)
+        run.validate_geometry_proof({'geometry':geometry},args)
+        for value in (None,{},dict(geometry,renderWidth=960),dict(geometry,windowWidth=2560),
+                      dict(geometry,renderHeight=1440.0),dict(geometry,extra=1)):
+            with self.assertRaisesRegex(ValueError,'geometry'):
+                run.validate_geometry_proof({'geometry':value},args)
+        args.window_width=args.window_height=0
+        run.validate_geometry_proof({},args)  # Existing old-guest mode remains admitted.
+
+    def test_explicit_window_size_is_a_bounded_pair(self):
+        for pair in ((0,0),(960,540),(3840,2160)):
+            run.validate_window_request(*pair)
+        for pair in ((0,540),(960,0),(63,540),(960,2161),(-1,-1)):
+            with self.assertRaises(ValueError):run.validate_window_request(*pair)
+
     def test_guest_output_budget_matches_its_220_byte_option_limit(self):
         run.validate_guest_paths(Path('/'+'a'*217),Path('/short/session'))
         with self.assertRaisesRegex(ValueError,'guest output path'):
@@ -101,7 +120,7 @@ class ProtocolTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'budget exceeded'):
                 run.wait_for(Path(tmp)/'results.json',Child(),time.monotonic()+1,tick=tick)
 
-    def _fake_lifecycle(self, actual=True, probe_failures=None, invalid_probe_proof=False):
+    def _fake_lifecycle(self, actual=True, probe_failures=None, invalid_probe_proof=False, window=False):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);cli=root/'cli';cli.write_text('fake')
             guest=root/'guest';guest.write_text('fake')
@@ -109,6 +128,8 @@ class ProtocolTests(unittest.TestCase):
                 '--trace-controller',str(cli),'--output',str(root/'out'),'--module',str(cli)])
             args.environment={}
             args.frames=500
+            if window:
+                args.width,args.height,args.window_width,args.window_height=2560,1440,960,540
             operations=[]
             session=root/'dxmt-trace-session-fake';session.mkdir()
             inspections=[(0,0),(1,8),(0,8),(2,20)]
@@ -133,6 +154,9 @@ class ProtocolTests(unittest.TestCase):
             def wait(path,child,deadline,logs=(),tick=None):
                 run_id=path.parent.name[len('cube-'):]
                 value=dict(schema=1,runId=run_id,pid=42,scene='cube')
+                if window:
+                    value['geometry']=dict(renderWidth=args.width,renderHeight=args.height,
+                                           windowWidth=args.window_width,windowHeight=args.window_height)
                 if path.name=='ready.json':
                     with open(session/'events-42.bin','wb') as stream:stream.truncate(run.RAW_BYTES)
                     self.assertNotIn('arm',operations)
@@ -160,6 +184,10 @@ class ProtocolTests(unittest.TestCase):
                 argv=spawned.call_args.args[0]
                 self.assertEqual(argv[argv.index('--frames')+1], '500')
                 self.assertNotIn('--present-every', argv)  # old guest compatibility
+                if window:
+                    self.assertEqual(argv[argv.index('--window-width')+1],'960')
+                    self.assertEqual(argv[argv.index('--width')+1],'2560')
+                else:self.assertNotIn('--window-width',argv)
             accepted=actual and not probe_failures and not invalid_probe_proof
             self.assertEqual(result['status'],'complete' if accepted else 'failed',result)
             if not invalid_probe_proof:self.assertEqual(result['preMeasureRecords'],8)
@@ -199,6 +227,9 @@ class ProtocolTests(unittest.TestCase):
 
     def test_complete_fake_lifecycle_keeps_barriers_after_native_admission(self):
         self._fake_lifecycle()
+
+    def test_separate_window_preserves_render_size_and_admission_barriers(self):
+        self._fake_lifecycle(window=True)
 
     def test_rejected_probe_analysis_is_saved_before_refusing_go(self):
         self._fake_lifecycle(probe_failures=['rejected_trace_records'])

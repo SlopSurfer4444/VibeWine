@@ -70,6 +70,14 @@ guest's 220-byte output option limit and the nested Win32 trace-file path budget
 including ten decimal PID digits. A path that fits the guest option can still
 make the trace leaf exceed MAX_PATH; such a run is refused before measurement.
 
+For resolution sweeps, pair `--window-width 960 --window-height 540` with the
+desired render `--width`/`--height`. The client size then stays fixed while the
+swapchain, depth target, viewport and aspect use the render dimensions. Both
+readiness and completion must prove the actual client and backbuffer geometry;
+old guests cannot satisfy this explicit mode. Omitting the pair preserves the
+existing coupled-size behavior and compatibility. This changes presentation
+scaling and is a diagnostic workload, not native-resolution game FPS.
+
 Default scenes: `cube`, `drawstress`, `instanced`, `dynamicupload`, `pixelheavy`,
 `textured`. `--scenes` selects up to six unique names; unknown scene failure is
 fatal. One process per scene gives each producer a fresh 131072-slot trace.

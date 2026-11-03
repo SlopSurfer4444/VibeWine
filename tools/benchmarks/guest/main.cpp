@@ -54,6 +54,7 @@ static double clocksec() {
 struct Options {
   std::string scene = "cube", output, runId;
   int width = 1920, height = 1080, vsync = 0;
+  int windowWidth = 0, windowHeight = 0;
   double duration = 3, warmup = 1;
   unsigned frames = 0;
   unsigned presentEvery = 1;
@@ -129,7 +130,8 @@ static Options parse(int argc, char **argv) {
         throw Failure("present-every outside bounded range 1..64");
       o.presentEvery = n;
     }
-    else if (a == "--width" || a == "--height" || a == "--vsync" ||
+    else if (a == "--width" || a == "--height" || a == "--window-width" ||
+             a == "--window-height" || a == "--vsync" ||
              a == "--frames") {
       double n = number();
       if (n != floor(n) || n < 0 || n > 1000000)
@@ -138,6 +140,10 @@ static Options parse(int argc, char **argv) {
         o.width = int(n);
       else if (a == "--height")
         o.height = int(n);
+      else if (a == "--window-width")
+        o.windowWidth = int(n);
+      else if (a == "--window-height")
+        o.windowHeight = int(n);
       else if (a == "--vsync")
         o.vsync = int(n);
       else
@@ -154,7 +160,11 @@ static Options parse(int argc, char **argv) {
   for (char c : o.runId)
     if (!std::isalnum((unsigned char)c) && c != '-')
       throw Failure("invalid run-id");
-  if (o.width < 64 || o.width > 4096 || o.height < 64 || o.height > 2160 ||
+  if ((o.windowWidth == 0) != (o.windowHeight == 0))
+    throw Failure("window dimensions must be supplied together");
+  if (!o.windowWidth) { o.windowWidth = o.width; o.windowHeight = o.height; }
+  if (o.windowWidth < 64 || o.windowWidth > 4096 || o.windowHeight < 64 || o.windowHeight > 2160 ||
+      o.width < 64 || o.width > 4096 || o.height < 64 || o.height > 2160 ||
       o.vsync > 1 || o.duration < 0.1 || o.duration > 60 || o.warmup < 0 ||
       o.warmup > 30)
     throw Failure("option outside bounded range");
@@ -335,6 +345,7 @@ struct Renderer {
   Com<ID3D11ShaderResourceView> srv;
   Com<ID3D11SamplerState> sampler;
   D3D_FEATURE_LEVEL feature{};
+  std::string geometry = "null";
   std::vector<float> dynamic;
   ~Renderer() {
     if (ctx.p) {
@@ -375,7 +386,7 @@ struct Renderer {
     if (!RegisterClassA(&wc))
       throw Failure("RegisterClass", HRESULT_FROM_WIN32(GetLastError()));
     DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-    RECT r = {0, 0, o.width, o.height};
+    RECT r = {0, 0, o.windowWidth, o.windowHeight};
     if (!AdjustWindowRect(&r, style, FALSE))
       throw Failure("AdjustWindowRect");
     window = CreateWindowA(
@@ -385,8 +396,8 @@ struct Renderer {
     if (!window)
       throw Failure("CreateWindow", HRESULT_FROM_WIN32(GetLastError()));
     RECT actual;
-    if (!GetClientRect(window, &actual) || actual.right != o.width ||
-        actual.bottom != o.height)
+    if (!GetClientRect(window, &actual) || actual.right != o.windowWidth ||
+        actual.bottom != o.windowHeight)
       throw Failure("actual client size mismatch");
     DXGI_SWAP_CHAIN_DESC sd{};
     sd.BufferDesc.Width = o.width;
@@ -407,6 +418,15 @@ struct Renderer {
     Com<ID3D11Texture2D> back;
     check(swap->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)back.out()),
           "GetBuffer");
+    D3D11_TEXTURE2D_DESC backDesc{};
+    back->GetDesc(&backDesc);
+    if (backDesc.Width != UINT(o.width) || backDesc.Height != UINT(o.height) ||
+        backDesc.Format != DXGI_FORMAT_R8G8B8A8_UNORM)
+      throw Failure("actual backbuffer dimensions or format mismatch");
+    geometry = "{\"renderWidth\":" + std::to_string(backDesc.Width) +
+               ",\"renderHeight\":" + std::to_string(backDesc.Height) +
+               ",\"windowWidth\":" + std::to_string(actual.right) +
+               ",\"windowHeight\":" + std::to_string(actual.bottom) + "}";
     check(dev->CreateRenderTargetView(back, nullptr, rtv.out()), "CreateRTV");
     D3D11_TEXTURE2D_DESC dd{};
     dd.Width = o.width;
@@ -608,8 +628,8 @@ struct Renderer {
   double frame(const Options &o, unsigned n, bool forcePresent = false) {
     messages();
     RECT rect;
-    if (!GetClientRect(window, &rect) || rect.right != o.width ||
-        rect.bottom != o.height)
+    if (!GetClientRect(window, &rect) || rect.right != o.windowWidth ||
+        rect.bottom != o.windowHeight)
       throw Failure("client size changed during benchmark");
     if (IsIconic(window))
       throw Failure("window minimized during benchmark");
@@ -703,6 +723,7 @@ int main(int argc, char **argv) {
   double elapsed = 0;
   int code = 1;
   std::string error;
+  std::string geometry = "null";
   HRESULT hr = S_OK;
   FILE *csv = nullptr;
   FILE *events = nullptr;
@@ -748,6 +769,7 @@ int main(int argc, char **argv) {
     {
       Renderer r;
       r.init(o);
+      geometry = r.geometry;
       phase("warmup");
       double warmstart = clocksec();
       unsigned warmframes = 0;
@@ -758,6 +780,7 @@ int main(int argc, char **argv) {
                   "{" + identity(o) + ",\"scene\":" + esc(o.scene) +
                       ",\"width\":" + std::to_string(o.width) +
                       ",\"height\":" + std::to_string(o.height) +
+                      ",\"geometry\":" + geometry +
                       ",\"presentEvery\":" + std::to_string(o.presentEvery) +
                       ",\"metricScope\":" + esc(metricScope) +
                       ",\"featureLevel\":" + std::to_string(r.feature) +
@@ -830,6 +853,7 @@ int main(int argc, char **argv) {
         << ",\"durationSeconds\":" << elapsed
         << ",\"requestedDurationSeconds\":" << o.duration
         << ",\"width\":" << o.width << ",\"height\":" << o.height
+        << ",\"geometry\":" << geometry
         << ",\"vsync\":" << o.vsync
         << ",\"presentEvery\":" << o.presentEvery
         << ",\"measuredPresentCalls\":" << measuredPresentCalls

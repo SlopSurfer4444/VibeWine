@@ -175,6 +175,21 @@ def validate_guest_paths(output, session):
             'Win32 trace path exceeds MAX_PATH budget; use a shorter result root')
 
 
+def validate_window_request(width, height):
+    require((width == 0 and height == 0) or (64 <= width <= 3840 and 64 <= height <= 2160),
+            'explicit window dimensions must be a bounded pair')
+
+
+def validate_geometry_proof(value, args):
+    if not args.window_width and not args.window_height:
+        return  # Old guests remain valid only for the existing coupled mode.
+    expected = dict(renderWidth=args.width, renderHeight=args.height,
+                    windowWidth=args.window_width, windowHeight=args.window_height)
+    actual = value.get('geometry')
+    require(type(actual) is dict and actual == expected and all(type(x) is int for x in actual.values()),
+            'verified render/window geometry mismatch or missing proof')
+
+
 def execute_scene(args, scene, run_root):
     run_id = str(uuid.uuid4())
     out = run_root / (scene + '-' + run_id)
@@ -202,6 +217,8 @@ def execute_scene(args, scene, run_root):
     # Older installed guests implement the default every-iteration mode only.
     if args.present_every != 1:
         argv += ['--present-every', str(args.present_every)]
+    if args.window_width or args.window_height:
+        argv += ['--window-width', str(args.window_width), '--window-height', str(args.window_height)]
     logs = [out / 'stdout.log', out / 'stderr.log']
     child = None
     trace_file = trace_identity = None
@@ -209,6 +226,9 @@ def execute_scene(args, scene, run_root):
     capture_generation = '1'
     receipt = dict(schema=1, runId=run_id, scene=scene, status='failed', profile=args.profile, requestedProfile=args.profile,
                    requestedPresentEvery=args.present_every,
+                   requestedGeometry=dict(renderWidth=args.width, renderHeight=args.height,
+                                          windowWidth=args.window_width or args.width,
+                                          windowHeight=args.window_height or args.height),
                    guestSha256=digest(args.guest), collectorSha256=collector_hash,
                    cpuMetricsScope='guest CPU loop/Present call, not displayed FPS',
                    observerReadyBeforeLaunch=True)
@@ -223,6 +243,7 @@ def execute_scene(args, scene, run_root):
         receipt['startupToReadySeconds'] = time.monotonic() - receipt['launchMonotonic']
         receipt['startupScope'] = 'process launch through initialization and requested warmup; not cold-driver-cache cost'
         require(ready.get('scene') == scene, 'ready scene mismatch')
+        validate_geometry_proof(ready, args)
         require(type(ready.get('presentEvery', 1)) is int and
                 ready.get('presentEvery', 1) == args.present_every, 'ready presentation mode mismatch')
         pid = ready['pid']
@@ -304,6 +325,7 @@ def execute_scene(args, scene, run_root):
         require(results.get('status') == 'complete' and results.get('scene') == scene,
                 'guest failed or wrong scene')
         validate_presentation_result(results, args.present_every)
+        validate_geometry_proof(results, args)
         require(regular(out / 'perframe.csv', 4*1024*1024).st_size > 0, 'missing CPU frames')
         receipt['guestResult'] = results
         receipt['status'] = 'complete'
@@ -372,6 +394,8 @@ def parser():
     p.add_argument('--vsync', type=int, choices=(0, 1), default=0)
     p.add_argument('--width', type=int, default=1280)
     p.add_argument('--height', type=int, default=720)
+    p.add_argument('--window-width', type=int, default=0, help='optional client width, paired with --window-height; render size stays --width/--height')
+    p.add_argument('--window-height', type=int, default=0)
     p.add_argument('--timeout', type=float, default=45)
     return p
 
@@ -383,6 +407,7 @@ def main():
         require(1 <= args.frames <= 10000, 'bounded measured frame cap: 1..10000')
         require(1 <= args.present_every <= 64, 'bounded diagnostic presentation divisor: 1..64')
         require(64 <= args.width <= 3840 and 64 <= args.height <= 2160, 'bounded geometry')
+        validate_window_request(args.window_width, args.window_height)
         require(10 <= args.timeout <= 120, 'bounded process timeout')
         args.environment = {}
         for value in args.env:
@@ -414,7 +439,8 @@ def main():
         complete = len(results) == len(scenes) and all(x['status'] == 'complete' for x in results)
         write_json(args.output / 'suite.json', dict(schema=1, status='complete' if complete else 'failed',
                    scenes=results, plannedScenes=scenes, profile=args.profile, requestedProfile=args.profile,
-                   settings=dict(duration=args.duration, warmup=args.warmup, frames=args.frames, presentEvery=args.present_every, vsync=args.vsync, width=args.width, height=args.height),
+                   settings=dict(duration=args.duration, warmup=args.warmup, frames=args.frames, presentEvery=args.present_every, vsync=args.vsync, width=args.width, height=args.height,
+                                 windowWidth=args.window_width or args.width, windowHeight=args.window_height or args.height),
                    limits=['Synthetic workload only; no DS3/game FPS claim.',
                            'Native feedback scope includes calibration and shutdown; per-scene CPU timing is separate.',
                            'Collector overhead and A/A then A/B repeats require separate controlled runs.']))
