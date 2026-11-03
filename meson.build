@@ -153,6 +153,7 @@ foreach option_name, define_name : {
   'vibewine_idle_retirement' : 'DXMT_IDLE_RETIREMENT',
   'vibewine_fixed_output_metalfx' : 'DXMT_FIXED_OUTPUT_METALFX',
   'vibewine_shader_cleanup' : 'DXMT_SHADER_CLEANUP',
+  'vibewine_constant_loop_motion' : 'DXMT_CONSTANT_LOOP_MOTION',
   'vibewine_demand_scheduler' : 'DXMT_DEMAND_SCHEDULER',
   'vibewine_discard_hints' : 'DXMT_DISCARD_HINTS',
   'vibewine_bounded_encoder_optimizer' : 'DXMT_BOUNDED_ENCODER_OPTIMIZER',

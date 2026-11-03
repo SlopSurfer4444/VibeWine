@@ -47,6 +47,15 @@ flags preserve the converter's no-exceptions setting and the parser's exception
 support. Compilation runs with a fixed PATH/LANG environment, so inherited
 include/library/deployment/DYLD variables cannot change the build silently.
 
+Match output-affecting experimental options explicitly: add `--shader-cleanup`
+for `-Dvibewine_shader_cleanup=true`, and `--constant-loop-motion` for
+`-Dvibewine_constant_loop_motion=true`. Defaults are off. These flags enter the
+hashed converter flags and therefore the worker build ID. The top-level Meson
+definitions are not inferred from another build directory; an older worker must
+not be reused as an enabled candidate merely because its source list matches.
+The matching bridge must embed the new build ID, and cache compatibility must
+agree with the PE/native compiler output options before worker activation.
+
 ## Identity and bridge matching
 
 The output contains:

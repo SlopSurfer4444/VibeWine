@@ -18,6 +18,8 @@ option('vibewine_residency_sets', type : 'boolean', value : false)
 option('vibewine_idle_retirement', type : 'boolean', value : false)
 option('vibewine_fixed_output_metalfx', type : 'boolean', value : false)
 option('vibewine_shader_cleanup', type : 'boolean', value : false)
+option('vibewine_constant_loop_motion', type : 'boolean', value : false,
+  description : 'Experimental standard LICM for read-only constant-memory fragment functions')
 option('vibewine_demand_scheduler', type : 'boolean', value : false,
   description : 'Experimental bounded demand-aware shader compiler scheduling')
 option('vibewine_discard_hints', type : 'boolean', value : false,

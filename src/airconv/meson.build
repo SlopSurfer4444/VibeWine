@@ -17,6 +17,7 @@ airconv_src = files([
  'nt/dxbc_converter_base.cpp',
  'transforms/lower_16bit_texread.cpp',
  'transforms/simdgroup_implicit_membarrier.cpp',
+ 'transforms/constant_loop_motion.cpp',
 ])
 
 airconv_cli_src = files(['airconv_cli.cpp'])

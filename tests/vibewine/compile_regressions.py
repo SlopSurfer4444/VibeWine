@@ -175,3 +175,12 @@ static_assert(dxmt::kDXMTCompilerCacheCompatibility != dxmt::makeCompilerCacheCo
 static_assert(dxmt::kDXMTCompilerCacheCompatibility != dxmt::makeCompilerCacheCompatibility(AIRCONV_VERSION, 4));
 int main() {}
 ''')
+
+for cleanup, expected in ((0, 6), (1, 7)):
+    compile_run('compiler_cache_loop_motion_' + str(cleanup),
+                '#define DXMT_CONSTANT_LOOP_MOTION 1\n#define DXMT_SHADER_CLEANUP ' + str(cleanup) + '\n' +
+                '#include "' + str(compat_header) + '"\n' +
+                'static_assert(dxmt::kVibeWineCompilerCacheEpoch == ' + str(expected) + ');\n' +
+                'static_assert(dxmt::kDXMTCompilerCacheCompatibility != dxmt::makeCompilerCacheCompatibility(AIRCONV_VERSION, 4));\n' +
+                'static_assert(dxmt::kDXMTCompilerCacheCompatibility != dxmt::makeCompilerCacheCompatibility(AIRCONV_VERSION, 5));\n' +
+                'int main() {}\n')

@@ -33,6 +33,7 @@
 
 #include "transforms/lower_16bit_texread.hpp"
 #include "transforms/simdgroup_implicit_membarrier.hpp"
+#include "transforms/constant_loop_motion.hpp"
 
 using namespace llvm;
 
@@ -40,6 +41,10 @@ namespace dxmt {
 
 #ifndef DXMT_SHADER_CLEANUP
 #define DXMT_SHADER_CLEANUP 0
+#endif
+
+#ifndef DXMT_CONSTANT_LOOP_MOTION
+#define DXMT_CONSTANT_LOOP_MOTION 0
 #endif
 
 #if DXMT_SHADER_CLEANUP
@@ -210,6 +215,11 @@ runOptimizationPasses(llvm::Module &M) {
     GlobalCleanupPM.addPass(air::SimdgroupImplicitMemBarrierPass());
 #if DXMT_SHADER_CLEANUP
     GlobalCleanupPM.addPass(LateHalfwordCSEPass());
+#endif
+#if DXMT_CONSTANT_LOOP_MOTION
+    // The pass rejects the whole function before even loop canonicalization.
+    // Keep it after the unchanged threadgroup implicit-barrier detector.
+    GlobalCleanupPM.addPass(air::ConstantLoopMotionPass());
 #endif
 
     MPM.addPass(createModuleToFunctionPassAdaptor(std::move(GlobalCleanupPM), true /* ? */));

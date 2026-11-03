@@ -10,6 +10,7 @@ toolchains
 build-local.txt
 *.cso
 *.ll
+!tests/vibewine/constant-loop-motion/heavy.ll
 winetricks
 *.vt100
 ref.sh

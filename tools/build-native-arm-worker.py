@@ -33,8 +33,11 @@ def sha(path):
     return value.hexdigest()
 
 
+BUILD_ENV = {'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'LANG': 'C'}
+
+
 def tool_output(command):
-    return subprocess.check_output(command, text=True, timeout=30).strip()
+    return subprocess.check_output(command, text=True, timeout=30, env=BUILD_ENV).strip()
 
 
 def worker_info(executable, build_id):
@@ -42,7 +45,7 @@ def worker_info(executable, build_id):
     architectures = tool_output(['xcrun', 'lipo', '-archs', str(executable)]).split()
     if architectures != ['arm64']:
         raise ValueError('worker must contain only native arm64: ' + repr(architectures))
-    raw = subprocess.check_output([str(executable), '--build-info'], timeout=5)
+    raw = subprocess.check_output([str(executable), '--build-info'], timeout=5, env=BUILD_ENV)
     if len(raw) > 1024:
         raise ValueError('worker build-info exceeds 1024-byte cap')
     info = json.loads(raw)
@@ -111,6 +114,19 @@ def bounded(command, output, deadline, seconds, log):
         raise RuntimeError('256 MiB output-directory cap exceeded')
 
 
+def selected_converter_flags(base_flags, shader_cleanup=False, constant_loop_motion=False):
+    # Match output-affecting top-level Meson definitions explicitly. They are
+    # part of the hashed converter_flags, not inherited compiler environment.
+    flags = list(base_flags)
+    for enabled, name in ((shader_cleanup, 'DXMT_SHADER_CLEANUP'),
+                          (constant_loop_motion, 'DXMT_CONSTANT_LOOP_MOTION')):
+        if any(flag == '-D' + name or flag.startswith('-D' + name + '=') for flag in flags):
+            raise ValueError('duplicate compiler option definition: ' + name)
+        if enabled:
+            flags.append('-D' + name + '=1')
+    return flags
+
+
 def prepare(args):
     source = args.source_dir.resolve(strict=True)
     llvm_includes = [p.resolve(strict=True) for p in args.llvm_include]
@@ -137,7 +153,7 @@ def prepare(args):
         if not archive.is_file():
             raise ValueError('missing LLVM archive: ' + str(archive))
         subprocess.run(['xcrun', 'lipo', '-verify_arch', 'arm64', str(archive)],
-                       stdout=subprocess.DEVNULL, check=True, timeout=30)
+                       stdout=subprocess.DEVNULL, check=True, timeout=30, env=BUILD_ENV)
     config = next((p / 'llvm/Config/llvm-config.h' for p in llvm_includes
                    if (p / 'llvm/Config/llvm-config.h').is_file()), None)
     if config is None or not re.search(r'^#define LLVM_VERSION_MAJOR 15\s*$', config.read_text(), re.M):
@@ -148,12 +164,13 @@ def prepare(args):
         if not (helper / name).is_file():
             raise ValueError('missing generated helper header: ' + str(helper / name))
     compiler = tool_output(['xcrun', '--find', 'clang++'])
-    sdk = tool_output(['xcrun', '--show-sdk-path'])
-    sdk_version = tool_output(['xcrun', '--show-sdk-version'])
+    sdk = tool_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'])
+    sdk_version = tool_output(['xcrun', '--sdk', 'macosx', '--show-sdk-version'])
     version = tool_output([compiler, '--version'])
     flags = ['-std=c++20', '-arch', 'arm64', '-mmacosx-version-min=14.0', '-O1', '-DNDEBUG', '-fblocks',
              '-Wno-return-type', '-Wno-ignored-attributes', '-Wno-unknown-pragmas']
-    converter_flags = meson_list(air_meson, 'airconv_args')
+    converter_flags = selected_converter_flags(meson_list(air_meson, 'airconv_args'),
+                                              args.shader_cleanup, args.constant_loop_motion)
     parser_flags = meson_list(parser_meson, 'dxbc_parser_args')
     includes = [source / 'src/airconv', source / 'include', source / 'libs',
                 source / 'include/native/windows', directx] + llvm_includes + [helper]
@@ -210,6 +227,8 @@ def main():
                         help='existing generated air_msad.h, air_samplepos.h, air_tessellation.h')
     parser.add_argument('--output-dir', type=Path, required=True, help='new or empty owned directory')
     parser.add_argument('--check-only', action='store_true', help='validate/hash inputs; write nothing and do not compile')
+    parser.add_argument('--shader-cleanup', action='store_true', help='match -Dvibewine_shader_cleanup=true in the PE/native build')
+    parser.add_argument('--constant-loop-motion', action='store_true', help='match -Dvibewine_constant_loop_motion=true in the PE/native build')
     args = parser.parse_args()
     (source, sources, parser_sources, compiler, sdk, flags, converter_flags, parser_flags,
      includes, archives, inputs, identity, build_id) = prepare(args)

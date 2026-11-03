@@ -15,6 +15,28 @@ spec = importlib.util.spec_from_file_location('native_worker_builder', ROOT / 't
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 checks = []
+base = ['-fno-exceptions']
+assert builder.selected_converter_flags(base) == base
+assert base == ['-fno-exceptions']
+cleanup = builder.selected_converter_flags(base, shader_cleanup=True)
+motion = builder.selected_converter_flags(base, constant_loop_motion=True)
+both = builder.selected_converter_flags(base, True, True)
+assert cleanup == base + ['-DDXMT_SHADER_CLEANUP=1']
+assert motion == base + ['-DDXMT_CONSTANT_LOOP_MOTION=1']
+assert both == cleanup + ['-DDXMT_CONSTANT_LOOP_MOTION=1']
+assert len({json.dumps(x) for x in (base, cleanup, motion, both)}) == 4
+for name in ('DXMT_SHADER_CLEANUP', 'DXMT_CONSTANT_LOOP_MOTION'):
+    for definition in ('-D' + name, '-D' + name + '=0'):
+        try: builder.selected_converter_flags([definition])
+        except ValueError: pass
+        else: raise AssertionError('ambiguous converter macro accepted')
+checks.append('explicit-output-options-enter-hashed-converter-flags')
+with patch.dict(os.environ, {'SDKROOT':'/missing/sdk', 'DEVELOPER_DIR':'/missing/developer'}), \
+     patch.object(builder.subprocess, 'check_output', return_value='tool version\n') as call:
+    assert builder.tool_output(['xcrun','--show-sdk-path']) == 'tool version'
+    assert call.call_args.kwargs['env'] == builder.BUILD_ENV
+    assert 'SDKROOT' not in call.call_args.kwargs['env']
+checks.append('preflight-sdk-tool-probes-use-fixed-build-environment')
 build_id = 'a' * 64
 expected = {'schema': 'dxmt-native-arm-worker-info-v1', 'build_id': build_id,
             'architecture': 'arm64', 'protocol': 2, 'max_requests': 256}
