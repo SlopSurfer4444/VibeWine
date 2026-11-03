@@ -60,3 +60,36 @@ passes it to the existing guest, and records suite settings. Its original live
 record-budget and refusal checks remain. The installed app defaults and game
 runtime are unchanged. Host tests pass; no renderer optimization is activated
 by this diagnostic change.
+
+## Native presentation control
+
+A subsequent native-only fixture completed four cases with 30 warmup and 180
+measured frames each. It uses clear-only GPU work and waits for each command
+buffer after presenting, without Wine, the DXMT queue or feedback handlers.
+Layer settings were read back before and after each case. Compilation passed
+with `-O2 -Wall -Wextra -Werror`; execution used network denial, a 25-second
+own-process watchdog and a separate bounded host supervisor.
+
+| Native configuration | nextDrawable mean, ms | waitUntilCompleted mean, ms | GPU-buffer median, ms |
+| --- | ---: | ---: | ---: |
+| Sync off, two drawables | 7.251 | 0.581 | 0.088 |
+| Sync off, three drawables | 0.462 | 16.058 | 0.089 |
+| Sync on, two drawables | 15.769 | 0.776 | 0.089 |
+| Sync on, three drawables | 15.595 | 0.929 | 0.179 |
+
+Native presentation can therefore involve substantial waiting without Wine.
+Reducing acquisition time alone can displace blocking into command completion;
+the three-drawable case is not evidence of a speedup. This is a single fixed-order
+control with serialized submissions, not a renderer A/B test. The first case's
+occlusion snapshot changed from false to true; visibility during all intermediate
+frames is unknown. Configured display refresh and screen maximum both reported
+60 Hz, so the earlier possible 120 Hz compositor explanation is not established.
+
+A source ownership audit found no concrete drawable retention defect: a fresh
+autorelease pool surrounds each encoded/committed chunk; borrowed drawable and
+texture wrappers are not retained across frames; feedback blocks retain their
+ticket/session rather than the drawable; command buffers retire after verified
+completion. This is a scoped source review, not proof of every native lifetime.
+No renderer patch or runtime setting change is justified by this control alone.
+The remaining question is how the separate scene/presentation submissions and
+completion frontier affect useful overlap under a GPU-heavy workload.

@@ -133,6 +133,10 @@ logs. Analyze again with `python3 tools/benchmarks/analyze.py /absolute/scene-di
 
 ## Meaning of metrics
 
+For a separate native-only drawable availability control, see
+[`native_drawable_control.md`](native_drawable_control.md). It does not run Wine
+and is not a matched renderer performance comparison.
+
 CPU `cpuFrameMs` is guest loop entry through the return from Present;
 `presentCallMs` is its Present-call subset. Their mean/median/p95/p99/max describe
 CPU wall time, including waits. They are not GPU execution time or displayed
