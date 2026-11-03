@@ -5043,9 +5043,6 @@ public:
         cmd.stencil_ref = stencil_ref;
       });
     }
-    IMTLD3D11RasterizerState *current_rs =
-        state_.Rasterizer.RasterizerState ? state_.Rasterizer.RasterizerState : default_rasterizer_state;
-    bool allow_scissor = current_rs->IsScissorEnabled();
     if (dirty_state.any(DirtyState::Viewport)) {
       auto viewports = AllocateCommandData<WMTViewport>(state_.Rasterizer.NumViewports);
       if (!viewports) return DrawCallStatus::Invalid;
@@ -5062,6 +5059,9 @@ public:
       });
     }
     if (dirty_state.any(DirtyState::Scissors)) {
+      IMTLD3D11RasterizerState *current_rs =
+          state_.Rasterizer.RasterizerState ? state_.Rasterizer.RasterizerState : default_rasterizer_state;
+      bool allow_scissor = current_rs->IsScissorEnabled();
       auto render_target_width = state_.OutputMerger.RenderTargetWidth == 0
                                      ? (UINT)state_.Rasterizer.viewports[0].Width
                                      : state_.OutputMerger.RenderTargetWidth;

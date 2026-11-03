@@ -127,6 +127,11 @@ def mutate(contents, kind):
         before = 'InvalidateDiscardedConstantBuffers(state_.ShaderStages, dynamic->buffer);'
         assert contents[key].count(before) == 1
         contents[key] = contents[key].replace(before, '(void)dynamic;')
+    elif kind == 'cb-copy':
+        key = 'src/dxmt/dxmt_context.cpp'
+        before = 'const auto &argbuf = cbuf.buffer;'
+        assert contents[key].count(before) == 1
+        contents[key] = contents[key].replace(before, 'auto argbuf = cbuf.buffer;')
     elif kind == 'residency-drop':
         key = 'src/dxmt/dxmt_context.cpp'
         before = 'makeResident<stage, kind>(argbuf.ptr());'
@@ -199,6 +204,7 @@ def main():
                               'srv-upper-qword', 'srv-residency-drop',
                               'immediate-resource-callsite', 'deferred-resource-callsite')]
     variants += [('residency-drop', mutate(current, 'residency-drop'), ['-DDXMT_PRECISE_BINDINGS=1'], True, False)]
+    variants += [('cb-copy', mutate(current, 'cb-copy'), ['-DDXMT_PRECISE_BINDINGS=1'], True, False)]
     results = []
     with tempfile.TemporaryDirectory(prefix='dxmt-precise-bindings-') as directory:
         scratch = Path(directory)
@@ -209,6 +215,7 @@ def main():
                        '-Wno-unused-variable', '-Wno-unused-parameter', '-Wno-missing-field-initializers',
                        '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
                        '-fno-omit-frame-pointer', '-pthread', f'-DEXPECT_PRECISE={int(precise)}',
+                       f'-DEXPECT_BORROW={int(name not in ("baseline", "resource-baseline"))}',
                        *defines, '-I', str(args.source_dir / 'src/util'),
                        '-I', str(args.source_dir / 'src/dxmt'),
                        '-I', str(args.source_dir / 'src/airconv'), str(cpp), '-o', str(binary)]

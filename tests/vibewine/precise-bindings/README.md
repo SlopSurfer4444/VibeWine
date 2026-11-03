@@ -58,6 +58,18 @@ VB serialization through successive DISCARDs. Observations
 include exact dirty bits, stage-table counts, retained data read through encoded
 addresses, and access/residency call counts for every materialized table.
 
+Six additional scenarios encode two aliases plus a null binding in every shader
+stage. Buffer retain/release counters surround the complete extracted CB encoder:
+it must borrow the binding's existing owning `Rc`, avoiding a transient atomic
+retain/release pair for each nonnull entry. Table addresses, offsets, dummy
+handling, access/residency counts and allocation retention must remain unchanged.
+After unbinding and destroying the Buffer, the encoded data must still be readable
+through retained allocations. The `cb-copy` negative restores the old local copy
+and must fail this ownership-operation contract. These counters establish removed
+operations, not CPU duration or game FPS; production allocation retention is
+source-audited separately from the fixture's CPU adapter. The queue adapter models
+only a healthy queue; queue-failure handling is outside these scenarios.
+
 Default/explicit-off/enabled variants must pass under ASan/UBSan at `-O0`
 (the fixture measures correctness, not speed). Historical
 source `e11476e33117b454bac60b997532f9823e34855b`, compiled with the enabled define,

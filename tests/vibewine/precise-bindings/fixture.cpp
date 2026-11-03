@@ -61,6 +61,10 @@ struct BufferAllocation : RefCounted {
 class Buffer : public RefCounted {
   Rc<BufferAllocation> name_ = new BufferAllocation;
 public:
+  static inline unsigned retains = 0, releases = 0, destructions = 0;
+  void incRef() { ++retains; RefCounted::incRef(); }
+  void decRef() { ++releases; RefCounted::decRef(); }
+  ~Buffer() override { ++destructions; }
   Rc<BufferAllocation> current() { return name_; }
   Rc<BufferAllocation> allocate(Flags<BufferAllocationFlag>) { return new BufferAllocation; }
   Rc<BufferAllocation> rename(Rc<BufferAllocation> next) {
@@ -245,6 +249,7 @@ struct ArgumentEncodingContext {
 struct Queue {
   uint64_t CurrentSeqId() { return 9; }
   uint64_t CoherentSeqId() { return 7; }
+  HRESULT FailureReason() { return S_OK; } // These scenarios model a healthy queue.
 };
 // USED_DYNAMIC
 struct CommandList { std::vector<used_dynamic_buffer> used_dynamic_buffers; };
@@ -264,6 +269,7 @@ template <bool replayable> struct CommonContext {
   ArgumentEncodingContext enc;
   std::vector<std::function<void(ArgumentEncodingContext &)>> recorded;
   size_t executed = 0;
+  bool CommandQueueFailed() { return false; }
   template <class F> void EmitST(F &&fn) { recorded.emplace_back(std::forward<F>(fn)); }
   template <class T> static Rc<T> forward_rc(Rc<T> &value) {
     if constexpr (replayable) return value;
@@ -592,6 +598,37 @@ template <PipelineStage Stage, class Context> void resource_discard(bool typed) 
   // Preserve and replay the last observation before retiring the shader owner.
   ctx.replay();
 }
+// Observe the actual encoder's transient Buffer ownership separately from its
+// required allocation retention. The latter must outlive every binding/owner.
+template <PipelineStage stage> void borrowed_cb_encoding() {
+  ++scenarios;
+  ArgumentEncodingContext enc;
+  ManagedShader shader({0, 1, 2});
+  Rc<Buffer> buffer = new Buffer;
+  auto *allocation = buffer->current().ptr();
+  const uint64_t value = 0x123456789abcdef0;
+  std::memcpy(allocation->bytes.data() + 16, &value, sizeof(value));
+  const auto address = allocation->gpuAddress() + 16;
+  auto &a = enc.cbuf_[14 * unsigned(stage)];
+  auto &b = enc.cbuf_[14 * unsigned(stage) + 1];
+  a.buffer = buffer; a.offset = 16;
+  b.buffer = buffer; b.offset = 16;
+  const auto retains = Buffer::retains, releases = Buffer::releases;
+  enc.encodeConstantBuffers<stage, PipelineKind::Ordinary>(
+      &shader.ref, shader.cb.data(), 0);
+#if EXPECT_BORROW
+  require(Buffer::retains == retains && Buffer::releases == releases,
+          "CB encoding introduced transient Buffer ownership");
+#endif
+  require(enc.arguments[0] == address && enc.arguments[1] == address && enc.arguments[2] == 0,
+          "CB alias/offset/dummy addresses changed");
+  require(enc.resource_accesses == 2 && enc.residency_checks == 3 && enc.retained.size() == 2,
+          "CB access/allocation retention/residency changed");
+  const auto destroyed = Buffer::destructions;
+  a.buffer = nullptr; b.buffer = nullptr; buffer = nullptr;
+  require(Buffer::destructions == destroyed + 1, "CB binding must own Buffer until unbound");
+  require(enc.read(address) == value, "allocation must survive Buffer destruction");
+}
 template <class Context> void resource_all_stages() {
   for (bool typed : {false, true}) {
     resource_discard<PipelineStage::Vertex, Context>(typed);
@@ -613,6 +650,12 @@ int main() {
     dxmt::interleaved_contexts();
     dxmt::resource_all_stages<dxmt::Immediate>();
     dxmt::resource_all_stages<dxmt::Deferred>();
+    dxmt::borrowed_cb_encoding<dxmt::PipelineStage::Vertex>();
+    dxmt::borrowed_cb_encoding<dxmt::PipelineStage::Pixel>();
+    dxmt::borrowed_cb_encoding<dxmt::PipelineStage::Hull>();
+    dxmt::borrowed_cb_encoding<dxmt::PipelineStage::Domain>();
+    dxmt::borrowed_cb_encoding<dxmt::PipelineStage::Geometry>();
+    dxmt::borrowed_cb_encoding<dxmt::PipelineStage::Compute>();
     std::cout << "PASS scenarios=" << scenarios << " checks=" << checks
               << " precise=" << EXPECT_PRECISE << '\n';
     return 0;
