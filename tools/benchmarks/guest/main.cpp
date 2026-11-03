@@ -56,8 +56,14 @@ struct Options {
   int width = 1920, height = 1080, vsync = 0;
   double duration = 3, warmup = 1;
   unsigned frames = 0;
+  unsigned presentEvery = 1;
   bool barrier = false;
 };
+static const char *metricScope =
+    "CPU wall time per rendered iteration; not GPU execution or display FPS";
+static bool presents(const Options &o, unsigned n) {
+  return (n + 1) % o.presentEvery == 0;
+}
 static std::string path(const Options &o, const char *n) {
   return o.output + "\\" + n;
 }
@@ -107,6 +113,22 @@ static Options parse(int argc, char **argv) {
       o.duration = number();
     else if (a == "--warmup")
       o.warmup = number();
+    else if (a == "--present-every") {
+      // Digits only: reject signs, whitespace, exponents, fractions and zero.
+      unsigned n = 0;
+      if (!*v)
+        throw Failure("invalid present-every (expected digits 1..64)");
+      for (const char *p = v; *p; ++p) {
+        if (*p < '0' || *p > '9')
+          throw Failure("invalid present-every (expected digits 1..64)");
+        n = n * 10 + unsigned(*p - '0');
+        if (n > 64)
+          throw Failure("present-every outside bounded range 1..64");
+      }
+      if (!n)
+        throw Failure("present-every outside bounded range 1..64");
+      o.presentEvery = n;
+    }
     else if (a == "--width" || a == "--height" || a == "--vsync" ||
              a == "--frames") {
       double n = number();
@@ -583,7 +605,7 @@ struct Renderer {
       throw Failure("probe readback sentinel mismatch");
     beat();
   }
-  double frame(const Options &o, unsigned n) {
+  double frame(const Options &o, unsigned n, bool forcePresent = false) {
     messages();
     RECT rect;
     if (!GetClientRect(window, &rect) || rect.right != o.width ||
@@ -655,20 +677,29 @@ struct Renderer {
       }
       ctx->DrawIndexed(36, 0, 0);
     }
-    double before = clocksec();
-    HRESULT hr = swap->Present(o.vsync, 0);
-    double after = clocksec();
-    if (hr != S_OK)
-      throw Failure("Present failed or did not present", hr);
+    double presentMs = 0;
+    if (forcePresent || presents(o, n)) {
+      double before = clocksec();
+      HRESULT hr = swap->Present(o.vsync, 0);
+      double after = clocksec();
+      if (hr != S_OK)
+        throw Failure("Present failed or did not present", hr);
+      presentMs = (after - before) * 1000;
+    } else {
+      // Submit this iteration's unchanged rendering even without a drawable.
+      // Flush does not prove GPU completion; cpuFrameMs includes its wall time.
+      ctx->Flush();
+    }
     check(dev->GetDeviceRemovedReason(), "device removed");
     beat();
-    return (after - before) * 1000;
+    return presentMs;
   }
 };
 int main(int argc, char **argv) {
   Options o;
   HANDLE thread = nullptr;
   unsigned frames = 0;
+  unsigned measuredPresentCalls = 0;
   double elapsed = 0;
   int code = 1;
   std::string error;
@@ -727,6 +758,8 @@ int main(int argc, char **argv) {
                   "{" + identity(o) + ",\"scene\":" + esc(o.scene) +
                       ",\"width\":" + std::to_string(o.width) +
                       ",\"height\":" + std::to_string(o.height) +
+                      ",\"presentEvery\":" + std::to_string(o.presentEvery) +
+                      ",\"metricScope\":" + esc(metricScope) +
                       ",\"featureLevel\":" + std::to_string(r.feature) +
                       ",\"modules\":" + modules() + "}\n");
       phase("ready");
@@ -734,7 +767,7 @@ int main(int argc, char **argv) {
         barrier(o, "probe.json");
         phase("probe");
         for (unsigned i = 0; i < 3; i++)
-          r.frame(o, i);
+          r.frame(o, i, true);
         phase("probe-drain");
         r.drainProbe();
         writeAtomic(
@@ -755,6 +788,8 @@ int main(int argc, char **argv) {
         double a = clocksec();
         double present = r.frame(o, frames);
         double total = (clocksec() - a) * 1000;
+        if (presents(o, frames))
+          measuredPresentCalls++;
         if (fprintf(csv, "%u,%.9f,%.9f\n", frames, total, present) < 0)
           throw Failure("write CSV row");
         frames++;
@@ -796,6 +831,9 @@ int main(int argc, char **argv) {
         << ",\"requestedDurationSeconds\":" << o.duration
         << ",\"width\":" << o.width << ",\"height\":" << o.height
         << ",\"vsync\":" << o.vsync
+        << ",\"presentEvery\":" << o.presentEvery
+        << ",\"measuredPresentCalls\":" << measuredPresentCalls
+        << ",\"metricScope\":" << esc(metricScope)
         << ",\"sceneClock\":\"frameIndex modulo 3600 / 60; reset after warmup "
            "and probe\",\"seed\":0,\"error\":"
         << esc(error) << ",\"hresult\":" << (unsigned)hr << "}\n";

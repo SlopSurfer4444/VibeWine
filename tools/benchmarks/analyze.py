@@ -150,11 +150,14 @@ def native_trace(path, dimensions=None, *, expected_profile='combined-bounded'):
 def analyze_run(directory, guest_result=None, *, expected_profile=None):
     directory = Path(directory)
     declared_profile = None
+    declared_divisor = None
     declaration = directory / 'run.json'
     if declaration.exists():
         if declaration.is_symlink() or declaration.stat().st_size > 1024*1024:
             raise ValueError('run declaration cap/type')
-        declared_profile = json.loads(declaration.read_text()).get('requestedProfile')
+        declared = json.loads(declaration.read_text())
+        declared_profile = declared.get('requestedProfile')
+        declared_divisor = declared.get('requestedPresentEvery')
     if expected_profile is None:
         expected_profile = declared_profile
     if expected_profile not in ('presentation-waits', 'combined-bounded'):
@@ -165,8 +168,20 @@ def analyze_run(directory, guest_result=None, *, expected_profile=None):
         guest_result = json.loads((directory / 'results.json').read_text())
     if guest_result.get('status') != 'complete':
         raise ValueError('guest did not complete')
+    divisor = guest_result.get('presentEvery', 1)
+    if type(divisor) is not int or not 1 <= divisor <= 64:
+        raise ValueError('invalid diagnostic presentation divisor')
+    if declared_divisor is not None and (type(declared_divisor) is not int or declared_divisor != divisor):
+        raise ValueError('diagnostic mode differs from recorded declaration')
+    if divisor != 1:
+        calls = guest_result.get('measuredPresentCalls')
+        if type(calls) is not int or calls != guest_result['frames'] // divisor:
+            raise ValueError('diagnostic presentation count mismatch')
     dimensions = dict(width=guest_result['width'], height=guest_result['height'])
-    return dict(cpu=cpu_frames(directory / 'perframe.csv', guest_result['frames']),
+    return dict(renderingMode=dict(presentEvery=divisor,
+                    scope='render iterations; repeated renders may be overwritten before display; not physical or game FPS',
+                    measuredPresentCalls=guest_result.get('measuredPresentCalls')),
+                cpu=cpu_frames(directory / 'perframe.csv', guest_result['frames']),
                 trace=native_trace(directory / 'trace.ndjson', dimensions, expected_profile=expected_profile),
                 limitations=['One synthetic scene run does not establish DS3 performance or a speedup.',
                              'CPU timings and native feedback have separate windows and clocks.',

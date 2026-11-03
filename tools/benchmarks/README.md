@@ -133,6 +133,21 @@ logs. Analyze again with `python3 tools/benchmarks/analyze.py /absolute/scene-di
 
 ## Meaning of metrics
 
+`--present-every N` is an explicitly different diagnostic workload, bounded to
+1..64 and defaulting to 1. Each iteration emits the same scene rendering; for
+N>1, intermediate iterations Flush and only every Nth iteration calls Present.
+Three calibration Presents remain mandatory regardless of N. New guests declare
+`presentEvery` in readiness/results and `measuredPresentCalls` in results; the
+host checks both against the request, records the request before launch, and
+refuses mismatches. N=1 omits the new guest argument for compatibility with old
+installed guests. CPU CSV columns remain unchanged, with presentCallMs=0 on
+iterations without Present. Completed prefixes can end before the next Present.
+Repeated renders may be overwritten before display, native chunk grouping and
+render-pass behavior can change, and Flush is not proof of completion. Neither
+render iteration rate nor the difference between N1 and N16 is displayed FPS
+or a game speedup. Use it to investigate presentation coupling, not to bypass
+presentation in games. Installed app defaults remain unchanged.
+
 For a separate native-only drawable availability control, see
 [`native_drawable_control.md`](native_drawable_control.md). It does not run Wine
 and is not a matched renderer performance comparison.

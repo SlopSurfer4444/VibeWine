@@ -177,7 +177,8 @@ def execute_scene(args, scene, run_root):
     # This receipt proves the native observer can operate before guest creation.
     # Producer attachment and first real data are independently required below.
     write_json(out / 'observer-ready.json', dict(schema=1, runId=run_id,
-               phase='prelaunch-native-controller-ready', requestedProfile=args.profile, collectorSha256=collector_hash,
+               phase='prelaunch-native-controller-ready', requestedProfile=args.profile,
+               requestedPresentEvery=args.present_every, collectorSha256=collector_hash,
                traceSession=session, clock=clock, producerAttached=False, requiredModuleSha256=prelaunch_modules))
     env = os.environ.copy()
     env.update(args.environment)
@@ -186,12 +187,16 @@ def execute_scene(args, scene, run_root):
     argv = [str(args.wine), str(args.guest), '--scene', scene, '--duration', str(args.duration),
             '--warmup', str(args.warmup), '--frames', str(args.frames), '--width', str(args.width), '--height', str(args.height),
             '--vsync', str(args.vsync), '--output', 'Z:' + str(out).replace('/', '\\'), '--run-id', run_id, '--barrier']
+    # Older installed guests implement the default every-iteration mode only.
+    if args.present_every != 1:
+        argv += ['--present-every', str(args.present_every)]
     logs = [out / 'stdout.log', out / 'stderr.log']
     child = None
     trace_file = trace_identity = None
     armed = stopped = False
     capture_generation = '1'
     receipt = dict(schema=1, runId=run_id, scene=scene, status='failed', profile=args.profile, requestedProfile=args.profile,
+                   requestedPresentEvery=args.present_every,
                    guestSha256=digest(args.guest), collectorSha256=collector_hash,
                    cpuMetricsScope='guest CPU loop/Present call, not displayed FPS',
                    observerReadyBeforeLaunch=True)
@@ -206,6 +211,8 @@ def execute_scene(args, scene, run_root):
         receipt['startupToReadySeconds'] = time.monotonic() - receipt['launchMonotonic']
         receipt['startupScope'] = 'process launch through initialization and requested warmup; not cold-driver-cache cost'
         require(ready.get('scene') == scene, 'ready scene mismatch')
+        require(type(ready.get('presentEvery', 1)) is int and
+                ready.get('presentEvery', 1) == args.present_every, 'ready presentation mode mismatch')
         pid = ready['pid']
         trace_file = Path(session) / ('events-' + str(pid) + '.bin')
         while not trace_file.exists() and time.monotonic() < end:
@@ -284,6 +291,7 @@ def execute_scene(args, scene, run_root):
         bound_message(results, run_id, pid)
         require(results.get('status') == 'complete' and results.get('scene') == scene,
                 'guest failed or wrong scene')
+        validate_presentation_result(results, args.present_every)
         require(regular(out / 'perframe.csv', 4*1024*1024).st_size > 0, 'missing CPU frames')
         receipt['guestResult'] = results
         receipt['status'] = 'complete'
@@ -327,6 +335,15 @@ def execute_scene(args, scene, run_root):
     return receipt, out
 
 
+def validate_presentation_result(result, expected):
+    observed = result.get('presentEvery', 1)
+    require(type(observed) is int and observed == expected, 'result presentation mode mismatch')
+    if expected != 1:
+        frames, calls = result.get('frames'), result.get('measuredPresentCalls')
+        require(type(frames) is int and frames > 0 and type(calls) is int and
+                calls == frames // expected, 'diagnostic measured Present count mismatch')
+
+
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ('wine', 'prefix', 'guest', 'trace-controller', 'output'):
@@ -339,6 +356,7 @@ def parser():
     p.add_argument('--duration', type=float, default=2)
     p.add_argument('--warmup', type=float, default=.5)
     p.add_argument('--frames', type=int, default=10000, help='stop at this measured frame cap or duration, whichever comes first')
+    p.add_argument('--present-every', type=int, default=1, help='diagnostic render iterations per Present; values >1 are not displayed FPS')
     p.add_argument('--vsync', type=int, choices=(0, 1), default=0)
     p.add_argument('--width', type=int, default=1280)
     p.add_argument('--height', type=int, default=720)
@@ -351,6 +369,7 @@ def main():
     try:
         require(0.1 <= args.duration <= 10 and 0 <= args.warmup <= 10, 'bounded scene duration/warmup')
         require(1 <= args.frames <= 10000, 'bounded measured frame cap: 1..10000')
+        require(1 <= args.present_every <= 64, 'bounded diagnostic presentation divisor: 1..64')
         require(64 <= args.width <= 3840 and 64 <= args.height <= 2160, 'bounded geometry')
         require(10 <= args.timeout <= 120, 'bounded process timeout')
         args.environment = {}
@@ -383,7 +402,7 @@ def main():
         complete = len(results) == len(scenes) and all(x['status'] == 'complete' for x in results)
         write_json(args.output / 'suite.json', dict(schema=1, status='complete' if complete else 'failed',
                    scenes=results, plannedScenes=scenes, profile=args.profile, requestedProfile=args.profile,
-                   settings=dict(duration=args.duration, warmup=args.warmup, frames=args.frames, vsync=args.vsync, width=args.width, height=args.height),
+                   settings=dict(duration=args.duration, warmup=args.warmup, frames=args.frames, presentEvery=args.present_every, vsync=args.vsync, width=args.width, height=args.height),
                    limits=['Synthetic workload only; no DS3/game FPS claim.',
                            'Native feedback scope includes calibration and shutdown; per-scene CPU timing is separate.',
                            'Collector overhead and A/A then A/B repeats require separate controlled runs.']))

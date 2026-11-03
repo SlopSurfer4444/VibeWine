@@ -93,3 +93,53 @@ completion. This is a scoped source review, not proof of every native lifetime.
 No renderer patch or runtime setting change is justified by this control alone.
 The remaining question is how the separate scene/presentation submissions and
 completion frontier affect useful overlap under a GPU-heavy workload.
+
+## Interior observed GPU intervals
+
+Offline reassessment joined type24 native GPU intervals through accepted
+20–23 chunks and unique commit reasons, grouped by queue. First/last ten observed
+queue-frame identities were excluded: each of the six selected captures retained
+481 interior queue frames and 962 intervals. All intervals use the same native
+GPU clock; no CPU-to-GPU timestamp conversion was made. Overlapping intervals
+were merged, with an independent endpoint sweep confirming all six results.
+
+Cube interval union covered 2.12–3.35% of its own retained span; pixelheavy covered
+60.21–68.95%. Thus heavy rendering occupies more of the observed span but does
+not fill it. Gaps are outside accepted intervals, not proof that the whole device
+was idle; intervals are also not guaranteed continuously active work. This is
+an interior trace-envelope calculation, not the guest's exact measurement window.
+
+## Render-isolation diagnostic
+
+An opt-in guest/runner extension renders each iteration but calls Present every
+Nth iteration; intervening iterations Flush. The render command body, calibration
+drain and teardown retain the previous logic. Default N1 remains compatible with
+the installed app. Explicit N16 requires declared mode and the correct measured
+Present count. Three calibration Presents still precede measurement. Thirty host
+tests pass, and the guest builds with `-Wall -Wextra -Werror` and checked imports.
+
+A bounded ABBA sequence compared N1/N16/N16/N1, each with cube and pixelheavy,
+500 rendered iterations, 1280x720, VSync0, one-second warmup and a five-second
+ceiling. All eight cases completed 500 iterations with accepted CPU/GPU
+observations; actual measured Present API records were respectively 500 or31.
+
+| Scene | N1 elapsed seconds, first/last | N16 elapsed seconds, two repeats |
+| --- | --- | --- |
+| cube | 4.135 / 4.143 | 0.237 / 0.237 |
+| pixelheavy | 4.143 / 4.136 | 2.637 / 2.568 |
+
+This is a deliberately different presentation workload, not an optimization
+comparison or FPS gain. Skipping intermediate presents changes native command
+grouping (1002 versus533 successful command buffers in these trace envelopes),
+can change render-pass behavior, and permits intermediate images to be overwritten.
+Individual GPU-buffer durations are not comparable per-frame GPU costs across
+these modes. No pixel golden, physical display rate, global GPU utilization or
+DS3 performance result is established; whole native presentation coverage remains
+partial. ABBA reduces some order effects but does not control power/background
+or isolate the cost of a single wait.
+
+The contrast supports investigating presentation coupling under useful rendering.
+A future production candidate must preserve every requested frame and its image,
+retain dependency/lifetime/failure semantics, and demonstrate improvement with
+the same presentation workload. Simply skipping frames or removing latency
+bounds does not meet that requirement. No game/runtime change is installed.

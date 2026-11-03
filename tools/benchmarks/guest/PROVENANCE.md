@@ -25,8 +25,19 @@ is fixed-size and windowed, with one sample per pixel, RGBA8 backbuffer, D24S8 d
 hardware D3D11 feature level 11.0 required, and explicit `--vsync 0|1` (default 0).
 There is no fullscreen or HDR claim. Every HRESULT-returning resource setup, Map,
 Present and device-removal check is handled without dialogs or silent fallback.
-Void D3D11 draw/state methods are validated by Present/device status; rendering
+Void D3D11 draw/state methods are validated by Present or Flush/device status; rendering
 correctness and successful compositor display still require external observation.
+
+`--present-every N` accepts digits only, bounded to 1..64, default 1. Every
+rendered iteration retains the identical scene commands and deterministic scene
+index. Iterations where `(frameIndex + 1) % N == 0` perform checked Present;
+all other iterations explicitly Flush the immediate context and check device
+status. Flush submits work but does not wait for GPU completion. Warmup follows
+the same cadence; the three barrier probe iterations always perform real Present
+regardless of N, and their GPU EVENT plus verified CPU staging readback is
+unchanged. The normal final ClearState/Flush teardown also submits a remainder.
+This diagnostic separates render submission from every-iteration drawable pacing;
+it does not establish GPU throughput or display FPS, including at default N=1.
 
 Scene time is `(frameIndex modulo 3600)/60`, without randomness or input; warmup,
 probe and measurement each restart the sequence. A duration run consumes a
@@ -34,17 +45,25 @@ throughput-dependent prefix. `--frames N` additionally caps the prefix, but dura
 remains a hard measurement cap. Compare identical settings and record actual frame
 counts; this is not a claim of bit-identical GPU output across drivers.
 
-Protocol schema 1: after warmup/startup Presents, `ready.json` contains runId, Windows
-pid, scene, actual validated dimensions, featureLevel and loaded module names/paths.
+Protocol schema 1: after warmup, `ready.json` contains runId, Windows pid, scene,
+actual validated dimensions, presentEvery, metricScope, featureLevel and loaded
+module names/paths. Warmup need not reach a Present when N exceeds its iterations.
 With `--barrier`, wait at most 30 seconds for `probe.json` matching exact schema,
 runId and pid, render three calibration Presents, publish `probe-done.json`, then
 wait at most 30 seconds for identically bound `go.json`. No input or menus are read.
 The runner must establish and independently verify native trace binding/progress
-before writing GO. Every successful measured frame writes `perframe.csv` with
+before writing GO. Every successful rendered iteration writes `perframe.csv` with
 `frame,cpuFrameMs,presentCallMs`; these are CPU wall-call durations, not GPU execution
-or compositor display times. File serialization lies outside cpuFrameMs and inside
+or compositor display times. The legacy three-column CSV is unchanged: frame is
+the rendered iteration index, cpuFrameMs includes full iteration work plus either
+Present or Flush, and presentCallMs is exactly zero on non-Present iterations.
+File serialization lies outside cpuFrameMs and inside
 actual durationSeconds. `results.json` is authoritative guest status, identity,
-counts and settings; success is published only after normal renderer teardown.
+counts and settings; frames counts rendered iterations, measuredPresentCalls counts
+successful measured Present calls (excluding warmup and probe), and presentEvery
+and metricScope explicitly identify this CPU rendered-iteration metric. A failed
+iteration or CSV write can leave counts unequal; only complete results are valid
+for comparisons. Success is published only after normal renderer teardown.
 
 Guest heartbeat guard terminates only its own PID after 15 seconds without progress,
 including blocked initialization/Present/teardown, with watchdog.json and exit 124.

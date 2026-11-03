@@ -15,6 +15,23 @@ import analyze
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_offline_analysis_cannot_override_declared_presentation_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)
+            (directory/'run.json').write_text(json.dumps(dict(requestedProfile='presentation-waits', requestedPresentEvery=1)))
+            guest=dict(status='complete',frames=500,presentEvery=16,measuredPresentCalls=31)
+            with self.assertRaisesRegex(ValueError,'mode differs from recorded declaration'):
+                analyze.analyze_run(directory,guest)
+
+    def test_diagnostic_render_iterations_cannot_masquerade_as_presented_frames(self):
+        run.validate_presentation_result({'frames': 500}, 1)  # historical default
+        run.validate_presentation_result(dict(frames=500,presentEvery=16,measuredPresentCalls=31), 16)
+        for result in (dict(frames=500), dict(frames=500,presentEvery=1,measuredPresentCalls=500),
+                       dict(frames=500,presentEvery=16,measuredPresentCalls=500),
+                       dict(frames=500,presentEvery=16,measuredPresentCalls=31.0),
+                       dict(frames=500,presentEvery=True,measuredPresentCalls=31)):
+            with self.assertRaises(ValueError): run.validate_presentation_result(result,16)
+
     def test_identity_refuses_replayed_or_changed_pid(self):
         for value in ({'schema':1,'runId':'old','pid':42},
                       {'schema':1,'runId':'new','pid':43},
@@ -119,6 +136,7 @@ class ProtocolTests(unittest.TestCase):
                 result,out=run.execute_scene(args,'cube',root)
                 argv=spawned.call_args.args[0]
                 self.assertEqual(argv[argv.index('--frames')+1], '500')
+                self.assertNotIn('--present-every', argv)  # old guest compatibility
             accepted=actual and not probe_failures and not invalid_probe_proof
             self.assertEqual(result['status'],'complete' if accepted else 'failed',result)
             if not invalid_probe_proof:self.assertEqual(result['preMeasureRecords'],8)
