@@ -55,5 +55,5 @@ update main's gitlink with integration evidence. Preserve local corrections only
 where still needed. No game-specific override becomes a global default merely
 because a merge succeeds.
 
-Previous source snapshots remain in this repository and its Git history. The
-snapshot-era main checkpoint is `92feab216314f4b13f71e280fdd0afa7a89592c6`.
+Previous source snapshots remain available in Git history. The snapshot-era main
+checkpoint is `92feab216314f4b13f71e280fdd0afa7a89592c6`.
