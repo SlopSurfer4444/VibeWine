@@ -1,7 +1,7 @@
 # Active telemetry tools
 
 This is the maintained collector/analyzer, derived from the historical
-`renderer/wave7/consumer` snapshot. The snapshot remains unchanged. The C++
+`archive/legacy/renderer/wave7/consumer` snapshot. The snapshot remains unchanged. The C++
 collector uses the protocol from the exact `components/dxmt` gitlink, not a
 second copy of the header. These tools neither install a runtime nor start a game.
 

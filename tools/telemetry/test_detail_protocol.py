@@ -6,7 +6,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[2]
 class SharedAdmittedWriterTests(unittest.TestCase):
     def test_existing_writer_close_overflow_and_generation_barriers(self):
         with tempfile.TemporaryDirectory(prefix='detail-protocol-') as td:
-            work=pathlib.Path(td);historical=ROOT/'renderer/wave6/consumer'
+            work=pathlib.Path(td);historical=ROOT/'archive/legacy/renderer/wave6/consumer'
             # The maintained controller now requires explicit capacity planning.
             # Adapt only old driver call sites, keeping production code exact.
             driver=re.sub(r'arm\((\d+|UINT32_MAX)\)',r'arm(\1,1024,128)',(historical/'tests_protocol.cpp').read_text())

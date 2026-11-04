@@ -2,8 +2,8 @@
 
 This index records earlier checkpoints, including their original “current” and
 “installed” wording. It is not the active development map. Start new work in
-[`components/`](README.md#get-the-source); use [status](docs/STATUS.md) for the
-current source/build/install checkpoint and [patch origins](docs/PATCHES.md) for
+[`components/`](README.md#get-the-source); use [status](../reports/status-through-20261029.md) for the
+current source/build/install checkpoint and [patch origins](../../docs/PATCHES.md) for
 scope and attribution. Historical paths and evidence below remain unchanged.
 
 ## Post-Wave7 entry points (18 October 2026)

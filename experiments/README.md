@@ -1,7 +1,7 @@
 # Experiments
 
 Instrumentation and unproven alternatives must default off, have bounded resource
-cost, and document removal. The existing [optional experiments](../optional/README.md)
+cost, and document removal. The existing [optional experiments](../archive/legacy/optional/README.md)
 remain historical material; they are not automatically enabled by this workspace.
 
 FPS comparisons must record source pins, hardware, resolution, scene, settings,

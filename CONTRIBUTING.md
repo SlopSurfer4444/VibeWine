@@ -41,7 +41,7 @@ Explain the failure, the intended behavior, and the smallest useful reproduction
 Add or update a regression fixture where it meaningfully catches the bug. Report
 the commands you ran and their results, including failures and checks you could
 not run. Run fixtures that generate outputs in a disposable copy as described in
-[current/tests/README.md](current/tests/README.md).
+[the historical fixture guide](archive/legacy/current/tests/README.md).
 
 Source fixtures, a successful build, installation, and observed game behavior are
 different evidence. State which you verified. For title profiles and experiments,

@@ -1,0 +1,2 @@
+# Retained snapshots should not dominate GitHub's language statistics.
+archive/** linguist-vendored

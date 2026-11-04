@@ -29,7 +29,7 @@ From `components/dxmt`:
 python3 tests/vibewine/staging-retention/run.py --sanitize
 python3 tests/vibewine/staging-retention/run.py --arch x86_64 --sanitize
 python3 tests/vibewine/staging-retention/run.py \
-  --source-dir ../../current/dxgi-source --expect-retained-baseline --sanitize
+  --source-dir ../../archive/legacy/current/dxgi-source --expect-retained-baseline --sanitize
 ```
 
 Native arm64 and Rosetta x86_64 ASan/UBSan checks passed, covering aging boundaries,

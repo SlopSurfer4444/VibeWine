@@ -12,8 +12,8 @@ patches and regression fixtures. It is not a complete Wine checkout, a downloada
 runtime, or a one-click replacement for CrossOver. The complete installed runtime
 is not yet reproducible from this repository alone.
 
-[Contribute](CONTRIBUTING.md) · [Current source and evidence](current/README.md) ·
-[Roadmap](ROADMAP.md) · [Source map](SOURCE_INDEX.md) · [Build boundaries](BUILDING_WAVE7.md)
+[Contribute](../../../CONTRIBUTING.md) · [Current source and evidence](../current/README.md) ·
+[Roadmap](../ROADMAP.md) · [Source map](../SOURCE_INDEX.md) · [Build boundaries](../BUILDING_WAVE7.md)
 
 ## Fix classes of bugs, keep game workarounds separate
 
@@ -37,7 +37,7 @@ contribution rules and source classifications, not a claim of a new plugin frame
   display mode, with bounded retries when the list changes.
 - **Title-specific compatibility:** DS3's distinct-resolution cap is enabled by
   its executable profile, not imposed on all applications. See
-  [the current classification](current/README.md).
+  [the current classification](../current/README.md).
 - **Accessibility work:** macOS accessibility discovery and standard-control
   fixtures. Reliable end-to-end computer use in real games remains unfinished;
   a game-rendered UI does not automatically become a semantic accessibility tree.
@@ -48,7 +48,7 @@ The latest generic fixes passed source fixtures and local build/installation
 checks. Those checks do not establish every game's compatibility. Earlier DS3
 sessions demonstrated resolution changes, fullscreen exit and repeat launch;
 latest-patch gameplay, Mission Control cursor release and sustained performance
-still need separate testing. See [current evidence](current/README.md).
+still need separate testing. See [current evidence](../current/README.md).
 
 ## Join in
 
@@ -57,7 +57,7 @@ make the build reproducible. Small, understandable PRs are a great starting poin
 AI assistance is welcome; submitting a patch means taking responsibility for
 reviewing it, explaining its source and reporting honest validation.
 
-Use [the contribution guide](CONTRIBUTING.md) and the PR/issue templates. We review
+Use [the contribution guide](../../../CONTRIBUTING.md) and the PR/issue templates. We review
 behavior, maintainability, provenance and evidence. Generated code does not get
 a free pass, and an AI tool's confident explanation is not a test result.
 
@@ -79,4 +79,4 @@ credentials or private machine-management code are included.
 
 Older checkpoints remain for comparison. Their historical status is not the
 current release status: start with `current/`, then consult
-[the retained history](history/PRE_VIBEWINE_README.md) when needed.
+[the retained history](PRE_VIBEWINE_README.md) when needed.

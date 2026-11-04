@@ -44,7 +44,7 @@ Those paths are required inputs, not bundled dependencies. Check the pinned
 DXMT documentation for its exact required versions. A custom native bridge may
 require additional matched components; do not substitute arbitrary release DLLs.
 A full clean-room build and combined runtime acceptance remain distinct from
-workspace checks. Historical [build recipes](../build-recipes/README.md) document
+workspace checks. Historical [build recipes](../archive/legacy/build-recipes/README.md) document
 older builds only and are not a shortcut to assembling the new pair.
 
 Before promoting a new pair: compile required components, run relevant regression

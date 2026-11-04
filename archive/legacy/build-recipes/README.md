@@ -1,7 +1,7 @@
 # Wave7 recorded build recipes
 
-**Historical checkpoint.** Use the [current status](../docs/STATUS.md)
-and [component build guide](../docs/BUILDING.md) for new development.
+**Historical checkpoint.** Use the [current status](../../reports/status-through-20261029.md)
+and [component build guide](../../../docs/BUILDING.md) for new development.
 
 These explicit-input templates preserve the archived compile/link arguments while
 replacing private paths. They compile source; they do not discover an installed

@@ -2,7 +2,7 @@
 
 **Historical snapshot.** “Installed”, “current” and “latest” below describe this
 dated checkpoint. Active development is in [`components/`](../README.md#get-the-source),
-and the current runtime evidence is in [status](../docs/STATUS.md). Do not edit
+and the current runtime evidence is in [status](../../reports/status-through-20261029.md). Do not edit
 this snapshot as a second copy of the active component source.
 
 This directory supersedes older Wave7 source only for the listed components. It contains source and portable fixtures, not a runtime installer or a complete reproducible Wine distribution. Local installation readback recorded the current DXGI and winemac hashes in `PROVENANCE.json`; identifiers do not distribute binaries. The private lifecycle/admission implementation, private deployment/game configuration profiles and raw observations are absent.
