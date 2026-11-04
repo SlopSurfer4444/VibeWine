@@ -1,6 +1,21 @@
 # Current source, installation and checks
 
-Reconciled **29 October 2026**. This table supersedes earlier checkpoints.
+Reconciled **4 November 2026**. This table supersedes earlier checkpoints.
+
+| Layer | Current state | Acceptance boundary |
+| --- | --- | --- |
+| Source | DXMT `a49a51c5`; Wine `3773a58c` | CPU hot-path reductions, default-off guarded fragment loop motion and Darwin dylib soname repair |
+| Builds | Two fresh164-step matched graphics builds; fresh configure/seven selected Wine targets | Current project-local source/deps, not a complete new Wine distribution |
+| Benchmark |42host checks;8actual native-bound image/trace cases; full fixed-frame RGBA equality per scene | Single-frame synthetic equivalence; full native presentation coverage false |
+| Performance | CPU ABBA and shader-loop comparison show no demonstrated gain; loop motion stays off | Heavy reference time/order drift on battery; no displayed/game FPS claim |
+| Installed DS3 | Native `d029bcfc` selection retained; control helper-only `2a9a58a` installed/no-op/status verified | Native hashes unchanged; retired Hub/CS2 helpers no longer needed for DS3-only delivery; no game launch |
+| Workspace | Independent recursive Git source and project-local dependencies; current benchmark/tracing preserved | Historical outputs retirement preserves unknown authored work and unresolved evidence |
+
+[Actual comparison and limits](diagnostics/current-build-loop-comparison-20261104.md).
+
+## Previous 29 October checkpoint
+
+Reconciled **29 October 2026**. Historical installed-source checkpoint.
 
 | Layer | Current state | Acceptance boundary |
 | --- | --- | --- |

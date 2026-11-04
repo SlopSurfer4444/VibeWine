@@ -7,7 +7,13 @@ windows, Retina, accessibility, game compatibility and performance you can
 measure. Human-written and AI-assisted contributions are welcome. Bring a
 reproduction, a focused patch and evidence of what you checked.
 
-**Current checkpoint: 29 October 2026.** The
+**Current checkpoint: 4 November 2026.** Fresh canonical Wine/DXMT builds,
+actual rendered-pixel comparison and conservative compiler experiments are
+recorded in the [current build report](docs/diagnostics/current-build-loop-comparison-20261104.md).
+The latest shader-loop experiment shows no demonstrated gain and stays off.
+[Current status](docs/STATUS.md) separates source, build, installed and game results.
+
+The **29 October**
 [sustained-performance continuation](docs/diagnostics/sustained-wave-20261029.md)
 reduces redundant bindings, completed-upload allocations and eligible adjacent
 clears, and completes terminal queue-failure handling. It also adds bounded
@@ -72,8 +78,8 @@ python3 scripts/workspace.py check
 | [Telemetry](tools/telemetry/README.md) and [gameplay tools](tools/gameplay/README.md) | Analysis, bounded test control and reproducible test protocols | `main` |
 | [Experiments](experiments/README.md) | Opt-in instrumentation and native presentation probes | `main` |
 
-The workspace pins Wine `5d4b43e4` and the DXMT hot-path source checkpoint
-listed in [current status](docs/STATUS.md). Components are pinned
+The workspace's Gitlinks pin the exact Wine and DXMT revisions listed in
+[current status](docs/STATUS.md). Components are pinned
 submodules hosted on branches in this same repository.
 Updating a component branch does not silently update the workspace pin. GitHub's
 main-branch ZIP omits submodule contents; use a recursive clone or the component
