@@ -1,9 +1,9 @@
 # Active telemetry tools
 
-This is the maintained collector/analyzer, derived from the historical
-`archive/legacy/renderer/wave7/consumer` snapshot. The snapshot remains unchanged. The C++
-collector uses the protocol from the exact `components/dxmt` gitlink, not a
-second copy of the header. These tools neither install a runtime nor start a game.
+This is the maintained collector/analyzer. The C++ collector uses the protocol
+from the exact `components/dxmt` gitlink, not a second copy of the header. Protocol
+regression inputs live under `fixtures/`. These tools neither install a runtime
+nor start a game.
 
 For a bounded detailed window after observed world load, use the maintained
 [scene-triggered adapter](SCENE_CAPTURE.md). It reuses this controller and the

@@ -42,6 +42,5 @@ dates. See [status](docs/STATUS.md) for the evidence behind current checkpoints.
 - Improve build instructions and test coverage without treating a source check as
   proof of an installed runtime or game result.
 
-Earlier iteration plans and their dated decisions are retained in the
-[development archive](archive/README.md). They are historical records, not a
-second active roadmap.
+Earlier implementations and iteration plans remain available in Git history.
+Dated technical reports in `docs/` record their original source pins and limits.

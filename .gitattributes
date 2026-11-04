@@ -1,2 +1,2 @@
-# Retained snapshots should not dominate GitHub's language statistics.
-archive/** linguist-vendored
+# Compatibility decoder input is retained for tests, not production source.
+tools/telemetry/fixtures/legacy_trace_core.hpp linguist-vendored

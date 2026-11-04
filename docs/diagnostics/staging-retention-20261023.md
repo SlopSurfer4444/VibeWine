@@ -28,9 +28,11 @@ From `components/dxmt`:
 ```sh
 python3 tests/vibewine/staging-retention/run.py --sanitize
 python3 tests/vibewine/staging-retention/run.py --arch x86_64 --sanitize
-python3 tests/vibewine/staging-retention/run.py \
-  --source-dir ../../archive/legacy/current/dxgi-source --expect-retained-baseline --sanitize
 ```
+
+The original baseline comparison used the earlier source snapshot now retained
+in Git history. To reproduce that comparison, check out the report's original
+workspace version separately; the current tree does not carry that snapshot.
 
 Native arm64 and Rosetta x86_64 ASan/UBSan checks passed, covering aging boundaries,
 in-flight/current/reserved IDs, slot reuse, recent recurring bursts, external

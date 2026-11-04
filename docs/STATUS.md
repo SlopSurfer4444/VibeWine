@@ -46,6 +46,6 @@ Wine distribution or a general installation promise. Private launchers, saves,
 credentials and game assets are not part of this repository.
 
 Dated installation and gameplay observations remain in the
-[historical status ledger](../archive/reports/status-through-20261029.md).
+[historical status ledger](https://github.com/SlopSurfer4444/VibeWine/blob/1d88dc989d71709821ac0f60fbaeb3806aac8c68/archive/reports/status-through-20261029.md).
 They do not certify the state of another user's machine. Earlier iteration
 names are retained for provenance, not used as product release names.

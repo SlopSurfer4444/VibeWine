@@ -19,5 +19,4 @@ See [patch origins](../docs/PATCHES.md) and [current acceptance](../docs/STATUS.
 
 A contribution must name the owning gate, reason, activation/deactivation and
 unaffected-path check. Do not move an engine hook here merely to make the folder
-look self-contained. The earlier [DS3 source snapshot](../archive/legacy/current/README.md)
-remains available for historical comparison.
+look self-contained. Earlier snapshots remain available in Git history.

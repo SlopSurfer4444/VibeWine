@@ -47,7 +47,6 @@ independently, with their original licenses and attribution.
 | [`experiments/`](experiments/README.md) | Opt-in investigations with explicit limits |
 | [`docs/`](docs/README.md) | Build guide, provenance, validation and technical reports |
 | [`patches/`](patches/runtime-2026-10-23/README.md) | Retained runtime source deltas and reconstruction notes |
-| [`archive/`](archive/README.md) | Earlier snapshots and development records |
 
 The [status page](docs/STATUS.md) identifies the main-branch pins and newer
 experimental checkpoints. Builds, installation, game observations and measured

@@ -12,5 +12,4 @@
 
 The `diagnostics/`, `integrations/` and `provenance/` directories contain dated
 technical reports. Read each report's source pins and limits before applying its
-conclusions to another build. Earlier snapshots and internal iteration ledgers
-are separated into the [development archive](../archive/README.md).
+conclusions to another build. Earlier implementations and iteration ledgers are available in Git history.
